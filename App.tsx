@@ -2940,6 +2940,7 @@ export default function App() {
       {activeTab === 'dashboard' && (
         <DashboardView 
           employees={employees} 
+          suppliers={suppliers}
           attendance={attendance} 
           user={systemUser}
           auditLogs={auditLogs}
@@ -3136,14 +3137,14 @@ export default function App() {
 
 // --- Dashboard View ---
 
-const DashboardView = ({ employees, attendance, user, auditLogs, setShowAuditModal, onOpenUserManagement, onOpenManageCompanies, onOpenOnboarding, onUpdate, setActiveTab }: any) => {
+const DashboardView = ({ employees, suppliers, attendance, user, auditLogs, setShowAuditModal, onOpenUserManagement, onOpenManageCompanies, onOpenOnboarding, onUpdate, setActiveTab }: any) => {
     const [showQuickAdminMenu, setShowQuickAdminMenu] = useState(false);
     
     // Stats Calculation
     const activeStaff = employees.filter((e:any) => e.active);
-    const internalTeam = activeStaff.filter((e:any) => e.team === 'Internal Team').length;
-    const externalTeam = activeStaff.filter((e:any) => e.team === 'External Team').length;
+    const exEmployees = employees.filter((e:any) => !e.active).length;
     const officeStaff = activeStaff.filter((e:any) => e.team === 'Office Staff' || e.type === StaffType.OFFICE).length;
+    const otherEmployees = activeStaff.length - officeStaff;
 
     const canManageUsers = user?.permissions?.canManageUsers;
     const canManageSettings = user?.permissions?.canManageSettings;
@@ -3234,7 +3235,7 @@ const DashboardView = ({ employees, attendance, user, auditLogs, setShowAuditMod
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* Stat Cards */}
                 <BentoStatCard 
-                    title="Active Workforce" 
+                    title="Current Active Employees" 
                     value={activeStaff.length} 
                     trend="+12.5%" 
                     isUp={true}
@@ -3242,27 +3243,27 @@ const DashboardView = ({ employees, attendance, user, auditLogs, setShowAuditMod
                     color="brand"
                 />
                 <BentoStatCard 
-                    title="Office Personnel" 
-                    value={officeStaff} 
+                    title="Total Suppliers" 
+                    value={suppliers.length} 
                     trend="+4.2%" 
                     isUp={true}
-                    icon={Building2} 
+                    icon={Truck} 
                     color="indigo"
                 />
                 <BentoStatCard 
-                    title="Field Operations" 
-                    value={externalTeam} 
+                    title="Others Employees" 
+                    value={otherEmployees} 
                     trend="-2.1%" 
                     isUp={false}
-                    icon={HardHat} 
+                    icon={Briefcase} 
                     color="orange"
                 />
                 <BentoStatCard 
-                    title="Internal Support" 
-                    value={internalTeam} 
+                    title="Ex Employees" 
+                    value={exEmployees} 
                     trend="+8.0%" 
                     isUp={true}
-                    icon={ShieldCheck} 
+                    icon={UserMinus} 
                     color="emerald"
                 />
 
