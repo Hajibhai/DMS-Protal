@@ -4040,7 +4040,7 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
     const [viewingDocsSupplier, setViewingDocsSupplier] = useState<Supplier | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role === UserRole.CREATOR;
+    const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role === UserRole.CREATOR || user?.email === 'abdulkaderp3010@gmail.com';
 
     const sortedSuppliers = useMemo(() => {
         return [...suppliers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -4493,8 +4493,22 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                             {searchTerm ? 'No matching suppliers found' : 'No suppliers registered'}
                         </h3>
                         <p className="text-slate-400 font-medium mt-1">
-                            {searchTerm ? 'Try adjusting your search terms.' : 'Start by adding your first business partner.'}
+                            {searchTerm ? 'Try adjusting your search terms.' : (
+                                <>
+                                    Start by {canManageSuppliers ? (
+                                        <button onClick={() => setIsAdding(true)} className="text-brand-600 font-bold hover:underline">adding</button>
+                                    ) : 'adding'} your first business partner.
+                                </>
+                            )}
                         </p>
+                        {canManageSuppliers && !searchTerm && (
+                            <button 
+                                onClick={() => setIsAdding(true)}
+                                className="mt-8 bg-brand-600 text-white px-10 py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-2 hover:bg-brand-700 shadow-xl shadow-brand-500/20 transition-all active:scale-95 mx-auto"
+                            >
+                                <Plus className="w-5 h-5" /> Add Supplier
+                            </button>
+                        )}
                         {searchTerm && (
                             <button 
                                 onClick={() => setSearchTerm('')}
