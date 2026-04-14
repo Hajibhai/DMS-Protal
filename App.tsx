@@ -2107,7 +2107,7 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser, openConfirm }: { is
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
-                            {currentUser?.role === UserRole.CREATOR && (
+                            {(currentUser?.role === UserRole.CREATOR || currentUser?.email === 'abdulkaderp3010@gmail.com') && (
                                 <button 
                                     onClick={handleClearAll}
                                     className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-2xl text-sm font-black hover:bg-red-100 transition-all active:scale-95"
@@ -2302,7 +2302,18 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser, openConfirm }: { is
                     </div>
                 </div>
 
-                <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                    <div>
+                        {(currentUser?.role === UserRole.CREATOR || currentUser?.email === 'abdulkaderp3010@gmail.com') && (
+                            <button 
+                                onClick={handleClearAll}
+                                className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-2xl text-sm font-black hover:bg-red-100 transition-all active:scale-95 border border-red-100"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Clear All Logs
+                            </button>
+                        )}
+                    </div>
                     <button 
                         onClick={onClose}
                         className="px-8 py-3 bg-white border border-slate-200 text-slate-600 rounded-2xl text-sm font-black hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
