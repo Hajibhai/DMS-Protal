@@ -23,7 +23,7 @@ import {
   Briefcase, HardHat, ShieldCheck, Download, Printer,
   MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, GripVertical,
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle,
-  TrendingUp, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
+  TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -3022,7 +3022,12 @@ export default function App() {
         <PayrollRegisterView employees={employees.filter(e => e.active)} attendance={attendance} deductions={deductions} selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} user={systemUser} companies={companies} />
       )}
       {activeTab === 'reports' && (
-        <ReportsView employees={employees} attendance={attendance} />
+        <ReportsView 
+          employees={employees} 
+          attendance={attendance} 
+          leaveRequests={leaveRequests}
+          deductions={deductions}
+        />
       )}
       {activeTab === 'about' && (
         <AboutView />
@@ -6096,19 +6101,52 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
      );
 };
 
-const ReportsView = ({ employees, attendance }: any) => {
+const ReportsView = ({ employees, attendance, leaveRequests, deductions }: any) => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthName = now.toLocaleString('default', { month: 'long' });
+
     const activeStaff = useMemo(() => employees.filter((e: any) => e.active), [employees]);
     
     const totalStaff = activeStaff.length;
-    const totalSpent = activeStaff.reduce((acc: number, e: Employee) => acc + (e.salary.basic + e.salary.housing + e.salary.transport + e.salary.other), 0);
     
-    const lateDays = useMemo(() => {
-        return attendance.filter((r: AttendanceRecord) => 
-            r.status === 'P' && 
-            r.checkInTime && 
-            new Date(r.checkInTime).getHours() >= 9
-        ).length;
-    }, [attendance]);
+    // Calculate accurate payroll data for current month based on timesheet
+    const payrollStats = useMemo(() => {
+        let totalGrossWithOT = 0;
+        let totalDeductionsAmt = 0;
+        
+        activeStaff.forEach((e: any) => {
+            const empAttendance = attendance.filter((r: any) => 
+                r.employeeId === e.id && 
+                new Date(r.date).getMonth() === currentMonth && 
+                new Date(r.date).getFullYear() === currentYear
+            );
+            const empDeductions = deductions.filter((d: any) => 
+                d.employeeId === e.id && 
+                new Date(d.date).getMonth() === currentMonth && 
+                new Date(d.date).getFullYear() === currentYear
+            );
+            
+            const payroll = calculatePayroll(e, empAttendance, empDeductions);
+            totalGrossWithOT += (payroll.grossSalary + payroll.otAmount);
+            totalDeductionsAmt += payroll.totalDeductions;
+        });
+        
+        return { totalGrossWithOT, totalDeductionsAmt };
+    }, [activeStaff, attendance, deductions, currentMonth, currentYear]);
+
+    // Total Vacation Days for current month
+    const totalVacationDays = useMemo(() => {
+        if (!leaveRequests) return 0;
+        return leaveRequests.filter((l: any) => {
+            if (l.status !== 'Approved') return false;
+            const startDate = new Date(l.startDate);
+            const endDate = new Date(l.endDate);
+            return (startDate.getMonth() === currentMonth && startDate.getFullYear() === currentYear) ||
+                   (endDate.getMonth() === currentMonth && endDate.getFullYear() === currentYear);
+        }).reduce((acc: number, l: any) => acc + l.days, 0);
+    }, [leaveRequests, currentMonth, currentYear]);
 
     const companyData = useMemo(() => {
         const counts: Record<string, number> = {};
@@ -6146,7 +6184,7 @@ const ReportsView = ({ employees, attendance }: any) => {
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Staff Report");
-        XLSX.writeFile(wb, "Pioneer_Staff_Analytics_Report.xlsx");
+        XLSX.writeFile(wb, `Pioneer_Staff_Report_${monthName}_${currentYear}.xlsx`);
     };
 
     const handlePrint = () => {
@@ -6162,9 +6200,9 @@ const ReportsView = ({ employees, attendance }: any) => {
             >
                 <div>
                     <h2 className="text-3xl font-black text-slate-900 tracking-tight">Analytics & Reports</h2>
-                    <p className="text-slate-500 font-medium">Real-time workforce intelligence and distribution.</p>
+                    <p className="text-slate-500 font-medium">Monthly performance and workforce intelligence for <span className="text-brand-600 font-bold">{monthName} {currentYear}</span>.</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 no-print">
                     <button 
                         onClick={handleExport}
                         className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2"
@@ -6182,10 +6220,10 @@ const ReportsView = ({ employees, attendance }: any) => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
-                    { label: 'Active Staff', value: totalStaff, icon: Users, color: 'brand', delay: 0.1 },
-                    { label: 'Monthly Payroll', value: `AED ${totalSpent.toLocaleString()}`, icon: DirhamIcon, color: 'emerald', delay: 0.2 },
-                    { label: 'Late Arrivals', value: lateDays, icon: AlertCircle, color: 'orange', delay: 0.3 },
-                    { label: 'Total Teams', value: teamData.length, icon: Briefcase, color: 'violet', delay: 0.4 },
+                    { label: 'Employees', value: totalStaff, icon: Users, color: 'brand', delay: 0.1 },
+                    { label: 'Salary', value: `AED ${payrollStats.totalGrossWithOT.toLocaleString()}`, icon: Wallet, color: 'emerald', delay: 0.2 },
+                    { label: 'Deductions', value: `AED ${payrollStats.totalDeductionsAmt.toLocaleString()}`, icon: TrendingDown, color: 'orange', delay: 0.3 },
+                    { label: 'Vacation', value: `${totalVacationDays} Days`, icon: Calendar, color: 'violet', delay: 0.4 },
                 ].map((stat, i) => (
                     <motion.div 
                         key={i}

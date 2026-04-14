@@ -53,6 +53,68 @@
   }
 }
 
+/* Print Styles */
+@media print {
+  @page {
+    size: A4;
+    margin: 1cm;
+  }
+  
+  body {
+    background: white !important;
+    font-size: 10pt;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  header, footer, nav {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Reset layout for print */
+  .glass-card {
+    background: white !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+
+  /* Ensure charts are visible */
+  .recharts-responsive-container {
+    width: 100% !important;
+    height: 300px !important;
+  }
+
+  /* Grid adjustments for print */
+  .grid {
+    display: block !important;
+  }
+  
+  .grid-cols-4 {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .lg\:grid-cols-3 {
+    display: block !important;
+  }
+
+  .lg\:col-span-2 {
+    width: 100% !important;
+  }
+}
+
 /* Animations */
 @keyframes float {
   0%, 100% { transform: translateY(0); }
