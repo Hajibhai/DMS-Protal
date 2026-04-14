@@ -28,7 +28,8 @@ export const DEFAULT_ADMIN: SystemUser = {
         canManagePayroll: true,
         canViewReports: true,
         canManageUsers: true,
-        canManageSettings: true
+        canManageSettings: true,
+        canManageSuppliers: true
     }
 };
 
@@ -52,7 +53,8 @@ export const CREATOR_USER: SystemUser = {
         canManagePayroll: true,
         canViewReports: true,
         canManageUsers: true,
-        canManageSettings: true
+        canManageSettings: true,
+        canManageSuppliers: true
     }
 };
 

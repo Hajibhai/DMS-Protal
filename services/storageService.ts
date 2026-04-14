@@ -26,6 +26,7 @@ import {
   AboutData, 
   DeductionRecord,
   Company,
+  Supplier,
   AuditLog,
   UserRole
 } from "../types";
@@ -339,6 +340,49 @@ export const deleteCompany = async (id: string) => {
     await deleteDoc(doc(db, 'companies', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `companies/${id}`);
+  }
+};
+
+// --- Suppliers ---
+export const addSupplier = async (supplierData: Omit<Supplier, 'id'>, currentSuppliersCount: number = 0) => {
+  const id = Math.random().toString(36).substr(2, 9);
+  const newSupplier: Supplier = {
+    id,
+    ...supplierData,
+    order: currentSuppliersCount
+  };
+  try {
+    await setDoc(doc(db, 'suppliers', id), cleanData(newSupplier));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, `suppliers/${id}`);
+  }
+};
+
+export const updateSupplier = async (supplier: Supplier) => {
+  try {
+    await setDoc(doc(db, 'suppliers', supplier.id), cleanData(supplier));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `suppliers/${supplier.id}`);
+  }
+};
+
+export const reorderSuppliers = async (suppliers: Supplier[]) => {
+  try {
+    const promises = suppliers.map((supplier, index) => {
+      const updated = { ...supplier, order: index };
+      return setDoc(doc(db, 'suppliers', supplier.id), cleanData(updated));
+    });
+    await Promise.all(promises);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, 'suppliers/reorder');
+  }
+};
+
+export const deleteSupplier = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'suppliers', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `suppliers/${id}`);
   }
 };
 

@@ -116,6 +116,23 @@
       },
       "required": ["id", "code", "name"]
     },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Supplier entity details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "address": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "category": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["id", "code", "name", "contactPerson"]
+    },
     "AuditLog": {
       "title": "Audit Log",
       "description": "System activity and audit trail",
@@ -158,6 +175,10 @@
     "/companies/{companyId}": {
       "schema": "Company",
       "description": "List of companies managed in the system"
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "List of suppliers managed in the system"
     },
     "/settings/about": {
       "schema": "object",

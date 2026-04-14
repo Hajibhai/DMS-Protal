@@ -78,11 +78,33 @@ function isValidCompany(data) {
          (!('order' in data) || data.order is number);
 }
 
+// Validate Supplier
+function isValidSupplier(data) {
+  return data.keys().hasAll(['id', 'code', 'name', 'contactPerson']) &&
+         data.id is string &&
+         data.code is string && data.code.size() >= 1 && data.code.size() <= 50 &&
+         data.name is string && data.name.size() >= 2 && data.name.size() <= 200 &&
+         data.contactPerson is string &&
+         (!('address' in data) || data.address is string) &&
+         (!('email' in data) || data.email is string) &&
+         (!('phone' in data) || data.phone is string) &&
+         (!('category' in data) || data.category is string) &&
+         (!('logo' in data) || data.logo is string) &&
+         (!('order' in data) || data.order is number);
+}
+
 match /companies/{companyId} {
   allow read: if isAuthenticated();
   allow create: if hasPermission('canManageSettings') && isValidCompany(request.resource.data);
   allow update: if hasPermission('canManageSettings') && isValidCompany(request.resource.data);
   allow delete: if hasPermission('canManageSettings');
+}
+
+match /suppliers/{supplierId} {
+  allow read: if isAuthenticated();
+  allow create: if hasPermission('canManageSuppliers') && isValidSupplier(request.resource.data);
+  allow update: if hasPermission('canManageSuppliers') && isValidSupplier(request.resource.data);
+  allow delete: if hasPermission('canManageSuppliers');
 }
 
     match /settings/about {

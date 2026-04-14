@@ -154,6 +154,21 @@ export interface Company {
     order?: number;
 }
 
+export interface Supplier {
+    id: string;
+    code: string;
+    name: string;
+    contactPerson: string;
+    address: string;
+    email: string;
+    phone?: string;
+    category?: string;
+    logo?: string; // Base64
+    driveFiles?: DriveFile[];
+    driveFolderId?: string;
+    order?: number;
+}
+
 export interface DashboardStats {
   totalStaff: number;
   present: number;
@@ -199,6 +214,7 @@ export interface UserPermissions {
     canViewReports: boolean;
     canManageUsers: boolean; // Create other users
     canManageSettings: boolean; // Companies, Holidays
+    canManageSuppliers: boolean;
 }
 
 export interface SystemUser {

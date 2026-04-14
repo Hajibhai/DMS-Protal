@@ -24,7 +24,7 @@ import {
   MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, GripVertical,
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle,
   TrendingUp, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
-  ShieldAlert
+  ShieldAlert, Truck
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -51,7 +51,7 @@ import { Login } from './components/Login';
 import { 
   Employee, AttendanceRecord, AttendanceStatus, StaffType, 
   LeaveRequest, LeaveStatus, OffboardingDetails, 
-  SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, AuditLog
+  SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, Supplier, AuditLog
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -60,6 +60,7 @@ import {
   saveDeduction, deleteDeduction,
   saveSystemUser, deleteSystemUser,
   addCompany, updateCompany, deleteCompany, reorderCompanies,
+  addSupplier, updateSupplier, deleteSupplier, reorderSuppliers,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
@@ -1217,7 +1218,8 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
             canManagePayroll: false,
             canViewReports: false,
             canManageUsers: false,
-            canManageSettings: false
+            canManageSettings: false,
+            canManageSuppliers: false
         }
     });
 
@@ -2506,6 +2508,7 @@ export default function App() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [deductions, setDeductions] = useState<DeductionRecord[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const hasLoggedLogin = useRef(false);
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -2574,7 +2577,8 @@ export default function App() {
               canManagePayroll: isDefaultAdmin,
               canViewReports: true,
               canManageUsers: isDefaultAdmin,
-              canManageSettings: isDefaultAdmin
+              canManageSettings: isDefaultAdmin,
+              canManageSuppliers: isDefaultAdmin
             }
           };
           await saveSystemUser(newProfile);
@@ -2653,6 +2657,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'companies');
     });
 
+    const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snap) => {
+      setSuppliers(snap.docs.map(d => d.data() as Supplier));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'suppliers');
+    });
+
     const unsubUsers = (systemUser?.permissions?.canManageUsers || isCreator) ? onSnapshot(collection(db, 'users'), (snap) => {
       setSystemUsers(snap.docs.map(d => d.data() as SystemUser));
     }, (error) => {
@@ -2665,6 +2675,7 @@ export default function App() {
       unsubLeaves();
       unsubDeductions();
       unsubCompanies();
+      unsubSuppliers();
       unsubUsers();
     };
   }, [isAuthReady, user, systemUser]);
@@ -2674,6 +2685,7 @@ export default function App() {
     const baseItems = [
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3, permission: 'canViewDashboard' },
       { id: 'company', label: 'Company', icon: Building2, permission: 'canViewCompanyDashboard' },
+      { id: 'suppliers', label: 'Suppliers', icon: Truck, permission: 'canManageSuppliers' },
       { id: 'staff', label: 'Staff Directory', icon: Users, permission: 'canManageEmployees' },
       { id: 'ex-employees', label: 'Ex-Employees', icon: UserMinus, permission: 'canManageEmployees' }, 
       { id: 'timesheet', label: 'Monthly Timesheet', icon: Calendar, permission: 'canViewTimesheet' },
@@ -2821,6 +2833,29 @@ export default function App() {
     }
   };
 
+  const handleCreateSupplier = async (supplierData: any) => {
+    try {
+        await addSupplier(supplierData, suppliers.length);
+        if (systemUser) {
+            await logAudit(systemUser, 'Supplier Created', `New supplier ${supplierData.name} (${supplierData.code}) was registered.`, 'create');
+        }
+    } catch (error) {
+        console.error("Failed to create supplier:", error);
+        throw error;
+    }
+  };
+
+  const handleUpdateSupplier = async (supplier: Supplier) => {
+    try {
+        await updateSupplier(supplier);
+        if (systemUser) {
+            await logAudit(systemUser, 'Supplier Updated', `Supplier ${supplier.name} was updated.`, 'update');
+        }
+    } catch (error) {
+        console.error("Failed to update supplier:", error);
+    }
+  };
+
   const expiringDocs = useMemo(() => {
     const now = new Date();
     const tenDaysFromNow = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
@@ -2921,6 +2956,15 @@ export default function App() {
           openConfirm={openConfirm}
           onUpdate={handleUpdateCompany}
           onAdd={handleCreateCompany}
+          user={systemUser!}
+        />
+      )}
+      {activeTab === 'suppliers' && (
+        <SupplierView 
+          suppliers={suppliers} 
+          openConfirm={openConfirm}
+          onUpdate={handleUpdateSupplier}
+          onAdd={handleCreateSupplier}
           user={systemUser!}
         />
       )}
@@ -3924,6 +3968,527 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                     </div>
                 )}
             </AnimatePresence>
+        </div>
+    );
+};
+
+const SupplierDocumentsModal = ({ supplier, onClose, onUpdate, openConfirm }: { supplier: Supplier, onClose: () => void, onUpdate: (s: Supplier) => void, openConfirm: any }) => {
+    return (
+        <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-[100] p-4" onClick={onClose}>
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-white flex flex-col max-h-[90vh]"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                    <div className="flex items-center gap-5">
+                        <div className="w-16 h-16 bg-white rounded-[1.5rem] shadow-sm border border-slate-200 flex items-center justify-center overflow-hidden">
+                            {supplier.logo ? (
+                                <img src={supplier.logo} alt={supplier.name} className="max-h-full max-w-full object-contain" />
+                            ) : (
+                                <Truck className="w-8 h-8 text-slate-300" />
+                            )}
+                        </div>
+                        <div>
+                            <h3 className="text-2xl font-black text-slate-900 leading-tight">{supplier.name}</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="px-2 py-0.5 bg-brand-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider">{supplier.code}</span>
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Linked Documents</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all active:scale-90 shadow-sm">
+                        <X className="w-6 h-6 text-slate-400" />
+                    </button>
+                </div>
+
+                <div className="p-8 overflow-y-auto">
+                    <GoogleDriveManager 
+                        files={supplier.driveFiles || []}
+                        onAddFile={(file) => {
+                            const updated = { ...supplier, driveFiles: [...(supplier.driveFiles || []), file] };
+                            onUpdate(updated);
+                        }}
+                        onRemoveFile={(fileId) => {
+                            const updated = { ...supplier, driveFiles: (supplier.driveFiles || []).filter(f => f.id !== fileId) };
+                            onUpdate(updated);
+                        }}
+                        onUpdateFile={(updatedFile) => {
+                            const updated = { 
+                                ...supplier, 
+                                driveFiles: (supplier.driveFiles || []).map(f => f.id === updatedFile.id ? updatedFile : f) 
+                            };
+                            onUpdate(updated);
+                        }}
+                        openConfirm={openConfirm}
+                        title={`${supplier.name} Documents`}
+                    />
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppliers: Supplier[], openConfirm: any, onUpdate: (s: Supplier) => void, onAdd: (s: any) => Promise<void>, user: SystemUser }) => {
+    const [formData, setFormData] = useState({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', logo: '' });
+    const [isAdding, setIsAdding] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isReordering, setIsReordering] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [viewingDocsSupplier, setViewingDocsSupplier] = useState<Supplier | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [error, setError] = useState<string | null>(null);
+    const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role === UserRole.CREATOR;
+
+    const sortedSuppliers = useMemo(() => {
+        return [...suppliers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    }, [suppliers]);
+
+    const filteredSuppliers = useMemo(() => {
+        if (!searchTerm.trim()) return sortedSuppliers;
+        const query = searchTerm.toLowerCase();
+        return sortedSuppliers.filter(supplier => {
+            const matchesName = supplier.name.toLowerCase().includes(query);
+            const matchesCode = supplier.code?.toLowerCase().includes(query);
+            const matchesContact = supplier.contactPerson?.toLowerCase().includes(query);
+            const matchesDocuments = supplier.driveFiles?.some(file => 
+                file.name.toLowerCase().includes(query)
+            );
+            return matchesName || matchesCode || matchesContact || matchesDocuments;
+        });
+    }, [sortedSuppliers, searchTerm]);
+
+    const getExpiryStatus = (supplier: Supplier) => {
+        const files = supplier.driveFiles || [];
+        const today = new Date();
+        let expired = 0;
+        let warning = 0;
+
+        files.forEach(file => {
+            if (file.expiryDate) {
+                const expiry = new Date(file.expiryDate);
+                const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                if (diffDays < 0) expired++;
+                else if (diffDays <= 10) warning++;
+            }
+        });
+
+        if (expired > 0) return { label: `${expired} Expired`, color: 'bg-red-100 text-red-600 border-red-200' };
+        if (warning > 0) return { label: `${warning} Expiring Soon`, color: 'bg-orange-100 text-orange-600 border-orange-200' };
+        return null;
+    };
+
+    const handleAdd = async () => {
+        if (!formData.name.trim() || !formData.code.trim()) {
+            setError("Supplier name and code are required.");
+            return;
+        }
+        
+        setIsSaving(true);
+        setError(null);
+        try {
+            await onAdd(formData);
+            setFormData({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', logo: '' });
+            setIsAdding(false);
+        } catch (err: any) {
+            setError("Failed to save supplier. Please check your connection and permissions.");
+            console.error(err);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleReorder = async (newOrder: Supplier[]) => {
+        await reorderSuppliers(newOrder);
+    };
+
+    const handleUpdate = async (supplier: Supplier) => {
+        await updateSupplier(supplier);
+        setEditingId(null);
+    };
+
+    const handleDelete = async (id: string) => {
+        openConfirm(
+            "Delete Supplier",
+            "Are you sure you want to delete this supplier? This action cannot be undone.",
+            async () => {
+                await deleteSupplier(id);
+            }
+        );
+    };
+
+    const handleLogoUpload = async (supplier: Supplier | null, e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            const base64 = evt.target?.result as string;
+            if (supplier) {
+                await updateSupplier({ ...supplier, logo: base64 });
+            } else {
+                setFormData(prev => ({ ...prev, logo: base64 }));
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
+    return (
+        <div className="space-y-8 pb-12">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-brand-600 font-bold text-xs uppercase tracking-[0.2em]">
+                        <Truck className="w-4 h-4" />
+                        Supply Chain Management
+                    </div>
+                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">Supplier Directory</h1>
+                    <p className="text-slate-500 font-medium max-w-xl">
+                        Manage your vendors, service providers, and material suppliers.
+                    </p>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+                    <div className="relative w-full sm:w-80 group">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
+                        <input 
+                            type="text"
+                            placeholder="Search suppliers or documents..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm"
+                        />
+                        {searchTerm && (
+                            <button 
+                                onClick={() => setSearchTerm('')}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-100 rounded-lg transition-colors"
+                            >
+                                <X className="w-3 h-3 text-slate-400" />
+                            </button>
+                        )}
+                    </div>
+
+                    {canManageSuppliers && (
+                        <div className="flex gap-3 w-full sm:w-auto">
+                            <button 
+                                onClick={() => setIsReordering(true)}
+                                className="flex-1 sm:flex-none bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+                            >
+                                <GripVertical className="w-4 h-4" /> Reorder
+                            </button>
+                            <button 
+                                onClick={() => setIsAdding(true)}
+                                className="flex-1 sm:flex-none bg-white text-slate-900 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-xl shadow-slate-900/10 active:scale-95"
+                            >
+                                <Plus className="w-4 h-4" /> Add Supplier
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {isAdding && (
+                <motion.div 
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-[2.5rem] p-8 border border-brand-100 shadow-2xl shadow-brand-600/5"
+                >
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="p-3 bg-brand-50 rounded-2xl">
+                            <Truck className="w-6 h-6 text-brand-600" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Register New Supplier</h2>
+                            <p className="text-slate-400 text-sm font-bold">Enter the details of your new business partner</p>
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-bold">
+                            <AlertCircle className="w-5 h-5" />
+                            {error}
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supplier Code</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="e.g. SUP-001"
+                                value={formData.code}
+                                onChange={e => setFormData({ ...formData, code: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supplier Name</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="Company Name"
+                                value={formData.name}
+                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contact Person</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="Name of Contact"
+                                value={formData.contactPerson}
+                                onChange={e => setFormData({ ...formData, contactPerson: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="vendor@example.com"
+                                value={formData.email}
+                                onChange={e => setFormData({ ...formData, email: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Phone Number</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="+971 ..."
+                                value={formData.phone}
+                                onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Category</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="e.g. Materials, Logistics"
+                                value={formData.category}
+                                onChange={e => setFormData({ ...formData, category: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2 lg:col-span-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Address</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="Full business address"
+                                value={formData.address}
+                                onChange={e => setFormData({ ...formData, address: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-6 border-t border-slate-100">
+                        <div className="flex items-center gap-4">
+                            <div className="relative group">
+                                <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                    onChange={(e) => handleLogoUpload(null, e)}
+                                />
+                                <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 group-hover:bg-slate-50 transition-all">
+                                    <Globe className="w-4 h-4" /> Upload Logo
+                                </div>
+                            </div>
+                            {formData.logo && (
+                                <div className="h-10 w-10 rounded-xl border border-slate-100 p-1 bg-white shadow-sm">
+                                    <img src={formData.logo} alt="Preview" className="h-full w-full object-contain" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setIsAdding(false)} className="px-6 py-2.5 text-slate-500 font-bold text-sm hover:text-slate-700">Cancel</button>
+                            <button onClick={handleAdd} className="px-8 py-2.5 bg-brand-600 text-white rounded-xl font-black text-sm shadow-lg shadow-brand-600/20 hover:bg-brand-700 transition-all active:scale-95">Create Supplier</button>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
+            <Reorder.Group 
+                axis="y" 
+                values={sortedSuppliers} 
+                onReorder={handleReorder}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            >
+                {filteredSuppliers.map((supplier) => (
+                    <Reorder.Item 
+                        value={supplier}
+                        key={supplier.id}
+                        dragListener={!searchTerm && canManageSuppliers}
+                        className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm hover:shadow-xl hover:shadow-slate-200/20 transition-all group relative overflow-hidden cursor-default"
+                    >
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-all group-hover:bg-brand-50/50"></div>
+                        
+                        <div className="relative z-10 flex flex-col h-full">
+                            <div className="flex items-start justify-between mb-6">
+                                <div className="flex items-center gap-4">
+                                    {!searchTerm && canManageSuppliers && (
+                                        <div className="cursor-grab active:cursor-grabbing p-2 hover:bg-slate-100 rounded-xl text-slate-300 hover:text-slate-500 transition-colors">
+                                            <GripVertical className="w-5 h-5" />
+                                        </div>
+                                    )}
+                                    <div className="h-16 w-16 bg-slate-50 rounded-2xl p-2 border border-slate-100 shadow-inner flex items-center justify-center overflow-hidden">
+                                        {supplier.logo ? (
+                                            <img src={supplier.logo} alt={supplier.name} className="max-h-full max-w-full object-contain" />
+                                        ) : (
+                                            <Truck className="w-8 h-8 text-slate-300" />
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+                                    {canManageSuppliers && (
+                                        <>
+                                            <button 
+                                                onClick={() => setEditingId(supplier.id)}
+                                                className="p-2 hover:bg-brand-50 text-brand-600 rounded-xl transition-colors"
+                                            >
+                                                <Edit className="w-4 h-4" />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDelete(supplier.id)}
+                                                className="p-2 hover:bg-red-50 text-red-600 rounded-xl transition-colors"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {editingId === supplier.id ? (
+                                <div className="space-y-4 animate-in fade-in duration-200">
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        placeholder="Supplier Code"
+                                        value={supplier.code || ''}
+                                        onChange={e => updateSupplier({ ...supplier, code: e.target.value })}
+                                    />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        value={supplier.name || ''}
+                                        onChange={e => updateSupplier({ ...supplier, name: e.target.value })}
+                                    />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        placeholder="Contact Person"
+                                        value={supplier.contactPerson || ''}
+                                        onChange={e => updateSupplier({ ...supplier, contactPerson: e.target.value })}
+                                    />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        value={supplier.email || ''}
+                                        onChange={e => updateSupplier({ ...supplier, email: e.target.value })}
+                                    />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        placeholder="Contact Number"
+                                        value={supplier.phone || ''}
+                                        onChange={e => updateSupplier({ ...supplier, phone: e.target.value })}
+                                    />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        placeholder="Category"
+                                        value={supplier.category || ''}
+                                        onChange={e => updateSupplier({ ...supplier, category: e.target.value })}
+                                    />
+                                    <div className="flex gap-2 pt-2">
+                                        <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">Cancel</button>
+                                        <button onClick={() => handleUpdate(supplier)} className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold shadow-md shadow-brand-600/20">Save</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-[10px] font-black bg-brand-600 text-white px-2 py-0.5 rounded-md uppercase tracking-wider">{supplier.code}</span>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight truncate">{supplier.name}</h3>
+                                        {getExpiryStatus(supplier) && (
+                                            <span className={cn("ml-auto text-[8px] font-black uppercase px-2 py-0.5 rounded-full border", getExpiryStatus(supplier)?.color)}>
+                                                {getExpiryStatus(supplier)?.label}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="space-y-3 mt-auto">
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <div className="p-1.5 bg-slate-50 rounded-lg">
+                                                <UserPlus className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold truncate">{supplier.contactPerson || 'No contact person'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <div className="p-1.5 bg-slate-50 rounded-lg">
+                                                <FileText className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold truncate">{supplier.email || 'No email provided'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <div className="p-1.5 bg-slate-50 rounded-lg">
+                                                <Phone className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold truncate">{supplier.phone || 'No contact provided'}</span>
+                                        </div>
+                                    </div>
+                                    <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex -space-x-2">
+                                                {(supplier.driveFiles || []).slice(0, 3).map(file => (
+                                                    <div key={file.id} className="w-8 h-8 rounded-lg border-2 border-white bg-slate-100 flex items-center justify-center overflow-hidden shadow-sm">
+                                                        {file.iconLink ? (
+                                                            <img src={file.iconLink} alt="" className="w-4 h-4" />
+                                                        ) : (
+                                                            <FileText className="w-4 h-4 text-slate-400" />
+                                                        )}
+                                                    </div>
+                                                ))}
+                                                {(supplier.driveFiles || []).length > 3 && (
+                                                    <div className="w-8 h-8 rounded-lg border-2 border-white bg-slate-100 flex items-center justify-center shadow-sm">
+                                                        <span className="text-[10px] font-bold text-slate-500">+{(supplier.driveFiles || []).length - 3}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">
+                                                {(supplier.driveFiles || []).length} Documents
+                                            </span>
+                                        </div>
+                                        <button 
+                                            onClick={() => setViewingDocsSupplier(supplier)}
+                                            className="px-4 py-2 bg-slate-50 hover:bg-brand-50 text-slate-600 hover:text-brand-600 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border border-slate-100 flex items-center gap-2"
+                                        >
+                                            <FileText className="w-3.5 h-3.5" />
+                                            View All
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </Reorder.Item>
+                ))}
+                {filteredSuppliers.length === 0 && (
+                    <div className="col-span-full py-20 text-center bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">
+                        <Truck className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                            {searchTerm ? 'No matching suppliers found' : 'No suppliers registered'}
+                        </h3>
+                        <p className="text-slate-400 font-medium mt-1">
+                            {searchTerm ? 'Try adjusting your search terms.' : 'Start by adding your first business partner.'}
+                        </p>
+                        {searchTerm && (
+                            <button 
+                                onClick={() => setSearchTerm('')}
+                                className="mt-4 text-sm font-black text-brand-600 hover:underline"
+                            >
+                                Clear search
+                            </button>
+                        )}
+                    </div>
+                )}
+            </Reorder.Group>
+
+            {viewingDocsSupplier && (
+                <SupplierDocumentsModal 
+                    supplier={viewingDocsSupplier}
+                    onClose={() => setViewingDocsSupplier(null)}
+                    onUpdate={onUpdate}
+                    openConfirm={openConfirm}
+                />
+            )}
         </div>
     );
 };
