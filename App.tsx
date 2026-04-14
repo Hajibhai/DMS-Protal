@@ -60,7 +60,7 @@ import {
   saveDeduction, deleteDeduction,
   saveSystemUser, deleteSystemUser,
   addCompany, updateCompany, deleteCompany, reorderCompanies,
-  testConnection, logAudit, updateAuditLog, deleteAuditLog, handleFirestoreError, OperationType
+  testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
 import SmartCommand from './components/SmartCommand';
@@ -1995,7 +1995,7 @@ const AboutView = () => {
     );
 };
 
-const AuditLogModal = ({ isOpen, onClose, logs, currentUser }: { isOpen: boolean, onClose: () => void, logs: AuditLog[], currentUser: SystemUser | null }) => {
+const AuditLogModal = ({ isOpen, onClose, logs, currentUser, openConfirm }: { isOpen: boolean, onClose: () => void, logs: AuditLog[], currentUser: SystemUser | null, openConfirm: any }) => {
     const [filterType, setFilterType] = useState<'all' | 'onboarding' | 'offboarding' | 'login' | 'logout' | 'delete' | 'update' | 'rehire'>('all');
     const [timeFilter, setTimeFilter] = useState<'all' | 'weekly' | 'monthly' | 'yearly'>('all');
     const [userFilter, setUserFilter] = useState<string>('all');
@@ -2063,6 +2063,20 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser }: { isOpen: boolean
         }
     };
 
+    const handleClearAll = async () => {
+        openConfirm(
+            "Clear All Audit Logs",
+            "Are you sure you want to permanently delete all system audit logs? This action cannot be undone.",
+            async () => {
+                try {
+                    await clearAuditLogs();
+                } catch (error) {
+                    console.error("Failed to clear logs:", error);
+                }
+            }
+        );
+    };
+
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div 
@@ -2089,12 +2103,23 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser }: { isOpen: boolean
                                 <p className="text-slate-400 text-sm font-bold">Real-time system activity and security trail</p>
                             </div>
                         </div>
-                        <button 
-                            onClick={onClose}
-                            className="p-3 hover:bg-slate-50 rounded-2xl transition-all active:scale-95"
-                        >
-                            <X className="w-6 h-6 text-slate-400" />
-                        </button>
+                        <div className="flex items-center gap-3">
+                            {currentUser?.role === UserRole.CREATOR && (
+                                <button 
+                                    onClick={handleClearAll}
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-2xl text-sm font-black hover:bg-red-100 transition-all active:scale-95"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    Clear All
+                                </button>
+                            )}
+                            <button 
+                                onClick={onClose}
+                                className="p-3 hover:bg-slate-50 rounded-2xl transition-all active:scale-95"
+                            >
+                                <X className="w-6 h-6 text-slate-400" />
+                            </button>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3024,7 +3049,13 @@ export default function App() {
           />
         )}
         {showAuditModal && (
-          <AuditLogModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} currentUser={systemUser} />
+          <AuditLogModal 
+            isOpen={showAuditModal} 
+            onClose={() => setShowAuditModal(false)} 
+            logs={auditLogs} 
+            currentUser={systemUser} 
+            openConfirm={openConfirm}
+          />
         )}
         {showBulkImport && (
           <BulkImportModal onClose={() => setShowBulkImport(false)} onImport={(data) => {

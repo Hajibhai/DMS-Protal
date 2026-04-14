@@ -9,7 +9,8 @@ import {
   query, 
   where, 
   getDocFromServer,
-  addDoc 
+  addDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { 
@@ -400,5 +401,18 @@ export const deleteAuditLog = async (id: string) => {
     await deleteDoc(doc(db, 'audit_logs', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `audit_logs/${id}`);
+  }
+};
+
+export const clearAuditLogs = async () => {
+  try {
+    const snapshot = await getDocs(collection(db, 'audit_logs'));
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'audit_logs');
   }
 };
