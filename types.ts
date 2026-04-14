@@ -163,6 +163,7 @@ export interface Supplier {
     email: string;
     phone?: string;
     category?: string;
+    notes?: string;
     logo?: string; // Base64
     driveFiles?: DriveFile[];
     driveFolderId?: string;

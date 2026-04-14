@@ -129,6 +129,7 @@
         "email": { "type": "string" },
         "phone": { "type": "string" },
         "category": { "type": "string" },
+        "notes": { "type": "string" },
         "order": { "type": "number" }
       },
       "required": ["id", "code", "name", "contactPerson"]
