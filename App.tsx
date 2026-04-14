@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -234,12 +234,64 @@ const CopyAttendanceModal = ({ isOpen, onClose, onCopy, currentMonth }: any) => 
     );
 };
 
+const KeyboardShortcutsModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+  if (!isOpen) return null;
+
+  const shortcuts = [
+    { key: 'Alt + B', description: 'Onboard New Employee' },
+    { key: 'Alt + E', description: 'Edit Selected Employee' },
+    { key: 'Alt + O', description: 'Offboard Selected Employee' },
+    { key: 'Alt + D', description: 'Delete Selected Employee' },
+    { key: 'Alt + C', description: 'Confirm Action (in popup)' },
+    { key: 'Alt + R', description: 'Return/Cancel (in popup)' },
+    { key: 'Alt + P', description: 'Mark Attendance as Present' },
+    { key: 'Alt + A', description: 'Mark Attendance as Absent' },
+    { key: 'Alt + W', description: 'Mark Attendance as Week Off' },
+    { key: 'Alt + S', description: 'Mark Attendance as Sick Leave' },
+    { key: 'Alt + L', description: 'Mark Attendance as Annual Leave' },
+    { key: 'Alt + U', description: 'Mark Attendance as Unpaid Leave' },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col"
+      >
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Keyboard Shortcuts</h3>
+            <p className="text-slate-500 text-sm font-medium">Boost your productivity with Pioneer DMS</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+            <X className="w-6 h-6 text-slate-400" />
+          </button>
+        </div>
+        <div className="p-8 overflow-y-auto max-h-[60vh]">
+          <div className="grid grid-cols-1 gap-4">
+            {shortcuts.map((s, idx) => (
+              <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <span className="text-sm font-bold text-slate-700">{s.description}</span>
+                <kbd className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl shadow-sm text-xs font-black text-brand-600">
+                  {s.key}
+                </kbd>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="p-6 bg-slate-50 border-t border-slate-100 text-center">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Pioneer DMS v2.5 Productivity Tools</p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, type = 'danger' }: any) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  if (!isOpen) return null;
-
-  const handleConfirm = async () => {
+  const handleConfirm = useCallback(async () => {
     setIsSubmitting(true);
     try {
       await onConfirm();
@@ -249,7 +301,25 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, type = 
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [onConfirm, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        handleConfirm();
+      }
+      if (e.altKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleConfirm, onClose]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70]">
@@ -2395,6 +2465,13 @@ const OffboardingDetailsModal = ({ employee, onCancel }: { employee: Employee, o
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  
+  useEffect(() => {
+    (window as any).openShortcuts = () => setShowShortcuts(true);
+  }, []);
+
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [systemUser, setSystemUser] = useState<SystemUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -2626,6 +2703,63 @@ export default function App() {
       );
   };
 
+  useEffect(() => {
+    const handleGlobalShortcuts = (e: KeyboardEvent) => {
+      if (!e.altKey) return;
+
+      const key = e.key.toLowerCase();
+      
+      // Onboard - Alt + B
+      if (key === 'b') {
+        e.preventDefault();
+        setShowOnboarding(true);
+      }
+
+      // Shortcuts for selected employee
+      const selectedEmp = employees.find(emp => emp.id === selectedEmployeeId);
+      
+      if (selectedEmp) {
+        // Edit - Alt + E
+        if (key === 'e') {
+          e.preventDefault();
+          setShowEdit(selectedEmp);
+        }
+        // Offboard - Alt + O
+        if (key === 'o') {
+          e.preventDefault();
+          setShowOffboarding(selectedEmp);
+        }
+        // Delete - Alt + D
+        if (key === 'd') {
+          e.preventDefault();
+          handleDeleteEmployee(selectedEmp);
+        }
+      }
+
+      // Attendance Shortcuts
+      if (['p', 'a', 'w', 's', 'l', 'u'].includes(key)) {
+        e.preventDefault();
+        let status: AttendanceStatus | null = null;
+        switch (key) {
+          case 'p': status = AttendanceStatus.PRESENT; break;
+          case 'a': status = AttendanceStatus.ABSENT; break;
+          case 'w': status = AttendanceStatus.WEEK_OFF; break;
+          case 's': status = AttendanceStatus.SICK_LEAVE; break;
+          case 'l': status = AttendanceStatus.ANNUAL_LEAVE; break;
+          case 'u': status = AttendanceStatus.UNPAID_LEAVE; break;
+        }
+
+        if (status && selectedEmp) {
+          logAttendance(selectedEmp.id, status, undefined, 0, undefined, systemUser?.name || 'System', `Shortcut: ${status}`);
+          handleLogAction('Attendance Logged', `Attendance for ${selectedEmp.name} marked as ${status} via shortcut.`, 'update');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+  }, [selectedEmployeeId, employees, systemUser, handleDeleteEmployee]);
+
   const handleRejoinEmployee = (e: Employee) => {
       setShowRejoining(e);
   };
@@ -2774,6 +2908,8 @@ export default function App() {
           onOffboard={(e: Employee) => setShowOffboarding(e)}
           onDelete={handleDeleteEmployee}
           user={systemUser}
+          selectedId={selectedEmployeeId}
+          onSelect={setSelectedEmployeeId}
         />
       )}
       {activeTab === 'ex-employees' && (
@@ -2786,6 +2922,8 @@ export default function App() {
           onViewOffboarding={(e: Employee) => setShowOffboardingDetails(e)}
           readOnly={true}
           user={systemUser}
+          selectedId={selectedEmployeeId}
+          onSelect={setSelectedEmployeeId}
         />
       )}
       {activeTab === 'timesheet' && (
@@ -2799,6 +2937,8 @@ export default function App() {
             onDeleteAttendance={deleteAttendanceRecord}
             openConfirm={openConfirm}
             companies={companies}
+            selectedId={selectedEmployeeId}
+            onSelect={setSelectedEmployeeId}
         />
       )}
       {activeTab === 'deductions' && (
@@ -2913,6 +3053,7 @@ export default function App() {
       </AnimatePresence>
       
       <ConfirmationModal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({...confirmModal, isOpen: false})} {...confirmModal} />
+      <KeyboardShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </Layout>
   );
 }
@@ -3427,7 +3568,7 @@ const DashboardStatCard = ({ title, value, icon: Icon, color, index }: any) => {
 
 // --- Sub Views ---
 
-const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, onOffboard, onDelete, onRejoin, onViewOffboarding, readOnly, user }: { 
+const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, onOffboard, onDelete, onRejoin, onViewOffboarding, readOnly, user, selectedId, onSelect }: { 
     employees: Employee[], 
     companies: Company[],
     onAdd?: () => void, 
@@ -3437,7 +3578,9 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
     onRejoin?: (e: Employee) => void, 
     onViewOffboarding?: (e: Employee) => void,
     readOnly?: boolean, 
-    user: SystemUser | null 
+    user: SystemUser | null,
+    selectedId?: string | null,
+    onSelect?: (id: string | null) => void
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [companyFilter, setCompanyFilter] = useState('All');
@@ -3545,7 +3688,11 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, scale: 0.95 }}
                                         key={e.id} 
-                                        className="hover:bg-brand-50/20 transition-colors group"
+                                        onClick={() => onSelect?.(selectedId === e.id ? null : e.id)}
+                                        className={cn(
+                                            "hover:bg-brand-50/20 transition-colors group cursor-pointer",
+                                            selectedId === e.id ? "bg-brand-50/50 border-l-4 border-brand-600" : ""
+                                        )}
                                     >
                                         <td className="p-6">
                                             <div className="flex items-center gap-4">
@@ -4404,7 +4551,7 @@ const AttendanceEditModal = ({ employee, date, currentRecord, onUpdate, onClose,
     );
 };
 
-const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, user, onLogAttendance, onDeleteAttendance, companies, openConfirm }: any) => {
+const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, user, onLogAttendance, onDeleteAttendance, companies, openConfirm, selectedId, onSelect }: any) => {
     const [year, month] = selectedMonth.split('-').map(Number);
     const daysInMonth = new Date(year, month, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -4612,7 +4759,14 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             {filteredEmployees.map((e: Employee, idx: number) => (
-                                <tr key={e.id} className="hover:bg-brand-50/20 transition-colors group">
+                                <tr 
+                                    key={e.id} 
+                                    onClick={() => onSelect?.(selectedId === e.id ? null : e.id)}
+                                    className={cn(
+                                        "hover:bg-brand-50/20 transition-colors group cursor-pointer",
+                                        selectedId === e.id ? "bg-brand-50/50 border-l-4 border-brand-600" : ""
+                                    )}
+                                >
                                     <td className="p-4 text-left border-r border-slate-100 sticky left-0 bg-white/90 backdrop-blur-sm z-10 group-hover:bg-brand-50/50 transition-colors">
                                         <div className="flex items-center gap-2">
                                             <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 overflow-hidden">

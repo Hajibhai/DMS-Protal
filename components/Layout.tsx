@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Menu, X, ChevronDown, 
   LogOut, Settings, User, Bell, Search,
-  Building2, Globe, HelpCircle, FileText
+  Building2, Globe, HelpCircle, FileText, LayoutGrid
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -333,6 +333,15 @@ export const Layout: React.FC<LayoutProps> = ({
                           </button>
                           <button 
                             onClick={() => {
+                                (window as any).openShortcuts?.();
+                                setIsUserDropdownOpen(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-all"
+                          >
+                            <LayoutGrid className="w-4 h-4" /> Keyboard Shortcuts
+                          </button>
+                          <button 
+                            onClick={() => {
                                 setActiveTab('help');
                                 setIsUserDropdownOpen(false);
                             }}
@@ -592,7 +601,7 @@ export const Layout: React.FC<LayoutProps> = ({
               <button className="hover:text-brand-600 transition-colors">Contact Support</button>
             </div>
             <p className="text-slate-400 text-xs font-medium">
-              © {new Date().getFullYear()} Al Reem. All rights reserved.
+              © {new Date().getFullYear()} Pioneer. All rights reserved.
             </p>
           </div>
         </div>
