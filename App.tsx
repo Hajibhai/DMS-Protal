@@ -2595,8 +2595,9 @@ export default function App() {
 
   useEffect(() => {
     if (systemUser) {
+      const isCreator = systemUser.role === UserRole.CREATOR || systemUser.email === 'abdulkaderp3010@gmail.com';
       const currentTabItem = navItems.find(item => item.id === activeTab);
-      if (currentTabItem && currentTabItem.permission && !(systemUser.permissions as any)[currentTabItem.permission]) {
+      if (currentTabItem && currentTabItem.permission && !isCreator && !(systemUser.permissions as any)[currentTabItem.permission]) {
         setActiveTab('dashboard');
       }
     }
