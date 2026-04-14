@@ -1233,8 +1233,14 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
             alert("Please fill in all fields (Name, Username, Password, and Role)");
             return;
         }
+
+        const userEmail = newUser.username.includes('@') ? newUser.username : `${newUser.username}@system.local`;
+        if (localUsers.some(u => u.email === userEmail)) {
+            alert("A user with this email/username already exists in the system.");
+            return;
+        }
+
         try {
-            const userEmail = newUser.username.includes('@') ? newUser.username : `${newUser.username}@system.local`;
             console.log("Creating Auth user with email:", userEmail);
             
             // Create the user in Firebase Auth first
@@ -1279,7 +1285,11 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
             });
         } catch (e: any) {
             console.error("Error in handleAdd:", e);
-            alert("Failed to save user: " + e.message);
+            if (e.code === 'auth/email-already-in-use') {
+                alert("This email/username is already in use. Please use a different one or check if the user already exists.");
+            } else {
+                alert("Failed to save user: " + e.message);
+            }
         }
     };
 
