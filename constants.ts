@@ -18,6 +18,7 @@ export const DEFAULT_ADMIN: SystemUser = {
     active: true,
     permissions: {
         canViewDashboard: true,
+        canViewCompanyDashboard: true,
         canManageEmployees: true,
         canViewDirectory: true,
         canManageAttendance: true,
@@ -41,6 +42,7 @@ export const CREATOR_USER: SystemUser = {
     active: true,
     permissions: {
         canViewDashboard: true,
+        canViewCompanyDashboard: true,
         canManageEmployees: true,
         canViewDirectory: true,
         canManageAttendance: true,

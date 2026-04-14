@@ -1137,6 +1137,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
         name: '',
         permissions: {
             canViewDashboard: true,
+            canViewCompanyDashboard: true,
             canManageEmployees: false,
             canViewDirectory: false,
             canManageAttendance: false,
@@ -1190,6 +1191,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                 name: '',
                 permissions: {
                     canViewDashboard: true, // Default to true for new users
+                    canViewCompanyDashboard: true,
                     canManageEmployees: false,
                     canViewDirectory: false,
                     canManageAttendance: false,
@@ -2442,6 +2444,7 @@ export default function App() {
             active: true,
             permissions: {
               canViewDashboard: true,
+              canViewCompanyDashboard: true,
               canManageEmployees: true,
               canViewDirectory: true,
               canManageAttendance: true,
@@ -2550,7 +2553,7 @@ export default function App() {
   const navItems = useMemo(() => {
     const baseItems = [
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3, permission: 'canViewDashboard' },
-      { id: 'company', label: 'Company', icon: Building2, permission: 'canViewDashboard' },
+      { id: 'company', label: 'Company', icon: Building2, permission: 'canViewCompanyDashboard' },
       { id: 'staff', label: 'Staff Directory', icon: Users, permission: 'canManageEmployees' },
       { id: 'ex-employees', label: 'Ex-Employees', icon: UserMinus, permission: 'canManageEmployees' }, 
       { id: 'timesheet', label: 'Monthly Timesheet', icon: Calendar, permission: 'canViewTimesheet' },

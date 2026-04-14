@@ -188,6 +188,7 @@ export enum UserRole {
 
 export interface UserPermissions {
     canViewDashboard: boolean;
+    canViewCompanyDashboard: boolean;
     canManageEmployees: boolean; // Add, Edit, Onboard, Offboard
     canViewDirectory: boolean;
     canManageAttendance: boolean; // Edit Timesheet
