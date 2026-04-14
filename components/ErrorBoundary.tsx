@@ -82,7 +82,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              Al Reem DMS Security & Stability
+              Pioneer DMS Portal Security & Stability
             </p>
           </div>
         </div>

@@ -7,9 +7,10 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin' ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Creator' ||
-         (request.auth.token.email == "abdulkaderp3010@gmail.com" && request.auth.token.email_verified == true));
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Creator')) ||
+         (request.auth.token.email == "abdulkaderp3010@gmail.com"));
     }
 
     function isOwner(userId) {
@@ -18,12 +19,14 @@ service cloud.firestore {
 
     function isCreator() {
       return isAuthenticated() && 
-        (request.auth.token.email == "abdulkaderp3010@gmail.com" && request.auth.token.email_verified == true);
+        (request.auth.token.email == "abdulkaderp3010@gmail.com");
     }
 
     function hasPermission(permission) {
       return isAuthenticated() && 
-        (isCreator() || (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions[permission] == true));
+        (isCreator() || 
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions[permission] == true));
     }
 
     match /audit_logs/{logId} {
@@ -66,8 +69,8 @@ service cloud.firestore {
 function isValidCompany(data) {
   return data.keys().hasAll(['id', 'code', 'name']) &&
          data.id is string &&
-         data.code is string && data.code.size() >= 1 && data.code.size() <= 10 &&
-         data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+         data.code is string && data.code.size() >= 1 && data.code.size() <= 50 &&
+         data.name is string && data.name.size() >= 2 && data.name.size() <= 200 &&
          (!('address' in data) || data.address is string) &&
          (!('email' in data) || data.email is string) &&
          (!('phone' in data) || data.phone is string) &&

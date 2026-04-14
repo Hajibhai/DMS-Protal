@@ -1503,7 +1503,7 @@ const ReorderCompaniesModal = ({ companies, onClose, onReorder }: { companies: C
     );
 };
 
-const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog }: { onClose: () => void, companies: Company[], openConfirm: (title: string, message: string, onConfirm: () => void, type?: 'danger' | 'warning') => void, onLog: any }) => {
+const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, onUpdate }: { onClose: () => void, companies: Company[], openConfirm: (title: string, message: string, onConfirm: () => void, type?: 'danger' | 'warning') => void, onLog: any, onAdd: (c: any) => Promise<void>, onUpdate: (c: Company) => Promise<void> }) => {
     const [formData, setFormData] = useState({
         code: '',
         name: '',
@@ -1513,19 +1513,30 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog }: { onCl
         logo: ''
     });
     const [isAdding, setIsAdding] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [isReordering, setIsReordering] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const handleAdd = async () => {
-        if (!formData.name.trim() || !formData.code.trim()) return;
-        await addCompany(formData);
-        onLog('Company Added', `New company ${formData.name} (${formData.code}) was registered in the system.`, 'create');
-        setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '' });
-        setIsAdding(false);
+        if (!formData.name.trim() || !formData.code.trim()) {
+            setError("Company name and code are required.");
+            return;
+        }
+        setIsSaving(true);
+        setError(null);
+        try {
+            await onAdd(formData);
+            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '' });
+            setIsAdding(false);
+        } catch (err) {
+            setError("Failed to save company. Please check your permissions.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleUpdate = async (company: Company) => {
-        await updateCompany(company);
-        onLog('Company Updated', `Details for company ${company.name} were updated.`, 'update');
+        await onUpdate(company);
     };
 
     const handleDelete = async (id: string) => {
@@ -1560,17 +1571,23 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog }: { onCl
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-                <div className="p-6 border-b flex justify-between items-center bg-gray-50">
+                <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                        <div className="p-2 bg-brand-100 rounded-lg text-brand-600">
                             <Building2 className="w-5 h-5" />
                         </div>
-                        <h2 className="text-xl font-bold text-gray-800">Manage Companies</h2>
+                        <h2 className="text-xl font-black text-slate-900 tracking-tight">Manage Companies</h2>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5" /></button>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
                 </div>
                 
                 <div className="p-6 space-y-6 overflow-y-auto">
+                    {error && (
+                        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" />
+                            {error}
+                        </div>
+                    )}
                     {isReordering && (
                         <ReorderCompaniesModal 
                             companies={companies}
@@ -1582,20 +1599,20 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog }: { onCl
                         />
                     )}
                     {/* Add New Company Form */}
-                    <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100 space-y-4">
+                    <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-4">
                         <div className="flex justify-between items-center">
-                            <h3 className="text-sm font-bold text-indigo-900">Add New Company</h3>
+                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Add New Company</h3>
                             <div className="flex gap-3">
                                 <button 
                                     onClick={() => setIsReordering(true)}
-                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                                    className="text-xs font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1"
                                 >
                                     <GripVertical className="w-3 h-3" /> Reorder
                                 </button>
                                 {!isAdding && (
                                     <button 
                                         onClick={() => setIsAdding(true)}
-                                        className="text-xs font-bold text-indigo-600 hover:text-indigo-700"
+                                        className="text-xs font-bold text-brand-600 hover:text-brand-700"
                                     >
                                         + Create New
                                     </button>
@@ -1680,9 +1697,10 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog }: { onCl
                                         </button>
                                         <button 
                                             onClick={handleAdd}
-                                            className="px-4 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 shadow-sm"
+                                            disabled={isSaving}
+                                            className="px-4 py-1.5 bg-brand-600 text-white text-xs font-bold rounded-lg hover:bg-brand-700 shadow-sm disabled:opacity-50"
                                         >
-                                            Save Company
+                                            {isSaving ? 'Saving...' : 'Save Company'}
                                         </button>
                                     </div>
                                 </div>
@@ -1888,7 +1906,7 @@ const AboutView = () => {
 
             <div className="bg-white rounded-2xl p-8 text-slate-900 border border-slate-200 shadow-xl relative overflow-hidden">
                 <div className="relative z-10">
-                    <h3 className="text-xl font-bold mb-2">Al Reem DMS Enterprise</h3>
+                    <h3 className="text-xl font-bold mb-2">Pioneer DMS Portal Enterprise</h3>
                     <p className="text-indigo-100 mb-6 max-w-lg">
                         A robust workforce management ecosystem built for scale, efficiency, and real-time operational control.
                     </p>
@@ -2570,6 +2588,7 @@ export default function App() {
     
     return baseItems.filter(item => {
         if (item.creatorOnly && !isCreator) return false;
+        if (isCreator) return true;
         return !item.permission || (systemUser.permissions as any)[item.permission];
     });
   }, [systemUser]);
@@ -2617,6 +2636,29 @@ export default function App() {
     await logout();
     setSystemUser(null);
     hasLoggedLogin.current = false;
+  };
+
+  const handleCreateCompany = async (companyData: any) => {
+    try {
+        await addCompany(companyData, companies.length);
+        if (systemUser) {
+            await logAudit(systemUser, 'Company Created', `New company ${companyData.name} (${companyData.code}) was registered.`, 'create');
+        }
+    } catch (error) {
+        console.error("Failed to create company:", error);
+        throw error;
+    }
+  };
+
+  const handleUpdateCompany = async (company: Company) => {
+    try {
+        await updateCompany(company);
+        if (systemUser) {
+            await logAudit(systemUser, 'Company Updated', `Company ${company.name} was updated.`, 'update');
+        }
+    } catch (error) {
+        console.error("Failed to update company:", error);
+    }
   };
 
   const expiringDocs = useMemo(() => {
@@ -2717,8 +2759,9 @@ export default function App() {
         <CompanyView 
           companies={companies} 
           openConfirm={openConfirm}
-          onUpdate={updateCompany}
-          user={systemUser}
+          onUpdate={handleUpdateCompany}
+          onAdd={handleCreateCompany}
+          user={systemUser!}
         />
       )}
       {activeTab === 'staff' && (
@@ -2830,7 +2873,14 @@ export default function App() {
           <UserManagementModal onClose={() => setShowUserManagement(false)} users={systemUsers} openConfirm={openConfirm} currentUser={systemUser} onLog={handleLogAction} />
         )}
         {showManageCompanies && (
-          <ManageCompaniesModal onClose={() => setShowManageCompanies(false)} companies={companies} openConfirm={openConfirm} onLog={handleLogAction} />
+          <ManageCompaniesModal 
+            onClose={() => setShowManageCompanies(false)} 
+            companies={companies} 
+            openConfirm={openConfirm} 
+            onLog={handleLogAction} 
+            onAdd={handleCreateCompany}
+            onUpdate={handleUpdateCompany}
+          />
         )}
         {showAuditModal && (
           <AuditLogModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} logs={auditLogs} currentUser={systemUser} />
@@ -2917,7 +2967,7 @@ const DashboardView = ({ employees, attendance, user, auditLogs, setShowAuditMod
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Employees");
-        XLSX.writeFile(wb, "AlReem_Personnel_Data.xlsx");
+        XLSX.writeFile(wb, "Pioneer_Personnel_Data.xlsx");
     };
 
     return (
@@ -2948,7 +2998,7 @@ const DashboardView = ({ employees, attendance, user, auditLogs, setShowAuditMod
                             <UserPlus className="w-4 h-4" /> Onboard Staff
                         </button>
                     )}
-                    {(user.role === UserRole.CREATOR || user.role === UserRole.ADMIN) && (
+                    {(user.role === UserRole.CREATOR || user.role === UserRole.ADMIN || canManageSettings) && (
                         <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
                             <button onClick={onOpenManageCompanies} className="p-2 hover:bg-slate-50 rounded-xl text-slate-600 transition-all" title="Manage Companies">
                                 <Building2 className="w-5 h-5" />
@@ -3251,7 +3301,7 @@ const HelpCenterView = () => {
                 </div>
                 <div>
                     <h2 className="text-2xl font-black text-slate-900 tracking-tight">Help Center</h2>
-                    <p className="text-slate-500 font-medium">Instructions and guides for Al Reem DMS</p>
+                    <p className="text-slate-500 font-medium">Instructions and guides for Pioneer DMS Portal</p>
                 </div>
             </div>
 
@@ -3756,14 +3806,16 @@ const CompanyDocumentsModal = ({ company, onClose, onUpdate, openConfirm }: { co
     );
 };
 
-const CompanyView = ({ companies, openConfirm, onUpdate, user }: { companies: Company[], openConfirm: any, onUpdate: (c: Company) => void, user: SystemUser }) => {
+const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { companies: Company[], openConfirm: any, onUpdate: (c: Company) => void, onAdd: (c: any) => Promise<void>, user: SystemUser }) => {
     const [formData, setFormData] = useState({ code: '', name: '', address: '', email: '', phone: '', logo: '' });
     const [isAdding, setIsAdding] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [isReordering, setIsReordering] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [viewingDocsCompany, setViewingDocsCompany] = useState<Company | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const canManageSettings = user?.permissions?.canManageSettings;
+    const [error, setError] = useState<string | null>(null);
+    const canManageSettings = user?.permissions?.canManageSettings || user?.role === UserRole.CREATOR;
 
     const sortedCompanies = useMemo(() => {
         return [...companies].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -3803,10 +3855,23 @@ const CompanyView = ({ companies, openConfirm, onUpdate, user }: { companies: Co
     };
 
     const handleAdd = async () => {
-        if (!formData.name.trim() || !formData.code.trim()) return;
-        await addCompany(formData, companies.length);
-        setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '' });
-        setIsAdding(false);
+        if (!formData.name.trim() || !formData.code.trim()) {
+            setError("Company name and code are required.");
+            return;
+        }
+        
+        setIsSaving(true);
+        setError(null);
+        try {
+            await onAdd(formData);
+            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '' });
+            setIsAdding(false);
+        } catch (err: any) {
+            setError("Failed to save company. Please check your connection and permissions.");
+            console.error(err);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleReorder = async (newOrder: Company[]) => {
@@ -3904,8 +3969,15 @@ const CompanyView = ({ companies, openConfirm, onUpdate, user }: { companies: Co
                 >
                     <div className="flex items-center justify-between">
                         <h3 className="text-xl font-black text-slate-900 tracking-tight">Register New Company</h3>
-                        <button onClick={() => setIsAdding(false)} className="p-2 hover:bg-slate-50 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
+                        <button onClick={() => { setIsAdding(false); setError(null); }} className="p-2 hover:bg-slate-50 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
                     </div>
+
+                    {error && (
+                        <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" />
+                            {error}
+                        </div>
+                    )}
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                         <div className="space-y-2">
@@ -5282,7 +5354,7 @@ const ReportsView = ({ employees, attendance }: any) => {
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Staff Report");
-        XLSX.writeFile(wb, "AlReem_Staff_Analytics_Report.xlsx");
+        XLSX.writeFile(wb, "Pioneer_Staff_Analytics_Report.xlsx");
     };
 
     const handlePrint = () => {

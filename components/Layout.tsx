@@ -170,7 +170,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   <Building2 className="text-white w-5 h-5" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="font-black text-lg text-slate-900 leading-none tracking-tight">AL REEM</span>
+                  <span className="font-black text-lg text-slate-900 leading-none tracking-tight">PIONEER</span>
                   <span className="text-[9px] font-bold text-brand-600 tracking-[0.2em] mt-0.5">DMS PORTAL</span>
                 </div>
               </div>
@@ -477,7 +477,7 @@ export const Layout: React.FC<LayoutProps> = ({
                               <span className="text-[10px] text-slate-400 font-bold">to select</span>
                             </div>
                           </div>
-                          <div className="text-[10px] font-bold text-brand-600 uppercase tracking-wider">Al Reem DMS Search</div>
+                          <div className="text-[10px] font-bold text-brand-600 uppercase tracking-wider">Pioneer DMS Search</div>
                         </div>
                       </motion.div>
                   </>
@@ -519,7 +519,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   <div className="bg-brand-600 p-2 rounded-xl">
                     <Building2 className="text-white w-5 h-5" />
                   </div>
-                  <span className="font-bold text-lg text-slate-900">Al Reem DMS</span>
+                  <span className="font-bold text-lg text-slate-900">Pioneer DMS Portal</span>
                 </div>
                 <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 hover:bg-slate-100 rounded-xl">
                   <X className="w-6 h-6 text-slate-400" />
@@ -584,7 +584,7 @@ export const Layout: React.FC<LayoutProps> = ({
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-2 text-slate-400 text-sm font-medium">
               <Globe className="w-4 h-4" />
-              <span>Al Reem Document Management System v2.5</span>
+              <span>Pioneer Document Management System v2.5</span>
             </div>
             <div className="flex items-center gap-6 text-slate-400 text-sm font-bold">
               <button className="hover:text-brand-600 transition-colors">Privacy Policy</button>
