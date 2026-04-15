@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Menu, X, ChevronDown, 
   LogOut, Settings, User, Bell, Search,
-  Building2, Globe, HelpCircle, FileText, LayoutGrid
+  Building2, Globe, HelpCircle, FileText, LayoutGrid,
+  Briefcase, Truck, Wallet
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -22,6 +23,12 @@ interface LayoutProps {
   companies: any[];
   expiringDocs: any[];
   employees: any[];
+  projects: any[];
+  suppliers: any[];
+  vendors: any[];
+  accountsPayable: any[];
+  accountsReceivable: any[];
+  pettyCash: any[];
 }
 
 export const Layout: React.FC<LayoutProps> = ({ 
@@ -33,7 +40,13 @@ export const Layout: React.FC<LayoutProps> = ({
   onLogout,
   companies,
   expiringDocs,
-  employees
+  employees,
+  projects,
+  suppliers,
+  vendors,
+  accountsPayable,
+  accountsReceivable,
+  pettyCash
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
@@ -52,15 +65,64 @@ export const Layout: React.FC<LayoutProps> = ({
     
     // Search Employees
     employees.forEach(emp => {
-        if (emp.name.toLowerCase().includes(q) || emp.code.toLowerCase().includes(q) || emp.designation.toLowerCase().includes(q)) {
-            results.push({ type: 'Employee', title: emp.name, subtitle: `${emp.code} - ${emp.designation}`, id: emp.id, tab: 'staff' });
+        if (
+            emp.name.toLowerCase().includes(q) || 
+            emp.code.toLowerCase().includes(q) || 
+            emp.designation.toLowerCase().includes(q) ||
+            emp.department.toLowerCase().includes(q) ||
+            emp.company.toLowerCase().includes(q)
+        ) {
+            results.push({ type: 'Employee', title: emp.name, subtitle: `${emp.code} - ${emp.designation} (${emp.company})`, id: emp.id, tab: 'staff' });
         }
     });
     
     // Search Companies
     companies.forEach(comp => {
-        if (comp.name.toLowerCase().includes(q)) {
-            results.push({ type: 'Company', title: comp.name, subtitle: 'Company Details', id: comp.id, tab: 'company' });
+        if (comp.name.toLowerCase().includes(q) || comp.code.toLowerCase().includes(q)) {
+            results.push({ type: 'Company', title: comp.name, subtitle: `${comp.code} - Company Details`, id: comp.id, tab: 'company' });
+        }
+    });
+
+    // Search Projects
+    projects.forEach(proj => {
+        if (
+            proj.name.toLowerCase().includes(q) || 
+            proj.code.toLowerCase().includes(q) || 
+            proj.clientName?.toLowerCase().includes(q) ||
+            proj.location?.toLowerCase().includes(q)
+        ) {
+            results.push({ type: 'Project', title: proj.name, subtitle: `${proj.code} - ${proj.clientName}`, id: proj.id, tab: 'projects' });
+        }
+    });
+
+    // Search Suppliers
+    suppliers.forEach(sup => {
+        if (sup.name.toLowerCase().includes(q) || sup.code.toLowerCase().includes(q)) {
+            results.push({ type: 'Supplier', title: sup.name, subtitle: `${sup.code} - ${sup.category || 'Supplier'}`, id: sup.id, tab: 'suppliers' });
+        }
+    });
+
+    // Search Clients (Vendors)
+    vendors.forEach(ven => {
+        if (ven.name.toLowerCase().includes(q) || ven.code.toLowerCase().includes(q)) {
+            results.push({ type: 'Client', title: ven.name, subtitle: `${ven.code} - ${ven.category || 'Client'}`, id: ven.id, tab: 'vendors' });
+        }
+    });
+
+    // Search Finance (Payables, Receivables, Petty Cash)
+    accountsPayable.forEach(ap => {
+        if (ap.invoiceNumber.toLowerCase().includes(q) || ap.description.toLowerCase().includes(q)) {
+            results.push({ type: 'Finance', title: `Payable: ${ap.invoiceNumber}`, subtitle: ap.description, id: ap.id, tab: 'accounts-payable' });
+        }
+    });
+    accountsReceivable.forEach(ar => {
+        if (ar.invoiceNumber.toLowerCase().includes(q) || ar.description.toLowerCase().includes(q)) {
+            results.push({ type: 'Finance', title: `Receivable: ${ar.invoiceNumber}`, subtitle: ar.description, id: ar.id, tab: 'accounts-receivable' });
+        }
+    });
+    pettyCash.forEach(pc => {
+        if (pc.description.toLowerCase().includes(q) || pc.requestedBy.toLowerCase().includes(q)) {
+            results.push({ type: 'Finance', title: `Petty Cash: ${pc.description}`, subtitle: `Requested by ${pc.requestedBy}`, id: pc.id, tab: 'petty-cash' });
         }
     });
     
@@ -502,6 +564,12 @@ export const Layout: React.FC<LayoutProps> = ({
                                                           <User className="w-5 h-5 text-brand-600" />
                                                       ) : res.type === 'Company' ? (
                                                           <Building2 className="w-5 h-5 text-brand-600" />
+                                                      ) : res.type === 'Project' ? (
+                                                          <Briefcase className="w-5 h-5 text-brand-600" />
+                                                      ) : (res.type === 'Supplier' || res.type === 'Client') ? (
+                                                          <Truck className="w-5 h-5 text-brand-600" />
+                                                      ) : res.type === 'Finance' ? (
+                                                          <Wallet className="w-5 h-5 text-brand-600" />
                                                       ) : (res.type === 'Directory' || res.type === 'Document') ? (
                                                           <FileText className="w-5 h-5 text-brand-600" />
                                                       ) : (
@@ -524,8 +592,9 @@ export const Layout: React.FC<LayoutProps> = ({
                                       <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
                                           <Search className="w-8 h-8 text-slate-300" />
                                       </div>
-                                      <p className="text-slate-500 font-medium">No results found for "{searchQuery}"</p>
-                                      <p className="text-slate-400 text-sm mt-1">Try searching for something else or check your spelling.</p>
+                                      <p className="text-slate-900 font-black text-lg uppercase tracking-tight">Result Not Available</p>
+                                      <p className="text-slate-500 font-medium mt-1">We couldn't find any matching records for "{searchQuery}" across the entire site.</p>
+                                      <p className="text-slate-400 text-xs mt-4 bg-slate-50 py-2 px-4 rounded-xl inline-block border border-slate-100">Try searching for Project Code, Staff Name, or Invoice Number</p>
                                   </div>
                               )}
                             </div>

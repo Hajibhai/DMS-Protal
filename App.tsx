@@ -3163,6 +3163,12 @@ export default function App() {
       companies={companies}
       expiringDocs={expiringDocs}
       employees={employees}
+      projects={projects}
+      suppliers={suppliers}
+      vendors={vendors}
+      accountsPayable={accountsPayable}
+      accountsReceivable={accountsReceivable}
+      pettyCash={pettyCash}
     >
       {activeTab === 'dashboard' && (
         <DashboardView 
