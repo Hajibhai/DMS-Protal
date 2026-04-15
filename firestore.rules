@@ -106,6 +106,9 @@ function isValidProject(data) {
          (!('startDate' in data) || (data.startDate is string && data.startDate.size() <= 50)) &&
          (!('endDate' in data) || (data.endDate is string && data.endDate.size() <= 50)) &&
          (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+         (!('estimationValue' in data) || data.estimationValue is number) &&
+         (!('income' in data) || data.income is number) &&
+         (!('overallExpenses' in data) || data.overallExpenses is number) &&
          (!('order' in data) || data.order is number) &&
          (!('driveFolderId' in data) || (data.driveFolderId is string && data.driveFolderId.size() <= 100)) &&
          (!('driveFiles' in data) || (data.driveFiles is list && data.driveFiles.size() <= 50));

@@ -27,7 +27,8 @@
             "transport": { "type": "number" },
             "other": { "type": "number" },
             "airTicket": { "type": "number" },
-            "leaveSalary": { "type": "number" }
+            "leaveSalary": { "type": "number" },
+            "hourlyRate": { "type": "number" }
           }
         },
         "active": { "type": "boolean" },
@@ -165,6 +166,9 @@
         "endDate": { "type": "string" },
         "status": { "type": "string", "enum": ["Active", "Completed", "On Hold"] },
         "description": { "type": "string" },
+        "estimationValue": { "type": "number" },
+        "income": { "type": "number" },
+        "overallExpenses": { "type": "number" },
         "order": { "type": "number" },
         "driveFolderId": { "type": "string" },
         "driveFiles": { "type": "array" }

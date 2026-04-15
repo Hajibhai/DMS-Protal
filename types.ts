@@ -21,6 +21,7 @@ export interface SalaryStructure {
   other: number;
   airTicket: number;
   leaveSalary: number;
+  hourlyRate?: number;
 }
 
 export interface OffboardingDetails {
@@ -180,6 +181,9 @@ export interface Project {
     endDate?: string;
     status: 'Active' | 'Completed' | 'On Hold';
     description?: string;
+    estimationValue?: number;
+    income?: number;
+    overallExpenses?: number;
     driveFiles?: DriveFile[];
     driveFolderId?: string;
     order?: number;

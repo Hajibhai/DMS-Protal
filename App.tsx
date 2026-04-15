@@ -82,27 +82,36 @@ const LEGEND: any = {
 };
 
 const calculatePayroll = (employee: Employee, attendance: AttendanceRecord[], deductions: DeductionRecord[]) => {
-    const presentDays = attendance.filter(r => r.status === AttendanceStatus.PRESENT).length;
-    const weekOffs = attendance.filter(r => r.status === AttendanceStatus.WEEK_OFF).length;
-    const publicHolidays = attendance.filter(r => r.status === AttendanceStatus.PUBLIC_HOLIDAY).length;
+    const isOfficeStaff = employee.team === 'Office Staff';
     
-    // Unpaid logic
-    const absentDays = attendance.filter(r => r.status === AttendanceStatus.ABSENT).length;
-    const unpaidLeaves = attendance.filter(r => [AttendanceStatus.UNPAID_LEAVE, AttendanceStatus.ANNUAL_LEAVE, AttendanceStatus.EMERGENCY_LEAVE].includes(r.status)).length;
-    const totalUnpaidDays = absentDays + unpaidLeaves;
+    // Fixed Salary Logic (Office Staff)
+    const { basic = 0, housing = 0, transport = 0, other = 0, airTicket = 0, leaveSalary = 0, hourlyRate = 0 } = employee.salary;
+    const fixedGrossSalary = basic + housing + transport + other + airTicket + leaveSalary;
+    
+    let grossSalary = fixedGrossSalary;
+    let lopDeduction = 0;
+    let totalUnpaidDays = 0;
 
-    // Salary
-    const { basic = 0, housing = 0, transport = 0, other = 0, airTicket = 0, leaveSalary = 0 } = employee.salary;
-    const grossSalary = basic + housing + transport + other + airTicket + leaveSalary;
-    
-    // Deductions
-    const perDayRate = grossSalary / 30;
-    const lopDeduction = totalUnpaidDays * perDayRate;
+    if (isOfficeStaff) {
+        // Unpaid logic for fixed salary
+        const absentDays = attendance.filter(r => r.status === AttendanceStatus.ABSENT).length;
+        const unpaidLeaves = attendance.filter(r => [AttendanceStatus.UNPAID_LEAVE, AttendanceStatus.ANNUAL_LEAVE, AttendanceStatus.EMERGENCY_LEAVE].includes(r.status)).length;
+        totalUnpaidDays = absentDays + unpaidLeaves;
+        const perDayRate = fixedGrossSalary / 30;
+        lopDeduction = totalUnpaidDays * perDayRate;
+    } else {
+        // Hourly Logic (Other Staff)
+        const totalHoursWorked = attendance.reduce((sum, r) => sum + (r.hoursWorked || 0), 0);
+        grossSalary = totalHoursWorked * hourlyRate;
+        lopDeduction = 0; // No LOP for hourly staff
+        totalUnpaidDays = 0;
+    }
+
     const otherDeductionsTotal = deductions.reduce((sum, d) => sum + d.amount, 0);
     
     // OT
     const totalOtHours = attendance.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-    const otRatePerHour = (grossSalary / 30 / 8) * 1.5; 
+    const otRatePerHour = isOfficeStaff ? (fixedGrossSalary / 30 / 8) * 1.5 : hourlyRate * 1.5; 
     const otAmount = totalOtHours * otRatePerHour;
 
     return {
@@ -759,6 +768,7 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm 
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Other</label><input type="number" value={data.salary.other ?? 0} onChange={e => setData({...data, salary: {...data.salary, other: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Air Ticket</label><input type="number" value={data.salary.airTicket ?? 0} onChange={e => setData({...data, salary: {...data.salary, airTicket: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Leave Salary</label><input type="number" value={data.salary.leaveSalary ?? 0} onChange={e => setData({...data, salary: {...data.salary, leaveSalary: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Hourly Rate</label><input type="number" value={data.salary.hourlyRate ?? 0} onChange={e => setData({...data, salary: {...data.salary, hourlyRate: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
                         </div>
                     </div>
  
@@ -804,7 +814,7 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm 
 const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { onComplete: (data: Employee) => void, onCancel: () => void, companies: Company[], openConfirm: any }) => {
     const [step, setStep] = useState(1);
     const [data, setData] = useState<Partial<Employee>>({
-        salary: { basic: 0, housing: 0, transport: 0, other: 0, airTicket: 0, leaveSalary: 0 },
+        salary: { basic: 0, housing: 0, transport: 0, other: 0, airTicket: 0, leaveSalary: 0, hourlyRate: 0 },
         status: 'Active', 
         active: true, 
         leaveBalance: 30, 
@@ -1083,6 +1093,15 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                         type="number" 
                                         value={data.salary?.other ?? 0} 
                                         onChange={e=>setData({...data, salary:{...data.salary!, other:Number(e.target.value)}})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Hourly Rate</label>
+                                    <input 
+                                        type="number" 
+                                        value={data.salary?.hourlyRate ?? 0} 
+                                        onChange={e=>setData({...data, salary:{...data.salary!, hourlyRate:Number(e.target.value)}})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
@@ -3192,7 +3211,7 @@ export default function App() {
                 joiningDate: new Date().toISOString().split('T')[0],
                 workLocation: 'Dubai',
                 leaveBalance: 30,
-                salary: { basic: 0, housing: 0, transport: 0, other: 0, airTicket: 0, leaveSalary: 0 }
+                salary: { basic: 0, housing: 0, transport: 0, other: 0, airTicket: 0, leaveSalary: 0, hourlyRate: 0 }
               };
               await saveEmployee(newEmp);
             });
@@ -3758,8 +3777,8 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
         return `${years} ${years === 1 ? 'Year' : 'Years'}${months > 0 ? ` ${months} ${months === 1 ? 'Month' : 'Months'}` : ''}`;
     };
 
-    const companies = useMemo<string[]>(() => ['All', ...Array.from(new Set(employees.map(e => e.company)))], [employees]);
-    const departments = useMemo<string[]>(() => ['All', ...Array.from(new Set(employees.map(e => e.department)))], [employees]);
+    const companies = useMemo<string[]>(() => ['All', ...Array.from(new Set(employees.map(e => e.company).filter(c => c && c !== 'All')))], [employees]);
+    const departments = useMemo<string[]>(() => ['All', ...Array.from(new Set(employees.map(e => e.department).filter(d => d && d !== 'All')))], [employees]);
 
     const filteredEmployees = useMemo(() => {
         return employees.filter((e: Employee) => {
@@ -3831,13 +3850,13 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             <AnimatePresence mode="popLayout">
-                                {filteredEmployees.map((e: Employee) => (
+                                {filteredEmployees.map((e: Employee, index: number) => (
                                     <motion.tr 
                                         layout
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, scale: 0.95 }}
-                                        key={e.id} 
+                                        key={e.id || `staff-${index}`} 
                                         onClick={() => onSelect?.(selectedId === e.id ? null : e.id)}
                                         className={cn(
                                             "hover:bg-brand-50/20 transition-colors group cursor-pointer",
@@ -4662,7 +4681,19 @@ const ProjectDocumentsModal = ({ project, onClose, onUpdate, openConfirm }: { pr
 };
 
 const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { projects: Project[], openConfirm: any, onUpdate: (p: Project) => void, onAdd: (p: any) => Promise<void>, user: SystemUser }) => {
-    const [formData, setFormData] = useState({ code: '', name: '', clientName: '', location: '', startDate: '', endDate: '', status: 'Active' as any, description: '' });
+    const [formData, setFormData] = useState({ 
+        code: '', 
+        name: '', 
+        clientName: '', 
+        location: '', 
+        startDate: '', 
+        endDate: '', 
+        status: 'Active' as any, 
+        description: '',
+        estimationValue: 0,
+        income: 0,
+        overallExpenses: 0
+    });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isReordering, setIsReordering] = useState(false);
@@ -4698,7 +4729,19 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
         setError(null);
         try {
             await onAdd(formData);
-            setFormData({ code: '', name: '', clientName: '', location: '', startDate: '', endDate: '', status: 'Active', description: '' });
+            setFormData({ 
+                code: '', 
+                name: '', 
+                clientName: '', 
+                location: '', 
+                startDate: '', 
+                endDate: '', 
+                status: 'Active', 
+                description: '',
+                estimationValue: 0,
+                income: 0,
+                overallExpenses: 0
+            });
             setIsAdding(false);
         } catch (err: any) {
             setError("Failed to save project. Please check your connection and permissions.");
@@ -4871,6 +4914,45 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                                 onChange={e => setFormData({ ...formData, description: e.target.value })}
                             />
                         </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Estimation Value (Optional)</label>
+                            <div className="relative">
+                                <DirhamIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input 
+                                    type="number"
+                                    className="w-full px-5 pl-12 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                    placeholder="0.00"
+                                    value={formData.estimationValue || ''}
+                                    onChange={e => setFormData({ ...formData, estimationValue: Number(e.target.value) })}
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Project Income</label>
+                            <div className="relative">
+                                <DirhamIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input 
+                                    type="number"
+                                    className="w-full px-5 pl-12 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                    placeholder="0.00"
+                                    value={formData.income || ''}
+                                    onChange={e => setFormData({ ...formData, income: Number(e.target.value) })}
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Overall Expenses</label>
+                            <div className="relative">
+                                <DirhamIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input 
+                                    type="number"
+                                    className="w-full px-5 pl-12 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                    placeholder="0.00"
+                                    value={formData.overallExpenses || ''}
+                                    onChange={e => setFormData({ ...formData, overallExpenses: Number(e.target.value) })}
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="flex items-center justify-end pt-6 border-t border-slate-100 gap-3">
@@ -4987,6 +5069,46 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                                         value={project.description || ''}
                                         onChange={e => updateProject({ ...project, description: e.target.value })}
                                     />
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Estimation Value</label>
+                                            <div className="relative">
+                                                <DirhamIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 scale-75" />
+                                                <input 
+                                                    type="number"
+                                                    className="w-full px-3 pl-10 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                                    value={project.estimationValue || ''}
+                                                    onChange={e => updateProject({ ...project, estimationValue: Number(e.target.value) })}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Income</label>
+                                                <div className="relative">
+                                                    <DirhamIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 scale-75" />
+                                                    <input 
+                                                        type="number"
+                                                        className="w-full px-3 pl-10 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                                        value={project.income || ''}
+                                                        onChange={e => updateProject({ ...project, income: Number(e.target.value) })}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Expenses</label>
+                                                <div className="relative">
+                                                    <DirhamIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 scale-75" />
+                                                    <input 
+                                                        type="number"
+                                                        className="w-full px-3 pl-10 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                                        value={project.overallExpenses || ''}
+                                                        onChange={e => updateProject({ ...project, overallExpenses: Number(e.target.value) })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div className="flex gap-2 pt-2">
                                         <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">Cancel</button>
                                         <button onClick={() => handleUpdate(project)} className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold shadow-md shadow-brand-600/20">Save</button>
@@ -5042,6 +5164,38 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                                                 </p>
                                             </div>
                                         )}
+                                        <div className="grid grid-cols-1 gap-2 pt-2 border-t border-slate-100/50">
+                                            {project.estimationValue !== undefined && project.estimationValue > 0 && (
+                                                <div className="flex items-center justify-between text-[10px] font-bold">
+                                                    <span className="text-slate-400 uppercase tracking-wider">Estimation</span>
+                                                    <span className="text-slate-700 flex items-center gap-1">
+                                                        <DirhamIcon className="scale-75 opacity-60" />
+                                                        {project.estimationValue.toLocaleString()}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center justify-between text-[10px] font-bold">
+                                                <span className="text-slate-400 uppercase tracking-wider">Income</span>
+                                                <span className="text-emerald-600 flex items-center gap-1">
+                                                    <DirhamIcon className="scale-75 opacity-60" />
+                                                    {project.income?.toLocaleString() || '0'}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[10px] font-bold">
+                                                <span className="text-slate-400 uppercase tracking-wider">Expenses</span>
+                                                <span className="text-rose-600 flex items-center gap-1">
+                                                    <DirhamIcon className="scale-75 opacity-60" />
+                                                    {project.overallExpenses?.toLocaleString() || '0'}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-[10px] font-black pt-1 border-t border-slate-100/30">
+                                                <span className="text-slate-400 uppercase tracking-wider">Net P/L</span>
+                                                <span className={cn("flex items-center gap-1", ((project.income || 0) - (project.overallExpenses || 0)) >= 0 ? "text-emerald-600" : "text-rose-600")}>
+                                                    <DirhamIcon className="scale-75 opacity-60" />
+                                                    {((project.income || 0) - (project.overallExpenses || 0)).toLocaleString()}
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
@@ -6536,11 +6690,18 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
             const monthDeds = deductions.filter((d: any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
             const p = calculatePayroll(e, monthRecs, monthDeds);
             
+            const isOffice = e.team === 'Office Staff';
+            const totalHours = monthRecs.reduce((sum: number, r: any) => sum + (r.hoursWorked || 0), 0);
+
             return {
                 'Employee Code': e.code,
                 'Employee Name': e.name,
                 'Month': selectedMonth,
-                'Basic Salary': p.breakdown.basic,
+                'Team': e.team,
+                'Type': isOffice ? 'Fixed' : 'Hourly',
+                'Basic Salary': isOffice ? p.breakdown.basic : 0,
+                'Hourly Rate': isOffice ? 0 : (p.breakdown.hourlyRate || 0),
+                'Hours Worked': isOffice ? 0 : totalHours,
                 'Housing': p.breakdown.housing,
                 'Transport': p.breakdown.transport,
                 'Other Allowance': p.breakdown.other,
