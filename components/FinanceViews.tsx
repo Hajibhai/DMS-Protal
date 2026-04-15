@@ -436,7 +436,18 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                         </span>
                     )
                 },
-                { key: 'requestedBy', label: 'Requested By' },
+                { 
+                    key: 'requestedBy', 
+                    label: 'Requestor / Source',
+                    render: (item) => (
+                        <div className="flex flex-col">
+                            <span className="font-bold text-slate-900">{item.requestedBy}</span>
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+                                {item.type === 'Income' ? 'Received From' : 'Requested By'}
+                            </span>
+                        </div>
+                    )
+                },
             ]}
             onAdd={onAdd}
             onEdit={onEdit}
@@ -816,7 +827,7 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             >
                                 <option value="Expense">Expense (-)</option>
-                                <option value="Income">Income (+)</option>
+                                <option value="Income">Cash Received (+)</option>
                             </select>
                         </div>
                     </div>
@@ -828,7 +839,7 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                                 value={formData.category}
                                 onChange={e => setFormData({ ...formData, category: e.target.value })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                                placeholder="e.g. Fuel, Stationery"
+                                placeholder={formData.type === 'Income' ? "e.g. From Boss, Bank" : "e.g. Fuel, Stationery"}
                             />
                         </div>
                         <div className="space-y-1">
@@ -855,12 +866,15 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                         </select>
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Requested By</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
+                            {formData.type === 'Income' ? 'Received From' : 'Requested By'}
+                        </label>
                         <input 
                             type="text"
                             value={formData.requestedBy}
                             onChange={e => setFormData({ ...formData, requestedBy: e.target.value })}
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            placeholder={formData.type === 'Income' ? "Name of person/entity" : "Employee name"}
                         />
                     </div>
                     <div className="space-y-1">
