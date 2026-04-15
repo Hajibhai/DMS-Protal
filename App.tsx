@@ -2739,12 +2739,13 @@ export default function App() {
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3, permission: 'canViewDashboard' },
       { id: 'company', label: 'Company', icon: Building2, permission: 'canViewCompanyDashboard' },
       { 
-        id: 'clients', 
+        id: 'clients-group', 
         label: 'Clients', 
         icon: Globe, 
         subItems: [
           { id: 'suppliers', label: 'Suppliers', icon: Truck, permission: 'canManageSuppliers' },
           { id: 'projects', label: 'Projects', icon: Briefcase, permission: 'canManageProjects' },
+          { id: 'vendors', label: 'Vendors', icon: Truck, permission: 'canManageProjects' },
         ]
       },
       { 
@@ -2765,6 +2766,16 @@ export default function App() {
           { id: 'deductions', label: 'Deductions', icon: Wallet, permission: 'canManagePayroll' },
           { id: 'leave', label: 'Leave Management', icon: FileText, permission: 'canManageLeaves' },
           { id: 'payroll', label: 'Payroll Register', icon: DirhamIcon, permission: 'canViewPayroll' },
+        ]
+      },
+      { 
+        id: 'finance', 
+        label: 'Finance', 
+        icon: Wallet, 
+        subItems: [
+          { id: 'accounts-payable', label: 'Accounts Payable', icon: TrendingDown, permission: 'canManagePayroll' },
+          { id: 'accounts-receivable', label: 'Accounts Receivable', icon: TrendingUp, permission: 'canManagePayroll' },
+          { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManagePayroll' },
         ]
       },
       { id: 'reports', label: 'Reports', icon: BarChart3, permission: 'canViewReports' },
@@ -3137,6 +3148,34 @@ export default function App() {
       )}
       {activeTab === 'payroll' && (
         <PayrollRegisterView employees={employees.filter(e => e.active)} attendance={attendance} deductions={deductions} selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} user={systemUser} companies={companies} />
+      )}
+      {activeTab === 'vendors' && (
+        <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
+          <Truck className="w-12 h-12 text-brand-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Vendors Management</h2>
+          <p className="text-slate-500">This section is under development. Here you will be able to manage your vendor database.</p>
+        </div>
+      )}
+      {activeTab === 'accounts-payable' && (
+        <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
+          <TrendingDown className="w-12 h-12 text-red-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Accounts Payable</h2>
+          <p className="text-slate-500">This section is under development. Track and manage your outgoing payments and vendor invoices here.</p>
+        </div>
+      )}
+      {activeTab === 'accounts-receivable' && (
+        <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
+          <TrendingUp className="w-12 h-12 text-emerald-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Accounts Receivable</h2>
+          <p className="text-slate-500">This section is under development. Track and manage your incoming payments and client invoices here.</p>
+        </div>
+      )}
+      {activeTab === 'petty-cash' && (
+        <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
+          <Wallet className="w-12 h-12 text-brand-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Petty Cash</h2>
+          <p className="text-slate-500">This section is under development. Manage small daily expenses and cash on hand here.</p>
+        </div>
       )}
       {activeTab === 'reports' && (
         <ReportsView 
