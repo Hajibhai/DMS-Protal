@@ -4961,6 +4961,32 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                                         <option value="Completed">Completed</option>
                                         <option value="On Hold">On Hold</option>
                                     </select>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
+                                            <input 
+                                                type="date"
+                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                                value={project.startDate || ''}
+                                                onChange={e => updateProject({ ...project, startDate: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">End Date</label>
+                                            <input 
+                                                type="date"
+                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                                value={project.endDate || ''}
+                                                onChange={e => updateProject({ ...project, endDate: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                    <textarea 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 min-h-[80px]"
+                                        placeholder="Project Description"
+                                        value={project.description || ''}
+                                        onChange={e => updateProject({ ...project, description: e.target.value })}
+                                    />
                                     <div className="flex gap-2 pt-2">
                                         <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">Cancel</button>
                                         <button onClick={() => handleUpdate(project)} className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold shadow-md shadow-brand-600/20">Save</button>
@@ -4996,7 +5022,15 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                                             <div className="p-1.5 bg-slate-50 rounded-lg">
                                                 <Calendar className="w-3.5 h-3.5" />
                                             </div>
-                                            <span className="text-xs font-bold truncate">{project.startDate} {project.endDate ? `to ${project.endDate}` : '(Ongoing)'}</span>
+                                            <span className="text-xs font-bold truncate">
+                                                {project.startDate ? (
+                                                    <>
+                                                        {project.startDate} {project.endDate ? `to ${project.endDate}` : '(Ongoing)'}
+                                                    </>
+                                                ) : (
+                                                    <span className="text-slate-300 italic">No dates specified</span>
+                                                )}
+                                            </span>
                                         </div>
                                         {project.description && (
                                             <div className="flex items-start gap-3 text-slate-500">
