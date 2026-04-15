@@ -114,6 +114,69 @@ function isValidProject(data) {
          (!('driveFiles' in data) || (data.driveFiles is list && data.driveFiles.size() <= 50));
 }
 
+// Validate Vendor
+function isValidVendor(data) {
+  return data.keys().hasAll(['id', 'code', 'name', 'contactPerson']) &&
+         data.id is string &&
+         data.code is string && data.code.size() >= 1 && data.code.size() <= 50 &&
+         data.name is string && data.name.size() >= 2 && data.name.size() <= 200 &&
+         data.contactPerson is string &&
+         (!('address' in data) || data.address is string) &&
+         (!('email' in data) || data.email is string) &&
+         (!('phone' in data) || data.phone is string) &&
+         (!('category' in data) || data.category is string) &&
+         (!('notes' in data) || data.notes is string) &&
+         (!('logo' in data) || data.logo is string) &&
+         (!('order' in data) || data.order is number);
+}
+
+// Validate Accounts Payable
+function isValidAccountsPayable(data) {
+  return data.keys().hasAll(['id', 'date', 'vendorId', 'vendorType', 'invoiceNumber', 'amount', 'status']) &&
+         data.id is string &&
+         data.date is string &&
+         data.vendorId is string &&
+         data.vendorType in ['Supplier', 'Vendor'] &&
+         data.invoiceNumber is string &&
+         data.amount is number &&
+         data.status in ['Pending', 'Paid', 'Partially Paid'] &&
+         (!('projectId' in data) || data.projectId is string) &&
+         (!('description' in data) || data.description is string) &&
+         (!('dueDate' in data) || data.dueDate is string) &&
+         (!('paymentDate' in data) || data.paymentDate is string) &&
+         (!('attachment' in data) || data.attachment is string);
+}
+
+// Validate Accounts Receivable
+function isValidAccountsReceivable(data) {
+  return data.keys().hasAll(['id', 'date', 'projectId', 'invoiceNumber', 'amount', 'status']) &&
+         data.id is string &&
+         data.date is string &&
+         data.projectId is string &&
+         data.invoiceNumber is string &&
+         data.amount is number &&
+         data.status in ['Pending', 'Received', 'Partially Received'] &&
+         (!('description' in data) || data.description is string) &&
+         (!('dueDate' in data) || data.dueDate is string) &&
+         (!('receivedDate' in data) || data.receivedDate is string) &&
+         (!('attachment' in data) || data.attachment is string);
+}
+
+// Validate Petty Cash
+function isValidPettyCash(data) {
+  return data.keys().hasAll(['id', 'date', 'category', 'description', 'amount', 'type', 'requestedBy']) &&
+         data.id is string &&
+         data.date is string &&
+         data.category is string &&
+         data.description is string &&
+         data.amount is number &&
+         data.type in ['Income', 'Expense'] &&
+         data.requestedBy is string &&
+         (!('approvedBy' in data) || data.approvedBy is string) &&
+         (!('projectId' in data) || data.projectId is string) &&
+         (!('attachment' in data) || data.attachment is string);
+}
+
 match /companies/{companyId} {
   allow read: if isAuthenticated();
   allow create: if hasPermission('canManageSettings') && isValidCompany(request.resource.data);
@@ -133,6 +196,34 @@ match /projects/{projectId} {
   allow create: if hasPermission('canManageProjects') && isValidProject(request.resource.data);
   allow update: if hasPermission('canManageProjects') && isValidProject(request.resource.data);
   allow delete: if hasPermission('canManageProjects');
+}
+
+match /vendors/{vendorId} {
+  allow read: if isAuthenticated();
+  allow create: if hasPermission('canManageProjects') && isValidVendor(request.resource.data);
+  allow update: if hasPermission('canManageProjects') && isValidVendor(request.resource.data);
+  allow delete: if hasPermission('canManageProjects');
+}
+
+match /accounts_payable/{apId} {
+  allow read: if isAuthenticated();
+  allow create: if hasPermission('canManagePayroll') && isValidAccountsPayable(request.resource.data);
+  allow update: if hasPermission('canManagePayroll') && isValidAccountsPayable(request.resource.data);
+  allow delete: if hasPermission('canManagePayroll');
+}
+
+match /accounts_receivable/{arId} {
+  allow read: if isAuthenticated();
+  allow create: if hasPermission('canManagePayroll') && isValidAccountsReceivable(request.resource.data);
+  allow update: if hasPermission('canManagePayroll') && isValidAccountsReceivable(request.resource.data);
+  allow delete: if hasPermission('canManagePayroll');
+}
+
+match /petty_cash/{pcId} {
+  allow read: if isAuthenticated();
+  allow create: if hasPermission('canManagePayroll') && isValidPettyCash(request.resource.data);
+  allow update: if hasPermission('canManagePayroll') && isValidPettyCash(request.resource.data);
+  allow delete: if hasPermission('canManagePayroll');
 }
 
     match /settings/about {

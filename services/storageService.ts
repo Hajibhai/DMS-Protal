@@ -28,6 +28,10 @@ import {
   Company,
   Supplier,
   Project,
+  Vendor,
+  AccountsPayable,
+  AccountsReceivable,
+  PettyCash,
   AuditLog,
   UserRole
 } from "../types";
@@ -427,6 +431,88 @@ export const deleteProject = async (id: string) => {
     await deleteDoc(doc(db, 'projects', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `projects/${id}`);
+  }
+};
+
+// --- Vendors ---
+export const addVendor = async (vendorData: Omit<Vendor, 'id'>, currentVendorsCount: number = 0) => {
+  const id = Math.random().toString(36).substr(2, 9);
+  const newVendor: Vendor = {
+    id,
+    ...vendorData,
+    order: currentVendorsCount
+  };
+  try {
+    await setDoc(doc(db, 'vendors', id), cleanData(newVendor));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, `vendors/${id}`);
+  }
+};
+
+export const updateVendor = async (vendor: Vendor) => {
+  try {
+    await setDoc(doc(db, 'vendors', vendor.id), cleanData(vendor));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `vendors/${vendor.id}`);
+  }
+};
+
+export const deleteVendor = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'vendors', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `vendors/${id}`);
+  }
+};
+
+// --- Accounts Payable ---
+export const saveAccountsPayable = async (data: AccountsPayable) => {
+  try {
+    await setDoc(doc(db, 'accounts_payable', data.id), cleanData(data));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `accounts_payable/${data.id}`);
+  }
+};
+
+export const deleteAccountsPayable = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'accounts_payable', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `accounts_payable/${id}`);
+  }
+};
+
+// --- Accounts Receivable ---
+export const saveAccountsReceivable = async (data: AccountsReceivable) => {
+  try {
+    await setDoc(doc(db, 'accounts_receivable', data.id), cleanData(data));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `accounts_receivable/${data.id}`);
+  }
+};
+
+export const deleteAccountsReceivable = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'accounts_receivable', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `accounts_receivable/${id}`);
+  }
+};
+
+// --- Petty Cash ---
+export const savePettyCash = async (data: PettyCash) => {
+  try {
+    await setDoc(doc(db, 'petty_cash', data.id), cleanData(data));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `petty_cash/${data.id}`);
+  }
+};
+
+export const deletePettyCash = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'petty_cash', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `petty_cash/${id}`);
   }
 };
 

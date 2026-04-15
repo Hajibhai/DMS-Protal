@@ -1,0 +1,883 @@
+
+import React, { useState, useMemo, useRef } from 'react';
+import { 
+  Search, Filter, Download, Plus, Edit, Trash2, 
+  ChevronDown, X, FileText, Globe, Truck, 
+  TrendingUp, TrendingDown, Wallet, Calendar,
+  MoreVertical, Check, ListFilter, ArrowUpDown,
+  FileSpreadsheet, ExternalLink, Paperclip
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import * as XLSX from 'xlsx';
+import { cn } from '../utils';
+import { 
+  Vendor, AccountsPayable, AccountsReceivable, PettyCash, 
+  Supplier, Project, SystemUser, UserRole 
+} from '../types';
+
+interface DataTableProps<T> {
+    title: string;
+    description: string;
+    icon: React.ElementType;
+    data: T[];
+    columns: {
+        key: keyof T | string;
+        label: string;
+        render?: (item: T) => React.ReactNode;
+        sortable?: boolean;
+    }[];
+    onAdd?: () => void;
+    onEdit?: (item: T) => void;
+    onDelete?: (item: T) => void;
+    searchPlaceholder?: string;
+    searchFields: (keyof T)[];
+    exportFileName: string;
+    user: SystemUser;
+}
+
+export function DataTable<T extends { id: string }>({
+    title,
+    description,
+    icon: Icon,
+    data,
+    columns,
+    onAdd,
+    onEdit,
+    onDelete,
+    searchPlaceholder = "Search...",
+    searchFields,
+    exportFileName,
+    user
+}: DataTableProps<T>) {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+
+    const handleSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    const filteredData = useMemo(() => {
+        let result = [...data];
+
+        // Search
+        if (searchTerm.trim()) {
+            const query = searchTerm.toLowerCase();
+            result = result.filter(item => 
+                searchFields.some(field => {
+                    const value = item[field];
+                    return value && String(value).toLowerCase().includes(query);
+                })
+            );
+        }
+
+        // Filters
+        Object.entries(activeFilters).forEach(([key, value]) => {
+            if (value) {
+                result = result.filter(item => String((item as any)[key]) === value);
+            }
+        });
+
+        // Sort
+        if (sortConfig) {
+            result.sort((a, b) => {
+                const aVal = (a as any)[sortConfig.key];
+                const bVal = (b as any)[sortConfig.key];
+                if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        return result;
+    }, [data, searchTerm, searchFields, activeFilters, sortConfig]);
+
+    const handleExport = () => {
+        const exportData = filteredData.map(item => {
+            const row: any = {};
+            columns.forEach(col => {
+                if (typeof col.key === 'string') {
+                    row[col.label] = (item as any)[col.key];
+                }
+            });
+            return row;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Data");
+        XLSX.writeFile(wb, `${exportFileName}.xlsx`);
+    };
+
+    return (
+        <div className="space-y-6 pb-12">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-brand-600 font-bold text-xs uppercase tracking-[0.2em]">
+                        <Icon className="w-4 h-4" />
+                        Finance & Operations
+                    </div>
+                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">{title}</h1>
+                    <p className="text-slate-500 font-medium max-w-xl">{description}</p>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-3">
+                    <button 
+                        onClick={handleExport}
+                        className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
+                    >
+                        <FileSpreadsheet className="w-4 h-4" />
+                        Export Excel
+                    </button>
+                    {onAdd && (
+                        <button 
+                            onClick={onAdd}
+                            className="flex items-center gap-2 px-6 py-3 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all active:scale-95 shadow-lg shadow-brand-600/20"
+                        >
+                            <Plus className="w-4 h-4" />
+                            Add New
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
+                <div className="p-6 border-b border-slate-50 bg-slate-50/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="relative flex-1 max-w-md group">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
+                        <input 
+                            type="text"
+                            placeholder={searchPlaceholder}
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full pl-12 pr-4 py-3.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-sm"
+                        />
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setIsFilterOpen(!isFilterOpen)}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all",
+                                isFilterOpen ? "bg-brand-50 text-brand-600" : "text-slate-500 hover:bg-slate-100"
+                            )}
+                        >
+                            <ListFilter className="w-4 h-4" />
+                            Filters
+                        </button>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50/50">
+                                {columns.map((col) => (
+                                    <th 
+                                        key={String(col.key)}
+                                        className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100"
+                                    >
+                                        <div 
+                                            className={cn(
+                                                "flex items-center gap-2",
+                                                col.sortable && "cursor-pointer hover:text-slate-600 transition-colors"
+                                            )}
+                                            onClick={() => col.sortable && handleSort(String(col.key))}
+                                        >
+                                            {col.label}
+                                            {col.sortable && <ArrowUpDown className="w-3 h-3" />}
+                                        </div>
+                                    </th>
+                                ))}
+                                {(onEdit || onDelete) && (
+                                    <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                                        Actions
+                                    </th>
+                                )}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {filteredData.map((item) => (
+                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                                    {columns.map((col) => (
+                                        <td key={String(col.key)} className="px-6 py-5 text-sm font-bold text-slate-600">
+                                            {col.render ? col.render(item) : String((item as any)[col.key] || '-')}
+                                        </td>
+                                    ))}
+                                    {(onEdit || onDelete) && (
+                                        <td className="px-6 py-5 text-right">
+                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {onEdit && (
+                                                    <button 
+                                                        onClick={() => onEdit(item)}
+                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                                {onDelete && (
+                                                    <button 
+                                                        onClick={() => onDelete(item)}
+                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-red-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    )}
+                                </tr>
+                            ))}
+                            {filteredData.length === 0 && (
+                                <tr>
+                                    <td colSpan={columns.length + 1} className="px-6 py-20 text-center">
+                                        <div className="flex flex-col items-center gap-3">
+                                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
+                                                <Search className="w-8 h-8 text-slate-200" />
+                                            </div>
+                                            <p className="text-slate-400 font-bold">No records found matching your criteria</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// --- Specific Views ---
+
+export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
+    <DataTable<Vendor>
+        title="Vendors"
+        description="Manage your third-party service providers and material vendors."
+        icon={Truck}
+        data={vendors}
+        columns={[
+            { key: 'code', label: 'Code', sortable: true },
+            { key: 'name', label: 'Vendor Name', sortable: true },
+            { key: 'contactPerson', label: 'Contact Person' },
+            { key: 'email', label: 'Email' },
+            { key: 'phone', label: 'Phone' },
+            { key: 'category', label: 'Category', sortable: true },
+        ]}
+        onAdd={onAdd}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        searchFields={['name', 'code', 'contactPerson', 'email']}
+        exportFileName="Vendors_List"
+        user={user}
+    />
+);
+
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, user }: any) => {
+    const getVendorName = (id: string, type: string) => {
+        if (type === 'Supplier') return suppliers.find((s: any) => s.id === id)?.name || 'Unknown';
+        return vendors.find((v: any) => v.id === id)?.name || 'Unknown';
+    };
+
+    const getProjectName = (id?: string) => {
+        if (!id) return '-';
+        return projects.find((p: any) => p.id === id)?.name || 'N/A';
+    };
+
+    return (
+        <DataTable<AccountsPayable>
+            title="Accounts Payable"
+            description="Track and manage outgoing payments to suppliers and vendors."
+            icon={TrendingDown}
+            data={data}
+            columns={[
+                { key: 'date', label: 'Date', sortable: true },
+                { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
+                { 
+                    key: 'vendorId', 
+                    label: 'Vendor/Supplier',
+                    render: (item) => (
+                        <div className="flex flex-col">
+                            <span className="font-bold text-slate-900">{getVendorName(item.vendorId, item.vendorType)}</span>
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">{item.vendorType}</span>
+                        </div>
+                    )
+                },
+                { 
+                    key: 'projectId', 
+                    label: 'Project',
+                    render: (item) => getProjectName(item.projectId)
+                },
+                { 
+                    key: 'amount', 
+                    label: 'Amount',
+                    sortable: true,
+                    render: (item) => (
+                        <span className="font-black text-slate-900">AED {item.amount.toLocaleString()}</span>
+                    )
+                },
+                { 
+                    key: 'status', 
+                    label: 'Status',
+                    render: (item) => (
+                        <span className={cn(
+                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                            item.status === 'Paid' ? "bg-emerald-100 text-emerald-600" :
+                            item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
+                            "bg-blue-100 text-blue-600"
+                        )}>
+                            {item.status}
+                        </span>
+                    )
+                },
+            ]}
+            onAdd={onAdd}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            searchFields={['invoiceNumber', 'description']}
+            exportFileName="Accounts_Payable"
+            user={user}
+        />
+    );
+};
+
+export const AccountsReceivableView = ({ data, projects, onAdd, onEdit, onDelete, user }: any) => {
+    const getProjectName = (id: string) => {
+        return projects.find((p: any) => p.id === id)?.name || 'Unknown Project';
+    };
+
+    return (
+        <DataTable<AccountsReceivable>
+            title="Accounts Receivable"
+            description="Manage incoming payments and client invoicing for projects."
+            icon={TrendingUp}
+            data={data}
+            columns={[
+                { key: 'date', label: 'Date', sortable: true },
+                { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
+                { 
+                    key: 'projectId', 
+                    label: 'Project',
+                    render: (item) => (
+                        <div className="flex flex-col">
+                            <span className="font-bold text-slate-900">{getProjectName(item.projectId)}</span>
+                        </div>
+                    )
+                },
+                { 
+                    key: 'amount', 
+                    label: 'Amount',
+                    sortable: true,
+                    render: (item) => (
+                        <span className="font-black text-slate-900">AED {item.amount.toLocaleString()}</span>
+                    )
+                },
+                { 
+                    key: 'status', 
+                    label: 'Status',
+                    render: (item) => (
+                        <span className={cn(
+                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                            item.status === 'Received' ? "bg-emerald-100 text-emerald-600" :
+                            item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
+                            "bg-blue-100 text-blue-600"
+                        )}>
+                            {item.status}
+                        </span>
+                    )
+                },
+            ]}
+            onAdd={onAdd}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            searchFields={['invoiceNumber', 'description']}
+            exportFileName="Accounts_Receivable"
+            user={user}
+        />
+    );
+};
+
+export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }: any) => {
+    const getProjectName = (id?: string) => {
+        if (!id) return 'General';
+        return projects.find((p: any) => p.id === id)?.name || 'N/A';
+    };
+
+    return (
+        <DataTable<PettyCash>
+            title="Petty Cash"
+            description="Manage small daily expenses and miscellaneous cash transactions."
+            icon={Wallet}
+            data={data}
+            columns={[
+                { key: 'date', label: 'Date', sortable: true },
+                { key: 'category', label: 'Category', sortable: true },
+                { key: 'description', label: 'Description' },
+                { 
+                    key: 'projectId', 
+                    label: 'Project',
+                    render: (item) => getProjectName(item.projectId)
+                },
+                { 
+                    key: 'amount', 
+                    label: 'Amount',
+                    sortable: true,
+                    render: (item) => (
+                        <span className={cn(
+                            "font-black",
+                            item.type === 'Income' ? "text-emerald-600" : "text-red-600"
+                        )}>
+                            {item.type === 'Income' ? '+' : '-'} AED {item.amount.toLocaleString()}
+                        </span>
+                    )
+                },
+                { key: 'requestedBy', label: 'Requested By' },
+            ]}
+            onAdd={onAdd}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            searchFields={['description', 'category', 'requestedBy']}
+            exportFileName="Petty_Cash"
+            user={user}
+        />
+    );
+};
+
+// --- Modals ---
+
+export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
+    const [formData, setFormData] = useState(vendor || { code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '' });
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white"
+            >
+                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{vendor ? 'Edit Vendor' : 'Add Vendor'}</h2>
+                        <p className="text-slate-500 text-sm font-medium mt-1">Enter vendor details below</p>
+                    </div>
+                    <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
+                </div>
+
+                <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Vendor Code</label>
+                            <input 
+                                type="text"
+                                value={formData.code}
+                                onChange={e => setFormData({ ...formData, code: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Category</label>
+                            <input 
+                                type="text"
+                                value={formData.category}
+                                onChange={e => setFormData({ ...formData, category: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Vendor Name</label>
+                        <input 
+                            type="text"
+                            value={formData.name}
+                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Contact Person</label>
+                        <input 
+                            type="text"
+                            value={formData.contactPerson}
+                            onChange={e => setFormData({ ...formData, contactPerson: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Email</label>
+                            <input 
+                                type="email"
+                                value={formData.email}
+                                onChange={e => setFormData({ ...formData, email: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Phone</label>
+                            <input 
+                                type="text"
+                                value={formData.phone}
+                                onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
+                    <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
+                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Vendor</button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave, onCancel }: any) => {
+    const [formData, setFormData] = useState(ap || { 
+        id: Math.random().toString(36).substr(2, 9),
+        date: new Date().toISOString().split('T')[0],
+        vendorId: '',
+        vendorType: 'Supplier',
+        projectId: '',
+        invoiceNumber: '',
+        amount: 0,
+        description: '',
+        status: 'Pending'
+    });
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white"
+            >
+                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{ap ? 'Edit Payable' : 'Add Payable'}</h2>
+                        <p className="text-slate-500 text-sm font-medium mt-1">Enter payment details below</p>
+                    </div>
+                    <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
+                </div>
+
+                <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Date</label>
+                            <input 
+                                type="date"
+                                value={formData.date}
+                                onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice #</label>
+                            <input 
+                                type="text"
+                                value={formData.invoiceNumber}
+                                onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Vendor Type</label>
+                            <select 
+                                value={formData.vendorType}
+                                onChange={e => setFormData({ ...formData, vendorType: e.target.value, vendorId: '' })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            >
+                                <option value="Supplier">Supplier</option>
+                                <option value="Vendor">Vendor</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select {formData.vendorType}</label>
+                            <select 
+                                value={formData.vendorId}
+                                onChange={e => setFormData({ ...formData, vendorId: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            >
+                                <option value="">Select...</option>
+                                {(formData.vendorType === 'Supplier' ? suppliers : vendors).map((v: any) => (
+                                    <option key={v.id} value={v.id}>{v.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
+                        <select 
+                            value={formData.projectId}
+                            onChange={e => setFormData({ ...formData, projectId: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        >
+                            <option value="">General / No Project</option>
+                            {projects.map((p: any) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Amount (AED)</label>
+                            <input 
+                                type="number"
+                                value={formData.amount}
+                                onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Status</label>
+                            <select 
+                                value={formData.status}
+                                onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            >
+                                <option value="Pending">Pending</option>
+                                <option value="Paid">Paid</option>
+                                <option value="Partially Paid">Partially Paid</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Description</label>
+                        <textarea 
+                            value={formData.description}
+                            onChange={e => setFormData({ ...formData, description: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[100px]"
+                        />
+                    </div>
+                </div>
+
+                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
+                    <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
+                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Entry</button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+export const AccountsReceivableModal = ({ ar, projects, onSave, onCancel }: any) => {
+    const [formData, setFormData] = useState(ar || { 
+        id: Math.random().toString(36).substr(2, 9),
+        date: new Date().toISOString().split('T')[0],
+        projectId: '',
+        invoiceNumber: '',
+        amount: 0,
+        description: '',
+        status: 'Pending'
+    });
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white"
+            >
+                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{ar ? 'Edit Receivable' : 'Add Receivable'}</h2>
+                        <p className="text-slate-500 text-sm font-medium mt-1">Enter income details below</p>
+                    </div>
+                    <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
+                </div>
+
+                <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Date</label>
+                            <input 
+                                type="date"
+                                value={formData.date}
+                                onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice #</label>
+                            <input 
+                                type="text"
+                                value={formData.invoiceNumber}
+                                onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project</label>
+                        <select 
+                            value={formData.projectId}
+                            onChange={e => setFormData({ ...formData, projectId: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        >
+                            <option value="">Select Project...</option>
+                            {projects.map((p: any) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Amount (AED)</label>
+                            <input 
+                                type="number"
+                                value={formData.amount}
+                                onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Status</label>
+                            <select 
+                                value={formData.status}
+                                onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            >
+                                <option value="Pending">Pending</option>
+                                <option value="Received">Received</option>
+                                <option value="Partially Received">Partially Received</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Description</label>
+                        <textarea 
+                            value={formData.description}
+                            onChange={e => setFormData({ ...formData, description: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[100px]"
+                        />
+                    </div>
+                </div>
+
+                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
+                    <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
+                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Entry</button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) => {
+    const [formData, setFormData] = useState(pettyCash || { 
+        id: Math.random().toString(36).substr(2, 9),
+        date: new Date().toISOString().split('T')[0],
+        category: '',
+        description: '',
+        amount: 0,
+        type: 'Expense',
+        requestedBy: '',
+        projectId: ''
+    });
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white"
+            >
+                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{pettyCash ? 'Edit Petty Cash' : 'Add Petty Cash'}</h2>
+                        <p className="text-slate-500 text-sm font-medium mt-1">Enter transaction details below</p>
+                    </div>
+                    <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
+                </div>
+
+                <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Date</label>
+                            <input 
+                                type="date"
+                                value={formData.date}
+                                onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Type</label>
+                            <select 
+                                value={formData.type}
+                                onChange={e => setFormData({ ...formData, type: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            >
+                                <option value="Expense">Expense (-)</option>
+                                <option value="Income">Income (+)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Category</label>
+                            <input 
+                                type="text"
+                                value={formData.category}
+                                onChange={e => setFormData({ ...formData, category: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="e.g. Fuel, Stationery"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Amount (AED)</label>
+                            <input 
+                                type="number"
+                                value={formData.amount}
+                                onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
+                        <select 
+                            value={formData.projectId}
+                            onChange={e => setFormData({ ...formData, projectId: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        >
+                            <option value="">General / No Project</option>
+                            {projects.map((p: any) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Requested By</label>
+                        <input 
+                            type="text"
+                            value={formData.requestedBy}
+                            onChange={e => setFormData({ ...formData, requestedBy: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Description</label>
+                        <textarea 
+                            value={formData.description}
+                            onChange={e => setFormData({ ...formData, description: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[80px]"
+                        />
+                    </div>
+                </div>
+
+                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
+                    <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
+                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Entry</button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};

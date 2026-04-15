@@ -51,7 +51,9 @@ import { Login } from './components/Login';
 import { 
   Employee, AttendanceRecord, AttendanceStatus, StaffType, 
   LeaveRequest, LeaveStatus, OffboardingDetails, 
-  SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, Supplier, Project, AuditLog
+  SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, Supplier, Project, 
+  Vendor, AccountsPayable, AccountsReceivable, PettyCash,
+  AuditLog
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -62,12 +64,20 @@ import {
   addCompany, updateCompany, deleteCompany, reorderCompanies,
   addSupplier, updateSupplier, deleteSupplier, reorderSuppliers,
   addProject, updateProject, deleteProject, reorderProjects,
+  addVendor, updateVendor, deleteVendor,
+  saveAccountsPayable, deleteAccountsPayable,
+  saveAccountsReceivable, deleteAccountsReceivable,
+  savePettyCash, deletePettyCash,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
 import SmartCommand from './components/SmartCommand';
 import { Layout } from './components/Layout';
 import { GoogleDriveManager } from './components/GoogleDriveManager';
+import { 
+  VendorView, AccountsPayableView, AccountsReceivableView, PettyCashView,
+  VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal
+} from './components/FinanceViews';
 
 // --- Constants & Helpers ---
 const LEGEND: any = {
@@ -2554,6 +2564,10 @@ export default function App() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [accountsPayable, setAccountsPayable] = useState<AccountsPayable[]>([]);
+  const [accountsReceivable, setAccountsReceivable] = useState<AccountsReceivable[]>([]);
+  const [pettyCash, setPettyCash] = useState<PettyCash[]>([]);
   const hasLoggedLogin = useRef(false);
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -2583,6 +2597,12 @@ export default function App() {
   const [showLeaveRequest, setShowLeaveRequest] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [showPayslip, setShowPayslip] = useState<Employee | null>(null);
+  
+  // Finance Modals
+  const [showVendorModal, setShowVendorModal] = useState<Vendor | boolean>(false);
+  const [showAPModal, setShowAPModal] = useState<AccountsPayable | boolean>(false);
+  const [showARModal, setShowARModal] = useState<AccountsReceivable | boolean>(false);
+  const [showPettyCashModal, setShowPettyCashModal] = useState<PettyCash | boolean>(false);
   
   // Confirm Modal
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'danger' as 'danger' | 'warning' });
@@ -2715,6 +2735,30 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'projects');
     });
 
+    const unsubVendors = onSnapshot(collection(db, 'vendors'), (snap) => {
+      setVendors(snap.docs.map(d => d.data() as Vendor));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'vendors');
+    });
+
+    const unsubAP = onSnapshot(collection(db, 'accounts_payable'), (snap) => {
+      setAccountsPayable(snap.docs.map(d => d.data() as AccountsPayable));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'accounts_payable');
+    });
+
+    const unsubAR = onSnapshot(collection(db, 'accounts_receivable'), (snap) => {
+      setAccountsReceivable(snap.docs.map(d => d.data() as AccountsReceivable));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'accounts_receivable');
+    });
+
+    const unsubPettyCash = onSnapshot(collection(db, 'petty_cash'), (snap) => {
+      setPettyCash(snap.docs.map(d => d.data() as PettyCash));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'petty_cash');
+    });
+
     const unsubUsers = (systemUser?.permissions?.canManageUsers || isCreator) ? onSnapshot(collection(db, 'users'), (snap) => {
       setSystemUsers(snap.docs.map(d => d.data() as SystemUser));
     }, (error) => {
@@ -2729,9 +2773,74 @@ export default function App() {
       unsubCompanies();
       unsubSuppliers();
       unsubProjects();
+      unsubVendors();
+      unsubAP();
+      unsubAR();
+      unsubPettyCash();
       unsubUsers();
     };
   }, [isAuthReady, user, systemUser]);
+
+  // Finance Handlers
+  const handleSaveVendor = async (data: any) => {
+    if (typeof showVendorModal === 'object') {
+      await updateVendor({ ...showVendorModal, ...data });
+      handleLogAction('Vendor Updated', `Vendor ${data.name} was updated.`, 'update');
+    } else {
+      await addVendor(data, vendors.length);
+      handleLogAction('Vendor Added', `New vendor ${data.name} was added.`, 'create');
+    }
+    setShowVendorModal(false);
+  };
+
+  const handleDeleteVendor = async (v: Vendor) => {
+    openConfirm("Delete Vendor", `Are you sure you want to delete ${v.name}?`, async () => {
+      await deleteVendor(v.id);
+      handleLogAction('Vendor Deleted', `Vendor ${v.name} was deleted.`, 'delete');
+    });
+  };
+
+  const handleSaveAP = async (data: AccountsPayable) => {
+    await saveAccountsPayable(data);
+    const isUpdate = accountsPayable.some(ap => ap.id === data.id);
+    handleLogAction(isUpdate ? 'Payable Updated' : 'Payable Added', `Accounts payable entry ${data.invoiceNumber} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
+    setShowAPModal(false);
+  };
+
+  const handleDeleteAP = async (ap: AccountsPayable) => {
+    openConfirm("Delete Entry", `Are you sure you want to delete invoice ${ap.invoiceNumber}?`, async () => {
+      await deleteAccountsPayable(ap.id);
+      handleLogAction('Payable Deleted', `Accounts payable entry ${ap.invoiceNumber} was deleted.`, 'delete');
+    });
+  };
+
+  const handleSaveAR = async (data: AccountsReceivable) => {
+    await saveAccountsReceivable(data);
+    const isUpdate = accountsReceivable.some(ar => ar.id === data.id);
+    handleLogAction(isUpdate ? 'Receivable Updated' : 'Receivable Added', `Accounts receivable entry ${data.invoiceNumber} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
+    setShowARModal(false);
+  };
+
+  const handleDeleteAR = async (ar: AccountsReceivable) => {
+    openConfirm("Delete Entry", `Are you sure you want to delete invoice ${ar.invoiceNumber}?`, async () => {
+      await deleteAccountsReceivable(ar.id);
+      handleLogAction('Receivable Deleted', `Accounts receivable entry ${ar.invoiceNumber} was deleted.`, 'delete');
+    });
+  };
+
+  const handleSavePettyCash = async (data: PettyCash) => {
+    await savePettyCash(data);
+    const isUpdate = pettyCash.some(pc => pc.id === data.id);
+    handleLogAction(isUpdate ? 'Petty Cash Updated' : 'Petty Cash Added', `Petty cash entry ${data.description} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
+    setShowPettyCashModal(false);
+  };
+
+  const handleDeletePettyCash = async (pc: PettyCash) => {
+    openConfirm("Delete Entry", `Are you sure you want to delete petty cash entry: ${pc.description}?`, async () => {
+      await deletePettyCash(pc.id);
+      handleLogAction('Petty Cash Deleted', `Petty cash entry ${pc.description} was deleted.`, 'delete');
+    });
+  };
 
   // Handlers
   const navItems = useMemo(() => {
@@ -3150,32 +3259,45 @@ export default function App() {
         <PayrollRegisterView employees={employees.filter(e => e.active)} attendance={attendance} deductions={deductions} selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} user={systemUser} companies={companies} />
       )}
       {activeTab === 'vendors' && (
-        <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
-          <Truck className="w-12 h-12 text-brand-600 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Vendors Management</h2>
-          <p className="text-slate-500">This section is under development. Here you will be able to manage your vendor database.</p>
-        </div>
+        <VendorView 
+          vendors={vendors} 
+          onAdd={() => setShowVendorModal(true)} 
+          onEdit={(v: Vendor) => setShowVendorModal(v)} 
+          onDelete={handleDeleteVendor}
+          user={systemUser}
+        />
       )}
       {activeTab === 'accounts-payable' && (
-        <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
-          <TrendingDown className="w-12 h-12 text-red-600 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Accounts Payable</h2>
-          <p className="text-slate-500">This section is under development. Track and manage your outgoing payments and vendor invoices here.</p>
-        </div>
+        <AccountsPayableView 
+          data={accountsPayable}
+          vendors={vendors}
+          suppliers={suppliers}
+          projects={projects}
+          onAdd={() => setShowAPModal(true)}
+          onEdit={(ap: AccountsPayable) => setShowAPModal(ap)}
+          onDelete={handleDeleteAP}
+          user={systemUser}
+        />
       )}
       {activeTab === 'accounts-receivable' && (
-        <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
-          <TrendingUp className="w-12 h-12 text-emerald-600 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Accounts Receivable</h2>
-          <p className="text-slate-500">This section is under development. Track and manage your incoming payments and client invoices here.</p>
-        </div>
+        <AccountsReceivableView 
+          data={accountsReceivable}
+          projects={projects}
+          onAdd={() => setShowARModal(true)}
+          onEdit={(ar: AccountsReceivable) => setShowARModal(ar)}
+          onDelete={handleDeleteAR}
+          user={systemUser}
+        />
       )}
       {activeTab === 'petty-cash' && (
-        <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm">
-          <Wallet className="w-12 h-12 text-brand-600 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Petty Cash</h2>
-          <p className="text-slate-500">This section is under development. Manage small daily expenses and cash on hand here.</p>
-        </div>
+        <PettyCashView 
+          data={pettyCash}
+          projects={projects}
+          onAdd={() => setShowPettyCashModal(true)}
+          onEdit={(pc: PettyCash) => setShowPettyCashModal(pc)}
+          onDelete={handleDeletePettyCash}
+          user={systemUser}
+        />
       )}
       {activeTab === 'reports' && (
         <ReportsView 
@@ -3253,6 +3375,39 @@ export default function App() {
             onLog={handleLogAction} 
             onAdd={handleCreateCompany}
             onUpdate={handleUpdateCompany}
+          />
+        )}
+        {showVendorModal && (
+          <VendorModal 
+            vendor={typeof showVendorModal === 'object' ? showVendorModal : null}
+            onSave={handleSaveVendor}
+            onCancel={() => setShowVendorModal(false)}
+          />
+        )}
+        {showAPModal && (
+          <AccountsPayableModal 
+            ap={typeof showAPModal === 'object' ? showAPModal : null}
+            vendors={vendors}
+            suppliers={suppliers}
+            projects={projects}
+            onSave={handleSaveAP}
+            onCancel={() => setShowAPModal(false)}
+          />
+        )}
+        {showARModal && (
+          <AccountsReceivableModal 
+            ar={typeof showARModal === 'object' ? showARModal : null}
+            projects={projects}
+            onSave={handleSaveAR}
+            onCancel={() => setShowARModal(false)}
+          />
+        )}
+        {showPettyCashModal && (
+          <PettyCashModal 
+            pettyCash={typeof showPettyCashModal === 'object' ? showPettyCashModal : null}
+            projects={projects}
+            onSave={handleSavePettyCash}
+            onCancel={() => setShowPettyCashModal(false)}
           />
         )}
         {showAuditModal && (

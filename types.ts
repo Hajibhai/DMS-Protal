@@ -189,6 +189,63 @@ export interface Project {
     order?: number;
 }
 
+export interface Vendor {
+    id: string;
+    code: string;
+    name: string;
+    contactPerson: string;
+    address: string;
+    email: string;
+    phone?: string;
+    category?: string;
+    notes?: string;
+    logo?: string; // Base64
+    driveFiles?: DriveFile[];
+    driveFolderId?: string;
+    order?: number;
+}
+
+export interface AccountsPayable {
+    id: string;
+    date: string;
+    vendorId: string; // Linked to Supplier or Vendor
+    vendorType: 'Supplier' | 'Vendor';
+    projectId?: string; // Optional link to project
+    invoiceNumber: string;
+    amount: number;
+    description: string;
+    status: 'Pending' | 'Paid' | 'Partially Paid';
+    dueDate?: string;
+    paymentDate?: string;
+    attachment?: string;
+}
+
+export interface AccountsReceivable {
+    id: string;
+    date: string;
+    projectId: string; // Linked to Project
+    invoiceNumber: string;
+    amount: number;
+    description: string;
+    status: 'Pending' | 'Received' | 'Partially Received';
+    dueDate?: string;
+    receivedDate?: string;
+    attachment?: string;
+}
+
+export interface PettyCash {
+    id: string;
+    date: string;
+    category: string;
+    description: string;
+    amount: number;
+    type: 'Income' | 'Expense';
+    requestedBy: string;
+    approvedBy?: string;
+    projectId?: string; // Optional link to project
+    attachment?: string;
+}
+
 export interface DashboardStats {
   totalStaff: number;
   present: number;

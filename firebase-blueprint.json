@@ -174,6 +174,81 @@
         "driveFiles": { "type": "array" }
       },
       "required": ["id", "code", "name", "status"]
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "Vendor entity details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "address": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "category": { "type": "string" },
+        "notes": { "type": "string" },
+        "logo": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["id", "code", "name", "contactPerson"]
+    },
+    "AccountsPayable": {
+      "title": "Accounts Payable",
+      "description": "Outgoing payments and vendor invoices",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "vendorId": { "type": "string" },
+        "vendorType": { "type": "string", "enum": ["Supplier", "Vendor"] },
+        "projectId": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Paid", "Partially Paid"] },
+        "dueDate": { "type": "string" },
+        "paymentDate": { "type": "string" },
+        "attachment": { "type": "string" }
+      },
+      "required": ["id", "date", "vendorId", "vendorType", "invoiceNumber", "amount", "status"]
+    },
+    "AccountsReceivable": {
+      "title": "Accounts Receivable",
+      "description": "Incoming payments and client invoices",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "projectId": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "Received", "Partially Received"] },
+        "dueDate": { "type": "string" },
+        "receivedDate": { "type": "string" },
+        "attachment": { "type": "string" }
+      },
+      "required": ["id", "date", "projectId", "invoiceNumber", "amount", "status"]
+    },
+    "PettyCash": {
+      "title": "Petty Cash",
+      "description": "Small daily expenses and cash on hand",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["Income", "Expense"] },
+        "requestedBy": { "type": "string" },
+        "approvedBy": { "type": "string" },
+        "projectId": { "type": "string" },
+        "attachment": { "type": "string" }
+      },
+      "required": ["id", "date", "category", "description", "amount", "type", "requestedBy"]
     }
   },
   "firestore": {
@@ -208,6 +283,22 @@
     "/projects/{projectId}": {
       "schema": "Project",
       "description": "List of projects managed in the system"
+    },
+    "/vendors/{vendorId}": {
+      "schema": "Vendor",
+      "description": "List of vendors managed in the system"
+    },
+    "/accounts_payable/{apId}": {
+      "schema": "AccountsPayable",
+      "description": "Accounts payable records"
+    },
+    "/accounts_receivable/{arId}": {
+      "schema": "AccountsReceivable",
+      "description": "Accounts receivable records"
+    },
+    "/petty_cash/{pcId}": {
+      "schema": "PettyCash",
+      "description": "Petty cash transaction records"
     },
     "/settings/about": {
       "schema": "object",
