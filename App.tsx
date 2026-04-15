@@ -2849,12 +2849,12 @@ export default function App() {
       { id: 'company', label: 'Company', icon: Building2, permission: 'canViewCompanyDashboard' },
       { 
         id: 'clients-group', 
-        label: 'Clients', 
+        label: 'Works', 
         icon: Globe, 
         subItems: [
           { id: 'suppliers', label: 'Suppliers', icon: Truck, permission: 'canManageSuppliers' },
           { id: 'projects', label: 'Projects', icon: Briefcase, permission: 'canManageProjects' },
-          { id: 'vendors', label: 'Vendors', icon: Truck, permission: 'canManageProjects' },
+          { id: 'vendors', label: 'Clients', icon: Truck, permission: 'canManageProjects' },
         ]
       },
       { 

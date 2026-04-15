@@ -257,13 +257,13 @@ export function DataTable<T extends { id: string }>({
 
 export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
     <DataTable<Vendor>
-        title="Vendors"
-        description="Manage your third-party service providers and material vendors."
+        title="Clients"
+        description="Manage your third-party service providers and material clients."
         icon={Truck}
         data={vendors}
         columns={[
             { key: 'code', label: 'Code', sortable: true },
-            { key: 'name', label: 'Vendor Name', sortable: true },
+            { key: 'name', label: 'Client Name', sortable: true },
             { key: 'contactPerson', label: 'Contact Person' },
             { key: 'email', label: 'Email' },
             { key: 'phone', label: 'Phone' },
@@ -292,7 +292,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     return (
         <DataTable<AccountsPayable>
             title="Accounts Payable"
-            description="Track and manage outgoing payments to suppliers and vendors."
+            description="Track and manage outgoing payments to suppliers and clients."
             icon={TrendingDown}
             data={data}
             columns={[
@@ -300,11 +300,11 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                 { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
                 { 
                     key: 'vendorId', 
-                    label: 'Vendor/Supplier',
+                    label: 'Client/Supplier',
                     render: (item) => (
                         <div className="flex flex-col">
                             <span className="font-bold text-slate-900">{getVendorName(item.vendorId, item.vendorType)}</span>
-                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">{item.vendorType}</span>
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">{item.vendorType === 'Vendor' ? 'Client' : item.vendorType}</span>
                         </div>
                     )
                 },
@@ -473,8 +473,8 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
             >
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{vendor ? 'Edit Vendor' : 'Add Vendor'}</h2>
-                        <p className="text-slate-500 text-sm font-medium mt-1">Enter vendor details below</p>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{vendor ? 'Edit Client' : 'Add Client'}</h2>
+                        <p className="text-slate-500 text-sm font-medium mt-1">Enter client details below</p>
                     </div>
                     <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
                 </div>
@@ -482,7 +482,7 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
                 <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto">
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Vendor Code</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Client Code</label>
                             <input 
                                 type="text"
                                 value={formData.code}
@@ -501,7 +501,7 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
                         </div>
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Vendor Name</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Client Name</label>
                         <input 
                             type="text"
                             value={formData.name}
@@ -542,7 +542,7 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
 
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
                     <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
-                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Vendor</button>
+                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Client</button>
                 </div>
             </motion.div>
         </div>
@@ -600,18 +600,18 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Vendor Type</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Payee Type</label>
                             <select 
                                 value={formData.vendorType}
                                 onChange={e => setFormData({ ...formData, vendorType: e.target.value, vendorId: '' })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             >
                                 <option value="Supplier">Supplier</option>
-                                <option value="Vendor">Vendor</option>
+                                <option value="Vendor">Client</option>
                             </select>
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select {formData.vendorType}</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select {formData.vendorType === 'Vendor' ? 'Client' : formData.vendorType}</label>
                             <select 
                                 value={formData.vendorId}
                                 onChange={e => setFormData({ ...formData, vendorId: e.target.value })}
