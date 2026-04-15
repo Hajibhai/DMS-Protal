@@ -346,9 +346,12 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     );
 };
 
-export const AccountsReceivableView = ({ data, projects, onAdd, onEdit, onDelete, user }: any) => {
-    const getProjectName = (id: string) => {
-        return projects.find((p: any) => p.id === id)?.name || 'Unknown Project';
+export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, user }: any) => {
+    const getEntityName = (id: string, type: string) => {
+        if (type === 'Project') return projects.find((p: any) => p.id === id)?.name || 'Unknown Project';
+        if (type === 'Supplier') return suppliers.find((s: any) => s.id === id)?.name || 'Unknown Supplier';
+        if (type === 'Vendor') return vendors.find((v: any) => v.id === id)?.name || 'Unknown Client';
+        return 'Unknown';
     };
 
     return (
@@ -361,11 +364,16 @@ export const AccountsReceivableView = ({ data, projects, onAdd, onEdit, onDelete
                 { key: 'date', label: 'Date', sortable: true },
                 { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
                 { 
-                    key: 'projectId', 
-                    label: 'Project',
-                    render: (item) => (
+                    key: 'entityId', 
+                    label: 'Entity / Project',
+                    render: (item: any) => (
                         <div className="flex flex-col">
-                            <span className="font-bold text-slate-900">{getProjectName(item.projectId)}</span>
+                            <span className="font-bold text-slate-900">
+                                {getEntityName(item.entityId || item.projectId, item.entityType || 'Project')}
+                            </span>
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+                                {(item.entityType || 'Project') === 'Vendor' ? 'Client' : (item.entityType || 'Project')}
+                            </span>
                         </div>
                     )
                 },
@@ -679,15 +687,25 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
     );
 };
 
-export const AccountsReceivableModal = ({ ar, projects, onSave, onCancel }: any) => {
-    const [formData, setFormData] = useState(ar || { 
-        id: Math.random().toString(36).substr(2, 9),
-        date: new Date().toISOString().split('T')[0],
-        projectId: '',
-        invoiceNumber: '',
-        amount: 0,
-        description: '',
-        status: 'Pending'
+export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSave, onCancel }: any) => {
+    const [formData, setFormData] = useState(() => {
+        if (ar) {
+            return {
+                ...ar,
+                entityId: ar.entityId || ar.projectId || '',
+                entityType: ar.entityType || 'Project'
+            };
+        }
+        return { 
+            id: Math.random().toString(36).substr(2, 9),
+            date: new Date().toISOString().split('T')[0],
+            entityId: '',
+            entityType: 'Project',
+            invoiceNumber: '',
+            amount: 0,
+            description: '',
+            status: 'Pending'
+        };
     });
 
     return (
@@ -726,18 +744,40 @@ export const AccountsReceivableModal = ({ ar, projects, onSave, onCancel }: any)
                             />
                         </div>
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project</label>
-                        <select 
-                            value={formData.projectId}
-                            onChange={e => setFormData({ ...formData, projectId: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                        >
-                            <option value="">Select Project...</option>
-                            {projects.map((p: any) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Entity Type</label>
+                            <select 
+                                value={formData.entityType}
+                                onChange={e => setFormData({ ...formData, entityType: e.target.value, entityId: '' })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            >
+                                <option value="Project">Project</option>
+                                <option value="Supplier">Supplier</option>
+                                <option value="Vendor">Client</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
+                                Select {formData.entityType === 'Vendor' ? 'Client' : formData.entityType}
+                            </label>
+                            <select 
+                                value={formData.entityId}
+                                onChange={e => setFormData({ ...formData, entityId: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            >
+                                <option value="">Select...</option>
+                                {formData.entityType === 'Project' && projects.map((p: any) => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                                {formData.entityType === 'Supplier' && suppliers.map((s: any) => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                                {formData.entityType === 'Vendor' && vendors.map((v: any) => (
+                                    <option key={v.id} value={v.id}>{v.name}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">

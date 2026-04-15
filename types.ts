@@ -223,7 +223,8 @@ export interface AccountsPayable {
 export interface AccountsReceivable {
     id: string;
     date: string;
-    projectId: string; // Linked to Project
+    entityId: string; // Linked to Project, Supplier, or Vendor
+    entityType: 'Project' | 'Supplier' | 'Vendor';
     invoiceNumber: string;
     amount: number;
     description: string;

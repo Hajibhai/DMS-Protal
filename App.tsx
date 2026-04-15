@@ -3289,6 +3289,8 @@ export default function App() {
         <AccountsReceivableView 
           data={accountsReceivable}
           projects={projects}
+          suppliers={suppliers}
+          vendors={vendors}
           onAdd={() => setShowARModal(true)}
           onEdit={(ar: AccountsReceivable) => setShowARModal(ar)}
           onDelete={handleDeleteAR}
@@ -3411,6 +3413,8 @@ export default function App() {
           <AccountsReceivableModal 
             ar={typeof showARModal === 'object' ? showARModal : null}
             projects={projects}
+            suppliers={suppliers}
+            vendors={vendors}
             onSave={handleSaveAR}
             onCancel={() => setShowARModal(false)}
           />
@@ -7166,7 +7170,7 @@ const ReportsView = ({
             case 'projects':
                 data = projects.map((p: any) => {
                     const projectStaff = activeStaff.filter((e: any) => e.team === p.name);
-                    const projectAR = monthlyAR.filter(ar => ar.projectId === p.id).reduce((acc, ar) => acc + ar.amount, 0);
+                    const projectAR = monthlyAR.filter(ar => (ar.entityId || ar.projectId) === p.id && (ar.entityType || 'Project') === 'Project').reduce((acc, ar) => acc + ar.amount, 0);
                     const projectAP = monthlyAP.filter(ap => ap.projectId === p.id).reduce((acc, ap) => acc + ap.amount, 0);
                     return {
                         'Project Name': p.name,
@@ -7191,14 +7195,23 @@ const ReportsView = ({
                         Amount: ap.amount, 
                         Status: ap.status 
                     })),
-                    ...monthlyAR.map(ar => ({ 
-                        Type: 'Receivable', 
-                        Date: ar.date, 
-                        Ref: ar.invoiceNumber, 
-                        Entity: projects.find((p: any) => p.id === ar.projectId)?.clientName || 'Unknown Client', 
-                        Amount: ar.amount, 
-                        Status: ar.status 
-                    })),
+                    ...monthlyAR.map(ar => {
+                        const type = ar.entityType || 'Project';
+                        const id = ar.entityId || ar.projectId;
+                        let entityName = 'Unknown';
+                        if (type === 'Project') entityName = projects.find((p: any) => p.id === id)?.clientName || 'Unknown Client';
+                        else if (type === 'Supplier') entityName = suppliers.find((s: any) => s.id === id)?.name || 'Unknown Supplier';
+                        else if (type === 'Vendor') entityName = vendors.find((v: any) => v.id === id)?.name || 'Unknown Client';
+
+                        return { 
+                            Type: 'Receivable', 
+                            Date: ar.date, 
+                            Ref: ar.invoiceNumber, 
+                            Entity: entityName, 
+                            Amount: ar.amount, 
+                            Status: ar.status 
+                        };
+                    }),
                     ...monthlyPettyCash.map(pc => ({ 
                         Type: `Petty Cash (${pc.type === 'Income' ? 'In' : 'Out'})`, 
                         Date: pc.date, 
@@ -7405,7 +7418,7 @@ const ReportsView = ({
                             ))}
                             {reportType === 'projects' && projects.map((p: any) => {
                                 const projectStaff = activeStaff.filter((e: any) => e.team === p.name);
-                                const projectAR = monthlyAR.filter(ar => ar.projectId === p.id).reduce((acc, ar) => acc + ar.amount, 0);
+                                const projectAR = monthlyAR.filter(ar => (ar.entityId || ar.projectId) === p.id && (ar.entityType || 'Project') === 'Project').reduce((acc, ar) => acc + ar.amount, 0);
                                 const projectAP = monthlyAP.filter(ap => ap.projectId === p.id).reduce((acc, ap) => acc + ap.amount, 0);
                                 const margin = projectAR - projectAP;
                                 return (
@@ -7436,15 +7449,24 @@ const ReportsView = ({
                                     status: ap.status, 
                                     color: 'rose' 
                                 })),
-                                ...monthlyAR.map(ar => ({ 
-                                    type: 'Receivable', 
-                                    date: ar.date, 
-                                    ref: ar.invoiceNumber, 
-                                    entity: projects.find((p: any) => p.id === ar.projectId)?.clientName || 'Unknown Client', 
-                                    amount: ar.amount, 
-                                    status: ar.status, 
-                                    color: 'emerald' 
-                                })),
+                                ...monthlyAR.map(ar => {
+                                    const type = ar.entityType || 'Project';
+                                    const id = ar.entityId || ar.projectId;
+                                    let entityName = 'Unknown';
+                                    if (type === 'Project') entityName = projects.find((p: any) => p.id === id)?.clientName || 'Unknown Client';
+                                    else if (type === 'Supplier') entityName = suppliers.find((s: any) => s.id === id)?.name || 'Unknown Supplier';
+                                    else if (type === 'Vendor') entityName = vendors.find((v: any) => v.id === id)?.name || 'Unknown Client';
+
+                                    return { 
+                                        type: 'Receivable', 
+                                        date: ar.date, 
+                                        ref: ar.invoiceNumber, 
+                                        entity: entityName, 
+                                        amount: ar.amount, 
+                                        status: ar.status, 
+                                        color: 'emerald' 
+                                    };
+                                }),
                                 ...monthlyPettyCash.map(pc => ({ 
                                     type: `Petty Cash (${pc.type === 'Income' ? 'In' : 'Out'})`, 
                                     date: pc.date, 
