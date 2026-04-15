@@ -2738,14 +2738,35 @@ export default function App() {
     const baseItems = [
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3, permission: 'canViewDashboard' },
       { id: 'company', label: 'Company', icon: Building2, permission: 'canViewCompanyDashboard' },
-      { id: 'suppliers', label: 'Suppliers', icon: Truck, permission: 'canManageSuppliers' },
-      { id: 'projects', label: 'Projects', icon: Briefcase, permission: 'canManageProjects' },
-      { id: 'staff', label: 'Staff Directory', icon: Users, permission: 'canManageEmployees' },
-      { id: 'ex-employees', label: 'Ex-Employees', icon: UserMinus, permission: 'canManageEmployees' }, 
-      { id: 'timesheet', label: 'Monthly Timesheet', icon: Calendar, permission: 'canViewTimesheet' },
-      { id: 'deductions', label: 'Deductions', icon: Wallet, permission: 'canManagePayroll' },
-      { id: 'leave', label: 'Leave Management', icon: FileText, permission: 'canManageLeaves' },
-      { id: 'payroll', label: 'Payroll Register', icon: DirhamIcon, permission: 'canViewPayroll' },
+      { 
+        id: 'clients', 
+        label: 'Clients', 
+        icon: Globe, 
+        subItems: [
+          { id: 'suppliers', label: 'Suppliers', icon: Truck, permission: 'canManageSuppliers' },
+          { id: 'projects', label: 'Projects', icon: Briefcase, permission: 'canManageProjects' },
+        ]
+      },
+      { 
+        id: 'employees', 
+        label: 'Employees', 
+        icon: Users, 
+        subItems: [
+          { id: 'staff', label: 'Staff Directory', icon: Users, permission: 'canManageEmployees' },
+          { id: 'ex-employees', label: 'Ex-Employees', icon: UserMinus, permission: 'canManageEmployees' },
+        ]
+      },
+      { 
+        id: 'attendance-payroll', 
+        label: 'Attendance & Payroll', 
+        icon: CreditCard, 
+        subItems: [
+          { id: 'timesheet', label: 'Monthly Timesheet', icon: Calendar, permission: 'canViewTimesheet' },
+          { id: 'deductions', label: 'Deductions', icon: Wallet, permission: 'canManagePayroll' },
+          { id: 'leave', label: 'Leave Management', icon: FileText, permission: 'canManageLeaves' },
+          { id: 'payroll', label: 'Payroll Register', icon: DirhamIcon, permission: 'canViewPayroll' },
+        ]
+      },
       { id: 'reports', label: 'Reports', icon: BarChart3, permission: 'canViewReports' },
       { id: 'about', label: 'About', icon: AlertCircle, creatorOnly: true },
     ];
@@ -2754,11 +2775,21 @@ export default function App() {
     
     const isCreator = systemUser.role === UserRole.CREATOR || systemUser.email === 'abdulkaderp3010@gmail.com';
     
-    return baseItems.filter(item => {
+    const filterItem = (item: any) => {
         if (item.creatorOnly && !isCreator) return false;
         if (isCreator) return true;
-        return !item.permission || (systemUser.permissions as any)[item.permission];
-    });
+        if (item.permission && !(systemUser.permissions as any)[item.permission]) return false;
+        return true;
+    };
+
+    return baseItems.map(item => {
+        if (item.subItems) {
+            const filteredSubItems = item.subItems.filter(filterItem);
+            if (filteredSubItems.length === 0) return null;
+            return { ...item, subItems: filteredSubItems };
+        }
+        return filterItem(item) ? item : null;
+    }).filter(Boolean) as any[];
   }, [systemUser]);
 
   useEffect(() => {

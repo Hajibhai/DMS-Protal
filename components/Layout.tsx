@@ -41,6 +41,8 @@ export const Layout: React.FC<LayoutProps> = ({
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -66,6 +68,13 @@ export const Layout: React.FC<LayoutProps> = ({
     navItems.forEach(item => {
         if (item.label.toLowerCase().includes(q)) {
             results.push({ type: 'Navigation', title: item.label, subtitle: 'System Section', id: item.id, tab: item.id });
+        }
+        if (item.subItems) {
+            item.subItems.forEach((sub: any) => {
+                if (sub.label.toLowerCase().includes(q)) {
+                    results.push({ type: 'Navigation', title: sub.label, subtitle: `${item.label} Section`, id: sub.id, tab: sub.id });
+                }
+            });
         }
     });
 
@@ -177,31 +186,101 @@ export const Layout: React.FC<LayoutProps> = ({
 
               {/* Desktop Navigation */}
               <nav className="hidden lg:flex items-center gap-0.5">
-                {navItems.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    className={cn(
-                      "px-2 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 flex items-center gap-1.5 relative group",
-                      activeTab === item.id 
-                        ? "text-brand-600 bg-brand-50" 
-                        : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-                    )}
-                  >
-                    <item.icon className={cn(
-                      "w-4 h-4 transition-transform duration-300 group-hover:scale-110",
-                      activeTab === item.id ? "text-brand-600" : "text-slate-400 group-hover:text-slate-600"
-                    )} />
-                    {item.label}
-                    {activeTab === item.id && (
-                      <motion.div
-                        layoutId="active-nav-indicator"
-                        className="absolute bottom-0 left-4 right-4 h-0.5 bg-brand-600 rounded-full"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                      />
-                    )}
-                  </button>
-                ))}
+                {navItems.map((item) => {
+                  const hasSubItems = item.subItems && item.subItems.length > 0;
+                  const isParentActive = hasSubItems && item.subItems.some((sub: any) => sub.id === activeTab);
+                  const isActive = activeTab === item.id || isParentActive;
+
+                  if (hasSubItems) {
+                    return (
+                      <div 
+                        key={item.id} 
+                        className="relative group"
+                        onMouseEnter={() => setOpenDropdown(item.id)}
+                        onMouseLeave={() => setOpenDropdown(null)}
+                      >
+                        <button
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 flex items-center gap-1.5 relative group",
+                            isActive 
+                              ? "text-brand-600 bg-brand-50" 
+                              : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                          )}
+                        >
+                          <item.icon className={cn(
+                            "w-4 h-4 transition-transform duration-300 group-hover:scale-110",
+                            isActive ? "text-brand-600" : "text-slate-400 group-hover:text-slate-600"
+                          )} />
+                          {item.label}
+                          <ChevronDown className={cn("w-3 h-3 transition-transform duration-300", openDropdown === item.id && "rotate-180")} />
+                          {isActive && (
+                            <motion.div
+                              layoutId="active-nav-indicator"
+                              className="absolute bottom-0 left-4 right-4 h-0.5 bg-brand-600 rounded-full"
+                              transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                            />
+                          )}
+                        </button>
+
+                        <AnimatePresence>
+                          {openDropdown === item.id && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                              className="absolute top-full left-0 mt-1 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 p-1.5 z-50"
+                            >
+                              {item.subItems.map((sub: any) => (
+                                <button
+                                  key={sub.id}
+                                  onClick={() => {
+                                    setActiveTab(sub.id);
+                                    setOpenDropdown(null);
+                                  }}
+                                  className={cn(
+                                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all",
+                                    activeTab === sub.id
+                                      ? "bg-brand-50 text-brand-600"
+                                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                                  )}
+                                >
+                                  <sub.icon className={cn("w-4 h-4", activeTab === sub.id ? "text-brand-600" : "text-slate-400")} />
+                                  {sub.label}
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 flex items-center gap-1.5 relative group",
+                        activeTab === item.id 
+                          ? "text-brand-600 bg-brand-50" 
+                          : "text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                      )}
+                    >
+                      <item.icon className={cn(
+                        "w-4 h-4 transition-transform duration-300 group-hover:scale-110",
+                        activeTab === item.id ? "text-brand-600" : "text-slate-400 group-hover:text-slate-600"
+                      )} />
+                      {item.label}
+                      {activeTab === item.id && (
+                        <motion.div
+                          layoutId="active-nav-indicator"
+                          className="absolute bottom-0 left-4 right-4 h-0.5 bg-brand-600 rounded-full"
+                          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
               </nav>
             </div>
 
@@ -536,24 +615,83 @@ export const Layout: React.FC<LayoutProps> = ({
               </div>
               
               <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                {navItems.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setActiveTab(item.id);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={cn(
-                      "w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all font-bold",
-                      activeTab === item.id 
-                        ? "bg-brand-600 text-white shadow-lg shadow-brand-600/20" 
-                        : "text-slate-600 hover:bg-slate-50"
-                    )}
-                  >
-                    <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-slate-400")} />
-                    {item.label}
-                  </button>
-                ))}
+                {navItems.map((item) => {
+                  const hasSubItems = item.subItems && item.subItems.length > 0;
+                  const isParentActive = hasSubItems && item.subItems.some((sub: any) => sub.id === activeTab);
+                  const isActive = activeTab === item.id || isParentActive;
+
+                  if (hasSubItems) {
+                    const isExpanded = mobileExpanded === item.id;
+                    return (
+                      <div key={item.id} className="space-y-1">
+                        <button
+                          onClick={() => setMobileExpanded(isExpanded ? null : item.id)}
+                          className={cn(
+                            "w-full flex items-center justify-between px-4 py-4 rounded-2xl transition-all font-bold",
+                            isActive 
+                              ? "bg-brand-50 text-brand-600" 
+                              : "text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <div className="flex items-center gap-4">
+                            <item.icon className={cn("w-5 h-5", isActive ? "text-brand-600" : "text-slate-400")} />
+                            {item.label}
+                          </div>
+                          <ChevronDown className={cn("w-4 h-4 transition-transform duration-300", isExpanded && "rotate-180")} />
+                        </button>
+                        
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden pl-4 space-y-1"
+                            >
+                              {item.subItems.map((sub: any) => (
+                                <button
+                                  key={sub.id}
+                                  onClick={() => {
+                                    setActiveTab(sub.id);
+                                    setIsMobileMenuOpen(false);
+                                  }}
+                                  className={cn(
+                                    "w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all font-bold text-sm",
+                                    activeTab === sub.id 
+                                      ? "text-brand-600 bg-brand-50" 
+                                      : "text-slate-500 hover:bg-slate-50"
+                                  )}
+                                >
+                                  <sub.icon className={cn("w-4 h-4", activeTab === sub.id ? "text-brand-600" : "text-slate-400")} />
+                                  {sub.label}
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all font-bold",
+                        activeTab === item.id 
+                          ? "bg-brand-600 text-white shadow-lg shadow-brand-600/20" 
+                          : "text-slate-600 hover:bg-slate-50"
+                      )}
+                    >
+                      <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-slate-400")} />
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="p-6 border-t border-slate-100">
