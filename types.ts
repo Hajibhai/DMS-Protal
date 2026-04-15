@@ -170,6 +170,21 @@ export interface Supplier {
     order?: number;
 }
 
+export interface Project {
+    id: string;
+    code: string;
+    name: string;
+    clientName: string;
+    location: string;
+    startDate: string;
+    endDate?: string;
+    status: 'Active' | 'Completed' | 'On Hold';
+    description?: string;
+    driveFiles?: DriveFile[];
+    driveFolderId?: string;
+    order?: number;
+}
+
 export interface DashboardStats {
   totalStaff: number;
   present: number;
@@ -216,6 +231,7 @@ export interface UserPermissions {
     canManageUsers: boolean; // Create other users
     canManageSettings: boolean; // Companies, Holidays
     canManageSuppliers: boolean;
+    canManageProjects: boolean;
 }
 
 export interface SystemUser {

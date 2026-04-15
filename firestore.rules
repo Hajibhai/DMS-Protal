@@ -94,6 +94,23 @@ function isValidSupplier(data) {
          (!('order' in data) || data.order is number);
 }
 
+// Validate Project
+function isValidProject(data) {
+  return data.keys().hasAll(['id', 'code', 'name', 'status']) &&
+         data.id is string &&
+         data.code is string && data.code.size() >= 1 && data.code.size() <= 50 &&
+         data.name is string && data.name.size() >= 2 && data.name.size() <= 200 &&
+         data.status in ['Active', 'Completed', 'On Hold'] &&
+         (!('clientName' in data) || (data.clientName is string && data.clientName.size() <= 200)) &&
+         (!('location' in data) || (data.location is string && data.location.size() <= 500)) &&
+         (!('startDate' in data) || (data.startDate is string && data.startDate.size() <= 50)) &&
+         (!('endDate' in data) || (data.endDate is string && data.endDate.size() <= 50)) &&
+         (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+         (!('order' in data) || data.order is number) &&
+         (!('driveFolderId' in data) || (data.driveFolderId is string && data.driveFolderId.size() <= 100)) &&
+         (!('driveFiles' in data) || (data.driveFiles is list && data.driveFiles.size() <= 50));
+}
+
 match /companies/{companyId} {
   allow read: if isAuthenticated();
   allow create: if hasPermission('canManageSettings') && isValidCompany(request.resource.data);
@@ -106,6 +123,13 @@ match /suppliers/{supplierId} {
   allow create: if hasPermission('canManageSuppliers') && isValidSupplier(request.resource.data);
   allow update: if hasPermission('canManageSuppliers') && isValidSupplier(request.resource.data);
   allow delete: if hasPermission('canManageSuppliers');
+}
+
+match /projects/{projectId} {
+  allow read: if isAuthenticated();
+  allow create: if hasPermission('canManageProjects') && isValidProject(request.resource.data);
+  allow update: if hasPermission('canManageProjects') && isValidProject(request.resource.data);
+  allow delete: if hasPermission('canManageProjects');
 }
 
     match /settings/about {

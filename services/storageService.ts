@@ -27,6 +27,7 @@ import {
   DeductionRecord,
   Company,
   Supplier,
+  Project,
   AuditLog,
   UserRole
 } from "../types";
@@ -383,6 +384,49 @@ export const deleteSupplier = async (id: string) => {
     await deleteDoc(doc(db, 'suppliers', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `suppliers/${id}`);
+  }
+};
+
+// --- Projects ---
+export const addProject = async (projectData: Omit<Project, 'id'>, currentProjectsCount: number = 0) => {
+  const id = Math.random().toString(36).substr(2, 9);
+  const newProject: Project = {
+    id,
+    ...projectData,
+    order: currentProjectsCount
+  };
+  try {
+    await setDoc(doc(db, 'projects', id), cleanData(newProject));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, `projects/${id}`);
+  }
+};
+
+export const updateProject = async (project: Project) => {
+  try {
+    await setDoc(doc(db, 'projects', project.id), cleanData(project));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `projects/${project.id}`);
+  }
+};
+
+export const reorderProjects = async (projects: Project[]) => {
+  try {
+    const promises = projects.map((project, index) => {
+      const updated = { ...project, order: index };
+      return setDoc(doc(db, 'projects', project.id), cleanData(updated));
+    });
+    await Promise.all(promises);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, 'projects/reorder');
+  }
+};
+
+export const deleteProject = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'projects', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `projects/${id}`);
   }
 };
 

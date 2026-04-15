@@ -150,6 +150,26 @@
         "isCreator": { "type": "boolean" }
       },
       "required": ["id", "timestamp", "userId", "action"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Project details and management",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "clientName": { "type": "string" },
+        "location": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Completed", "On Hold"] },
+        "description": { "type": "string" },
+        "order": { "type": "number" },
+        "driveFolderId": { "type": "string" },
+        "driveFiles": { "type": "array" }
+      },
+      "required": ["id", "code", "name", "status"]
     }
   },
   "firestore": {
@@ -180,6 +200,10 @@
     "/suppliers/{supplierId}": {
       "schema": "Supplier",
       "description": "List of suppliers managed in the system"
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "List of projects managed in the system"
     },
     "/settings/about": {
       "schema": "object",

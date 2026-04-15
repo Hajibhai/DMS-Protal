@@ -29,7 +29,8 @@ export const DEFAULT_ADMIN: SystemUser = {
         canViewReports: true,
         canManageUsers: true,
         canManageSettings: true,
-        canManageSuppliers: true
+        canManageSuppliers: true,
+        canManageProjects: true
     }
 };
 
@@ -54,7 +55,8 @@ export const CREATOR_USER: SystemUser = {
         canViewReports: true,
         canManageUsers: true,
         canManageSettings: true,
-        canManageSuppliers: true
+        canManageSuppliers: true,
+        canManageProjects: true
     }
 };
 
@@ -75,5 +77,6 @@ export const STORAGE_KEYS = {
   COMPANIES: 'shiftsync_companies_v1',
   USERS: 'shiftsync_users_v1',
   ABOUT: 'shiftsync_about_v1',
-  DEDUCTIONS: 'shiftsync_deductions_v1'
+  DEDUCTIONS: 'shiftsync_deductions_v1',
+  PROJECTS: 'shiftsync_projects_v1'
 };

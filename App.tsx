@@ -51,7 +51,7 @@ import { Login } from './components/Login';
 import { 
   Employee, AttendanceRecord, AttendanceStatus, StaffType, 
   LeaveRequest, LeaveStatus, OffboardingDetails, 
-  SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, Supplier, AuditLog
+  SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, Supplier, Project, AuditLog
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -61,6 +61,7 @@ import {
   saveSystemUser, deleteSystemUser,
   addCompany, updateCompany, deleteCompany, reorderCompanies,
   addSupplier, updateSupplier, deleteSupplier, reorderSuppliers,
+  addProject, updateProject, deleteProject, reorderProjects,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
@@ -1219,7 +1220,8 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
             canViewReports: false,
             canManageUsers: false,
             canManageSettings: false,
-            canManageSuppliers: false
+            canManageSuppliers: false,
+            canManageProjects: false
         }
     });
 
@@ -1280,7 +1282,8 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                     canViewReports: false,
                     canManageUsers: false,
                     canManageSettings: false,
-                    canManageSuppliers: false
+                    canManageSuppliers: false,
+                    canManageProjects: false
                 }
             });
         } catch (e: any) {
@@ -2531,6 +2534,7 @@ export default function App() {
   const [deductions, setDeductions] = useState<DeductionRecord[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const hasLoggedLogin = useRef(false);
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -2600,7 +2604,8 @@ export default function App() {
               canViewReports: true,
               canManageUsers: isDefaultAdmin,
               canManageSettings: isDefaultAdmin,
-              canManageSuppliers: isDefaultAdmin
+              canManageSuppliers: isDefaultAdmin,
+              canManageProjects: isDefaultAdmin
             }
           };
           await saveSystemUser(newProfile);
@@ -2685,6 +2690,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'suppliers');
     });
 
+    const unsubProjects = onSnapshot(collection(db, 'projects'), (snap) => {
+      setProjects(snap.docs.map(d => d.data() as Project));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'projects');
+    });
+
     const unsubUsers = (systemUser?.permissions?.canManageUsers || isCreator) ? onSnapshot(collection(db, 'users'), (snap) => {
       setSystemUsers(snap.docs.map(d => d.data() as SystemUser));
     }, (error) => {
@@ -2698,6 +2709,7 @@ export default function App() {
       unsubDeductions();
       unsubCompanies();
       unsubSuppliers();
+      unsubProjects();
       unsubUsers();
     };
   }, [isAuthReady, user, systemUser]);
@@ -2708,6 +2720,7 @@ export default function App() {
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3, permission: 'canViewDashboard' },
       { id: 'company', label: 'Company', icon: Building2, permission: 'canViewCompanyDashboard' },
       { id: 'suppliers', label: 'Suppliers', icon: Truck, permission: 'canManageSuppliers' },
+      { id: 'projects', label: 'Projects', icon: Briefcase, permission: 'canManageProjects' },
       { id: 'staff', label: 'Staff Directory', icon: Users, permission: 'canManageEmployees' },
       { id: 'ex-employees', label: 'Ex-Employees', icon: UserMinus, permission: 'canManageEmployees' }, 
       { id: 'timesheet', label: 'Monthly Timesheet', icon: Calendar, permission: 'canViewTimesheet' },
@@ -2878,6 +2891,29 @@ export default function App() {
     }
   };
 
+  const handleCreateProject = async (projectData: any) => {
+    try {
+        await addProject(projectData, projects.length);
+        if (systemUser) {
+            await logAudit(systemUser, 'Project Created', `New project ${projectData.name} (${projectData.code}) was registered.`, 'create');
+        }
+    } catch (error) {
+        console.error("Failed to create project:", error);
+        throw error;
+    }
+  };
+
+  const handleUpdateProject = async (project: Project) => {
+    try {
+        await updateProject(project);
+        if (systemUser) {
+            await logAudit(systemUser, 'Project Updated', `Project ${project.name} was updated.`, 'update');
+        }
+    } catch (error) {
+        console.error("Failed to update project:", error);
+    }
+  };
+
   const expiringDocs = useMemo(() => {
     const now = new Date();
     const tenDaysFromNow = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
@@ -2962,6 +2998,7 @@ export default function App() {
         <DashboardView 
           employees={employees} 
           suppliers={suppliers}
+          projects={projects}
           attendance={attendance} 
           user={systemUser}
           auditLogs={auditLogs}
@@ -2988,6 +3025,15 @@ export default function App() {
           openConfirm={openConfirm}
           onUpdate={handleUpdateSupplier}
           onAdd={handleCreateSupplier}
+          user={systemUser!}
+        />
+      )}
+      {activeTab === 'projects' && (
+        <ProjectView 
+          projects={projects} 
+          openConfirm={openConfirm}
+          onUpdate={handleUpdateProject}
+          onAdd={handleCreateProject}
           user={systemUser!}
         />
       )}
@@ -3163,7 +3209,7 @@ export default function App() {
 
 // --- Dashboard View ---
 
-const DashboardView = ({ employees, suppliers, attendance, user, auditLogs, setShowAuditModal, onOpenUserManagement, onOpenManageCompanies, onOpenOnboarding, onUpdate, setActiveTab }: any) => {
+const DashboardView = ({ employees, suppliers, projects, attendance, user, auditLogs, setShowAuditModal, onOpenUserManagement, onOpenManageCompanies, onOpenOnboarding, onUpdate, setActiveTab }: any) => {
     const [showQuickAdminMenu, setShowQuickAdminMenu] = useState(false);
     
     // Stats Calculation
@@ -3171,6 +3217,7 @@ const DashboardView = ({ employees, suppliers, attendance, user, auditLogs, setS
     const exEmployees = employees.filter((e:any) => !e.active).length;
     const officeStaff = activeStaff.filter((e:any) => e.team === 'Office Staff' || e.type === StaffType.OFFICE).length;
     const otherEmployees = activeStaff.length - officeStaff;
+    const activeProjects = projects.filter((p: any) => p.status === 'Active').length;
 
     const canManageUsers = user?.permissions?.canManageUsers;
     const canManageSettings = user?.permissions?.canManageSettings;
@@ -3277,10 +3324,10 @@ const DashboardView = ({ employees, suppliers, attendance, user, auditLogs, setS
                     color="indigo"
                 />
                 <BentoStatCard 
-                    title="Others Employees" 
-                    value={otherEmployees} 
-                    trend="-2.1%" 
-                    isUp={false}
+                    title="Active Projects" 
+                    value={activeProjects} 
+                    trend="+2.5%" 
+                    isUp={true}
                     icon={Briefcase} 
                     color="orange"
                 />
@@ -4552,6 +4599,458 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                 <SupplierDocumentsModal 
                     supplier={viewingDocsSupplier}
                     onClose={() => setViewingDocsSupplier(null)}
+                    onUpdate={onUpdate}
+                    openConfirm={openConfirm}
+                />
+            )}
+        </div>
+    );
+};
+
+const ProjectDocumentsModal = ({ project, onClose, onUpdate, openConfirm }: { project: Project, onClose: () => void, onUpdate: (p: Project) => void, openConfirm: any }) => {
+    return (
+        <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-[100] p-4" onClick={onClose}>
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-white flex flex-col max-h-[90vh]"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                    <div className="flex items-center gap-5">
+                        <div className="w-16 h-16 bg-white rounded-[1.5rem] shadow-sm border border-slate-200 flex items-center justify-center overflow-hidden">
+                            <Briefcase className="w-8 h-8 text-slate-300" />
+                        </div>
+                        <div>
+                            <h3 className="text-2xl font-black text-slate-900 leading-tight">{project.name}</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="px-2 py-0.5 bg-brand-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider">{project.code}</span>
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Project Documents</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-4 hover:bg-white rounded-2xl transition-all shadow-sm">
+                        <X className="w-6 h-6 text-slate-400" />
+                    </button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-8">
+                    <GoogleDriveManager 
+                        files={project.driveFiles || []}
+                        onAddFile={(file) => {
+                            const updated = { ...project, driveFiles: [...(project.driveFiles || []), file] };
+                            onUpdate(updated);
+                        }}
+                        onRemoveFile={(fileId) => {
+                            const updated = { ...project, driveFiles: (project.driveFiles || []).filter(f => f.id !== fileId) };
+                            onUpdate(updated);
+                        }}
+                        onUpdateFile={(updatedFile) => {
+                            const updated = { 
+                                ...project, 
+                                driveFiles: (project.driveFiles || []).map(f => f.id === updatedFile.id ? updatedFile : f) 
+                            };
+                            onUpdate(updated);
+                        }}
+                        openConfirm={openConfirm}
+                        title={`${project.name} Documents`}
+                    />
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { projects: Project[], openConfirm: any, onUpdate: (p: Project) => void, onAdd: (p: any) => Promise<void>, user: SystemUser }) => {
+    const [formData, setFormData] = useState({ code: '', name: '', clientName: '', location: '', startDate: '', endDate: '', status: 'Active' as any, description: '' });
+    const [isAdding, setIsAdding] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isReordering, setIsReordering] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [viewingDocsProject, setViewingDocsProject] = useState<Project | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [error, setError] = useState<string | null>(null);
+    const canManageProjects = user?.permissions?.canManageProjects || user?.role === UserRole.CREATOR || user?.email === 'abdulkaderp3010@gmail.com';
+
+    const sortedProjects = useMemo(() => {
+        return [...projects].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    }, [projects]);
+
+    const filteredProjects = useMemo(() => {
+        if (!searchTerm.trim()) return sortedProjects;
+        const query = searchTerm.toLowerCase();
+        return sortedProjects.filter(project => {
+            const matchesName = project.name.toLowerCase().includes(query);
+            const matchesCode = project.code?.toLowerCase().includes(query);
+            const matchesClient = project.clientName?.toLowerCase().includes(query);
+            const matchesLocation = project.location?.toLowerCase().includes(query);
+            return matchesName || matchesCode || matchesClient || matchesLocation;
+        });
+    }, [sortedProjects, searchTerm]);
+
+    const handleAdd = async () => {
+        if (!formData.name.trim() || !formData.code.trim()) {
+            setError("Project name and code are required.");
+            return;
+        }
+        
+        setIsSaving(true);
+        setError(null);
+        try {
+            await onAdd(formData);
+            setFormData({ code: '', name: '', clientName: '', location: '', startDate: '', endDate: '', status: 'Active', description: '' });
+            setIsAdding(false);
+        } catch (err: any) {
+            setError("Failed to save project. Please check your connection and permissions.");
+            console.error(err);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleReorder = async (newOrder: Project[]) => {
+        await reorderProjects(newOrder);
+    };
+
+    const handleUpdate = async (project: Project) => {
+        await updateProject(project);
+        setEditingId(null);
+    };
+
+    const handleDelete = async (id: string) => {
+        openConfirm(
+            "Delete Project",
+            "Are you sure you want to delete this project? This action cannot be undone.",
+            async () => {
+                await deleteProject(id);
+            }
+        );
+    };
+
+    return (
+        <div className="space-y-8 pb-12">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-brand-600 font-bold text-xs uppercase tracking-[0.2em]">
+                        <Briefcase className="w-4 h-4" />
+                        Project Management
+                    </div>
+                    <h1 className="text-4xl font-black text-slate-900 tracking-tight">Projects</h1>
+                    <p className="text-slate-500 font-medium max-w-xl">
+                        Track and manage your active and completed projects.
+                    </p>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+                    <div className="relative w-full sm:w-80 group">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
+                        <input 
+                            type="text"
+                            placeholder="Search projects..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-sm"
+                        />
+                    </div>
+
+                    {canManageProjects && (
+                        <div className="flex gap-3 w-full sm:w-auto">
+                            <button 
+                                onClick={() => setIsReordering(true)}
+                                className="flex-1 sm:flex-none bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+                            >
+                                <GripVertical className="w-4 h-4" /> Reorder
+                            </button>
+                            <button 
+                                onClick={() => setIsAdding(true)}
+                                className="flex-1 sm:flex-none bg-white text-slate-900 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-xl shadow-slate-900/10 active:scale-95"
+                            >
+                                <Plus className="w-4 h-4" /> Add Project
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {isAdding && (
+                <motion.div 
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-[2.5rem] p-8 border border-brand-100 shadow-2xl shadow-brand-600/5"
+                >
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="p-3 bg-brand-50 rounded-2xl">
+                            <Briefcase className="w-6 h-6 text-brand-600" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">New Project Registration</h2>
+                            <p className="text-slate-400 text-sm font-bold">Define the scope and details of your new project</p>
+                        </div>
+                    </div>
+
+                    {error && (
+                        <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-bold">
+                            <AlertCircle className="w-5 h-5" />
+                            {error}
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Project Code</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="e.g. PRJ-2024-001"
+                                value={formData.code}
+                                onChange={e => setFormData({ ...formData, code: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Project Name</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="Project Title"
+                                value={formData.name}
+                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Client Name</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="Client / Owner"
+                                value={formData.clientName}
+                                onChange={e => setFormData({ ...formData, clientName: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Location</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="Project Site"
+                                value={formData.location}
+                                onChange={e => setFormData({ ...formData, location: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
+                            <input 
+                                type="date"
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                value={formData.startDate}
+                                onChange={e => setFormData({ ...formData, startDate: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">End Date (Optional)</label>
+                            <input 
+                                type="date"
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                value={formData.endDate}
+                                onChange={e => setFormData({ ...formData, endDate: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Status</label>
+                            <select 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                value={formData.status}
+                                onChange={e => setFormData({ ...formData, status: e.target.value as any })}
+                            >
+                                <option value="Active">Active</option>
+                                <option value="Completed">Completed</option>
+                                <option value="On Hold">On Hold</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2 lg:col-span-4">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Description</label>
+                            <textarea 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[100px]"
+                                placeholder="Brief project description..."
+                                value={formData.description}
+                                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-end pt-6 border-t border-slate-100 gap-3">
+                        <button onClick={() => setIsAdding(false)} className="px-6 py-2.5 text-slate-500 font-bold text-sm hover:text-slate-700">Cancel</button>
+                        <button onClick={handleAdd} className="px-8 py-2.5 bg-brand-600 text-white rounded-xl font-black text-sm shadow-lg shadow-brand-600/20 hover:bg-brand-700 transition-all active:scale-95">Create Project</button>
+                    </div>
+                </motion.div>
+            )}
+
+            <Reorder.Group 
+                axis="y" 
+                values={sortedProjects} 
+                onReorder={handleReorder}
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            >
+                {filteredProjects.map((project) => (
+                    <Reorder.Item 
+                        value={project}
+                        key={project.id}
+                        dragListener={!searchTerm && canManageProjects}
+                        className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm hover:shadow-xl hover:shadow-slate-200/20 transition-all group relative overflow-hidden cursor-default"
+                    >
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-all group-hover:bg-brand-50/50"></div>
+                        
+                        <div className="relative z-10 flex flex-col h-full">
+                            <div className="flex items-start justify-between mb-6">
+                                <div className="flex items-center gap-4">
+                                    {!searchTerm && canManageProjects && (
+                                        <div className="cursor-grab active:cursor-grabbing p-2 hover:bg-slate-100 rounded-xl text-slate-300 hover:text-slate-500 transition-colors">
+                                            <GripVertical className="w-5 h-5" />
+                                        </div>
+                                    )}
+                                    <div className="h-16 w-16 bg-slate-50 rounded-2xl p-2 border border-slate-100 shadow-inner flex items-center justify-center">
+                                        <Briefcase className="w-8 h-8 text-slate-300" />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+                                    {canManageProjects && (
+                                        <>
+                                            <button 
+                                                onClick={() => setEditingId(project.id)}
+                                                className="p-2 hover:bg-brand-50 text-brand-600 rounded-xl transition-colors"
+                                            >
+                                                <Edit className="w-4 h-4" />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDelete(project.id)}
+                                                className="p-2 hover:bg-red-50 text-red-600 rounded-xl transition-colors"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {editingId === project.id ? (
+                                <div className="space-y-4 animate-in fade-in duration-200">
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        placeholder="Project Code"
+                                        value={project.code || ''}
+                                        onChange={e => updateProject({ ...project, code: e.target.value })}
+                                    />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        value={project.name || ''}
+                                        onChange={e => updateProject({ ...project, name: e.target.value })}
+                                    />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        placeholder="Client Name"
+                                        value={project.clientName || ''}
+                                        onChange={e => updateProject({ ...project, clientName: e.target.value })}
+                                    />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        placeholder="Location"
+                                        value={project.location || ''}
+                                        onChange={e => updateProject({ ...project, location: e.target.value })}
+                                    />
+                                    <select 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                        value={project.status}
+                                        onChange={e => updateProject({ ...project, status: e.target.value as any })}
+                                    >
+                                        <option value="Active">Active</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="On Hold">On Hold</option>
+                                    </select>
+                                    <div className="flex gap-2 pt-2">
+                                        <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">Cancel</button>
+                                        <button onClick={() => handleUpdate(project)} className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold shadow-md shadow-brand-600/20">Save</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-[10px] font-black bg-brand-600 text-white px-2 py-0.5 rounded-md uppercase tracking-wider">{project.code}</span>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight truncate">{project.name}</h3>
+                                        <span className={cn("ml-auto text-[8px] font-black uppercase px-2 py-0.5 rounded-full border", 
+                                            project.status === 'Active' ? 'bg-emerald-100 text-emerald-600 border-emerald-200' : 
+                                            project.status === 'Completed' ? 'bg-blue-100 text-blue-600 border-blue-200' : 
+                                            'bg-orange-100 text-orange-600 border-orange-200'
+                                        )}>
+                                            {project.status}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-3 mt-auto">
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <div className="p-1.5 bg-slate-50 rounded-lg">
+                                                <Users className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold truncate">{project.clientName || 'No client specified'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <div className="p-1.5 bg-slate-50 rounded-lg">
+                                                <Globe className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold truncate">{project.location || 'No location specified'}</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-slate-500">
+                                            <div className="p-1.5 bg-slate-50 rounded-lg">
+                                                <Calendar className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold truncate">{project.startDate} {project.endDate ? `to ${project.endDate}` : '(Ongoing)'}</span>
+                                        </div>
+                                        {project.description && (
+                                            <div className="flex items-start gap-3 text-slate-500">
+                                                <div className="p-1.5 bg-slate-50 rounded-lg mt-0.5">
+                                                    <StickyNote className="w-3.5 h-3.5" />
+                                                </div>
+                                                <p className="text-[11px] font-medium line-clamp-2 italic text-slate-400 leading-relaxed">
+                                                    {project.description}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                {(project.driveFiles || []).length} Documents
+                                            </span>
+                                        </div>
+                                        <button 
+                                            onClick={() => setViewingDocsProject(project)}
+                                            className="px-4 py-2 bg-slate-50 hover:bg-brand-50 text-slate-600 hover:text-brand-600 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border border-slate-100 flex items-center gap-2"
+                                        >
+                                            <FileText className="w-3.5 h-3.5" />
+                                            Documents
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </Reorder.Item>
+                ))}
+                {filteredProjects.length === 0 && (
+                    <div className="col-span-full py-20 text-center bg-slate-50 rounded-[2.5rem] border border-dashed border-slate-200">
+                        <Briefcase className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                            {searchTerm ? 'No matching projects found' : 'No projects registered'}
+                        </h3>
+                        <p className="text-slate-400 font-medium mt-1">
+                            {searchTerm ? 'Try adjusting your search terms.' : (
+                                <>
+                                    Start by {canManageProjects ? (
+                                        <button onClick={() => setIsAdding(true)} className="text-brand-600 font-bold hover:underline">adding</button>
+                                    ) : 'adding'} your first project.
+                                </>
+                            )}
+                        </p>
+                    </div>
+                )}
+            </Reorder.Group>
+
+            {viewingDocsProject && (
+                <ProjectDocumentsModal 
+                    project={viewingDocsProject}
+                    onClose={() => setViewingDocsProject(null)}
                     onUpdate={onUpdate}
                     openConfirm={openConfirm}
                 />
