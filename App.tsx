@@ -3305,6 +3305,13 @@ export default function App() {
           attendance={attendance} 
           leaveRequests={leaveRequests}
           deductions={deductions}
+          projects={projects}
+          accountsPayable={accountsPayable}
+          accountsReceivable={accountsReceivable}
+          pettyCash={pettyCash}
+          suppliers={suppliers}
+          vendors={vendors}
+          user={systemUser}
         />
       )}
       {activeTab === 'about' && (
@@ -7041,249 +7048,461 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
      );
 };
 
-const ReportsView = ({ employees, attendance, leaveRequests, deductions }: any) => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const monthName = now.toLocaleString('default', { month: 'long' });
+const ReportsView = ({ 
+    employees, attendance, leaveRequests, deductions, 
+    projects, accountsPayable, accountsReceivable, pettyCash,
+    suppliers, vendors, user 
+}: any) => {
+    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [reportType, setReportType] = useState('staff');
+
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const currentMonth = month - 1;
+    const currentYear = year;
+    const monthName = new Date(year, currentMonth).toLocaleString('default', { month: 'long' });
 
     const activeStaff = useMemo(() => employees.filter((e: any) => e.active), [employees]);
     
-    const totalStaff = activeStaff.length;
-    
-    // Calculate accurate payroll data for current month based on timesheet
-    const payrollStats = useMemo(() => {
-        let totalGrossWithOT = 0;
-        let totalDeductionsAmt = 0;
+    // Filtered data based on selected month
+    const monthlyAttendance = useMemo(() => attendance.filter((r: any) => {
+        const d = new Date(r.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    }), [attendance, currentMonth, currentYear]);
+
+    const monthlyDeductions = useMemo(() => deductions.filter((d: any) => {
+        const date = new Date(d.date);
+        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    }), [deductions, currentMonth, currentYear]);
+
+    const monthlyAP = useMemo(() => accountsPayable.filter((ap: any) => {
+        const d = new Date(ap.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    }), [accountsPayable, currentMonth, currentYear]);
+
+    const monthlyAR = useMemo(() => accountsReceivable.filter((ar: any) => {
+        const d = new Date(ar.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    }), [accountsReceivable, currentMonth, currentYear]);
+
+    const monthlyPettyCash = useMemo(() => pettyCash.filter((pc: any) => {
+        const d = new Date(pc.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    }), [pettyCash, currentMonth, currentYear]);
+
+    const payrollData = useMemo(() => {
+        return activeStaff.map((e: any) => {
+            const empAttendance = monthlyAttendance.filter((r: any) => r.employeeId === e.id);
+            const empDeductions = monthlyDeductions.filter((d: any) => d.employeeId === e.id);
+            return {
+                employee: e,
+                payroll: calculatePayroll(e, empAttendance, empDeductions)
+            };
+        });
+    }, [activeStaff, monthlyAttendance, monthlyDeductions]);
+
+    const stats = useMemo(() => {
+        const totalGross = payrollData.reduce((acc, p) => acc + p.payroll.grossSalary + p.payroll.otAmount, 0);
+        const totalNet = payrollData.reduce((acc, p) => acc + p.payroll.netSalary, 0);
+        const totalDeductions = payrollData.reduce((acc, p) => acc + p.payroll.totalDeductions, 0);
         
-        activeStaff.forEach((e: any) => {
-            const empAttendance = attendance.filter((r: any) => 
-                r.employeeId === e.id && 
-                new Date(r.date).getMonth() === currentMonth && 
-                new Date(r.date).getFullYear() === currentYear
-            );
-            const empDeductions = deductions.filter((d: any) => 
-                d.employeeId === e.id && 
-                new Date(d.date).getMonth() === currentMonth && 
-                new Date(d.date).getFullYear() === currentYear
-            );
-            
-            const payroll = calculatePayroll(e, empAttendance, empDeductions);
-            totalGrossWithOT += (payroll.grossSalary + payroll.otAmount);
-            totalDeductionsAmt += payroll.totalDeductions;
-        });
+        const totalPayable = monthlyAP.reduce((acc, ap) => acc + ap.amount, 0);
+        const totalReceivable = monthlyAR.reduce((acc, ar) => acc + ar.amount, 0);
         
-        return { totalGrossWithOT, totalDeductionsAmt };
-    }, [activeStaff, attendance, deductions, currentMonth, currentYear]);
+        const pettyCashIn = monthlyPettyCash.filter(pc => pc.type === 'Income').reduce((acc, pc) => acc + pc.amount, 0);
+        const pettyCashOut = monthlyPettyCash.filter(pc => pc.type === 'Expense').reduce((acc, pc) => acc + pc.amount, 0);
 
-    // Total Vacation Days for current month
-    const totalVacationDays = useMemo(() => {
-        if (!leaveRequests) return 0;
-        return leaveRequests.filter((l: any) => {
-            if (l.status !== 'Approved') return false;
-            const startDate = new Date(l.startDate);
-            const endDate = new Date(l.endDate);
-            return (startDate.getMonth() === currentMonth && startDate.getFullYear() === currentYear) ||
-                   (endDate.getMonth() === currentMonth && endDate.getFullYear() === currentYear);
-        }).reduce((acc: number, l: any) => acc + l.days, 0);
-    }, [leaveRequests, currentMonth, currentYear]);
+        return { totalGross, totalNet, totalDeductions, totalPayable, totalReceivable, pettyCashIn, pettyCashOut };
+    }, [payrollData, monthlyAP, monthlyAR, monthlyPettyCash]);
 
-    const companyData = useMemo(() => {
-        const counts: Record<string, number> = {};
-        activeStaff.forEach((e: any) => {
-            counts[e.company] = (counts[e.company] || 0) + 1;
-        });
-        return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-    }, [activeStaff]);
-
-    const teamData = useMemo(() => {
-        const counts: Record<string, number> = {};
-        activeStaff.forEach((e: any) => {
-            counts[e.team] = (counts[e.team] || 0) + 1;
-        });
-        return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-    }, [activeStaff]);
-
-    const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#14b8a6', '#f97316'];
-    
     const handleExport = () => {
-        const data = activeStaff.map((e: any) => ({
-            'Code': e.code,
-            'Name': e.name,
-            'Company': e.company,
-            'Department': e.department,
-            'Team': e.team,
-            'Designation': e.designation,
-            'Basic': e.salary.basic,
-            'Housing': e.salary.housing,
-            'Transport': e.salary.transport,
-            'Other': e.salary.other,
-            'Gross': e.salary.basic + e.salary.housing + e.salary.transport + e.salary.other,
-            'Joining Date': e.joiningDate
-        }));
+        let data: any[] = [];
+        let fileName = `Pioneer_${reportType}_Report_${monthName}_${currentYear}`;
+
+        switch (reportType) {
+            case 'staff':
+                data = activeStaff.map((e: any) => ({
+                    'Code': e.code,
+                    'Name': e.name,
+                    'Company': e.company,
+                    'Department': e.department,
+                    'Team': e.team,
+                    'Designation': e.designation,
+                    'Gross Salary': e.salary.basic + e.salary.housing + e.salary.transport + e.salary.other,
+                    'Joining Date': e.joiningDate
+                }));
+                break;
+            case 'attendance':
+                data = activeStaff.map((e: any) => {
+                    const empAtt = monthlyAttendance.filter(r => r.employeeId === e.id);
+                    const present = empAtt.filter(r => r.status === AttendanceStatus.PRESENT).length;
+                    const absent = empAtt.filter(r => r.status === AttendanceStatus.ABSENT).length;
+                    const otHours = empAtt.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+                    return {
+                        'Code': e.code,
+                        'Name': e.name,
+                        'Present Days': present,
+                        'Absent Days': absent,
+                        'OT Hours': otHours,
+                        'Total Days Logged': empAtt.length
+                    };
+                });
+                break;
+            case 'payroll':
+                data = payrollData.map(p => ({
+                    'Code': p.employee.code,
+                    'Name': p.employee.name,
+                    'Gross Salary': p.payroll.grossSalary,
+                    'OT Amount': p.payroll.otAmount,
+                    'Deductions': p.payroll.totalDeductions,
+                    'Net Salary': p.payroll.netSalary
+                }));
+                break;
+            case 'projects':
+                data = projects.map((p: any) => {
+                    const projectStaff = activeStaff.filter((e: any) => e.team === p.name);
+                    const projectAR = monthlyAR.filter(ar => ar.projectId === p.id).reduce((acc, ar) => acc + ar.amount, 0);
+                    const projectAP = monthlyAP.filter(ap => ap.projectId === p.id).reduce((acc, ap) => acc + ap.amount, 0);
+                    return {
+                        'Project Name': p.name,
+                        'Client': p.clientName,
+                        'Status': p.status,
+                        'Staff Count': projectStaff.length,
+                        'Monthly Revenue': projectAR,
+                        'Monthly Expense': projectAP,
+                        'Net Profit/Loss': projectAR - projectAP
+                    };
+                });
+                break;
+            case 'finance':
+                data = [
+                    ...monthlyAP.map(ap => ({ 
+                        Type: 'Payable', 
+                        Date: ap.date, 
+                        Ref: ap.invoiceNumber, 
+                        Entity: ap.vendorType === 'Supplier' 
+                            ? (suppliers.find((s: any) => s.id === ap.vendorId)?.name || 'Unknown Supplier')
+                            : (vendors.find((v: any) => v.id === ap.vendorId)?.name || 'Unknown Client'), 
+                        Amount: ap.amount, 
+                        Status: ap.status 
+                    })),
+                    ...monthlyAR.map(ar => ({ 
+                        Type: 'Receivable', 
+                        Date: ar.date, 
+                        Ref: ar.invoiceNumber, 
+                        Entity: projects.find((p: any) => p.id === ar.projectId)?.clientName || 'Unknown Client', 
+                        Amount: ar.amount, 
+                        Status: ar.status 
+                    })),
+                    ...monthlyPettyCash.map(pc => ({ 
+                        Type: `Petty Cash (${pc.type === 'Income' ? 'In' : 'Out'})`, 
+                        Date: pc.date, 
+                        Ref: pc.description, 
+                        Entity: pc.requestedBy || pc.receivedFrom, 
+                        Amount: pc.amount, 
+                        Status: 'Completed' 
+                    }))
+                ];
+                break;
+        }
+
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Staff Report");
-        XLSX.writeFile(wb, `Pioneer_Staff_Report_${monthName}_${currentYear}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, "Report");
+        XLSX.writeFile(wb, `${fileName}.xlsx`);
     };
 
     const handlePrint = () => {
         window.print();
     };
 
+    const reportOptions = [
+        { id: 'staff', label: 'Workforce', icon: Users },
+        { id: 'attendance', label: 'Attendance', icon: Calendar },
+        { id: 'payroll', label: 'Payroll', icon: Wallet },
+        { id: 'projects', label: 'Projects', icon: Briefcase },
+        { id: 'finance', label: 'Finance', icon: TrendingUp },
+    ];
+
     return (
         <div className="space-y-8 pb-12">
             <motion.div 
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 no-print"
             >
                 <div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">Analytics & Reports</h2>
-                    <p className="text-slate-500 font-medium">Monthly performance and workforce intelligence for <span className="text-brand-600 font-bold">{monthName} {currentYear}</span>.</p>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">Intelligence Hub</h2>
+                    <p className="text-slate-500 font-medium">Comprehensive analytics for <span className="text-brand-600 font-bold">{monthName} {currentYear}</span>.</p>
                 </div>
-                <div className="flex items-center gap-2 no-print">
-                    <button 
-                        onClick={handleExport}
-                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2"
-                    >
-                        <Download className="w-4 h-4" /> Export Data
-                    </button>
-                    <button 
-                        onClick={handlePrint}
-                        className="px-4 py-2 bg-brand-500 text-white rounded-xl text-sm font-bold hover:bg-brand-600 transition-all shadow-lg shadow-brand-500/20 flex items-center gap-2"
-                    >
-                        <Printer className="w-4 h-4" /> Print Report
-                    </button>
+                
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center bg-white border border-slate-200 rounded-2xl p-1 shadow-sm">
+                        {reportOptions.map((opt) => (
+                            <button
+                                key={opt.id}
+                                onClick={() => setReportType(opt.id)}
+                                className={cn(
+                                    "px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                                    reportType === opt.id 
+                                        ? "bg-brand-600 text-white shadow-lg shadow-brand-600/20" 
+                                        : "text-slate-500 hover:bg-slate-50"
+                                )}
+                            >
+                                <opt.icon className="w-3.5 h-3.5" />
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="relative">
+                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input 
+                            type="month" 
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="pl-12 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm"
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={handleExport}
+                            className="p-2.5 bg-white border border-slate-200 rounded-2xl text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
+                            title="Export to Excel"
+                        >
+                            <Download className="w-5 h-5" />
+                        </button>
+                        <button 
+                            onClick={handlePrint}
+                            className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20"
+                            title="Print Report"
+                        >
+                            <Printer className="w-5 h-5" />
+                        </button>
+                    </div>
                 </div>
             </motion.div>
 
+            {/* Print Header (Only visible in print) */}
+            <div className="hidden print:block mb-8 border-b-2 border-slate-900 pb-4">
+                <div className="flex justify-between items-end">
+                    <div>
+                        <h1 className="text-4xl font-black text-slate-900">PIONEER DMS</h1>
+                        <p className="text-slate-500 font-bold uppercase tracking-widest text-xs mt-1">Official Business Report</p>
+                    </div>
+                    <div className="text-right">
+                        <h2 className="text-2xl font-bold text-slate-900">{reportOptions.find(o => o.id === reportType)?.label} Report</h2>
+                        <p className="text-slate-500 font-medium">{monthName} {currentYear}</p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Summary Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {[
-                    { label: 'Employees', value: totalStaff, icon: Users, color: 'brand', delay: 0.1 },
-                    { label: 'Salary', value: `AED ${payrollStats.totalGrossWithOT.toLocaleString()}`, icon: Wallet, color: 'emerald', delay: 0.2 },
-                    { label: 'Deductions', value: `AED ${payrollStats.totalDeductionsAmt.toLocaleString()}`, icon: TrendingDown, color: 'orange', delay: 0.3 },
-                    { label: 'Vacation', value: `${totalVacationDays} Days`, icon: Calendar, color: 'violet', delay: 0.4 },
-                ].map((stat, i) => (
-                    <motion.div 
-                        key={i}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: stat.delay }}
-                        className="glass-card p-6 rounded-3xl border border-white shadow-xl shadow-slate-200/40 group hover:scale-[1.02] transition-all"
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className={cn(
-                                "w-12 h-12 rounded-2xl flex items-center justify-center transition-transform group-hover:rotate-12",
-                                stat.color === 'brand' ? 'bg-brand-50 text-brand-600' :
-                                stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
-                                stat.color === 'orange' ? 'bg-orange-50 text-orange-600' :
-                                'bg-violet-50 text-violet-600'
-                            )}>
-                                <stat.icon className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{stat.label}</div>
-                                <div className="text-xl font-black text-slate-900">{stat.value}</div>
-                            </div>
-                        </div>
-                    </motion.div>
-                ))}
+                {reportType === 'staff' && [
+                    { label: 'Total Staff', value: activeStaff.length, icon: Users, color: 'brand' },
+                    { label: 'Departments', value: new Set(activeStaff.map((e: any) => e.department)).size, icon: LayoutGrid, color: 'emerald' },
+                    { label: 'Teams', value: new Set(activeStaff.map((e: any) => e.team)).size, icon: Briefcase, color: 'orange' },
+                    { label: 'Avg Salary', value: `AED ${Math.round(stats.totalGross / (activeStaff.length || 1)).toLocaleString()}`, icon: Wallet, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'attendance' && [
+                    { label: 'Total Logs', value: monthlyAttendance.length, icon: Calendar, color: 'brand' },
+                    { label: 'Present Days', value: monthlyAttendance.filter(r => r.status === AttendanceStatus.PRESENT).length, icon: CheckCircle, color: 'emerald' },
+                    { label: 'Absent Days', value: monthlyAttendance.filter(r => r.status === AttendanceStatus.ABSENT).length, icon: XCircle, color: 'orange' },
+                    { label: 'OT Hours', value: monthlyAttendance.reduce((acc, r) => acc + (r.overtimeHours || 0), 0), icon: Clock, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'payroll' && [
+                    { label: 'Gross Salary', value: `AED ${stats.totalGross.toLocaleString()}`, icon: Wallet, color: 'brand' },
+                    { label: 'Net Payout', value: `AED ${stats.totalNet.toLocaleString()}`, icon: CreditCard, color: 'emerald' },
+                    { label: 'Deductions', value: `AED ${stats.totalDeductions.toLocaleString()}`, icon: TrendingDown, color: 'orange' },
+                    { label: 'Avg Payout', value: `AED ${Math.round(stats.totalNet / (activeStaff.length || 1)).toLocaleString()}`, icon: TrendingUp, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'projects' && [
+                    { label: 'Active Projects', value: projects.filter((p: any) => p.status === 'Active').length, icon: Briefcase, color: 'brand' },
+                    { label: 'Total Revenue', value: `AED ${stats.totalReceivable.toLocaleString()}`, icon: TrendingUp, color: 'emerald' },
+                    { label: 'Total Expense', value: `AED ${stats.totalPayable.toLocaleString()}`, icon: TrendingDown, color: 'orange' },
+                    { label: 'Net Margin', value: `AED ${(stats.totalReceivable - stats.totalPayable).toLocaleString()}`, icon: Activity, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'finance' && [
+                    { label: 'Receivables', value: `AED ${stats.totalReceivable.toLocaleString()}`, icon: TrendingUp, color: 'emerald' },
+                    { label: 'Payables', value: `AED ${stats.totalPayable.toLocaleString()}`, icon: TrendingDown, color: 'orange' },
+                    { label: 'Petty Cash In', value: `AED ${stats.pettyCashIn.toLocaleString()}`, icon: ArrowUpRight, color: 'brand' },
+                    { label: 'Petty Cash Out', value: `AED ${stats.pettyCashOut.toLocaleString()}`, icon: ArrowDownRight, color: 'rose' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.5 }}
-                    className="lg:col-span-2 glass-card p-8 rounded-3xl border border-white shadow-xl shadow-slate-200/40"
-                >
-                    <div className="flex items-center justify-between mb-8">
-                        <h3 className="text-lg font-bold text-slate-900">Staff Distribution by Company</h3>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 bg-brand-500 rounded-full"></div>
-                            <span className="text-xs font-bold text-slate-500">Active Employees</span>
-                        </div>
-                    </div>
-                    <div className="h-[350px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={companyData}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                <XAxis 
-                                    dataKey="name" 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
-                                    dy={10}
-                                />
-                                <YAxis 
-                                    axisLine={false} 
-                                    tickLine={false} 
-                                    tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
-                                />
-                                <Tooltip 
-                                    cursor={{ fill: '#f8fafc' }}
-                                    contentStyle={{ 
-                                        borderRadius: '16px', 
-                                        border: 'none', 
-                                        boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
-                                        backgroundColor: '#ffffff',
-                                        color: '#000000'
-                                    }}
-                                />
-                                <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                                    {companyData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </motion.div>
-
-                <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.6 }}
-                    className="glass-card p-8 rounded-3xl border border-white shadow-xl shadow-slate-200/40"
-                >
-                    <h3 className="text-lg font-bold text-slate-900 mb-8">Team Composition</h3>
-                    <div className="h-[300px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={teamData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={70}
-                                    outerRadius={100}
-                                    paddingAngle={8}
-                                    dataKey="value"
-                                >
-                                    {teamData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[(index + 3) % COLORS.length]} />
-                                    ))}
-                                </Pie>
-                                <Tooltip 
-                                    contentStyle={{ 
-                                        borderRadius: '16px', 
-                                        border: 'none', 
-                                        boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
-                                        backgroundColor: '#ffffff',
-                                        color: '#000000'
-                                    }}
-                                />
-                                <Legend 
-                                    verticalAlign="bottom" 
-                                    iconType="circle"
-                                    formatter={(value) => <span className="text-xs font-bold text-slate-600">{value}</span>}
-                                />
-                            </PieChart>
-                        </ResponsiveContainer>
-                    </div>
-                </motion.div>
-            </div>
-
+            {/* Main Content Table */}
+            <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="glass-card rounded-[2.5rem] border border-white shadow-2xl shadow-slate-200/50 overflow-hidden"
+            >
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50/50 border-b border-slate-100">
+                                {reportType === 'staff' && ['Code', 'Name', 'Company', 'Department', 'Designation', 'Gross Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'attendance' && ['Code', 'Name', 'Present', 'Absent', 'OT Hours', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'payroll' && ['Code', 'Name', 'Gross', 'OT Amt', 'Deductions', 'Net Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'projects' && ['Project', 'Client', 'Staff', 'Revenue', 'Expense', 'Margin'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'finance' && ['Type', 'Date', 'Reference', 'Entity', 'Amount', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {reportType === 'staff' && activeStaff.map((e: any) => (
+                                <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4 text-sm font-black text-slate-900">{e.code}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-700">{e.name}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.company}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.department}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.designation}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-slate-900">AED {(e.salary.basic + e.salary.housing + e.salary.transport + e.salary.other).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                            {reportType === 'attendance' && activeStaff.map((e: any) => {
+                                const empAtt = monthlyAttendance.filter(r => r.employeeId === e.id);
+                                const present = empAtt.filter(r => r.status === AttendanceStatus.PRESENT).length;
+                                const absent = empAtt.filter(r => r.status === AttendanceStatus.ABSENT).length;
+                                const otHours = empAtt.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+                                return (
+                                    <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
+                                        <td className="px-6 py-4 text-sm font-black text-slate-900">{e.code}</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">{e.name}</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-emerald-600">{present} Days</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-rose-600">{absent} Days</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-violet-600">{otHours} Hrs</td>
+                                        <td className="px-6 py-4">
+                                            <span className={cn(
+                                                "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                                                empAtt.length > 20 ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"
+                                            )}>
+                                                {empAtt.length > 20 ? 'Complete' : 'Partial'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {reportType === 'payroll' && payrollData.map((p: any) => (
+                                <tr key={p.employee.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4 text-sm font-black text-slate-900">{p.employee.code}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-700">{p.employee.name}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-900">AED {p.payroll.grossSalary.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-violet-600">AED {p.payroll.otAmount.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-rose-600">AED {p.payroll.totalDeductions.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-emerald-600 bg-emerald-50/30">AED {p.payroll.netSalary.toLocaleString()}</td>
+                                </tr>
+                            ))}
+                            {reportType === 'projects' && projects.map((p: any) => {
+                                const projectStaff = activeStaff.filter((e: any) => e.team === p.name);
+                                const projectAR = monthlyAR.filter(ar => ar.projectId === p.id).reduce((acc, ar) => acc + ar.amount, 0);
+                                const projectAP = monthlyAP.filter(ap => ap.projectId === p.id).reduce((acc, ap) => acc + ap.amount, 0);
+                                const margin = projectAR - projectAP;
+                                return (
+                                    <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                                        <td className="px-6 py-4 text-sm font-black text-slate-900">{p.name}</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">{p.clientName}</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-500">{projectStaff.length} Staff</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-emerald-600">AED {projectAR.toLocaleString()}</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-rose-600">AED {projectAP.toLocaleString()}</td>
+                                        <td className={cn(
+                                            "px-6 py-4 text-sm font-black",
+                                            margin >= 0 ? "text-emerald-600" : "text-rose-600"
+                                        )}>
+                                            AED {margin.toLocaleString()}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {reportType === 'finance' && [
+                                ...monthlyAP.map(ap => ({ 
+                                    type: 'Payable', 
+                                    date: ap.date, 
+                                    ref: ap.invoiceNumber, 
+                                    entity: ap.vendorType === 'Supplier' 
+                                        ? (suppliers.find((s: any) => s.id === ap.vendorId)?.name || 'Unknown Supplier')
+                                        : (vendors.find((v: any) => v.id === ap.vendorId)?.name || 'Unknown Client'), 
+                                    amount: ap.amount, 
+                                    status: ap.status, 
+                                    color: 'rose' 
+                                })),
+                                ...monthlyAR.map(ar => ({ 
+                                    type: 'Receivable', 
+                                    date: ar.date, 
+                                    ref: ar.invoiceNumber, 
+                                    entity: projects.find((p: any) => p.id === ar.projectId)?.clientName || 'Unknown Client', 
+                                    amount: ar.amount, 
+                                    status: ar.status, 
+                                    color: 'emerald' 
+                                })),
+                                ...monthlyPettyCash.map(pc => ({ 
+                                    type: `Petty Cash (${pc.type === 'Income' ? 'In' : 'Out'})`, 
+                                    date: pc.date, 
+                                    ref: pc.description, 
+                                    entity: pc.requestedBy || pc.receivedFrom, 
+                                    amount: pc.amount, 
+                                    status: 'Completed', 
+                                    color: pc.type === 'Income' ? 'brand' : 'orange' 
+                                }))
+                            ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((item, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <span className={cn(
+                                            "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                                            item.color === 'rose' ? "bg-rose-100 text-rose-700" :
+                                            item.color === 'emerald' ? "bg-emerald-100 text-emerald-700" :
+                                            item.color === 'brand' ? "bg-brand-100 text-brand-700" :
+                                            "bg-orange-100 text-orange-700"
+                                        )}>
+                                            {item.type}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm font-medium text-slate-500">{new Date(item.date).toLocaleDateString('en-GB')}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-700">{item.ref}</td>
+                                    <td className="px-6 py-4 text-sm font-medium text-slate-600">{item.entity}</td>
+                                    <td className={cn(
+                                        "px-6 py-4 text-sm font-black",
+                                        item.type.includes('Receivable') || item.type.includes('Income') ? "text-emerald-600" : "text-rose-600"
+                                    )}>
+                                        AED {item.amount.toLocaleString()}
+                                    </td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-500">{item.status}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </motion.div>
         </div>
     );
 };
+
+const StatCard = ({ label, value, icon: Icon, color, delay }: any) => (
+    <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay }}
+        className="glass-card p-6 rounded-3xl border border-white shadow-xl shadow-slate-200/40 group hover:scale-[1.02] transition-all"
+    >
+        <div className="flex items-center gap-4">
+            <div className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center transition-transform group-hover:rotate-12",
+                color === 'brand' ? 'bg-brand-50 text-brand-600' :
+                color === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
+                color === 'orange' ? 'bg-orange-50 text-orange-600' :
+                color === 'rose' ? 'bg-rose-50 text-rose-600' :
+                'bg-violet-50 text-violet-600'
+            )}>
+                <Icon className="w-6 h-6" />
+            </div>
+            <div>
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</div>
+                <div className="text-xl font-black text-slate-900">{value}</div>
+            </div>
+        </div>
+    </motion.div>
+);
