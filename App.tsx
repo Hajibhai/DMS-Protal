@@ -60,7 +60,7 @@ import {
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
   logAttendance, deleteAttendanceRecord,
-  saveLeaveRequest, updateLeaveRequestStatus,
+  saveLeaveRequest, updateLeaveRequestStatus, deleteLeaveRequest, updateLeaveRequest,
   saveDeduction, deleteDeduction,
   saveSystemUser, deleteSystemUser,
   addCompany, updateCompany, deleteCompany, reorderCompanies,
@@ -3324,7 +3324,13 @@ export default function App() {
         <DeductionsView employees={employees} deductions={deductions} openConfirm={openConfirm} user={systemUser} companies={companies} />
       )}
       {activeTab === 'leave' && (
-        <LeaveManagementView employees={employees} leaveRequests={leaveRequests} user={systemUser} companies={companies} />
+        <LeaveManagementView 
+            employees={employees} 
+            leaveRequests={leaveRequests} 
+            user={systemUser} 
+            companies={companies} 
+            openConfirm={openConfirm}
+        />
       )}
       {activeTab === 'payroll' && (
         <PayrollRegisterView employees={employees.filter(e => e.active)} attendance={attendance} deductions={deductions} selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} user={systemUser} companies={companies} />
@@ -7025,17 +7031,37 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
     );
 };
 
-const LeaveManagementView = ({ employees, leaveRequests, user, companies }: any) => {
+const LeaveManagementView = ({ employees, leaveRequests, user, companies, openConfirm }: any) => {
     const [showNew, setShowNew] = useState(false);
+    const [editingReq, setEditingReq] = useState<LeaveRequest | null>(null);
     const [newReq, setNewReq] = useState({ employeeId: '', type: AttendanceStatus.ANNUAL_LEAVE, startDate: '', endDate: '', reason: '' });
     const [searchTerm, setSearchTerm] = useState('');
-    const canManageLeaves = user?.permissions?.canManageLeaves;
+    const canManageLeaves = user?.permissions?.canManageLeaves || user?.role === 'Creator';
 
     const handleSave = async () => {
         if(newReq.employeeId && newReq.startDate && newReq.endDate) {
             await saveLeaveRequest(newReq as any, user.name);
             setShowNew(false);
+            setNewReq({ employeeId: '', type: AttendanceStatus.ANNUAL_LEAVE, startDate: '', endDate: '', reason: '' });
         }
+    };
+
+    const handleUpdate = async () => {
+        if (editingReq && editingReq.employeeId && editingReq.startDate && editingReq.endDate) {
+            await updateLeaveRequest(editingReq);
+            setEditingReq(null);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        openConfirm(
+            "Delete Leave Request",
+            "Are you sure you want to delete this leave request? This action cannot be undone.",
+            async () => {
+                await deleteLeaveRequest(id);
+            },
+            'danger'
+        );
     };
 
     const handleStatus = async (id: string, status: LeaveStatus) => {
@@ -7171,6 +7197,105 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies }: any)
                 )}
             </AnimatePresence>
 
+            <AnimatePresence>
+                {editingReq && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+                    >
+                        <motion.div 
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden border border-slate-100"
+                        >
+                            <div className="p-8">
+                                <div className="flex items-center justify-between mb-8">
+                                    <h3 className="text-xl font-black text-slate-900 flex items-center gap-3">
+                                        <div className="p-2 bg-brand-50 rounded-xl">
+                                            <Edit className="w-5 h-5 text-brand-600" />
+                                        </div>
+                                        Edit Leave Request
+                                    </h3>
+                                    <button onClick={() => setEditingReq(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-all">
+                                        <X className="w-5 h-5 text-slate-400" />
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Employee</label>
+                                        <select 
+                                            className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
+                                            value={editingReq.employeeId} 
+                                            onChange={e=>setEditingReq({...editingReq, employeeId:e.target.value})}
+                                        >
+                                            {employees.map((e:any)=><option key={e.id} value={e.id}>{e.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Leave Type</label>
+                                        <select 
+                                            className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
+                                            value={editingReq.type} 
+                                            onChange={e=>setEditingReq({...editingReq, type:e.target.value as any})}
+                                        >
+                                            <option value={AttendanceStatus.ANNUAL_LEAVE}>Annual Leave</option>
+                                            <option value={AttendanceStatus.SICK_LEAVE}>Sick Leave</option>
+                                            <option value={AttendanceStatus.EMERGENCY_LEAVE}>Emergency Leave</option>
+                                            <option value={AttendanceStatus.UNPAID_LEAVE}>Unpaid Leave</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
+                                        <input 
+                                            type="date" 
+                                            className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
+                                            value={editingReq.startDate} 
+                                            onChange={e=>setEditingReq({...editingReq, startDate:e.target.value})} 
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">End Date</label>
+                                        <input 
+                                            type="date" 
+                                            className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
+                                            value={editingReq.endDate} 
+                                            onChange={e=>setEditingReq({...editingReq, endDate:e.target.value})} 
+                                        />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Reason / Description</label>
+                                        <textarea 
+                                            className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all min-h-[100px]" 
+                                            value={editingReq.reason} 
+                                            onChange={e=>setEditingReq({...editingReq, reason:e.target.value})} 
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end gap-3">
+                                    <button 
+                                        onClick={() => setEditingReq(null)} 
+                                        className="px-6 py-2.5 text-slate-500 font-bold hover:bg-slate-100 rounded-2xl transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button 
+                                        onClick={handleUpdate} 
+                                        className="neo-button bg-brand-600 text-white px-8 py-2.5 rounded-2xl font-bold shadow-lg shadow-brand-200"
+                                    >
+                                        Update Request
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             <div className="glass-card rounded-3xl overflow-hidden border border-white shadow-xl shadow-slate-200/50">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
@@ -7252,6 +7377,24 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies }: any)
                                                                 title="Reject"
                                                             >
                                                                 <X className="w-5 h-5" />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                    {canManageLeaves && (
+                                                        <>
+                                                            <button 
+                                                                onClick={() => setEditingReq(req)}
+                                                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                                                title="Edit Request"
+                                                            >
+                                                                <Edit className="w-5 h-5" />
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleDelete(req.id!)}
+                                                                className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                                                                title="Delete Request"
+                                                            >
+                                                                <Trash2 className="w-5 h-5" />
                                                             </button>
                                                         </>
                                                     )}

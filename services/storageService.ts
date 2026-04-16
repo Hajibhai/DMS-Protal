@@ -289,6 +289,22 @@ export const updateLeaveRequestStatus = async (id: string, status: LeaveStatus, 
   }
 };
 
+export const deleteLeaveRequest = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'leaves', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `leaves/${id}`);
+  }
+};
+
+export const updateLeaveRequest = async (request: LeaveRequest) => {
+  try {
+    await updateDoc(doc(db, 'leaves', request.id), cleanData(request));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `leaves/${request.id}`);
+  }
+};
+
 // --- Deductions ---
 export const saveDeduction = async (deduction: Omit<DeductionRecord, 'id'>) => {
   const id = Math.random().toString(36).substr(2, 9);
