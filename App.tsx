@@ -24,7 +24,7 @@ import {
   MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, GripVertical,
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
-  ShieldAlert, Truck, StickyNote, Camera
+  ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -7824,6 +7824,71 @@ const ReportsView = ({
                     { 'Category': 'TOTAL VAT PAYABLE', 'Amount': stats.vatPayableAmount, 'Description': 'Output VAT - Input VAT (AP) - Input VAT (Everyday)' }
                 ];
                 break;
+            case 'pl':
+            case 'income_statement':
+                data = [
+                    { 'Category': 'REVENUE', 'Amount': null },
+                    { 'Category': 'Accounts Receivable', 'Amount': stats.totalReceivable },
+                    { 'Category': 'Petty Cash Income', 'Amount': stats.pettyCashIn },
+                    { 'Category': 'TOTAL REVENUE', 'Amount': stats.totalReceivable + stats.pettyCashIn },
+                    { 'Category': '', 'Amount': null },
+                    { 'Category': 'DIRECT COSTS', 'Amount': null },
+                    { 'Category': 'Accounts Payable', 'Amount': stats.totalPayable },
+                    { 'Category': 'Everyday Expenses', 'Amount': stats.totalEveryday },
+                    { 'Category': 'Projected Expenses', 'Amount': stats.totalProjected },
+                    { 'Category': 'TOTAL DIRECT COSTS', 'Amount': stats.totalPayable + stats.totalEveryday + stats.totalProjected },
+                    { 'Category': '', 'Amount': null },
+                    { 'Category': 'OPERATING EXPENSES', 'Amount': null },
+                    { 'Category': 'Payroll (Net Salary)', 'Amount': stats.totalNet },
+                    { 'Category': 'Petty Cash Expenses', 'Amount': stats.pettyCashOut },
+                    { 'Category': 'TOTAL OPERATING EXPENSES', 'Amount': stats.totalNet + stats.pettyCashOut },
+                    { 'Category': '', 'Amount': null },
+                    { 'Category': 'NET PROFIT', 'Amount': (stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut) }
+                ];
+                break;
+            case 'trial_balance':
+                data = [
+                    { 'Account Name': 'Accounts Receivable', 'Debit': stats.totalReceivable, 'Credit': 0 },
+                    { 'Account Name': 'Petty Cash', 'Debit': stats.pettyCashIn, 'Credit': stats.pettyCashOut },
+                    { 'Account Name': 'Accounts Payable', 'Debit': 0, 'Credit': stats.totalPayable },
+                    { 'Account Name': 'Everyday Expenses', 'Debit': stats.totalEveryday, 'Credit': 0 },
+                    { 'Account Name': 'Projected Expenses', 'Debit': stats.totalProjected, 'Credit': 0 },
+                    { 'Account Name': 'Payroll Liability', 'Debit': 0, 'Credit': stats.totalNet },
+                    { 'Account Name': 'TOTAL', 'Debit': stats.totalReceivable + stats.pettyCashIn + stats.totalEveryday + stats.totalProjected, 'Credit': stats.totalPayable + stats.totalNet + stats.pettyCashOut }
+                ];
+                break;
+            case 'balance_sheet':
+                const arPending = monthlyAR.filter(ar => ar.status === 'Pending').reduce((acc, ar) => acc + ar.totalAmount, 0);
+                const apPending = monthlyAP.filter(ap => ap.status === 'Pending').reduce((acc, ap) => acc + ap.totalAmount, 0);
+                const cashBalance = stats.pettyCashIn - stats.pettyCashOut;
+                data = [
+                    { 'Category': 'ASSETS', 'Amount': null },
+                    { 'Category': 'Cash on Hand (Petty Cash)', 'Amount': cashBalance },
+                    { 'Category': 'Accounts Receivable (Pending)', 'Amount': arPending },
+                    { 'Category': 'TOTAL ASSETS', 'Amount': cashBalance + arPending },
+                    { 'Category': '', 'Amount': null },
+                    { 'Category': 'LIABILITIES', 'Amount': null },
+                    { 'Category': 'Accounts Payable (Pending)', 'Amount': apPending },
+                    { 'Category': 'Accrued Payroll', 'Amount': stats.totalNet },
+                    { 'Category': 'TOTAL LIABILITIES', 'Amount': apPending + stats.totalNet },
+                    { 'Category': '', 'Amount': null },
+                    { 'Category': 'EQUITY', 'Amount': null },
+                    { 'Category': 'Retained Earnings', 'Amount': (cashBalance + arPending) - (apPending + stats.totalNet) },
+                    { 'Category': 'TOTAL EQUITY', 'Amount': (cashBalance + arPending) - (apPending + stats.totalNet) }
+                ];
+                break;
+            case 'cash_flow':
+                const arReceived = monthlyAR.filter(ar => ar.status === 'Received').reduce((acc, ar) => acc + ar.totalAmount, 0);
+                const apPaid = monthlyAP.filter(ap => ap.status === 'Paid').reduce((acc, ap) => acc + ap.totalAmount, 0);
+                data = [
+                    { 'Activity': 'CASH FLOW FROM OPERATING ACTIVITIES', 'Amount': null },
+                    { 'Activity': 'Cash Received from Customers', 'Amount': arReceived + stats.pettyCashIn },
+                    { 'Activity': 'Cash Paid to Suppliers', 'Amount': -(apPaid + stats.totalEveryday) },
+                    { 'Activity': 'Cash Paid for Payroll', 'Amount': -stats.totalNet },
+                    { 'Activity': 'Cash Paid for Petty Expenses', 'Amount': -stats.pettyCashOut },
+                    { 'Activity': 'NET CASH FROM OPERATING ACTIVITIES', 'Amount': (arReceived + stats.pettyCashIn) - (apPaid + stats.totalEveryday + stats.totalNet + stats.pettyCashOut) }
+                ];
+                break;
         }
 
         const ws = XLSX.utils.json_to_sheet(data);
@@ -7838,6 +7903,11 @@ const ReportsView = ({
 
     const reportOptions = [
         { id: 'summary', label: 'Summary', icon: BarChart2 },
+        { id: 'pl', label: 'P & L', icon: Activity },
+        { id: 'trial_balance', label: 'Trial Balance', icon: Scale },
+        { id: 'balance_sheet', label: 'Balance Sheet', icon: Landmark },
+        { id: 'cash_flow', label: 'Cash Flow', icon: RefreshCw },
+        { id: 'income_statement', label: 'Income Statement', icon: FileText },
         { id: 'staff', label: 'Workforce', icon: Users },
         { id: 'attendance', label: 'Attendance', icon: Calendar },
         { id: 'payroll', label: 'Payroll', icon: Wallet },
@@ -7930,6 +8000,34 @@ const ReportsView = ({
                     { label: 'Net Profit', value: `AED ${(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet)).toLocaleString()}`, icon: Activity, color: 'violet' },
                 ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
 
+                {(reportType === 'pl' || reportType === 'income_statement') && [
+                    { label: 'Total Revenue', value: `AED ${(stats.totalReceivable + stats.pettyCashIn).toLocaleString()}`, icon: TrendingUp, color: 'emerald' },
+                    { label: 'Direct Costs', value: `AED ${(stats.totalPayable + stats.totalEveryday + stats.totalProjected).toLocaleString()}`, icon: TrendingDown, color: 'rose' },
+                    { label: 'Operating Exp', value: `AED ${(stats.totalNet + stats.pettyCashOut).toLocaleString()}`, icon: CreditCard, color: 'orange' },
+                    { label: 'Net Profit', value: `AED ${(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)).toLocaleString()}`, icon: Activity, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'trial_balance' && [
+                    { label: 'Total Debits', value: `AED ${(stats.totalReceivable + stats.pettyCashIn + stats.totalEveryday + stats.totalProjected).toLocaleString()}`, icon: Scale, color: 'brand' },
+                    { label: 'Total Credits', value: `AED ${(stats.totalPayable + stats.totalNet + stats.pettyCashOut).toLocaleString()}`, icon: Scale, color: 'rose' },
+                    { label: 'Petty Cash Bal', value: `AED ${(stats.pettyCashIn - stats.pettyCashOut).toLocaleString()}`, icon: Wallet, color: 'emerald' },
+                    { label: 'Net Position', value: `AED ${(stats.totalReceivable + stats.pettyCashIn + stats.totalEveryday + stats.totalProjected - (stats.totalPayable + stats.totalNet + stats.pettyCashOut)).toLocaleString()}`, icon: Activity, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'balance_sheet' && [
+                    { label: 'Total Assets', value: `AED ${(stats.pettyCashIn - stats.pettyCashOut + monthlyAR.filter(ar => ar.status === 'Pending').reduce((acc, ar) => acc + ar.totalAmount, 0)).toLocaleString()}`, icon: Landmark, color: 'emerald' },
+                    { label: 'Total Liabilities', value: `AED ${(monthlyAP.filter(ap => ap.status === 'Pending').reduce((acc, ap) => acc + ap.totalAmount, 0) + stats.totalNet).toLocaleString()}`, icon: TrendingDown, color: 'rose' },
+                    { label: 'Retained Earnings', value: `AED ${(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)).toLocaleString()}`, icon: Activity, color: 'brand' },
+                    { label: 'Net Equity', value: `AED ${(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)).toLocaleString()}`, icon: ShieldCheck, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'cash_flow' && [
+                    { label: 'Cash Inflow', value: `AED ${(monthlyAR.filter(ar => ar.status === 'Received').reduce((acc, ar) => acc + ar.totalAmount, 0) + stats.pettyCashIn).toLocaleString()}`, icon: ArrowUpRight, color: 'emerald' },
+                    { label: 'Cash Outflow', value: `AED ${(monthlyAP.filter(ap => ap.status === 'Paid').reduce((acc, ap) => acc + ap.totalAmount, 0) + stats.totalEveryday + stats.totalNet + stats.pettyCashOut).toLocaleString()}`, icon: ArrowDownRight, color: 'rose' },
+                    { label: 'Net Cash Flow', value: `AED ${(monthlyAR.filter(ar => ar.status === 'Received').reduce((acc, ar) => acc + ar.totalAmount, 0) + stats.pettyCashIn - (monthlyAP.filter(ap => ap.status === 'Paid').reduce((acc, ap) => acc + ap.totalAmount, 0) + stats.totalEveryday + stats.totalNet + stats.pettyCashOut)).toLocaleString()}`, icon: RefreshCw, color: 'brand' },
+                    { label: 'Cash Position', value: `AED ${(stats.pettyCashIn - stats.pettyCashOut).toLocaleString()}`, icon: Wallet, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
                 {reportType === 'staff' && [
                     { label: 'Total Staff', value: activeStaff.length, icon: Users, color: 'brand' },
                     { label: 'Departments', value: new Set(activeStaff.map((e: any) => e.department)).size, icon: LayoutGrid, color: 'emerald' },
@@ -7998,62 +8096,149 @@ const ReportsView = ({
                                 {reportType === 'finance' && ['Type', 'Date', 'Reference', 'Entity', 'Amount', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'everyday' && ['Date', 'Invoice', 'Shop/Supplier', 'Client', 'Amount', 'VAT'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'projected' && ['Date', 'Invoice', 'Client', 'Location', 'Amount', 'VAT'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {(reportType === 'pl' || reportType === 'income_statement') && ['Category', 'Amount', 'Percentage'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'trial_balance' && ['Account Name', 'Debit (AED)', 'Credit (AED)'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'balance_sheet' && ['Category', 'Amount (AED)', 'Notes'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'cash_flow' && ['Activity Description', 'Cash Inflow', 'Cash Outflow', 'Net Cash'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'summary' && ['Category', 'Amount', 'Description'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             {reportType === 'summary' && (
                                 <>
-                                    <tr className="bg-slate-50/30">
-                                        <td colSpan={6} className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">General Summary</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Total Income</td>
-                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">Accounts Receivable + Petty Cash Income</td>
-                                        <td className="px-6 py-4 text-sm font-black text-emerald-600">AED {(stats.totalReceivable + stats.pettyCashIn).toLocaleString()}</td>
-                                        <td className="px-6 py-4"></td>
-                                    </tr>
-                                    <tr>
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Total Expenses</td>
-                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">AP + Petty Cash Expenses + Everyday Expenses + Payroll</td>
-                                        <td className="px-6 py-4 text-sm font-black text-rose-600">AED {(stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet).toLocaleString()}</td>
-                                        <td className="px-6 py-4"></td>
-                                    </tr>
-                                    <tr className="bg-slate-900 text-white">
-                                        <td className="px-6 py-4 text-sm font-black uppercase tracking-widest">Net Profit/Loss</td>
-                                        <td colSpan={3} className="px-6 py-4 text-sm font-medium opacity-70">Overall Financial Performance</td>
-                                        <td className="px-6 py-4 text-sm font-black">AED {(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet)).toLocaleString()}</td>
-                                        <td className="px-6 py-4"></td>
-                                    </tr>
+                                    <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">General Summary</td></tr>
+                                    {[
+                                        { c: 'TOTAL INCOME', a: stats.totalReceivable + stats.pettyCashIn, d: 'Accounts Receivable + Petty Cash In' },
+                                        { c: 'TOTAL EXPENSES', a: stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet, d: 'AP + Petty Cash Out + Everyday + Payroll' },
+                                        { c: 'NET PROFIT/LOSS', a: (stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet), d: 'Overall Performance' }
+                                    ].map((r, i) => (
+                                        <tr key={i} className={cn("border-b border-slate-50 hover:bg-slate-50/50 transition-colors", r.c === 'NET PROFIT/LOSS' && "bg-slate-900 text-white")}>
+                                            <td className="px-6 py-4 text-sm font-bold">{r.c}</td>
+                                            <td className={cn("px-6 py-4 text-sm font-black", r.c === 'NET PROFIT/LOSS' ? "text-brand-400" : "text-brand-600")}>AED {r.a?.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-xs font-medium text-slate-500">{r.d}</td>
+                                        </tr>
+                                    ))}
+                                    <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">UAE VAT Filing Summary (5%)</td></tr>
+                                    {[
+                                        { c: 'Output VAT', a: stats.totalVatReceivable, d: 'VAT from Receivables' },
+                                        { c: 'Input VAT', a: stats.totalVatPayable + stats.totalVatEveryday, d: 'VAT from Payables & Expenses' },
+                                        { c: 'TOTAL VAT PAYABLE', a: stats.vatPayableAmount, d: 'Output - Input' }
+                                    ].map((r, i) => (
+                                        <tr key={i} className={cn("border-b border-slate-50 hover:bg-slate-50/50 transition-colors", r.c === 'TOTAL VAT PAYABLE' && "bg-brand-600 text-white")}>
+                                            <td className="px-6 py-4 text-sm font-bold">{r.c}</td>
+                                            <td className={cn("px-6 py-4 text-sm font-black", r.c === 'TOTAL VAT PAYABLE' ? "text-white" : "text-slate-900")}>AED {r.a?.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-xs font-medium text-slate-500">{r.d}</td>
+                                        </tr>
+                                    ))}
+                                </>
+                            )}
 
-                                    <tr className="bg-slate-50/30">
-                                        <td colSpan={6} className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">UAE VAT Filing Summary (5%)</td>
-                                    </tr>
-                                    <tr>
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Output VAT</td>
-                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">VAT collected from Accounts Receivable</td>
-                                        <td className="px-6 py-4 text-sm font-black text-slate-900">AED {stats.totalVatReceivable.toLocaleString()}</td>
-                                        <td className="px-6 py-4"></td>
-                                    </tr>
-                                    <tr>
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Input VAT (Payables)</td>
-                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">VAT paid on Accounts Payable</td>
-                                        <td className="px-6 py-4 text-sm font-black text-slate-900">AED {stats.totalVatPayable.toLocaleString()}</td>
-                                        <td className="px-6 py-4"></td>
-                                    </tr>
-                                    <tr>
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Input VAT (Everyday)</td>
-                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">VAT paid on Everyday Expenses</td>
-                                        <td className="px-6 py-4 text-sm font-black text-slate-900">AED {stats.totalVatEveryday.toLocaleString()}</td>
-                                        <td className="px-6 py-4"></td>
-                                    </tr>
+                            {(reportType === 'pl' || reportType === 'income_statement') && (
+                                <>
+                                    <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Revenue</td></tr>
+                                    {[
+                                        { l: 'Accounts Receivable', v: stats.totalReceivable },
+                                        { l: 'Petty Cash Income', v: stats.pettyCashIn }
+                                    ].map((r, i) => (
+                                        <tr key={i} className="border-b border-slate-50">
+                                            <td className="px-6 py-4 text-sm font-bold text-slate-700">{r.l}</td>
+                                            <td className="px-6 py-4 text-sm font-black text-emerald-600">AED {r.v.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-xs text-slate-400">{((r.v / (stats.totalReceivable + stats.pettyCashIn || 1)) * 100).toFixed(1)}%</td>
+                                        </tr>
+                                    ))}
+                                    <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Direct Costs</td></tr>
+                                    {[
+                                        { l: 'Accounts Payable', v: stats.totalPayable },
+                                        { l: 'Everyday Expenses', v: stats.totalEveryday },
+                                        { l: 'Projected Expenses', v: stats.totalProjected }
+                                    ].map((r, i) => (
+                                        <tr key={i} className="border-b border-slate-50">
+                                            <td className="px-6 py-4 text-sm font-bold text-slate-700">{r.l}</td>
+                                            <td className="px-6 py-4 text-sm font-black text-rose-600">AED {r.v.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-xs text-slate-400">{((r.v / (stats.totalReceivable + stats.pettyCashIn || 1)) * 100).toFixed(1)}%</td>
+                                        </tr>
+                                    ))}
+                                    <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Operating Expenses</td></tr>
+                                    {[
+                                        { l: 'Payroll (Net Salary)', v: stats.totalNet },
+                                        { l: 'Petty Cash Expenses', v: stats.pettyCashOut }
+                                    ].map((r, i) => (
+                                        <tr key={i} className="border-b border-slate-50">
+                                            <td className="px-6 py-4 text-sm font-bold text-slate-700">{r.l}</td>
+                                            <td className="px-6 py-4 text-sm font-black text-orange-600">AED {r.v.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-xs text-slate-400">{((r.v / (stats.totalReceivable + stats.pettyCashIn || 1)) * 100).toFixed(1)}%</td>
+                                        </tr>
+                                    ))}
                                     <tr className="bg-brand-600 text-white">
-                                        <td className="px-6 py-4 text-sm font-black uppercase tracking-widest">Total VAT Payable</td>
-                                        <td colSpan={3} className="px-6 py-4 text-sm font-medium opacity-70">Output VAT - Input VAT (AP) - Input VAT (Everyday)</td>
-                                        <td className="px-6 py-4 text-sm font-black">AED {stats.vatPayableAmount.toLocaleString()}</td>
-                                        <td className="px-6 py-4"></td>
+                                        <td className="px-6 py-5 text-sm font-black uppercase">Net Profit</td>
+                                        <td className="px-6 py-5 text-lg font-black">AED {(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)).toLocaleString()}</td>
+                                        <td className="px-6 py-5 text-xs font-black text-brand-200">{(((stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) / (stats.totalReceivable + stats.pettyCashIn || 1)) * 100).toFixed(1)}% Margin</td>
                                     </tr>
                                 </>
                             )}
+
+                            {reportType === 'trial_balance' && [
+                                { n: 'Accounts Receivable', d: stats.totalReceivable, c: 0 },
+                                { n: 'Petty Cash', d: stats.pettyCashIn, c: stats.pettyCashOut },
+                                { n: 'Accounts Payable', d: 0, c: stats.totalPayable },
+                                { n: 'Everyday Expenses', d: stats.totalEveryday, c: 0 },
+                                { n: 'Projected Expenses', d: stats.totalProjected, c: 0 },
+                                { n: 'Payroll Liability', d: 0, c: stats.totalNet },
+                                { n: 'TOTAL', d: stats.totalReceivable + stats.pettyCashIn + stats.totalEveryday + stats.totalProjected, c: stats.totalPayable + stats.totalNet + stats.pettyCashOut }
+                            ].map((r, i) => (
+                                <tr key={i} className={cn("border-b border-slate-50", r.n === 'TOTAL' && "bg-slate-900 text-white")}>
+                                    <td className="px-6 py-4 text-sm font-bold">{r.n}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-emerald-600">{r.d > 0 ? `AED ${r.d.toLocaleString()}` : '-'}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-rose-600">{r.c > 0 ? `AED ${r.c.toLocaleString()}` : '-'}</td>
+                                </tr>
+                            ))}
+
+                            {reportType === 'balance_sheet' && (
+                                <>
+                                    <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Assets</td></tr>
+                                    {[
+                                        { l: 'Cash on Hand (Petty Cash)', v: stats.pettyCashIn - stats.pettyCashOut, n: 'Current Asset' },
+                                        { l: 'Accounts Receivable (Pending)', v: monthlyAR.filter(ar => ar.status === 'Pending').reduce((acc, ar) => acc + ar.totalAmount, 0), n: 'Current Asset' }
+                                    ].map((r, i) => (
+                                        <tr key={i} className="border-b border-slate-50">
+                                            <td className="px-6 py-4 text-sm font-bold text-slate-700">{r.l}</td>
+                                            <td className="px-6 py-4 text-sm font-black text-emerald-600">AED {r.v.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-xs text-slate-400">{r.n}</td>
+                                        </tr>
+                                    ))}
+                                    <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Liabilities</td></tr>
+                                    {[
+                                        { l: 'Accounts Payable (Pending)', v: monthlyAP.filter(ap => ap.status === 'Pending').reduce((acc, ap) => acc + ap.totalAmount, 0), n: 'Current Liability' },
+                                        { l: 'Accrued Payroll', v: stats.totalNet, n: 'Current Liability' }
+                                    ].map((r, i) => (
+                                        <tr key={i} className="border-b border-slate-50">
+                                            <td className="px-6 py-4 text-sm font-bold text-slate-700">{r.l}</td>
+                                            <td className="px-6 py-4 text-sm font-black text-rose-600">AED {r.v.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-xs text-slate-400">{r.n}</td>
+                                        </tr>
+                                    ))}
+                                    <tr className="bg-slate-900">
+                                        <td className="px-6 py-5 text-sm font-black text-white uppercase">Net Equity</td>
+                                        <td className="px-6 py-5 text-lg font-black text-brand-400">AED {(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)).toLocaleString()}</td>
+                                        <td className="px-6 py-5 text-xs font-black text-slate-400">Balanced</td>
+                                    </tr>
+                                </>
+                            )}
+
+                            {reportType === 'cash_flow' && [
+                                { d: 'Cash Received from Customers', i: monthlyAR.filter(ar => ar.status === 'Received').reduce((acc, ar) => acc + ar.totalAmount, 0) + stats.pettyCashIn, o: 0 },
+                                { d: 'Cash Paid to Suppliers', i: 0, o: monthlyAP.filter(ap => ap.status === 'Paid').reduce((acc, ap) => acc + ap.totalAmount, 0) + stats.totalEveryday },
+                                { d: 'Cash Paid for Payroll', i: 0, o: stats.totalNet },
+                                { d: 'Cash Paid for Petty Expenses', i: 0, o: stats.pettyCashOut },
+                                { d: 'NET CASH FLOW', i: 0, o: 0, n: (monthlyAR.filter(ar => ar.status === 'Received').reduce((acc, ar) => acc + ar.totalAmount, 0) + stats.pettyCashIn) - (monthlyAP.filter(ap => ap.status === 'Paid').reduce((acc, ap) => acc + ap.totalAmount, 0) + stats.totalEveryday + stats.totalNet + stats.pettyCashOut) }
+                            ].map((r, i) => (
+                                <tr key={i} className={cn("border-b border-slate-50", r.d === 'NET CASH FLOW' && "bg-brand-600 text-white")}>
+                                    <td className="px-6 py-4 text-sm font-bold">{r.d}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-emerald-600">{r.i > 0 ? `AED ${r.i.toLocaleString()}` : '-'}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-rose-600">{r.o > 0 ? `AED ${r.o.toLocaleString()}` : '-'}</td>
+                                    <td className="px-6 py-4 text-sm font-black">{r.n !== undefined ? `AED ${r.n.toLocaleString()}` : '-'}</td>
+                                </tr>
+                            ))}
                             {reportType === 'staff' && activeStaff.map((e: any) => (
                                 <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-black text-slate-900">{e.code}</td>
