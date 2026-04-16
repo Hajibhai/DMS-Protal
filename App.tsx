@@ -7480,6 +7480,13 @@ const ReportsView = ({
         const totalPayable = monthlyAP.reduce((acc, ap) => acc + ap.amount, 0);
         const totalReceivable = monthlyAR.reduce((acc, ar) => acc + ar.amount, 0);
         
+        const totalVatReceivable = monthlyAR.reduce((acc, ar) => acc + (ar.vatAmount || 0), 0);
+        const totalVatPayable = monthlyAP.reduce((acc, ap) => acc + (ap.vatAmount || 0), 0);
+        const totalVatEveryday = monthlyEveryday.reduce((acc, ee) => acc + (ee.vatAmount || 0), 0);
+        const totalVatProjected = monthlyProjected.reduce((acc, pe) => acc + (pe.vatAmount || 0), 0);
+
+        const vatPayableAmount = totalVatReceivable - totalVatPayable - totalVatEveryday;
+
         const pettyCashIn = monthlyPettyCash.filter(pc => pc.type === 'Income').reduce((acc, pc) => acc + pc.amount, 0);
         const pettyCashOut = monthlyPettyCash.filter(pc => pc.type === 'Expense').reduce((acc, pc) => acc + pc.amount, 0);
 
@@ -7489,6 +7496,8 @@ const ReportsView = ({
         return { 
             totalGross, totalNet, totalDeductions, 
             totalPayable, totalReceivable, 
+            totalVatReceivable, totalVatPayable, totalVatEveryday, totalVatProjected,
+            vatPayableAmount,
             pettyCashIn, pettyCashOut,
             totalEveryday, totalProjected
         };
@@ -7633,6 +7642,18 @@ const ReportsView = ({
                     'Total Amount': pe.totalAmount
                 }));
                 break;
+            case 'summary':
+                data = [
+                    { 'Category': 'TOTAL INCOME', 'Amount': stats.totalReceivable + stats.pettyCashIn, 'Description': 'Accounts Receivable + Petty Cash In' },
+                    { 'Category': 'TOTAL EXPENSES', 'Amount': stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet, 'Description': 'AP + Petty Cash Out + Everyday + Payroll' },
+                    { 'Category': '', 'Amount': null, 'Description': '' },
+                    { 'Category': 'VAT SUMMARY (UAE VAT FILING)', 'Amount': null, 'Description': '' },
+                    { 'Category': 'Output VAT (Receivables)', 'Amount': stats.totalVatReceivable, 'Description': 'VAT from Accounts Receivable' },
+                    { 'Category': 'Input VAT (Payables)', 'Amount': stats.totalVatPayable, 'Description': 'VAT from Accounts Payable' },
+                    { 'Category': 'Input VAT (Everyday Expenses)', 'Amount': stats.totalVatEveryday, 'Description': 'VAT from Everyday Expenses' },
+                    { 'Category': 'TOTAL VAT PAYABLE', 'Amount': stats.vatPayableAmount, 'Description': 'Output VAT - Input VAT (AP) - Input VAT (Everyday)' }
+                ];
+                break;
         }
 
         const ws = XLSX.utils.json_to_sheet(data);
@@ -7646,6 +7667,7 @@ const ReportsView = ({
     };
 
     const reportOptions = [
+        { id: 'summary', label: 'Summary', icon: BarChart2 },
         { id: 'staff', label: 'Workforce', icon: Users },
         { id: 'attendance', label: 'Attendance', icon: Calendar },
         { id: 'payroll', label: 'Payroll', icon: Wallet },
@@ -7731,6 +7753,13 @@ const ReportsView = ({
 
             {/* Summary Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {reportType === 'summary' && [
+                    { label: 'Total Income', value: `AED ${(stats.totalReceivable + stats.pettyCashIn).toLocaleString()}`, icon: TrendingUp, color: 'emerald' },
+                    { label: 'Total Expenses', value: `AED ${(stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet).toLocaleString()}`, icon: TrendingDown, color: 'rose' },
+                    { label: 'VAT Payable', value: `AED ${stats.vatPayableAmount.toLocaleString()}`, icon: ShieldCheck, color: 'brand' },
+                    { label: 'Net Profit', value: `AED ${(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet)).toLocaleString()}`, icon: Activity, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
                 {reportType === 'staff' && [
                     { label: 'Total Staff', value: activeStaff.length, icon: Users, color: 'brand' },
                     { label: 'Departments', value: new Set(activeStaff.map((e: any) => e.department)).size, icon: LayoutGrid, color: 'emerald' },
@@ -7802,6 +7831,59 @@ const ReportsView = ({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
+                            {reportType === 'summary' && (
+                                <>
+                                    <tr className="bg-slate-50/30">
+                                        <td colSpan={6} className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">General Summary</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Total Income</td>
+                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">Accounts Receivable + Petty Cash Income</td>
+                                        <td className="px-6 py-4 text-sm font-black text-emerald-600">AED {(stats.totalReceivable + stats.pettyCashIn).toLocaleString()}</td>
+                                        <td className="px-6 py-4"></td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Total Expenses</td>
+                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">AP + Petty Cash Expenses + Everyday Expenses + Payroll</td>
+                                        <td className="px-6 py-4 text-sm font-black text-rose-600">AED {(stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet).toLocaleString()}</td>
+                                        <td className="px-6 py-4"></td>
+                                    </tr>
+                                    <tr className="bg-slate-900 text-white">
+                                        <td className="px-6 py-4 text-sm font-black uppercase tracking-widest">Net Profit/Loss</td>
+                                        <td colSpan={3} className="px-6 py-4 text-sm font-medium opacity-70">Overall Financial Performance</td>
+                                        <td className="px-6 py-4 text-sm font-black">AED {(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet)).toLocaleString()}</td>
+                                        <td className="px-6 py-4"></td>
+                                    </tr>
+
+                                    <tr className="bg-slate-50/30">
+                                        <td colSpan={6} className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">UAE VAT Filing Summary (5%)</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Output VAT</td>
+                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">VAT collected from Accounts Receivable</td>
+                                        <td className="px-6 py-4 text-sm font-black text-slate-900">AED {stats.totalVatReceivable.toLocaleString()}</td>
+                                        <td className="px-6 py-4"></td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Input VAT (Payables)</td>
+                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">VAT paid on Accounts Payable</td>
+                                        <td className="px-6 py-4 text-sm font-black text-slate-900">AED {stats.totalVatPayable.toLocaleString()}</td>
+                                        <td className="px-6 py-4"></td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">Input VAT (Everyday)</td>
+                                        <td colSpan={3} className="px-6 py-4 text-sm text-slate-500 font-medium">VAT paid on Everyday Expenses</td>
+                                        <td className="px-6 py-4 text-sm font-black text-slate-900">AED {stats.totalVatEveryday.toLocaleString()}</td>
+                                        <td className="px-6 py-4"></td>
+                                    </tr>
+                                    <tr className="bg-brand-600 text-white">
+                                        <td className="px-6 py-4 text-sm font-black uppercase tracking-widest">Total VAT Payable</td>
+                                        <td colSpan={3} className="px-6 py-4 text-sm font-medium opacity-70">Output VAT - Input VAT (AP) - Input VAT (Everyday)</td>
+                                        <td className="px-6 py-4 text-sm font-black">AED {stats.vatPayableAmount.toLocaleString()}</td>
+                                        <td className="px-6 py-4"></td>
+                                    </tr>
+                                </>
+                            )}
                             {reportType === 'staff' && activeStaff.map((e: any) => (
                                 <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-black text-slate-900">{e.code}</td>

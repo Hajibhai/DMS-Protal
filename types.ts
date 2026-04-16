@@ -213,7 +213,9 @@ export interface AccountsPayable {
     vendorType: 'Supplier' | 'Vendor';
     projectId?: string; // Optional link to project
     invoiceNumber: string;
-    amount: number;
+    amount: number; // Taxable Amount
+    vatAmount: number; // 5% VAT
+    totalAmount: number; // Amount + VAT
     description: string;
     status: 'Pending' | 'Paid' | 'Partially Paid';
     dueDate?: string;
@@ -227,7 +229,9 @@ export interface AccountsReceivable {
     entityId: string; // Linked to Project, Supplier, or Vendor
     entityType: 'Project' | 'Supplier' | 'Vendor';
     invoiceNumber: string;
-    amount: number;
+    amount: number; // Taxable Amount
+    vatAmount: number; // 5% VAT
+    totalAmount: number; // Amount + VAT
     description: string;
     status: 'Pending' | 'Received' | 'Partially Received';
     dueDate?: string;

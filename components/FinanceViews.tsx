@@ -425,7 +425,22 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                     label: 'Amount',
                     sortable: true,
                     render: (item) => (
-                        <span className="font-black text-slate-900">AED {item.amount.toLocaleString()}</span>
+                        <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
+                    )
+                },
+                { 
+                    key: 'vatAmount', 
+                    label: 'VAT (5%)',
+                    render: (item) => (
+                        <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
+                    )
+                },
+                { 
+                    key: 'totalAmount', 
+                    label: 'Total',
+                    sortable: true,
+                    render: (item) => (
+                        <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
                     )
                 },
                 { 
@@ -489,7 +504,22 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     label: 'Amount',
                     sortable: true,
                     render: (item) => (
-                        <span className="font-black text-slate-900">AED {item.amount.toLocaleString()}</span>
+                        <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
+                    )
+                },
+                { 
+                    key: 'vatAmount', 
+                    label: 'VAT (5%)',
+                    render: (item) => (
+                        <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
+                    )
+                },
+                { 
+                    key: 'totalAmount', 
+                    label: 'Total',
+                    sortable: true,
+                    render: (item) => (
+                        <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
                     )
                 },
                 { 
@@ -717,9 +747,22 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         projectId: '',
         invoiceNumber: '',
         amount: 0,
+        vatAmount: 0,
+        totalAmount: 0,
         description: '',
         status: 'Pending'
     });
+
+    const handleAmountChange = (val: number) => {
+        const vat = val * 0.05;
+        const total = val + vat;
+        setFormData({ 
+            ...formData, 
+            amount: val,
+            vatAmount: Number(vat.toFixed(2)),
+            totalAmount: Number(total.toFixed(2))
+        });
+    };
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
@@ -798,11 +841,11 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Amount (AED)</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Taxable Amount (AED)</label>
                             <input 
                                 type="number"
                                 value={formData.amount}
-                                onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                                onChange={e => handleAmountChange(Number(e.target.value))}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             />
                         </div>
@@ -817,6 +860,20 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                 <option value="Paid">Paid</option>
                                 <option value="Partially Paid">Partially Paid</option>
                             </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">VAT (5%)</label>
+                            <div className="w-full px-4 py-3 bg-white/50 border border-brand-100 rounded-xl text-sm font-bold text-slate-500">
+                                {formData.vatAmount.toLocaleString()}
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Total Amount</label>
+                            <div className="w-full px-4 py-3 bg-brand-600 rounded-xl text-sm font-black text-white shadow-md">
+                                {formData.totalAmount.toLocaleString()}
+                            </div>
                         </div>
                     </div>
                     <div className="space-y-1">
@@ -844,7 +901,9 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             return {
                 ...ar,
                 entityId: ar.entityId || ar.projectId || '',
-                entityType: ar.entityType || 'Project'
+                entityType: ar.entityType || 'Project',
+                vatAmount: ar.vatAmount || 0,
+                totalAmount: ar.totalAmount || ar.amount || 0
             };
         }
         return { 
@@ -854,10 +913,23 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             entityType: 'Project',
             invoiceNumber: '',
             amount: 0,
+            vatAmount: 0,
+            totalAmount: 0,
             description: '',
             status: 'Pending'
         };
     });
+
+    const handleAmountChange = (val: number) => {
+        const vat = val * 0.05;
+        const total = val + vat;
+        setFormData({ 
+            ...formData, 
+            amount: val,
+            vatAmount: Number(vat.toFixed(2)),
+            totalAmount: Number(total.toFixed(2))
+        });
+    };
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
@@ -932,11 +1004,11 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Amount (AED)</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Taxable Amount (AED)</label>
                             <input 
                                 type="number"
                                 value={formData.amount}
-                                onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
+                                onChange={e => handleAmountChange(Number(e.target.value))}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             />
                         </div>
@@ -951,6 +1023,20 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                 <option value="Received">Received</option>
                                 <option value="Partially Received">Partially Received</option>
                             </select>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">VAT (5%)</label>
+                            <div className="w-full px-4 py-3 bg-white/50 border border-brand-100 rounded-xl text-sm font-bold text-slate-500">
+                                {formData.vatAmount.toLocaleString()}
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Total Amount</label>
+                            <div className="w-full px-4 py-3 bg-brand-600 rounded-xl text-sm font-black text-white shadow-md">
+                                {formData.totalAmount.toLocaleString()}
+                            </div>
                         </div>
                     </div>
                     <div className="space-y-1">

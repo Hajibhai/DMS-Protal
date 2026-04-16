@@ -207,6 +207,8 @@
         "projectId": { "type": "string" },
         "invoiceNumber": { "type": "string" },
         "amount": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
         "description": { "type": "string" },
         "status": { "type": "string", "enum": ["Pending", "Paid", "Partially Paid"] },
         "dueDate": { "type": "string" },
@@ -222,16 +224,20 @@
       "properties": {
         "id": { "type": "string" },
         "date": { "type": "string" },
+        "entityId": { "type": "string" },
+        "entityType": { "type": "string", "enum": ["Project", "Supplier", "Vendor"] },
         "projectId": { "type": "string" },
         "invoiceNumber": { "type": "string" },
         "amount": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
         "description": { "type": "string" },
         "status": { "type": "string", "enum": ["Pending", "Received", "Partially Received"] },
         "dueDate": { "type": "string" },
         "receivedDate": { "type": "string" },
         "attachment": { "type": "string" }
       },
-      "required": ["id", "date", "projectId", "invoiceNumber", "amount", "status"]
+      "required": ["id", "date", "invoiceNumber", "amount", "status"]
     },
     "PettyCash": {
       "title": "Petty Cash",
