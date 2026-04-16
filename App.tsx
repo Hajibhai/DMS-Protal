@@ -3402,6 +3402,8 @@ export default function App() {
           accountsPayable={accountsPayable}
           accountsReceivable={accountsReceivable}
           pettyCash={pettyCash}
+          everydayExpenses={everydayExpenses}
+          projectedExpenses={projectedExpenses}
           suppliers={suppliers}
           vendors={vendors}
           user={systemUser}
@@ -7410,6 +7412,7 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
 const ReportsView = ({ 
     employees, attendance, leaveRequests, deductions, 
     projects, accountsPayable, accountsReceivable, pettyCash,
+    everydayExpenses, projectedExpenses,
     suppliers, vendors, user 
 }: any) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -7448,6 +7451,16 @@ const ReportsView = ({
         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     }), [pettyCash, currentMonth, currentYear]);
 
+    const monthlyEveryday = useMemo(() => (everydayExpenses || []).filter((ee: any) => {
+        const d = new Date(ee.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    }), [everydayExpenses, currentMonth, currentYear]);
+
+    const monthlyProjected = useMemo(() => (projectedExpenses || []).filter((pe: any) => {
+        const d = new Date(pe.date);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+    }), [projectedExpenses, currentMonth, currentYear]);
+
     const payrollData = useMemo(() => {
         return activeStaff.map((e: any) => {
             const empAttendance = monthlyAttendance.filter((r: any) => r.employeeId === e.id);
@@ -7470,8 +7483,16 @@ const ReportsView = ({
         const pettyCashIn = monthlyPettyCash.filter(pc => pc.type === 'Income').reduce((acc, pc) => acc + pc.amount, 0);
         const pettyCashOut = monthlyPettyCash.filter(pc => pc.type === 'Expense').reduce((acc, pc) => acc + pc.amount, 0);
 
-        return { totalGross, totalNet, totalDeductions, totalPayable, totalReceivable, pettyCashIn, pettyCashOut };
-    }, [payrollData, monthlyAP, monthlyAR, monthlyPettyCash]);
+        const totalEveryday = monthlyEveryday.reduce((acc, ee) => acc + ee.totalAmount, 0);
+        const totalProjected = monthlyProjected.reduce((acc, pe) => acc + pe.totalAmount, 0);
+
+        return { 
+            totalGross, totalNet, totalDeductions, 
+            totalPayable, totalReceivable, 
+            pettyCashIn, pettyCashOut,
+            totalEveryday, totalProjected
+        };
+    }, [payrollData, monthlyAP, monthlyAR, monthlyPettyCash, monthlyEveryday, monthlyProjected]);
 
     const handleExport = () => {
         let data: any[] = [];
@@ -7568,8 +7589,49 @@ const ReportsView = ({
                         Entity: pc.requestedBy || pc.receivedFrom, 
                         Amount: pc.amount, 
                         Status: 'Completed' 
+                    })),
+                    ...monthlyEveryday.map(ee => ({
+                        Type: 'Everyday Expense',
+                        Date: ee.date,
+                        Ref: ee.invoiceNo,
+                        Entity: ee.shopName || ee.supplierName,
+                        Amount: ee.totalAmount,
+                        Status: 'Completed'
+                    })),
+                    ...monthlyProjected.map(pe => ({
+                        Type: 'Projected Expense',
+                        Date: pe.date,
+                        Ref: pe.invoiceNumber,
+                        Entity: pe.clientName,
+                        Amount: pe.totalAmount,
+                        Status: 'Projected'
                     }))
                 ];
+                break;
+            case 'everyday':
+                data = monthlyEveryday.map(ee => ({
+                    'Date': ee.date,
+                    'Invoice No': ee.invoiceNo,
+                    'TRN No': ee.trnNo,
+                    'Shop/Supplier': ee.shopName || ee.supplierName,
+                    'Client': ee.clientName,
+                    'Bill Amount': ee.billAmount,
+                    'VAT Amount': ee.vatAmount,
+                    'Total Amount': ee.totalAmount,
+                    'Description': ee.description
+                }));
+                break;
+            case 'projected':
+                data = monthlyProjected.map(pe => ({
+                    'Date': pe.date,
+                    'Invoice No': pe.invoiceNumber,
+                    'Client': pe.clientName,
+                    'Location': pe.siteLocation,
+                    'Work Description': pe.workDescription,
+                    'Actual Amount': pe.actualAmount,
+                    'VAT Amount': pe.vatAmount,
+                    'Total Amount': pe.totalAmount
+                }));
                 break;
         }
 
@@ -7589,6 +7651,8 @@ const ReportsView = ({
         { id: 'payroll', label: 'Payroll', icon: Wallet },
         { id: 'projects', label: 'Projects', icon: Briefcase },
         { id: 'finance', label: 'Finance', icon: TrendingUp },
+        { id: 'everyday', label: 'Everyday', icon: CreditCard },
+        { id: 'projected', label: 'Projected', icon: BarChart3 },
     ];
 
     return (
@@ -7701,6 +7765,20 @@ const ReportsView = ({
                     { label: 'Petty Cash In', value: `AED ${stats.pettyCashIn.toLocaleString()}`, icon: ArrowUpRight, color: 'brand' },
                     { label: 'Petty Cash Out', value: `AED ${stats.pettyCashOut.toLocaleString()}`, icon: ArrowDownRight, color: 'rose' },
                 ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'everyday' && [
+                    { label: 'Total Expenses', value: `AED ${stats.totalEveryday.toLocaleString()}`, icon: CreditCard, color: 'brand' },
+                    { label: 'Total Bills', value: monthlyEveryday.length, icon: FileText, color: 'emerald' },
+                    { label: 'Avg Bill', value: `AED ${Math.round(stats.totalEveryday / (monthlyEveryday.length || 1)).toLocaleString()}`, icon: Activity, color: 'orange' },
+                    { label: 'VAT Total', value: `AED ${monthlyEveryday.reduce((acc, ee) => acc + ee.vatAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'projected' && [
+                    { label: 'Projected Total', value: `AED ${stats.totalProjected.toLocaleString()}`, icon: BarChart3, color: 'brand' },
+                    { label: 'Total Items', value: monthlyProjected.length, icon: ListFilter, color: 'emerald' },
+                    { label: 'Actual Amt', value: `AED ${monthlyProjected.reduce((acc, pe) => acc + pe.actualAmount, 0).toLocaleString()}`, icon: Wallet, color: 'orange' },
+                    { label: 'VAT Total', value: `AED ${monthlyProjected.reduce((acc, pe) => acc + pe.vatAmount, 0).toLocaleString()}`, icon: TrendingUp, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
             </div>
 
             {/* Main Content Table */}
@@ -7719,6 +7797,8 @@ const ReportsView = ({
                                 {reportType === 'payroll' && ['Code', 'Name', 'Gross', 'OT Amt', 'Deductions', 'Net Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'projects' && ['Project', 'Client', 'Staff', 'Revenue', 'Expense', 'Margin'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'finance' && ['Type', 'Date', 'Reference', 'Entity', 'Amount', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'everyday' && ['Date', 'Invoice', 'Shop/Supplier', 'Client', 'Amount', 'VAT'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'projected' && ['Date', 'Invoice', 'Client', 'Location', 'Amount', 'VAT'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
@@ -7848,6 +7928,26 @@ const ReportsView = ({
                                         AED {item.amount.toLocaleString()}
                                     </td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-500">{item.status}</td>
+                                </tr>
+                            ))}
+                            {reportType === 'everyday' && monthlyEveryday.map((ee: any) => (
+                                <tr key={ee.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4 text-sm font-medium text-slate-500">{new Date(ee.date).toLocaleDateString('en-GB')}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-700">{ee.invoiceNo}</td>
+                                    <td className="px-6 py-4 text-sm font-medium text-slate-600">{ee.shopName || ee.supplierName}</td>
+                                    <td className="px-6 py-4 text-sm font-medium text-slate-600">{ee.clientName}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-rose-600">AED {ee.totalAmount.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-500">AED {ee.vatAmount.toLocaleString()}</td>
+                                </tr>
+                            ))}
+                            {reportType === 'projected' && monthlyProjected.map((pe: any) => (
+                                <tr key={pe.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4 text-sm font-medium text-slate-500">{new Date(pe.date).toLocaleDateString('en-GB')}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-700">{pe.invoiceNumber}</td>
+                                    <td className="px-6 py-4 text-sm font-medium text-slate-600">{pe.clientName}</td>
+                                    <td className="px-6 py-4 text-sm font-medium text-slate-600">{pe.siteLocation}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-brand-600">AED {pe.totalAmount.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-500">AED {pe.vatAmount.toLocaleString()}</td>
                                 </tr>
                             ))}
                         </tbody>
