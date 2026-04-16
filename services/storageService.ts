@@ -169,7 +169,8 @@ export const logAttendance = async (
   overtimeHours?: number,
   otAttachment?: string,
   updatedBy?: string,
-  note?: string
+  note?: string,
+  hoursWorked?: number
 ) => {
   const now = new Date();
   let dateStr = dateOverride;
@@ -183,8 +184,8 @@ export const logAttendance = async (
   const recordId = `${employeeId}_${dateStr}`;
   const recordRef = doc(db, 'attendance', recordId);
 
-  let hours = 0;
-  if (status === AttendanceStatus.PRESENT) hours = 8;
+  let hours = hoursWorked !== undefined ? hoursWorked : 0;
+  if (hoursWorked === undefined && status === AttendanceStatus.PRESENT) hours = 8;
 
   try {
     const snap = await getDoc(recordRef);

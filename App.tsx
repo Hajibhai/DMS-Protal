@@ -96,9 +96,9 @@ const LEGEND: any = {
 };
 
 const calculatePayroll = (employee: Employee, attendance: AttendanceRecord[], deductions: DeductionRecord[]) => {
-    const isOfficeStaff = employee.team === 'Office Staff';
+    const isFixedSalary = employee.team === 'Office Staff' || employee.team === 'Internal Team';
     
-    // Fixed Salary Logic (Office Staff)
+    // Fixed Salary Logic (Office Staff / Internal Team)
     const { basic = 0, housing = 0, transport = 0, other = 0, airTicket = 0, leaveSalary = 0, hourlyRate = 0 } = employee.salary;
     const fixedGrossSalary = basic + housing + transport + other + airTicket + leaveSalary;
     
@@ -106,7 +106,7 @@ const calculatePayroll = (employee: Employee, attendance: AttendanceRecord[], de
     let lopDeduction = 0;
     let totalUnpaidDays = 0;
 
-    if (isOfficeStaff) {
+    if (isFixedSalary) {
         // Unpaid logic for fixed salary
         const absentDays = attendance.filter(r => r.status === AttendanceStatus.ABSENT).length;
         const unpaidLeaves = attendance.filter(r => [AttendanceStatus.UNPAID_LEAVE, AttendanceStatus.ANNUAL_LEAVE, AttendanceStatus.EMERGENCY_LEAVE].includes(r.status)).length;
@@ -125,7 +125,7 @@ const calculatePayroll = (employee: Employee, attendance: AttendanceRecord[], de
     
     // OT
     const totalOtHours = attendance.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-    const otRatePerHour = isOfficeStaff ? (fixedGrossSalary / 30 / 8) * 1.5 : hourlyRate * 1.5; 
+    const otRatePerHour = isFixedSalary ? (fixedGrossSalary / 30 / 8) * 1.5 : hourlyRate * 1.5; 
     const otAmount = totalOtHours * otRatePerHour;
 
     return {
@@ -6248,7 +6248,9 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { compan
 };
 
 const AttendanceEditModal = ({ employee, date, currentRecord, onUpdate, onClose, openConfirm }: any) => {
-    const [status, setStatus] = useState<AttendanceStatus | null>(currentRecord?.status || null);
+    const isFixedSalary = employee.team === 'Office Staff' || employee.team === 'Internal Team';
+    const [status, setStatus] = useState<AttendanceStatus | null>(currentRecord?.status || (isFixedSalary ? null : AttendanceStatus.PRESENT));
+    const [hoursWorked, setHoursWorked] = useState<number>(currentRecord?.hoursWorked || (isFixedSalary ? 8 : 0));
     const [otHours, setOtHours] = useState<number>(currentRecord?.overtimeHours || 0);
     const [note, setNote] = useState<string>(currentRecord?.note || '');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -6257,7 +6259,7 @@ const AttendanceEditModal = ({ employee, date, currentRecord, onUpdate, onClose,
         if (!status) return;
         setIsSubmitting(true);
         try {
-            await onUpdate(employee.id, date, status, otHours, note);
+            await onUpdate(employee.id, date, status, otHours, note, hoursWorked);
             onClose();
         } catch (error) {
             console.error(error);
@@ -6318,27 +6320,65 @@ const AttendanceEditModal = ({ employee, date, currentRecord, onUpdate, onClose,
 
                 <div className="p-8 overflow-y-auto space-y-8">
                     <section>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 block">Select Status</label>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 block">
+                            {isFixedSalary ? 'Select Status' : 'Attendance Status'}
+                        </label>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            {Object.entries(LEGEND).map(([s, m]: any) => (
-                                <button
-                                    key={s}
-                                    onClick={() => setStatus(s as AttendanceStatus)}
-                                    className={cn(
-                                        "flex flex-col items-center justify-center gap-2 p-4 rounded-[1.5rem] border-2 transition-all active:scale-95",
-                                        status === s 
-                                            ? "border-brand-500 bg-brand-50/50 ring-4 ring-brand-500/10" 
-                                            : "border-slate-100 hover:border-brand-200 bg-white"
-                                    )}
-                                >
-                                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black shadow-sm", m.color)}>
-                                        {m.code}
-                                    </div>
-                                    <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{m.label}</span>
-                                </button>
-                            ))}
+                            {Object.entries(LEGEND).map(([s, m]: any) => {
+                                // For non-fixed salary, we might want to restrict or emphasize hours
+                                if (!isFixedSalary && s !== AttendanceStatus.PRESENT && s !== AttendanceStatus.ABSENT && s !== AttendanceStatus.WEEK_OFF) {
+                                    // Still allow all statuses but maybe emphasize Present/Absent
+                                }
+                                return (
+                                    <button
+                                        key={s}
+                                        onClick={() => {
+                                            setStatus(s as AttendanceStatus);
+                                            if (s !== AttendanceStatus.PRESENT) setHoursWorked(0);
+                                            else if (hoursWorked === 0) setHoursWorked(8);
+                                        }}
+                                        className={cn(
+                                            "flex flex-col items-center justify-center gap-2 p-4 rounded-[1.5rem] border-2 transition-all active:scale-95",
+                                            status === s 
+                                                ? "border-brand-500 bg-brand-50/50 ring-4 ring-brand-500/10" 
+                                                : "border-slate-100 hover:border-brand-200 bg-white"
+                                        )}
+                                    >
+                                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black shadow-sm", m.color)}>
+                                            {m.code}
+                                        </div>
+                                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{m.label}</span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </section>
+
+                    {!isFixedSalary && (
+                        <section className="bg-brand-50/50 p-6 rounded-[2rem] border border-brand-100">
+                            <label className="text-[10px] font-black text-brand-600 uppercase tracking-[0.2em] mb-3 block">Daily Working Hours</label>
+                            <div className="relative">
+                                <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-500" />
+                                <input 
+                                    type="number" 
+                                    value={hoursWorked}
+                                    onChange={(e) => {
+                                        const val = Number(e.target.value);
+                                        setHoursWorked(val);
+                                        if (val > 0 && status !== AttendanceStatus.PRESENT) {
+                                            setStatus(AttendanceStatus.PRESENT);
+                                        }
+                                    }}
+                                    className="w-full pl-12 pr-4 py-4 bg-white border-2 border-brand-200 focus:border-brand-500 rounded-2xl outline-none transition-all font-black text-2xl text-brand-600"
+                                    placeholder="0"
+                                    min="0"
+                                    max="24"
+                                />
+                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-400 font-bold uppercase text-xs">Hours</span>
+                            </div>
+                            <p className="text-[10px] text-brand-400 font-bold mt-2 uppercase tracking-wider">Manual entry for daily hourly calculation</p>
+                        </section>
+                    )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <section>
@@ -6435,7 +6475,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
         onMonthChange(`${nextYear}-${String(nextMonth).padStart(2, '0')}`);
     };
 
-    const handleStatusUpdate = async (employeeId: string, date: string, status: AttendanceStatus | null, otHours: number = 0, note: string = '') => {
+    const handleStatusUpdate = async (employeeId: string, date: string, status: AttendanceStatus | null, otHours: number = 0, note: string = '', hoursWorked?: number) => {
         try {
             if (status === null) {
                 await onDeleteAttendance(employeeId, date);
@@ -6447,7 +6487,8 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                     otHours,
                     undefined,
                     user?.username || 'System',
-                    note || 'Manual Update'
+                    note || 'Manual Update',
+                    hoursWorked
                 );
             }
         } catch (error) {
@@ -6648,12 +6689,22 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                                 <button 
                                                     onClick={() => setEditingCell({ empId: e.id, date: dateStr })}
                                                     className={cn(
-                                                        "w-6 h-6 flex items-center justify-center rounded-lg mx-auto transition-transform hover:scale-110 active:scale-90",
+                                                        "w-7 h-7 flex items-center justify-center rounded-lg mx-auto transition-transform hover:scale-110 active:scale-90",
                                                         meta.code && "bg-white shadow-sm border border-slate-100"
                                                     )}
                                                 >
-                                                    {meta.code || (isSunday ? 'S' : '-')}
+                                                    <span className={cn(
+                                                        "text-[12px] font-black",
+                                                        meta.code ? "text-slate-900" : (isSunday ? "text-red-400" : "text-slate-300")
+                                                    )}>
+                                                        {meta.code || (isSunday ? 'S' : '-')}
+                                                    </span>
                                                 </button>
+                                                {record?.hoursWorked > 0 && record?.hoursWorked !== 8 && (
+                                                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-white text-[8px] px-1 rounded border border-slate-100 shadow-sm text-brand-600 font-black">
+                                                        {record.hoursWorked}h
+                                                    </div>
+                                                )}
                                             </td>
                                         );
                                     })}
@@ -7192,27 +7243,27 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
             const monthDeds = deductions.filter((d: any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
             const p = calculatePayroll(e, monthRecs, monthDeds);
             
-            const isOffice = e.team === 'Office Staff';
-            const totalHours = monthRecs.reduce((sum: number, r: any) => sum + (r.hoursWorked || 0), 0);
+             const isFixedSalary = e.team === 'Office Staff' || e.team === 'Internal Team';
+             const totalHours = monthRecs.reduce((sum: number, r: any) => sum + (r.hoursWorked || 0), 0);
 
-            return {
-                'Employee Code': e.code,
-                'Employee Name': e.name,
-                'Month': selectedMonth,
-                'Team': e.team,
-                'Type': isOffice ? 'Fixed' : 'Hourly',
-                'Basic Salary': isOffice ? p.breakdown.basic : 0,
-                'Hourly Rate': isOffice ? 0 : (p.breakdown.hourlyRate || 0),
-                'Hours Worked': isOffice ? 0 : totalHours,
-                'Housing': p.breakdown.housing,
-                'Transport': p.breakdown.transport,
-                'Other Allowance': p.breakdown.other,
-                'Gross Salary': p.grossSalary,
-                'Unpaid Days': p.totalUnpaidDays,
-                'Deductions': p.totalDeductions,
-                'OT Amount': p.otAmount,
-                'Net Salary': p.netSalary
-            };
+             return {
+                 'Employee Code': e.code,
+                 'Employee Name': e.name,
+                 'Month': selectedMonth,
+                 'Team': e.team,
+                 'Type': isFixedSalary ? 'Fixed' : 'Hourly',
+                 'Basic Salary': isFixedSalary ? p.breakdown.basic : 0,
+                 'Hourly Rate': isFixedSalary ? 0 : (p.breakdown.hourlyRate || 0),
+                 'Hours Worked': isFixedSalary ? 0 : totalHours,
+                 'Housing': isFixedSalary ? p.breakdown.housing : 0,
+                 'Transport': isFixedSalary ? p.breakdown.transport : 0,
+                 'Other Allowance': isFixedSalary ? p.breakdown.other : 0,
+                 'Gross Salary': p.grossSalary,
+                 'Unpaid Days': p.totalUnpaidDays,
+                 'Deductions': p.totalDeductions,
+                 'OT Amount': p.otAmount,
+                 'Net Salary': p.netSalary
+             };
         });
 
         const ws = XLSX.utils.json_to_sheet(data);
@@ -7263,10 +7314,8 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                          <thead>
                              <tr className="bg-slate-50/50 border-b border-slate-100">
                                  <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest sticky left-0 bg-white/80 backdrop-blur-md z-10">Employee</th>
-                                 <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Basic</th>
-                                 <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Housing</th>
-                                 <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Transport</th>
-                                 <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Other</th>
+                                 <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Rate/Basic</th>
+                                 <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Hours/Days</th>
                                  <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Gross</th>
                                  <th className="p-5 text-[10px] font-bold text-red-400 uppercase tracking-widest text-right">Unpaid</th>
                                  <th className="p-5 text-[10px] font-bold text-red-400 uppercase tracking-widest text-right">Deductions</th>
@@ -7280,6 +7329,9 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                  const monthDeds = deductions.filter((d:any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
                                  const p = calculatePayroll(e, monthRecs, monthDeds);
                                  
+                                 const isFixedSalary = e.team === 'Office Staff' || e.team === 'Internal Team';
+                                 const totalHours = monthRecs.reduce((sum: number, r: any) => sum + (r.hoursWorked || 0), 0);
+                                 
                                  return (
                                      <tr key={e.id} className="hover:bg-slate-50/50 transition-colors group">
                                          <td className="p-5 sticky left-0 bg-white group-hover:bg-slate-50/50 transition-colors z-10 border-r border-slate-100">
@@ -7291,13 +7343,18 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                                         e.name.charAt(0)
                                                     )}
                                                 </div>
-                                                <div className="text-sm font-bold text-slate-900">{e.name}</div>
+                                                <div>
+                                                    <div className="text-sm font-bold text-slate-900">{e.name}</div>
+                                                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{isFixedSalary ? 'Fixed Salary' : 'Hourly Rate'}</div>
+                                                </div>
                                             </div>
                                          </td>
-                                         <td className="p-5 text-right text-sm text-slate-500">{p.breakdown.basic.toLocaleString()}</td>
-                                         <td className="p-5 text-right text-sm text-slate-500">{p.breakdown.housing.toLocaleString()}</td>
-                                         <td className="p-5 text-right text-sm text-slate-500">{p.breakdown.transport.toLocaleString()}</td>
-                                         <td className="p-5 text-right text-sm text-slate-500">{p.breakdown.other.toLocaleString()}</td>
+                                         <td className="p-5 text-right text-sm font-bold text-slate-700">
+                                             {isFixedSalary ? p.breakdown.basic.toLocaleString() : (p.breakdown.hourlyRate || 0).toLocaleString()}
+                                         </td>
+                                         <td className="p-5 text-right text-sm text-slate-500">
+                                             {isFixedSalary ? '30 Days' : `${totalHours} Hours`}
+                                         </td>
                                          <td className="p-5 text-right text-sm font-bold text-slate-900">{p.grossSalary.toLocaleString()}</td>
                                          <td className="p-5 text-right text-sm font-bold text-red-500">{p.totalUnpaidDays}</td>
                                          <td className="p-5 text-right text-sm font-bold text-red-600">-{p.totalDeductions.toFixed(0)}</td>
