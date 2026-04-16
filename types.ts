@@ -275,6 +275,7 @@ export interface EverydayExpense {
     billAmount: number;
     vatAmount: number;
     totalAmount: number;
+    description: string;
     projectId?: string; // Optional link to project
 }
 

@@ -1264,6 +1264,7 @@ export const EverydayExpenseView: React.FC<{
         { key: 'clientName', label: 'Client Name', sortable: true },
         { key: 'supplierName', label: 'Supplier Name', sortable: true },
         { key: 'shopName', label: 'Shop Name', sortable: true },
+        { key: 'description', label: 'Description' },
         { key: 'billAmount', label: 'Bill Amount', sortable: true, render: (item: EverydayExpense) => item.billAmount.toLocaleString() },
         { key: 'vatAmount', label: 'VAT Amount', sortable: true, render: (item: EverydayExpense) => item.vatAmount.toLocaleString() },
         { key: 'totalAmount', label: 'Total Amount', sortable: true, render: (item: EverydayExpense) => item.totalAmount.toLocaleString() },
@@ -1297,7 +1298,7 @@ export const EverydayExpenseView: React.FC<{
             onAdd={onAdd}
             onEdit={onEdit}
             onDelete={onDelete}
-            searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName']}
+            searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description']}
             exportFileName="Everyday_Expenses"
             user={user}
             filterOptions={filterOptions}
@@ -1323,6 +1324,7 @@ export const EverydayExpenseModal: React.FC<{
         billAmount: 0,
         vatAmount: 0,
         totalAmount: 0,
+        description: '',
         projectId: ''
     });
 
@@ -1427,6 +1429,16 @@ export const EverydayExpenseModal: React.FC<{
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             />
                         </div>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Description (Material/Details)</label>
+                        <textarea 
+                            value={formData.description}
+                            onChange={e => setFormData({ ...formData, description: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[100px]"
+                            placeholder="Mention material or other details..."
+                        />
                     </div>
 
                     <div className="space-y-1">
