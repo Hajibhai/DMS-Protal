@@ -306,6 +306,7 @@ export interface SystemUser {
     active: boolean;
     permissions: UserPermissions;
     theme?: 'light' | 'dark';
+    photoURL?: string; // Base64 or URL
 }
 
 export interface AuditLog {

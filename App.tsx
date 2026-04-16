@@ -24,7 +24,7 @@ import {
   MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, GripVertical,
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
-  ShieldAlert, Truck, StickyNote
+  ShieldAlert, Truck, StickyNote, Camera
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -2619,7 +2619,13 @@ export default function App() {
         const userRef = doc(db, 'users', firebaseUser.uid);
         const snap = await getDoc(userRef);
         if (snap.exists()) {
-          setSystemUser(snap.data() as SystemUser);
+          const data = snap.data() as SystemUser;
+          // Ensure creator role is correctly set for the default admin
+          if (firebaseUser.email === "abdulkaderp3010@gmail.com" && data.role !== UserRole.CREATOR) {
+            data.role = UserRole.CREATOR;
+            await saveSystemUser(data);
+          }
+          setSystemUser(data);
         } else {
           // Create default profile for new user
           const isDefaultAdmin = firebaseUser.email === "abdulkaderp3010@gmail.com";
@@ -2686,6 +2692,12 @@ export default function App() {
     if (systemUser) {
       await logAudit(systemUser, action, details, type);
     }
+  };
+
+  const handleUpdateProfile = async (updated: SystemUser) => {
+    await saveSystemUser(updated);
+    setSystemUser(updated);
+    await handleLogAction('Update Profile', `User updated their own profile: ${updated.name}`, 'update');
   };
 
   // 2. Data Listeners
@@ -3325,8 +3337,8 @@ export default function App() {
       {activeTab === 'about' && (
         <AboutView />
       )}
-      {activeTab === 'profile' && (
-        <ProfileView user={systemUser} />
+      {activeTab === 'profile' && systemUser && (
+        <ProfileView user={systemUser} onUpdate={handleUpdateProfile} />
       )}
       {activeTab === 'settings' && (
         <SettingsView 
@@ -3705,17 +3717,93 @@ const DashboardView = ({ employees, suppliers, projects, attendance, user, audit
 };
 
 // --- Profile View ---
-const ProfileView = ({ user }: { user: SystemUser }) => {
+const ProfileView = ({ user, onUpdate }: { user: SystemUser, onUpdate: (updated: SystemUser) => Promise<void> }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [formData, setFormData] = useState({
+        name: user.name,
+        username: user.username || '',
+        photoURL: user.photoURL || ''
+    });
+    const [isSaving, setIsSaving] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setFormData(prev => ({ ...prev, photoURL: reader.result as string }));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            await onUpdate({
+                ...user,
+                name: formData.name,
+                username: formData.username,
+                photoURL: formData.photoURL
+            });
+            setIsEditing(false);
+        } catch (error) {
+            console.error("Failed to update profile:", error);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const roleDisplay = user.email === 'abdulkaderp3010@gmail.com' ? 'CREATOR' : user.role.toUpperCase();
+
     return (
         <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm overflow-hidden relative">
                 <div className="absolute top-0 left-0 w-full h-32 bg-brand-600"></div>
                 <div className="relative z-10 flex flex-col items-center">
-                    <div className="w-32 h-32 bg-white rounded-3xl flex items-center justify-center text-4xl font-black text-brand-600 shadow-xl border-4 border-white mb-4">
-                        {user.name.charAt(0)}
+                    <div className="relative group">
+                        <div className="w-32 h-32 bg-white rounded-3xl flex items-center justify-center text-4xl font-black text-brand-600 shadow-xl border-4 border-white mb-4 overflow-hidden">
+                            {formData.photoURL ? (
+                                <img src={formData.photoURL} alt={user.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                                user.name.charAt(0)
+                            )}
+                        </div>
+                        {isEditing && (
+                            <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                className="absolute inset-0 bg-black/40 rounded-3xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <Camera className="w-8 h-8 text-white" />
+                            </button>
+                        )}
+                        <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            onChange={handleImageUpload} 
+                            accept="image/*" 
+                            className="hidden" 
+                        />
                     </div>
-                    <h2 className="text-2xl font-black text-slate-900">{user.name}</h2>
-                    <p className="text-brand-600 font-bold uppercase tracking-widest text-xs mt-1">{user.role}</p>
+
+                    {isEditing ? (
+                        <div className="w-full max-w-xs space-y-4 text-center">
+                            <input 
+                                type="text"
+                                value={formData.name}
+                                onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                className="w-full text-2xl font-black text-slate-900 text-center bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-brand-500"
+                                placeholder="Your Name"
+                            />
+                            <p className="text-brand-600 font-bold uppercase tracking-widest text-xs">{roleDisplay}</p>
+                        </div>
+                    ) : (
+                        <>
+                            <h2 className="text-2xl font-black text-slate-900">{user.name}</h2>
+                            <p className="text-brand-600 font-bold uppercase tracking-widest text-xs mt-1">{roleDisplay}</p>
+                        </>
+                    )}
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mt-12">
                         <div className="p-6 bg-white rounded-2xl border border-slate-100">
@@ -3724,7 +3812,17 @@ const ProfileView = ({ user }: { user: SystemUser }) => {
                         </div>
                         <div className="p-6 bg-white rounded-2xl border border-slate-100">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Username</p>
-                            <p className="text-sm font-bold text-slate-900">{user.username || 'Not set'}</p>
+                            {isEditing ? (
+                                <input 
+                                    type="text"
+                                    value={formData.username}
+                                    onChange={e => setFormData({ ...formData, username: e.target.value })}
+                                    className="w-full text-sm font-bold text-slate-900 bg-slate-50 border-none rounded-lg focus:ring-2 focus:ring-brand-500"
+                                    placeholder="Username"
+                                />
+                            ) : (
+                                <p className="text-sm font-bold text-slate-900">{user.username || 'Not set'}</p>
+                            )}
                         </div>
                         <div className="p-6 bg-white rounded-2xl border border-slate-100">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Account Status</p>
@@ -3737,6 +3835,33 @@ const ProfileView = ({ user }: { user: SystemUser }) => {
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">User ID</p>
                             <p className="text-xs font-mono text-slate-500">{user.uid}</p>
                         </div>
+                    </div>
+
+                    <div className="mt-8 flex gap-3">
+                        {isEditing ? (
+                            <>
+                                <button 
+                                    onClick={() => setIsEditing(false)}
+                                    className="px-6 py-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={handleSave}
+                                    disabled={isSaving}
+                                    className="px-6 py-2 bg-brand-600 text-white rounded-xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20 flex items-center gap-2"
+                                >
+                                    {isSaving ? 'Saving...' : <><Save className="w-4 h-4" /> Save Changes</>}
+                                </button>
+                            </>
+                        ) : (
+                            <button 
+                                onClick={() => setIsEditing(true)}
+                                className="px-6 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2"
+                            >
+                                <Edit className="w-4 h-4" /> Edit Profile
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
