@@ -4,7 +4,7 @@ import {
   Menu, X, ChevronDown, 
   LogOut, Settings, User, Bell, Search,
   Building2, Globe, HelpCircle, FileText, LayoutGrid,
-  Briefcase, Truck, Wallet
+  Briefcase, Truck, Wallet, Check
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -31,6 +31,97 @@ interface LayoutProps {
   pettyCash: any[];
 }
 
+const SupportModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    // Simulate API call
+    setTimeout(() => {
+      setIsSubmitting(false);
+      setSubmitted(true);
+      setTimeout(() => {
+        onClose();
+        setSubmitted(false);
+      }, 2000);
+    }, 1500);
+  };
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl border border-white"
+          >
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 tracking-tight">Contact Support</h2>
+                <p className="text-slate-500 text-sm font-medium">We're here to help you</p>
+              </div>
+              <button onClick={onClose} className="p-2 hover:bg-white rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-8">
+              {submitted ? (
+                <div className="text-center py-8 space-y-4">
+                  <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                    <Check className="w-10 h-10" />
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900">Message Sent!</h3>
+                  <p className="text-slate-500 font-medium">Our team will get back to you shortly.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Subject</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="What do you need help with?"
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Message</label>
+                    <textarea
+                      required
+                      rows={4}
+                      placeholder="Describe your issue in detail..."
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all resize-none"
+                    />
+                  </div>
+                  <button
+                    disabled={isSubmitting}
+                    type="submit"
+                    className="w-full py-4 bg-brand-600 text-white rounded-2xl text-sm font-black hover:bg-brand-700 transition-all active:scale-95 shadow-xl shadow-brand-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isSubmitting ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <FileText className="w-5 h-5" />
+                        Send Support Request
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 export const Layout: React.FC<LayoutProps> = ({ 
   children, 
   navItems, 
@@ -52,6 +143,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -800,6 +892,11 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
       </main>
 
+      <SupportModal 
+        isOpen={isSupportModalOpen} 
+        onClose={() => setIsSupportModalOpen(false)} 
+      />
+
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200/60 py-8">
         <div className="w-full px-4 sm:px-6 lg:px-8">
@@ -811,7 +908,12 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="flex items-center gap-6 text-slate-400 text-sm font-bold">
               <button className="hover:text-brand-600 transition-colors">Privacy Policy</button>
               <button className="hover:text-brand-600 transition-colors">Terms of Service</button>
-              <button className="hover:text-brand-600 transition-colors">Contact Support</button>
+              <button 
+                onClick={() => setIsSupportModalOpen(true)}
+                className="hover:text-brand-600 transition-colors"
+              >
+                Contact Support
+              </button>
             </div>
             <p className="text-slate-400 text-xs font-medium">
               © {new Date().getFullYear()} Pioneer. All rights reserved.
