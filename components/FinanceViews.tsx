@@ -12,7 +12,7 @@ import * as XLSX from 'xlsx';
 import { cn } from '../utils';
 import { 
   Vendor, AccountsPayable, AccountsReceivable, PettyCash, 
-  Supplier, Project, SystemUser, UserRole 
+  Supplier, Project, SystemUser, UserRole, ProjectedExpense 
 } from '../types';
 
 interface DataTableProps<T> {
@@ -462,6 +462,50 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
             onDelete={onDelete}
             searchFields={['description', 'category', 'requestedBy']}
             exportFileName="Petty_Cash"
+            user={user}
+        />
+    );
+};
+
+export const ProjectedExpenseView = ({ data, projects, onAdd, onEdit, onDelete, user }: any) => {
+    const getProjectName = (id?: string) => {
+        if (!id) return 'General';
+        return projects.find((p: any) => p.id === id)?.name || 'N/A';
+    };
+
+    return (
+        <DataTable<ProjectedExpense>
+            title="Projected Expenses"
+            description="Manage and track projected project expenses and billings."
+            icon={TrendingDown}
+            data={data}
+            columns={[
+                { key: 'siNo', label: 'SI.No', sortable: true },
+                { key: 'date', label: 'Date', sortable: true },
+                { key: 'invoiceNumber', label: 'Bill/Invoice #', sortable: true },
+                { key: 'clientName', label: 'Client Name', sortable: true },
+                { key: 'siteLocation', label: 'Site Location' },
+                { 
+                    key: 'actualAmount', 
+                    label: 'Actual Amount',
+                    render: (item) => <span className="font-bold">AED {item.actualAmount.toLocaleString()}</span>
+                },
+                { 
+                    key: 'vatAmount', 
+                    label: 'VAT (5%)',
+                    render: (item) => <span className="text-slate-400">AED {item.vatAmount.toLocaleString()}</span>
+                },
+                { 
+                    key: 'totalAmount', 
+                    label: 'Total Amount',
+                    render: (item) => <span className="font-black text-slate-900">AED {item.totalAmount.toLocaleString()}</span>
+                },
+            ]}
+            onAdd={onAdd}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            searchFields={['invoiceNumber', 'billDescription', 'clientName', 'siteLocation', 'workDescription']}
+            exportFileName="Projected_Expenses"
             user={user}
         />
     );
@@ -930,6 +974,167 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
                     <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
                     <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Entry</button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+export const ProjectedExpenseModal = ({ expense, projects, onSave, onCancel }: any) => {
+    const [formData, setFormData] = useState(expense || { 
+        id: Math.random().toString(36).substr(2, 9),
+        siNo: '',
+        date: new Date().toISOString().split('T')[0],
+        invoiceNumber: '',
+        billDescription: '',
+        clientName: '',
+        siteLocation: '',
+        workDescription: '',
+        actualAmount: 0,
+        vatAmount: 0,
+        totalAmount: 0,
+        projectId: ''
+    });
+
+    const handleAmountChange = (val: number) => {
+        const vat = val * 0.05;
+        const total = val + vat;
+        setFormData({ 
+            ...formData, 
+            actualAmount: val,
+            vatAmount: vat,
+            totalAmount: total
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-white"
+            >
+                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{expense ? 'Edit Projected Expense' : 'Add Projected Expense'}</h2>
+                        <p className="text-slate-500 text-sm font-medium mt-1">Enter expense details below</p>
+                    </div>
+                    <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
+                </div>
+
+                <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">SI.No</label>
+                            <input 
+                                type="text"
+                                value={formData.siNo}
+                                onChange={e => setFormData({ ...formData, siNo: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Date</label>
+                            <input 
+                                type="date"
+                                value={formData.date}
+                                onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Bill/Invoice #</label>
+                            <input 
+                                type="text"
+                                value={formData.invoiceNumber}
+                                onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Client Name</label>
+                            <input 
+                                type="text"
+                                value={formData.clientName}
+                                onChange={e => setFormData({ ...formData, clientName: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Site Location</label>
+                            <input 
+                                type="text"
+                                value={formData.siteLocation}
+                                onChange={e => setFormData({ ...formData, siteLocation: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
+                        <select 
+                            value={formData.projectId}
+                            onChange={e => setFormData({ ...formData, projectId: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        >
+                            <option value="">General / No Project</option>
+                            {projects.map((p: any) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Bill Description</label>
+                        <input 
+                            type="text"
+                            value={formData.billDescription}
+                            onChange={e => setFormData({ ...formData, billDescription: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Work Description</label>
+                        <textarea 
+                            value={formData.workDescription}
+                            onChange={e => setFormData({ ...formData, workDescription: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[80px]"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Actual Bill Amount</label>
+                            <input 
+                                type="number"
+                                value={formData.actualAmount}
+                                onChange={e => handleAmountChange(Number(e.target.value))}
+                                className="w-full px-4 py-3 bg-white border-none rounded-xl text-sm font-black text-slate-900 outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">VAT (5%)</label>
+                            <div className="w-full px-4 py-3 bg-white/50 border border-brand-100 rounded-xl text-sm font-bold text-slate-500">
+                                {formData.vatAmount.toLocaleString()}
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Total Amount</label>
+                            <div className="w-full px-4 py-3 bg-brand-600 rounded-xl text-sm font-black text-white shadow-md">
+                                {formData.totalAmount.toLocaleString()}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
+                    <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
+                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Expense</button>
                 </div>
             </motion.div>
         </div>

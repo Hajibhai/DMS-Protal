@@ -169,6 +169,7 @@
         "estimationValue": { "type": "number" },
         "income": { "type": "number" },
         "overallExpenses": { "type": "number" },
+        "assignedStaffCount": { "type": "number" },
         "order": { "type": "number" },
         "driveFolderId": { "type": "string" },
         "driveFiles": { "type": "array" }
@@ -249,6 +250,26 @@
         "attachment": { "type": "string" }
       },
       "required": ["id", "date", "category", "description", "amount", "type", "requestedBy"]
+    },
+    "ProjectedExpense": {
+      "title": "Projected Expense",
+      "description": "Projected expense tracking with VAT",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "siNo": { "type": "string" },
+        "date": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "billDescription": { "type": "string" },
+        "clientName": { "type": "string" },
+        "siteLocation": { "type": "string" },
+        "workDescription": { "type": "string" },
+        "actualAmount": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "projectId": { "type": "string" }
+      },
+      "required": ["id", "date", "invoiceNumber", "actualAmount", "vatAmount", "totalAmount"]
     }
   },
   "firestore": {
@@ -299,6 +320,10 @@
     "/petty_cash/{pcId}": {
       "schema": "PettyCash",
       "description": "Petty cash transaction records"
+    },
+    "/projected_expenses/{peId}": {
+      "schema": "ProjectedExpense",
+      "description": "Projected expense records"
     },
     "/settings/about": {
       "schema": "object",

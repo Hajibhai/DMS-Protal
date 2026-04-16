@@ -53,6 +53,7 @@ import {
   LeaveRequest, LeaveStatus, OffboardingDetails, 
   SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, Supplier, Project, 
   Vendor, AccountsPayable, AccountsReceivable, PettyCash,
+  ProjectedExpense,
   AuditLog
 } from './types';
 import { 
@@ -68,6 +69,7 @@ import {
   saveAccountsPayable, deleteAccountsPayable,
   saveAccountsReceivable, deleteAccountsReceivable,
   savePettyCash, deletePettyCash,
+  saveProjectedExpense, deleteProjectedExpense,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
@@ -75,8 +77,8 @@ import SmartCommand from './components/SmartCommand';
 import { Layout } from './components/Layout';
 import { GoogleDriveManager } from './components/GoogleDriveManager';
 import { 
-  VendorView, AccountsPayableView, AccountsReceivableView, PettyCashView,
-  VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal
+  VendorView, AccountsPayableView, AccountsReceivableView, PettyCashView, ProjectedExpenseView,
+  VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal, ProjectedExpenseModal
 } from './components/FinanceViews';
 
 // --- Constants & Helpers ---
@@ -2568,6 +2570,7 @@ export default function App() {
   const [accountsPayable, setAccountsPayable] = useState<AccountsPayable[]>([]);
   const [accountsReceivable, setAccountsReceivable] = useState<AccountsReceivable[]>([]);
   const [pettyCash, setPettyCash] = useState<PettyCash[]>([]);
+  const [projectedExpenses, setProjectedExpenses] = useState<ProjectedExpense[]>([]);
   const hasLoggedLogin = useRef(false);
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -2603,6 +2606,7 @@ export default function App() {
   const [showAPModal, setShowAPModal] = useState<AccountsPayable | boolean>(false);
   const [showARModal, setShowARModal] = useState<AccountsReceivable | boolean>(false);
   const [showPettyCashModal, setShowPettyCashModal] = useState<PettyCash | boolean>(false);
+  const [showProjectedExpenseModal, setShowProjectedExpenseModal] = useState<ProjectedExpense | boolean>(false);
   
   // Confirm Modal
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'danger' as 'danger' | 'warning' });
@@ -2771,6 +2775,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'petty_cash');
     });
 
+    const unsubProjectedExpenses = onSnapshot(collection(db, 'projected_expenses'), (snap) => {
+      setProjectedExpenses(snap.docs.map(d => d.data() as ProjectedExpense));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'projected_expenses');
+    });
+
     const unsubUsers = (systemUser?.permissions?.canManageUsers || isCreator) ? onSnapshot(collection(db, 'users'), (snap) => {
       setSystemUsers(snap.docs.map(d => d.data() as SystemUser));
     }, (error) => {
@@ -2789,6 +2799,7 @@ export default function App() {
       unsubAP();
       unsubAR();
       unsubPettyCash();
+      unsubProjectedExpenses();
       unsubUsers();
     };
   }, [isAuthReady, user, systemUser]);
@@ -2854,6 +2865,20 @@ export default function App() {
     });
   };
 
+  const handleSaveProjectedExpense = async (data: ProjectedExpense) => {
+    await saveProjectedExpense(data);
+    const isUpdate = projectedExpenses.some(pe => pe.id === data.id);
+    handleLogAction(isUpdate ? 'Projected Expense Updated' : 'Projected Expense Added', `Projected expense ${data.invoiceNumber} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
+    setShowProjectedExpenseModal(false);
+  };
+
+  const handleDeleteProjectedExpense = async (pe: ProjectedExpense) => {
+    openConfirm("Delete Entry", `Are you sure you want to delete projected expense: ${pe.invoiceNumber}?`, async () => {
+      await deleteProjectedExpense(pe.id);
+      handleLogAction('Projected Expense Deleted', `Projected expense ${pe.invoiceNumber} was deleted.`, 'delete');
+    });
+  };
+
   // Handlers
   const navItems = useMemo(() => {
     const baseItems = [
@@ -2897,6 +2922,7 @@ export default function App() {
           { id: 'accounts-payable', label: 'Accounts Payable', icon: TrendingDown, permission: 'canManagePayroll' },
           { id: 'accounts-receivable', label: 'Accounts Receivable', icon: TrendingUp, permission: 'canManagePayroll' },
           { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManagePayroll' },
+          { id: 'projected-expenses', label: 'Projected Expenses', icon: TrendingDown, permission: 'canManagePayroll' },
         ]
       },
       { id: 'reports', label: 'Reports', icon: BarChart3, permission: 'canViewReports' },
@@ -3319,6 +3345,16 @@ export default function App() {
           user={systemUser}
         />
       )}
+      {activeTab === 'projected-expenses' && (
+        <ProjectedExpenseView 
+          data={projectedExpenses}
+          projects={projects}
+          onAdd={() => setShowProjectedExpenseModal(true)}
+          onEdit={(pe: ProjectedExpense) => setShowProjectedExpenseModal(pe)}
+          onDelete={handleDeleteProjectedExpense}
+          user={systemUser}
+        />
+      )}
       {activeTab === 'reports' && (
         <ReportsView 
           employees={employees} 
@@ -3437,6 +3473,14 @@ export default function App() {
             projects={projects}
             onSave={handleSavePettyCash}
             onCancel={() => setShowPettyCashModal(false)}
+          />
+        )}
+        {showProjectedExpenseModal && (
+          <ProjectedExpenseModal 
+            expense={typeof showProjectedExpenseModal === 'object' ? showProjectedExpenseModal : null}
+            projects={projects}
+            onSave={handleSaveProjectedExpense}
+            onCancel={() => setShowProjectedExpenseModal(false)}
           />
         )}
         {showAuditModal && (
@@ -5059,7 +5103,8 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
         description: '',
         estimationValue: 0,
         income: 0,
-        overallExpenses: 0
+        overallExpenses: 0,
+        assignedStaffCount: 0
     });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -5107,7 +5152,8 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                 description: '',
                 estimationValue: 0,
                 income: 0,
-                overallExpenses: 0
+                overallExpenses: 0,
+                assignedStaffCount: 0
             });
             setIsAdding(false);
         } catch (err: any) {
@@ -5320,6 +5366,16 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                                 />
                             </div>
                         </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assigned Staff Count</label>
+                            <input 
+                                type="number"
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="0"
+                                value={formData.assignedStaffCount || ''}
+                                onChange={e => setFormData({ ...formData, assignedStaffCount: Number(e.target.value) })}
+                            />
+                        </div>
                     </div>
 
                     <div className="flex items-center justify-end pt-6 border-t border-slate-100 gap-3">
@@ -5474,6 +5530,15 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                                                     />
                                                 </div>
                                             </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Staff Count</label>
+                                                <input 
+                                                    type="number"
+                                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500"
+                                                    value={project.assignedStaffCount || ''}
+                                                    onChange={e => updateProject({ ...project, assignedStaffCount: Number(e.target.value) })}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex gap-2 pt-2">
@@ -5555,6 +5620,15 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                                                     {project.overallExpenses?.toLocaleString() || '0'}
                                                 </span>
                                             </div>
+                                            {project.assignedStaffCount !== undefined && project.assignedStaffCount > 0 && (
+                                                <div className="flex items-center justify-between text-[10px] font-bold">
+                                                    <span className="text-slate-400 uppercase tracking-wider">Assigned Staff</span>
+                                                    <span className="text-brand-600 flex items-center gap-1">
+                                                        <Users className="w-3 h-3 opacity-60" />
+                                                        {project.assignedStaffCount}
+                                                    </span>
+                                                </div>
+                                            )}
                                             <div className="flex items-center justify-between text-[10px] font-black pt-1 border-t border-slate-100/30">
                                                 <span className="text-slate-400 uppercase tracking-wider">Net P/L</span>
                                                 <span className={cn("flex items-center gap-1", ((project.income || 0) - (project.overallExpenses || 0)) >= 0 ? "text-emerald-600" : "text-rose-600")}>

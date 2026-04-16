@@ -50,6 +50,11 @@ service cloud.firestore {
       allow write: if hasPermission('canManagePayroll');
     }
 
+    match /projected_expenses/{peId} {
+      allow read: if isAuthenticated();
+      allow write: if hasPermission('canManagePayroll');
+    }
+
     match /audit_logs/{logId} {
       allow read: if isAuthenticated() && (
         isCreator() || 

@@ -184,6 +184,7 @@ export interface Project {
     estimationValue?: number;
     income?: number;
     overallExpenses?: number;
+    assignedStaffCount?: number;
     driveFiles?: DriveFile[];
     driveFolderId?: string;
     order?: number;
@@ -245,6 +246,21 @@ export interface PettyCash {
     approvedBy?: string;
     projectId?: string; // Optional link to project
     attachment?: string;
+}
+
+export interface ProjectedExpense {
+    id: string;
+    siNo: string;
+    date: string;
+    invoiceNumber: string;
+    billDescription: string;
+    clientName: string;
+    siteLocation: string;
+    workDescription: string;
+    actualAmount: number;
+    vatAmount: number; // 5%
+    totalAmount: number;
+    projectId?: string; // Optional link to project
 }
 
 export interface DashboardStats {

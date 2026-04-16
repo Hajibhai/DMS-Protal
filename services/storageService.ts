@@ -32,6 +32,7 @@ import {
   AccountsPayable,
   AccountsReceivable,
   PettyCash,
+  ProjectedExpense,
   AuditLog,
   UserRole
 } from "../types";
@@ -513,6 +514,23 @@ export const deletePettyCash = async (id: string) => {
     await deleteDoc(doc(db, 'petty_cash', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `petty_cash/${id}`);
+  }
+};
+
+// --- Projected Expenses ---
+export const saveProjectedExpense = async (data: ProjectedExpense) => {
+  try {
+    await setDoc(doc(db, 'projected_expenses', data.id), cleanData(data));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `projected_expenses/${data.id}`);
+  }
+};
+
+export const deleteProjectedExpense = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'projected_expenses', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `projected_expenses/${id}`);
   }
 };
 
