@@ -6552,6 +6552,35 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
         setIsCopyModalOpen(false);
     };
 
+    const handleExport = () => {
+        const headers = ['Code', 'Name', 'Company', 'Department', ...days.map(d => d.toString()), 'Present', 'OT Hours'];
+        const data = filteredEmployees.map((e: Employee) => {
+            const row: any = {
+                'Code': e.code,
+                'Name': e.name,
+                'Company': e.company,
+                'Department': e.department,
+            };
+
+            days.forEach(d => {
+                const dateStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+                const record = attendance.find((r: AttendanceRecord) => r.employeeId === e.id && r.date === dateStr);
+                row[d.toString()] = record ? record.status : '-';
+            });
+
+            const empAtt = attendance.filter(r => r.employeeId === e.id && r.date.startsWith(selectedMonth));
+            row['Present'] = empAtt.filter(r => r.status === AttendanceStatus.PRESENT).length;
+            row['OT Hours'] = empAtt.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+
+            return row;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(data, { header: headers });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Timesheet");
+        XLSX.writeFile(wb, `Timesheet_${selectedMonth}.xlsx`);
+    };
+
     return (
         <div className="space-y-6">
             <CopyAttendanceModal 
@@ -6617,7 +6646,10 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                             <span className="hidden sm:inline">Copy Attendance</span>
                         </button>
                     )}
-                    <button className="p-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all active:scale-95 shadow-sm">
+                    <button 
+                        onClick={handleExport}
+                        className="p-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
+                    >
                         <Download className="w-5 h-5" />
                     </button>
                 </div>
