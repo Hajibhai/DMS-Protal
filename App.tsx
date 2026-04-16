@@ -6583,6 +6583,24 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
         XLSX.writeFile(wb, `Timesheet_${selectedMonth}.xlsx`);
     };
 
+    const handleClearAll = () => {
+        if (!canManageAttendance) return;
+        
+        openConfirm(
+            "Clear Monthly Timesheet",
+            `Are you sure you want to clear ALL attendance records for ${monthName} ${fullYear}? This action cannot be undone and will remove all logs for this month.`,
+            async () => {
+                const recordsToDelete = attendance.filter((r: AttendanceRecord) => r.date.startsWith(selectedMonth));
+                if (recordsToDelete.length === 0) return;
+                
+                for (const record of recordsToDelete) {
+                    await onDeleteAttendance(record.employeeId, record.date);
+                }
+            },
+            'danger'
+        );
+    };
+
     return (
         <div className="space-y-6">
             <CopyAttendanceModal 
@@ -6640,13 +6658,22 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                         />
                     </div>
                     {canManageAttendance && (
-                        <button 
-                            onClick={() => setIsCopyModalOpen(true)}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-brand-600 text-white rounded-2xl text-sm font-black hover:bg-brand-700 transition-all active:scale-95 shadow-lg shadow-brand-600/20"
-                        >
-                            <Copy className="w-4 h-4" />
-                            <span className="hidden sm:inline">Copy Attendance</span>
-                        </button>
+                        <>
+                            <button 
+                                onClick={handleClearAll}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-2xl text-sm font-black hover:bg-rose-100 transition-all active:scale-95"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                <span className="hidden sm:inline">Clear All</span>
+                            </button>
+                            <button 
+                                onClick={() => setIsCopyModalOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-brand-600 text-white rounded-2xl text-sm font-black hover:bg-brand-700 transition-all active:scale-95 shadow-lg shadow-brand-600/20"
+                            >
+                                <Copy className="w-4 h-4" />
+                                <span className="hidden sm:inline">Copy Attendance</span>
+                            </button>
+                        </>
                     )}
                     <button 
                         onClick={handleExport}
