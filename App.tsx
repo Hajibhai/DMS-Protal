@@ -3238,6 +3238,7 @@ export default function App() {
         <DashboardView 
           employees={employees} 
           suppliers={suppliers}
+          vendors={vendors}
           projects={projects}
           attendance={attendance} 
           user={systemUser}
@@ -3570,7 +3571,7 @@ export default function App() {
 
 // --- Dashboard View ---
 
-const DashboardView = ({ employees, suppliers, projects, attendance, user, auditLogs, setShowAuditModal, onOpenUserManagement, onOpenManageCompanies, onOpenOnboarding, onUpdate, setActiveTab }: any) => {
+const DashboardView = ({ employees, suppliers, vendors, projects, attendance, user, auditLogs, setShowAuditModal, onOpenUserManagement, onOpenManageCompanies, onOpenOnboarding, onUpdate, setActiveTab }: any) => {
     const [showQuickAdminMenu, setShowQuickAdminMenu] = useState(false);
     
     // Stats Calculation
@@ -3666,7 +3667,7 @@ const DashboardView = ({ employees, suppliers, projects, attendance, user, audit
             </div>
 
             {/* Bento Grid Layout */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-10 gap-6">
                 {/* Stat Cards */}
                 <BentoStatCard 
                     title="Current Active Employees" 
@@ -3675,14 +3676,25 @@ const DashboardView = ({ employees, suppliers, projects, attendance, user, audit
                     isUp={true}
                     icon={Users} 
                     color="brand"
+                    className="lg:col-span-2"
                 />
                 <BentoStatCard 
-                    title="Total Suppliers" 
+                    title="Clients" 
+                    value={vendors.length} 
+                    trend="+1.2%" 
+                    isUp={true}
+                    icon={Globe} 
+                    color="brand"
+                    className="lg:col-span-2"
+                />
+                <BentoStatCard 
+                    title="Suppliers" 
                     value={suppliers.length} 
                     trend="+4.2%" 
                     isUp={true}
                     icon={Truck} 
                     color="indigo"
+                    className="lg:col-span-2"
                 />
                 <BentoStatCard 
                     title="Active Projects" 
@@ -3691,6 +3703,7 @@ const DashboardView = ({ employees, suppliers, projects, attendance, user, audit
                     isUp={true}
                     icon={Briefcase} 
                     color="orange"
+                    className="lg:col-span-2"
                 />
                 <BentoStatCard 
                     title="Ex Employees" 
@@ -3699,10 +3712,11 @@ const DashboardView = ({ employees, suppliers, projects, attendance, user, audit
                     isUp={true}
                     icon={UserMinus} 
                     color="emerald"
+                    className="lg:col-span-2"
                 />
 
                 {/* Recent Activity Log */}
-                <div className="md:col-span-2 lg:col-span-2 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col">
+                <div className="md:col-span-2 lg:col-span-5 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col">
                     <div className="flex items-center justify-between mb-8">
                         <div className="flex items-center gap-3">
                             <div className="p-2.5 bg-brand-50 rounded-2xl">
@@ -3740,7 +3754,7 @@ const DashboardView = ({ employees, suppliers, projects, attendance, user, audit
                 </div>
 
                 {/* Quick Actions & Access */}
-                <div className="md:col-span-2 lg:col-span-2 bg-white rounded-[2.5rem] p-8 text-slate-900 border border-slate-200 flex flex-col relative overflow-hidden group">
+                <div className="md:col-span-2 lg:col-span-5 bg-white rounded-[2.5rem] p-8 text-slate-900 border border-slate-200 flex flex-col relative overflow-hidden group">
                     <div className="absolute bottom-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mb-20 transition-transform duration-700 group-hover:scale-110"></div>
                     
                     <div className="relative z-10 flex flex-col h-full">
@@ -4096,7 +4110,7 @@ const HelpCenterView = () => {
     );
 };
 
-const BentoStatCard = ({ title, value, trend, isUp, icon: Icon, color }: any) => {
+const BentoStatCard = ({ title, value, trend, isUp, icon: Icon, color, className }: any) => {
     const colors: any = {
         brand: "bg-brand-50 text-brand-600 border-brand-100 shadow-brand-500/5",
         emerald: "bg-emerald-50 text-emerald-600 border-emerald-100 shadow-emerald-500/5",
@@ -4107,7 +4121,10 @@ const BentoStatCard = ({ title, value, trend, isUp, icon: Icon, color }: any) =>
     return (
         <motion.div 
             whileHover={{ y: -5 }}
-            className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[200px] transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 group"
+            className={cn(
+                "bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[200px] transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 group",
+                className
+            )}
         >
             <div className="flex justify-between items-start">
                 <div className={cn("p-3.5 rounded-2xl transition-all duration-500 group-hover:rotate-6", colors[color])}>
