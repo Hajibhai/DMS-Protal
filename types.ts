@@ -263,6 +263,21 @@ export interface ProjectedExpense {
     projectId?: string; // Optional link to project
 }
 
+export interface EverydayExpense {
+    id: string;
+    siNo: string;
+    date: string;
+    invoiceNo: string;
+    trnNo: string;
+    clientName: string;
+    supplierName: string;
+    shopName: string;
+    billAmount: number;
+    vatAmount: number;
+    totalAmount: number;
+    projectId?: string; // Optional link to project
+}
+
 export interface DashboardStats {
   totalStaff: number;
   present: number;

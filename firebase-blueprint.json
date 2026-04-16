@@ -270,6 +270,26 @@
         "projectId": { "type": "string" }
       },
       "required": ["id", "date", "invoiceNumber", "actualAmount", "vatAmount", "totalAmount"]
+    },
+    "EverydayExpense": {
+      "title": "Everyday Expense",
+      "description": "Daily operational expenses",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "siNo": { "type": "string" },
+        "date": { "type": "string" },
+        "invoiceNo": { "type": "string" },
+        "trnNo": { "type": "string" },
+        "clientName": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "shopName": { "type": "string" },
+        "billAmount": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "projectId": { "type": "string" }
+      },
+      "required": ["id", "date", "invoiceNo", "billAmount", "vatAmount", "totalAmount"]
     }
   },
   "firestore": {
@@ -324,6 +344,10 @@
     "/projected_expenses/{peId}": {
       "schema": "ProjectedExpense",
       "description": "Projected expense records"
+    },
+    "/everyday_expenses/{eeId}": {
+      "schema": "EverydayExpense",
+      "description": "Everyday expense records"
     },
     "/settings/about": {
       "schema": "object",

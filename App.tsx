@@ -54,6 +54,7 @@ import {
   SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, Supplier, Project, 
   Vendor, AccountsPayable, AccountsReceivable, PettyCash,
   ProjectedExpense,
+  EverydayExpense,
   AuditLog
 } from './types';
 import { 
@@ -70,6 +71,7 @@ import {
   saveAccountsReceivable, deleteAccountsReceivable,
   savePettyCash, deletePettyCash,
   saveProjectedExpense, deleteProjectedExpense,
+  saveEverydayExpense, deleteEverydayExpense,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
@@ -77,8 +79,8 @@ import SmartCommand from './components/SmartCommand';
 import { Layout } from './components/Layout';
 import { GoogleDriveManager } from './components/GoogleDriveManager';
 import { 
-  VendorView, AccountsPayableView, AccountsReceivableView, PettyCashView, ProjectedExpenseView,
-  VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal, ProjectedExpenseModal
+  VendorView, AccountsPayableView, AccountsReceivableView, PettyCashView, ProjectedExpenseView, EverydayExpenseView,
+  VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal, ProjectedExpenseModal, EverydayExpenseModal
 } from './components/FinanceViews';
 
 // --- Constants & Helpers ---
@@ -2571,6 +2573,7 @@ export default function App() {
   const [accountsReceivable, setAccountsReceivable] = useState<AccountsReceivable[]>([]);
   const [pettyCash, setPettyCash] = useState<PettyCash[]>([]);
   const [projectedExpenses, setProjectedExpenses] = useState<ProjectedExpense[]>([]);
+  const [everydayExpenses, setEverydayExpenses] = useState<EverydayExpense[]>([]);
   const hasLoggedLogin = useRef(false);
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -2607,6 +2610,7 @@ export default function App() {
   const [showARModal, setShowARModal] = useState<AccountsReceivable | boolean>(false);
   const [showPettyCashModal, setShowPettyCashModal] = useState<PettyCash | boolean>(false);
   const [showProjectedExpenseModal, setShowProjectedExpenseModal] = useState<ProjectedExpense | boolean>(false);
+  const [showEverydayExpenseModal, setShowEverydayExpenseModal] = useState<EverydayExpense | boolean>(false);
   
   // Confirm Modal
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {}, type: 'danger' as 'danger' | 'warning' });
@@ -2781,6 +2785,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'projected_expenses');
     });
 
+    const unsubEverydayExpenses = onSnapshot(collection(db, 'everyday_expenses'), (snap) => {
+      setEverydayExpenses(snap.docs.map(d => d.data() as EverydayExpense));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
+    });
+
     const unsubUsers = (systemUser?.permissions?.canManageUsers || isCreator) ? onSnapshot(collection(db, 'users'), (snap) => {
       setSystemUsers(snap.docs.map(d => d.data() as SystemUser));
     }, (error) => {
@@ -2800,6 +2810,7 @@ export default function App() {
       unsubAR();
       unsubPettyCash();
       unsubProjectedExpenses();
+      unsubEverydayExpenses();
       unsubUsers();
     };
   }, [isAuthReady, user, systemUser]);
@@ -2879,6 +2890,20 @@ export default function App() {
     });
   };
 
+  const handleSaveEverydayExpense = async (data: EverydayExpense) => {
+    await saveEverydayExpense(data);
+    const isUpdate = everydayExpenses.some(ee => ee.id === data.id);
+    handleLogAction(isUpdate ? 'Everyday Expense Updated' : 'Everyday Expense Added', `Everyday expense ${data.invoiceNo} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
+    setShowEverydayExpenseModal(false);
+  };
+
+  const handleDeleteEverydayExpense = async (ee: EverydayExpense) => {
+    openConfirm("Delete Entry", `Are you sure you want to delete everyday expense: ${ee.invoiceNo}?`, async () => {
+      await deleteEverydayExpense(ee.id);
+      handleLogAction('Everyday Expense Deleted', `Everyday expense ${ee.invoiceNo} was deleted.`, 'delete');
+    });
+  };
+
   // Handlers
   const navItems = useMemo(() => {
     const baseItems = [
@@ -2922,6 +2947,7 @@ export default function App() {
           { id: 'accounts-payable', label: 'Accounts Payable', icon: TrendingDown, permission: 'canManagePayroll' },
           { id: 'accounts-receivable', label: 'Accounts Receivable', icon: TrendingUp, permission: 'canManagePayroll' },
           { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManagePayroll' },
+          { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManagePayroll' },
           { id: 'projected-expenses', label: 'Projected Expenses', icon: TrendingDown, permission: 'canManagePayroll' },
         ]
       },
@@ -3355,6 +3381,16 @@ export default function App() {
           user={systemUser}
         />
       )}
+      {activeTab === 'everyday-expenses' && (
+        <EverydayExpenseView 
+          data={everydayExpenses}
+          projects={projects}
+          onAdd={() => setShowEverydayExpenseModal(true)}
+          onEdit={(ee: EverydayExpense) => setShowEverydayExpenseModal(ee)}
+          onDelete={handleDeleteEverydayExpense}
+          user={systemUser}
+        />
+      )}
       {activeTab === 'reports' && (
         <ReportsView 
           employees={employees} 
@@ -3481,6 +3517,14 @@ export default function App() {
             projects={projects}
             onSave={handleSaveProjectedExpense}
             onCancel={() => setShowProjectedExpenseModal(false)}
+          />
+        )}
+        {showEverydayExpenseModal && (
+          <EverydayExpenseModal 
+            expense={typeof showEverydayExpenseModal === 'object' ? showEverydayExpenseModal : null}
+            projects={projects}
+            onSave={handleSaveEverydayExpense}
+            onCancel={() => setShowEverydayExpenseModal(false)}
           />
         )}
         {showAuditModal && (
