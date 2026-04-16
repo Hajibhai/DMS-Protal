@@ -156,76 +156,76 @@ export const Layout: React.FC<LayoutProps> = ({
     const results: any[] = [];
     
     // Search Employees
-    employees.forEach(emp => {
+    (employees || []).forEach(emp => {
         if (
-            emp.name.toLowerCase().includes(q) || 
-            emp.code.toLowerCase().includes(q) || 
-            emp.designation.toLowerCase().includes(q) ||
-            emp.department.toLowerCase().includes(q) ||
-            emp.company.toLowerCase().includes(q)
+            (emp.name?.toLowerCase() || '').includes(q) || 
+            (emp.code?.toLowerCase() || '').includes(q) || 
+            (emp.designation?.toLowerCase() || '').includes(q) ||
+            (emp.department?.toLowerCase() || '').includes(q) ||
+            (emp.company?.toLowerCase() || '').includes(q)
         ) {
             results.push({ type: 'Employee', title: emp.name, subtitle: `${emp.code} - ${emp.designation} (${emp.company})`, id: emp.id, tab: 'staff' });
         }
     });
     
     // Search Companies
-    companies.forEach(comp => {
-        if (comp.name.toLowerCase().includes(q) || comp.code.toLowerCase().includes(q)) {
+    (companies || []).forEach(comp => {
+        if ((comp.name?.toLowerCase() || '').includes(q) || (comp.code?.toLowerCase() || '').includes(q)) {
             results.push({ type: 'Company', title: comp.name, subtitle: `${comp.code} - Company Details`, id: comp.id, tab: 'company' });
         }
     });
 
     // Search Projects
-    projects.forEach(proj => {
+    (projects || []).forEach(proj => {
         if (
-            proj.name.toLowerCase().includes(q) || 
-            proj.code.toLowerCase().includes(q) || 
-            proj.clientName?.toLowerCase().includes(q) ||
-            proj.location?.toLowerCase().includes(q)
+            (proj.name?.toLowerCase() || '').includes(q) || 
+            (proj.code?.toLowerCase() || '').includes(q) || 
+            (proj.clientName?.toLowerCase() || '').includes(q) ||
+            (proj.location?.toLowerCase() || '').includes(q)
         ) {
             results.push({ type: 'Project', title: proj.name, subtitle: `${proj.code} - ${proj.clientName}`, id: proj.id, tab: 'projects' });
         }
     });
 
     // Search Suppliers
-    suppliers.forEach(sup => {
-        if (sup.name.toLowerCase().includes(q) || sup.code.toLowerCase().includes(q)) {
+    (suppliers || []).forEach(sup => {
+        if ((sup.name?.toLowerCase() || '').includes(q) || (sup.code?.toLowerCase() || '').includes(q)) {
             results.push({ type: 'Supplier', title: sup.name, subtitle: `${sup.code} - ${sup.category || 'Supplier'}`, id: sup.id, tab: 'suppliers' });
         }
     });
 
     // Search Clients (Vendors)
-    vendors.forEach(ven => {
-        if (ven.name.toLowerCase().includes(q) || ven.code.toLowerCase().includes(q)) {
+    (vendors || []).forEach(ven => {
+        if ((ven.name?.toLowerCase() || '').includes(q) || (ven.code?.toLowerCase() || '').includes(q)) {
             results.push({ type: 'Client', title: ven.name, subtitle: `${ven.code} - ${ven.category || 'Client'}`, id: ven.id, tab: 'vendors' });
         }
     });
 
     // Search Finance (Payables, Receivables, Petty Cash)
-    accountsPayable.forEach(ap => {
-        if (ap.invoiceNumber.toLowerCase().includes(q) || ap.description.toLowerCase().includes(q)) {
+    (accountsPayable || []).forEach(ap => {
+        if ((ap.invoiceNumber?.toLowerCase() || '').includes(q) || (ap.description?.toLowerCase() || '').includes(q)) {
             results.push({ type: 'Finance', title: `Payable: ${ap.invoiceNumber}`, subtitle: ap.description, id: ap.id, tab: 'accounts-payable' });
         }
     });
-    accountsReceivable.forEach(ar => {
-        if (ar.invoiceNumber.toLowerCase().includes(q) || ar.description.toLowerCase().includes(q)) {
+    (accountsReceivable || []).forEach(ar => {
+        if ((ar.invoiceNumber?.toLowerCase() || '').includes(q) || (ar.description?.toLowerCase() || '').includes(q)) {
             results.push({ type: 'Finance', title: `Receivable: ${ar.invoiceNumber}`, subtitle: ar.description, id: ar.id, tab: 'accounts-receivable' });
         }
     });
-    pettyCash.forEach(pc => {
-        if (pc.description.toLowerCase().includes(q) || pc.requestedBy.toLowerCase().includes(q)) {
+    (pettyCash || []).forEach(pc => {
+        if ((pc.description?.toLowerCase() || '').includes(q) || (pc.requestedBy?.toLowerCase() || '').includes(q)) {
             results.push({ type: 'Finance', title: `Petty Cash: ${pc.description}`, subtitle: `Requested by ${pc.requestedBy}`, id: pc.id, tab: 'petty-cash' });
         }
     });
     
     // Search Nav Items
-    navItems.forEach(item => {
-        if (item.label.toLowerCase().includes(q)) {
+    (navItems || []).forEach(item => {
+        if ((item.label?.toLowerCase() || '').includes(q)) {
             results.push({ type: 'Navigation', title: item.label, subtitle: 'System Section', id: item.id, tab: item.id });
         }
         if (item.subItems) {
             item.subItems.forEach((sub: any) => {
-                if (sub.label.toLowerCase().includes(q)) {
+                if ((sub.label?.toLowerCase() || '').includes(q)) {
                     results.push({ type: 'Navigation', title: sub.label, subtitle: `${item.label} Section`, id: sub.id, tab: sub.id });
                 }
             });
@@ -233,7 +233,7 @@ export const Layout: React.FC<LayoutProps> = ({
     });
 
     // Search Employee Documents
-    employees.forEach(emp => {
+    (employees || []).forEach(emp => {
         const docNames = ['emirates id', 'passport', 'visa', 'labour card'];
         docNames.forEach(name => {
             if (name.includes(q)) {
@@ -248,7 +248,7 @@ export const Layout: React.FC<LayoutProps> = ({
         });
         
         emp.driveFiles?.forEach((file: any) => {
-            if (file.name.toLowerCase().includes(q)) {
+            if ((file.name?.toLowerCase() || '').includes(q)) {
                 results.push({ 
                     type: 'Document', 
                     title: file.name, 
@@ -262,9 +262,9 @@ export const Layout: React.FC<LayoutProps> = ({
     });
 
     // Search Company Documents
-    companies.forEach(comp => {
+    (companies || []).forEach(comp => {
         comp.driveFiles?.forEach((file: any) => {
-            if (file.name.toLowerCase().includes(q)) {
+            if ((file.name?.toLowerCase() || '').includes(q)) {
                 results.push({ 
                     type: 'Document', 
                     title: file.name, 

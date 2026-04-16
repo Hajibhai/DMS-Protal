@@ -4257,9 +4257,9 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
     const filteredEmployees = useMemo(() => {
         return employees.filter((e: Employee) => {
             const company = companyList.find(c => c.name === e.company);
-            const matchesSearch = e.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                e.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                company?.code.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesSearch = (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
+                                (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                                (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
             const matchesCompany = companyFilter === 'All' || e.company === companyFilter;
             const matchesDept = deptFilter === 'All' || e.department === deptFilter;
             return matchesSearch && matchesCompany && matchesDept;
@@ -4617,11 +4617,11 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
         if (!searchTerm.trim()) return sortedSuppliers;
         const query = searchTerm.toLowerCase();
         return sortedSuppliers.filter(supplier => {
-            const matchesName = supplier.name.toLowerCase().includes(query);
-            const matchesCode = supplier.code?.toLowerCase().includes(query);
-            const matchesContact = supplier.contactPerson?.toLowerCase().includes(query);
+            const matchesName = (supplier.name?.toLowerCase() || '').includes(query);
+            const matchesCode = (supplier.code?.toLowerCase() || '').includes(query);
+            const matchesContact = (supplier.contactPerson?.toLowerCase() || '').includes(query);
             const matchesDocuments = supplier.driveFiles?.some(file => 
-                file.name.toLowerCase().includes(query)
+                (file.name?.toLowerCase() || '').includes(query)
             );
             return matchesName || matchesCode || matchesContact || matchesDocuments;
         });
@@ -5186,10 +5186,10 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
         if (!searchTerm.trim()) return sortedProjects;
         const query = searchTerm.toLowerCase();
         return sortedProjects.filter(project => {
-            const matchesName = project.name.toLowerCase().includes(query);
-            const matchesCode = project.code?.toLowerCase().includes(query);
-            const matchesClient = project.clientName?.toLowerCase().includes(query);
-            const matchesLocation = project.location?.toLowerCase().includes(query);
+            const matchesName = (project.name?.toLowerCase() || '').includes(query);
+            const matchesCode = (project.code?.toLowerCase() || '').includes(query);
+            const matchesClient = (project.clientName?.toLowerCase() || '').includes(query);
+            const matchesLocation = (project.location?.toLowerCase() || '').includes(query);
             return matchesName || matchesCode || matchesClient || matchesLocation;
         });
     }, [sortedProjects, searchTerm]);
@@ -6503,9 +6503,9 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
     const filteredEmployees = useMemo(() => {
         return employees.filter((e: Employee) => {
             const company = companies.find((c: Company) => c.name === e.company);
-            return e.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                   e.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                   company?.code.toLowerCase().includes(searchTerm.toLowerCase());
+            return (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
+                   (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                   (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
         });
     }, [employees, searchTerm, companies]);
 
@@ -6796,11 +6796,11 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
             const company = companies.find((c: Company) => c.name === emp?.company);
             const search = searchTerm.toLowerCase();
             return (
-                emp?.name.toLowerCase().includes(search) ||
-                emp?.code.toLowerCase().includes(search) ||
-                company?.code.toLowerCase().includes(search) ||
-                d.type.toLowerCase().includes(search) ||
-                (d.note && d.note.toLowerCase().includes(search))
+                (emp?.name?.toLowerCase() || '').includes(search) ||
+                (emp?.code?.toLowerCase() || '').includes(search) ||
+                (company?.code?.toLowerCase() || '').includes(search) ||
+                (d.type?.toLowerCase() || '').includes(search) ||
+                (d.note && (d.note?.toLowerCase() || '').includes(search))
             );
         });
     }, [deductions, employees, searchTerm, companies]);
@@ -7021,11 +7021,11 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies }: any)
             const company = companies.find((c: Company) => c.name === emp?.company);
             const search = searchTerm.toLowerCase();
             return (
-                emp?.name.toLowerCase().includes(search) ||
-                emp?.code.toLowerCase().includes(search) ||
-                company?.code.toLowerCase().includes(search) ||
-                r.type.toLowerCase().includes(search) ||
-                r.reason?.toLowerCase().includes(search)
+                (emp?.name?.toLowerCase() || '').includes(search) ||
+                (emp?.code?.toLowerCase() || '').includes(search) ||
+                (company?.code?.toLowerCase() || '').includes(search) ||
+                (r.type?.toLowerCase() || '').includes(search) ||
+                (r.reason?.toLowerCase() || '').includes(search)
             );
         });
     }, [leaveRequests, employees, searchTerm, companies]);
@@ -7264,9 +7264,9 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
      const filteredEmployees = useMemo(() => {
         return employees.filter((e: Employee) => {
             const company = companies.find((c: Company) => c.name === e.company);
-            return e.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                   e.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                   company?.code.toLowerCase().includes(searchTerm.toLowerCase());
+            return (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
+                   (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                   (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
         });
     }, [employees, searchTerm, companies]);
 
