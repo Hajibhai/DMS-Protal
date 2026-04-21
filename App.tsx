@@ -132,6 +132,7 @@ const calculatePayroll = (employee: Employee, attendance: AttendanceRecord[], de
         grossSalary,
         totalUnpaidDays,
         lopDeduction,
+        totalOtHours,
         otAmount,
         totalDeductions: lopDeduction + otherDeductionsTotal,
         netSalary: grossSalary + otAmount - (lopDeduction + otherDeductionsTotal),
@@ -7450,6 +7451,8 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
              const isFixedSalary = e.team === 'Office Staff' || e.team === 'Internal Team';
              const totalHours = monthRecs.reduce((sum: number, r: any) => sum + (r.hoursWorked || 0), 0);
 
+             const presentDays = monthRecs.filter((r: any) => r.status === AttendanceStatus.PRESENT).length;
+
              return {
                  'Employee Code': e.code,
                  'Employee Name': e.name,
@@ -7458,13 +7461,15 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                  'Type': isFixedSalary ? 'Fixed' : 'Hourly',
                  'Basic Salary': isFixedSalary ? p.breakdown.basic : 0,
                  'Hourly Rate': isFixedSalary ? 0 : (p.breakdown.hourlyRate || 0),
-                 'Hours Worked': isFixedSalary ? 0 : totalHours,
+                 'Present Days': presentDays,
+                 'Hours Worked': totalHours,
                  'Housing': isFixedSalary ? p.breakdown.housing : 0,
                  'Transport': isFixedSalary ? p.breakdown.transport : 0,
                  'Other Allowance': isFixedSalary ? p.breakdown.other : 0,
                  'Gross Salary': p.grossSalary,
-                 'Unpaid Days': p.totalUnpaidDays,
+                 'Unpaid (Absent)': p.totalUnpaidDays,
                  'Deductions': p.totalDeductions,
+                 'OT Hours': p.totalOtHours,
                  'OT Amount': p.otAmount,
                  'Net Salary': p.netSalary
              };
@@ -7519,11 +7524,12 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                              <tr className="bg-slate-50/50 border-b border-slate-100">
                                  <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest sticky left-0 bg-white/80 backdrop-blur-md z-10">Employee</th>
                                  <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Rate/Basic</th>
-                                 <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Hours/Days</th>
+                                 <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Present Days</th>
                                  <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Gross</th>
-                                 <th className="p-5 text-[10px] font-bold text-red-400 uppercase tracking-widest text-right">Unpaid</th>
+                                 <th className="p-5 text-[10px] font-bold text-red-400 uppercase tracking-widest text-right">Unpaid (Absent)</th>
                                  <th className="p-5 text-[10px] font-bold text-red-400 uppercase tracking-widest text-right">Deductions</th>
-                                 <th className="p-5 text-[10px] font-bold text-emerald-400 uppercase tracking-widest text-right">OT Pay</th>
+                                 <th className="p-5 text-[10px] font-bold text-violet-400 uppercase tracking-widest text-right text-nowrap">OT Hours</th>
+                                 <th className="p-5 text-[10px] font-bold text-emerald-400 uppercase tracking-widest text-right text-nowrap">OT Pay</th>
                                  <th className="p-5 text-[10px] font-bold text-slate-900 uppercase tracking-widest text-right">Net Salary</th>
                              </tr>
                          </thead>
@@ -7536,6 +7542,11 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                  const isFixedSalary = e.team === 'Office Staff' || e.team === 'Internal Team';
                                  const totalHours = monthRecs.reduce((sum: number, r: any) => sum + (r.hoursWorked || 0), 0);
                                  
+                                 const calculatePresentDays = () => {
+                                     return monthRecs.filter((r: any) => r.status === AttendanceStatus.PRESENT).length;
+                                 };
+                                 const presentDays = calculatePresentDays();
+
                                  return (
                                      <tr key={e.id} className="hover:bg-slate-50/50 transition-colors group">
                                          <td className="p-5 sticky left-0 bg-white group-hover:bg-slate-50/50 transition-colors z-10 border-r border-slate-100">
@@ -7557,11 +7568,13 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                              {isFixedSalary ? p.breakdown.basic.toLocaleString() : (p.breakdown.hourlyRate || 0).toLocaleString()}
                                          </td>
                                          <td className="p-5 text-right text-sm text-slate-500">
-                                             {isFixedSalary ? '30 Days' : `${totalHours} Hours`}
+                                             <div className="font-bold text-slate-700">{presentDays} Days</div>
+                                             {!isFixedSalary && <div className="text-[10px] text-slate-400">{totalHours} Hours</div>}
                                          </td>
                                          <td className="p-5 text-right text-sm font-bold text-slate-900">{p.grossSalary.toLocaleString()}</td>
                                          <td className="p-5 text-right text-sm font-bold text-red-500">{p.totalUnpaidDays}</td>
                                          <td className="p-5 text-right text-sm font-bold text-red-600">-{p.totalDeductions.toFixed(0)}</td>
+                                         <td className="p-5 text-right text-sm font-bold text-violet-600">{p.totalOtHours}h</td>
                                          <td className="p-5 text-right text-sm font-bold text-emerald-600">+{p.otAmount.toFixed(0)}</td>
                                          <td className="p-5 text-right">
                                             <div className="inline-block px-4 py-1.5 bg-brand-50 text-brand-700 rounded-xl text-sm font-black border border-brand-100">
