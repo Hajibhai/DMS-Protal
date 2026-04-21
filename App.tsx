@@ -24,7 +24,7 @@ import {
   MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, GripVertical,
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
-  ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw
+  ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -7825,7 +7825,6 @@ const ReportsView = ({
                 ];
                 break;
             case 'pl':
-            case 'income_statement':
                 data = [
                     { 'Category': 'REVENUE', 'Amount': null },
                     { 'Category': 'Accounts Receivable', 'Amount': stats.totalReceivable },
@@ -7844,6 +7843,26 @@ const ReportsView = ({
                     { 'Category': 'TOTAL OPERATING EXPENSES', 'Amount': stats.totalNet + stats.pettyCashOut },
                     { 'Category': '', 'Amount': null },
                     { 'Category': 'NET PROFIT', 'Amount': (stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut) }
+                ];
+                break;
+            case 'corporate_tax':
+                const netProfit = (stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut);
+                const taxThreshold = 375000;
+                const taxableAmount = Math.max(0, netProfit - taxThreshold);
+                const taxDue = taxableAmount * 0.09;
+                data = [
+                    { 'Tax Metric': 'Statement of Taxable Income', 'Value': null },
+                    { 'Tax Metric': 'Gross Revenue', 'Value': stats.totalReceivable + stats.pettyCashIn },
+                    { 'Tax Metric': 'Total Deductible Expenses', 'Value': stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut },
+                    { 'Tax Metric': 'Net Accounting Profit', 'Value': netProfit },
+                    { 'Tax Metric': '', 'Value': null },
+                    { 'Tax Metric': 'CORPORATE TAX CALCULATION (UAE)', 'Value': null },
+                    { 'Tax Metric': 'Statutory Tax Threshold', 'Value': taxThreshold },
+                    { 'Tax Metric': 'Taxable Income (Above Threshold)', 'Value': taxableAmount },
+                    { 'Tax Metric': 'Corporate Tax Rate', 'Value': '9%' },
+                    { 'Tax Metric': 'ESTIMATED CORPORATE TAX DUE', 'Value': taxDue },
+                    { 'Tax Metric': '', 'Value': null },
+                    { 'Tax Metric': 'Net Profit After Tax', 'Value': netProfit - taxDue }
                 ];
                 break;
             case 'trial_balance':
@@ -7903,11 +7922,11 @@ const ReportsView = ({
 
     const reportOptions = [
         { id: 'summary', label: 'Summary', icon: BarChart2 },
-        { id: 'pl', label: 'P & L', icon: Activity },
+        { id: 'pl', label: 'P & L / Income Statement', icon: Activity },
         { id: 'trial_balance', label: 'Trial Balance', icon: Scale },
         { id: 'balance_sheet', label: 'Balance Sheet', icon: Landmark },
         { id: 'cash_flow', label: 'Cash Flow', icon: RefreshCw },
-        { id: 'income_statement', label: 'Income Statement', icon: FileText },
+        { id: 'corporate_tax', label: 'Financial Statement (Corporate Tax)', icon: FileText },
         { id: 'staff', label: 'Workforce', icon: Users },
         { id: 'attendance', label: 'Attendance', icon: Calendar },
         { id: 'payroll', label: 'Payroll', icon: Wallet },
@@ -8000,11 +8019,18 @@ const ReportsView = ({
                     { label: 'Net Profit', value: `AED ${(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.pettyCashOut + stats.totalEveryday + stats.totalNet)).toLocaleString()}`, icon: Activity, color: 'violet' },
                 ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
 
-                {(reportType === 'pl' || reportType === 'income_statement') && [
+                {reportType === 'pl' && [
                     { label: 'Total Revenue', value: `AED ${(stats.totalReceivable + stats.pettyCashIn).toLocaleString()}`, icon: TrendingUp, color: 'emerald' },
                     { label: 'Direct Costs', value: `AED ${(stats.totalPayable + stats.totalEveryday + stats.totalProjected).toLocaleString()}`, icon: TrendingDown, color: 'rose' },
                     { label: 'Operating Exp', value: `AED ${(stats.totalNet + stats.pettyCashOut).toLocaleString()}`, icon: CreditCard, color: 'orange' },
                     { label: 'Net Profit', value: `AED ${(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)).toLocaleString()}`, icon: Activity, color: 'violet' },
+                ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
+                {reportType === 'corporate_tax' && [
+                    { label: 'Accounting Profit', value: `AED ${((stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)).toLocaleString()}`, icon: Activity, color: 'brand' },
+                    { label: 'Taxable Income', value: `AED ${Math.max(0, ((stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) - 375000).toLocaleString()}`, icon: Calculator, color: 'orange' },
+                    { label: 'Estimated Tax', value: `AED ${(Math.max(0, ((stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) - 375000) * 0.09).toLocaleString()}`, icon: ShieldAlert, color: 'rose' },
+                    { label: 'Profit After Tax', value: `AED ${(((stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) - (Math.max(0, ((stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) - 375000) * 0.09)).toLocaleString()}`, icon: CheckCircle, color: 'emerald' },
                 ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
 
                 {reportType === 'trial_balance' && [
@@ -8096,7 +8122,8 @@ const ReportsView = ({
                                 {reportType === 'finance' && ['Type', 'Date', 'Reference', 'Entity', 'Amount', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'everyday' && ['Date', 'Invoice', 'Shop/Supplier', 'Client', 'Amount', 'VAT'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'projected' && ['Date', 'Invoice', 'Client', 'Location', 'Amount', 'VAT'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
-                                {(reportType === 'pl' || reportType === 'income_statement') && ['Category', 'Amount', 'Percentage'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'pl' && ['Category', 'Amount', 'Percentage'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'corporate_tax' && ['Tax Component', 'Value (AED)', 'Compliance Note'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'trial_balance' && ['Account Name', 'Debit (AED)', 'Credit (AED)'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'balance_sheet' && ['Category', 'Amount (AED)', 'Notes'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'cash_flow' && ['Activity Description', 'Cash Inflow', 'Cash Outflow', 'Net Cash'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
@@ -8133,7 +8160,7 @@ const ReportsView = ({
                                 </>
                             )}
 
-                            {(reportType === 'pl' || reportType === 'income_statement') && (
+                            {reportType === 'pl' && (
                                 <>
                                     <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Revenue</td></tr>
                                     {[
@@ -8173,6 +8200,40 @@ const ReportsView = ({
                                         <td className="px-6 py-5 text-sm font-black uppercase">Net Profit</td>
                                         <td className="px-6 py-5 text-lg font-black">AED {(stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)).toLocaleString()}</td>
                                         <td className="px-6 py-5 text-xs font-black text-brand-200">{(((stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) / (stats.totalReceivable + stats.pettyCashIn || 1)) * 100).toFixed(1)}% Margin</td>
+                                    </tr>
+                                </>
+                            )}
+
+                            {reportType === 'corporate_tax' && (
+                                <>
+                                    <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Revenue Summary</td></tr>
+                                    {[
+                                        { l: 'Total Gross Revenue', v: stats.totalReceivable + stats.pettyCashIn, n: 'Total income generated from all sources' },
+                                        { l: 'Total Deductible Expenses', v: stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut, n: 'Business related operational costs' },
+                                        { l: 'NET ACCOUNTING PROFIT', v: (stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut), n: 'Profit before any tax adjustments' }
+                                    ].map((r, i) => (
+                                        <tr key={i} className={cn("border-b border-slate-50", r.l === 'NET ACCOUNTING PROFIT' && "bg-slate-50/50")}>
+                                            <td className="px-6 py-4 text-sm font-bold text-slate-700 font-mono tracking-tight">{r.l}</td>
+                                            <td className={cn("px-6 py-4 text-sm font-black", r.l === 'NET ACCOUNTING PROFIT' ? "text-brand-600" : "text-slate-900")}>AED {r.v.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-xs text-slate-400 italic">{r.n}</td>
+                                        </tr>
+                                    ))}
+                                    <tr className="bg-slate-50/30"><td colSpan={3} className="px-6 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Taxable Income Calculation (Federal Tax Authority)</td></tr>
+                                    {[
+                                        { l: 'Taxable Income Threshold', v: 375000, n: 'Standard UAE CT Exemption (0%)' },
+                                        { l: 'Total Taxable Amount', v: Math.max(0, ((stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) - 375000), n: 'Balance subject to 9% statutory rate' },
+                                        { l: 'ESTIMATED CORPORATE TAX DUE', v: Math.max(0, ((stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) - 375000) * 0.09, n: 'Computed tax liability for the period' }
+                                    ].map((r, i) => (
+                                        <tr key={i} className={cn("border-b border-slate-50", r.l.includes('DUE') && "bg-rose-50/50")}>
+                                            <td className="px-6 py-4 text-sm font-bold text-slate-700 font-mono tracking-tight">{r.l}</td>
+                                            <td className={cn("px-6 py-4 text-sm font-black", r.l.includes('DUE') ? "text-rose-600" : "text-slate-900")}>AED {r.v.toLocaleString()}</td>
+                                            <td className="px-6 py-4 text-xs text-slate-400 italic">{r.n}</td>
+                                        </tr>
+                                    ))}
+                                    <tr className="bg-brand-900 text-white shadow-inner">
+                                        <td className="px-6 py-6 text-sm font-black uppercase tracking-widest">Adjusted Net Profit (Post-Tax)</td>
+                                        <td className="px-6 py-6 text-xl font-black text-brand-400">AED {((stats.totalReceivable + stats.pettyCashIn - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) - (Math.max(0, ((stats.totalReceivable + stats.pettyCashIn) - (stats.totalPayable + stats.totalEveryday + stats.totalProjected + stats.totalNet + stats.pettyCashOut)) - 375000) * 0.09)).toLocaleString()}</td>
+                                        <td className="px-6 py-6 text-xs font-black text-brand-300 opacity-80 uppercase tracking-tighter">Final Retained Earnings</td>
                                     </tr>
                                 </>
                             )}
