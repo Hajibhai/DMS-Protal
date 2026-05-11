@@ -128,9 +128,12 @@ const calculatePayroll = (employee: Employee, attendance: AttendanceRecord[], de
     const otRatePerHour = isFixedSalary ? (fixedGrossSalary / 30 / 8) * 1.5 : hourlyRate * 1.5; 
     const otAmount = totalOtHours * otRatePerHour;
 
+    const totalPresentDays = attendance.filter(r => r.status === AttendanceStatus.PRESENT).length;
+
     return {
         grossSalary,
         totalUnpaidDays,
+        totalPresentDays,
         lopDeduction,
         totalOtHours,
         otAmount,
@@ -748,6 +751,7 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm 
                              </div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Code</label><input disabled type="text" value={data.code || ''} className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-500" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Name</label><input type="text" value={data.name || ''} onChange={e => setData({...data, name: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Nationality</label><input type="text" value={data.nationality || ''} onChange={e => setData({...data, nationality: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" placeholder="e.g. UAE" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Mobile Number</label><input type="text" value={data.mobileNumber || ''} onChange={e => setData({...data, mobileNumber: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
                              <div>
                                  <label className="text-xs font-semibold text-gray-500 uppercase">Staff Type</label>
@@ -986,6 +990,15 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                         placeholder="e.g. +971 ..." 
                                         value={data.mobileNumber||''} 
                                         onChange={e=>setData({...data, mobileNumber:e.target.value})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Nationality</label>
+                                    <input 
+                                        placeholder="e.g. UAE, India, UK" 
+                                        value={data.nationality||''} 
+                                        onChange={e=>setData({...data, nationality:e.target.value})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
@@ -7037,7 +7050,7 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
     const [editingReq, setEditingReq] = useState<LeaveRequest | null>(null);
     const [newReq, setNewReq] = useState({ employeeId: '', type: AttendanceStatus.ANNUAL_LEAVE, startDate: '', endDate: '', reason: '' });
     const [searchTerm, setSearchTerm] = useState('');
-    const canManageLeaves = user?.permissions?.canManageLeaves || user?.role === 'Creator';
+    const canManageLeaves = user?.permissions?.canManageLeaves || user?.role === 'Creator' || user?.role === 'Admin';
 
     const handleSave = async () => {
         if(newReq.employeeId && newReq.startDate && newReq.endDate) {
@@ -7695,6 +7708,7 @@ const ReportsView = ({
                 data = activeStaff.map((e: any) => ({
                     'Code': e.code,
                     'Name': e.name,
+                    'Nationality': e.nationality || '-',
                     'Company': e.company,
                     'Department': e.department,
                     'Team': e.team,
@@ -7723,6 +7737,9 @@ const ReportsView = ({
                 data = payrollData.map(p => ({
                     'Code': p.employee.code,
                     'Name': p.employee.name,
+                    'Present Days': p.payroll.totalPresentDays,
+                    'Unpaid Days': p.payroll.totalUnpaidDays,
+                    'OT Hours': p.payroll.totalOtHours,
                     'Gross Salary': p.payroll.grossSalary,
                     'OT Amount': p.payroll.otAmount,
                     'Deductions': p.payroll.totalDeductions,
@@ -8128,9 +8145,9 @@ const ReportsView = ({
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
-                                {reportType === 'staff' && ['Code', 'Name', 'Company', 'Department', 'Designation', 'Gross Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'staff' && ['Code', 'Name', 'Nationality', 'Company', 'Department', 'Designation', 'Gross Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'attendance' && ['Code', 'Name', 'Present', 'Absent', 'OT Hours', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
-                                {reportType === 'payroll' && ['Code', 'Name', 'Gross', 'OT Amt', 'Deductions', 'Net Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'payroll' && ['Code', 'Name', 'Present Days', 'Unpaid Days', 'OT Hours', 'Gross', 'OT Amt', 'Deductions', 'Net Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'projects' && ['Project', 'Client', 'Staff', 'Revenue', 'Expense', 'Margin'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'finance' && ['Type', 'Date', 'Reference', 'Entity', 'Amount', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'everyday' && ['Date', 'Invoice', 'Shop/Supplier', 'Client', 'Amount', 'VAT'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
@@ -8317,6 +8334,7 @@ const ReportsView = ({
                                 <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-black text-slate-900">{e.code}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-700">{e.name}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.nationality || '-'}</td>
                                     <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.company}</td>
                                     <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.department}</td>
                                     <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.designation}</td>
@@ -8350,6 +8368,9 @@ const ReportsView = ({
                                 <tr key={p.employee.id} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-black text-slate-900">{p.employee.code}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-700">{p.employee.name}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-emerald-600">{p.payroll.totalPresentDays} Days</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-rose-600">{p.payroll.totalUnpaidDays} Days</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-violet-600">{p.payroll.totalOtHours} Hrs</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-900">AED {p.payroll.grossSalary.toLocaleString()}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-violet-600">AED {p.payroll.otAmount.toLocaleString()}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-rose-600">AED {p.payroll.totalDeductions.toLocaleString()}</td>
