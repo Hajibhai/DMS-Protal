@@ -8536,7 +8536,8 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
         r.nameEnglish?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.nameArabic?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         r.emiratesId?.includes(searchTerm) ||
-        r.uidNumber?.includes(searchTerm)
+        r.uidNumber?.includes(searchTerm) ||
+        r.projectName?.toLowerCase().includes(searchTerm.toLowerCase())
     ).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const getDaysLeft = (date: string) => {
@@ -8590,6 +8591,7 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                 'CICPA Approval': r.cicpaApprovedDate,
                 'CICPA Expiry': r.cicpaExpireDate,
                 'CICPA Days Left': cicpaDays !== null ? (cicpaDays < 0 ? 'Expired' : `${cicpaDays} Days Left`) : '-',
+                'Project Name': r.projectName,
                 'Site Location': r.siteLocation,
                 'Status': r.applicationStatus,
                 'Remarks': r.remarks
@@ -8651,6 +8653,7 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Profile</th>
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Name (English/Arabic)</th>
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Emirates ID / UID</th>
+                                <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Project Name</th>
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">CICPA Expiry</th>
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
@@ -8680,6 +8683,9 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                                         <td className="px-6 py-4">
                                             <div className="text-sm font-black text-slate-700">{r.emiratesId}</div>
                                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">UID: {r.uidNumber}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm font-bold text-slate-700">{r.projectName || r.siteLocation || '-'}</div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className={cn(
@@ -8874,6 +8880,7 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                                             </h3>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                 <FormField label="Designation Code" value={showModal.designationCode} onChange={(v) => setShowModal({ ...showModal, designationCode: v })} />
+                                                <FormField label="Project Name" value={showModal.projectName} onChange={(v) => setShowModal({ ...showModal, projectName: v })} placeholder="e.g. CICPA Project" />
                                                 <FormField label="Site Location" value={showModal.siteLocation} onChange={(v) => setShowModal({ ...showModal, siteLocation: v })} placeholder="e.g. Das Island" />
                                                 <FormField label="Temp Labour Card" value={showModal.tempLabourCardNumber} onChange={(v) => setShowModal({ ...showModal, tempLabourCardNumber: v })} />
                                                 <FormField label="Temp LC Expiry" value={showModal.tempLcExpireDate} onChange={(v) => setShowModal({ ...showModal, tempLcExpireDate: v })} type="date" />

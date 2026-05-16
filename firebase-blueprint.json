@@ -329,6 +329,7 @@
         "cicpaApprovedDate": { "type": "string" },
         "cicpaExpireDate": { "type": "string" },
         "siteLocation": { "type": "string" },
+        "projectName": { "type": "string" },
         "applicationStatus": { "type": "string" },
         "remarks": { "type": "string" },
         "profilePicture": { "type": "string" },

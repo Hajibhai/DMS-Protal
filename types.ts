@@ -373,6 +373,7 @@ export interface CICPARecord {
     cicpaApprovedDate?: string;
     cicpaExpireDate?: string;
     siteLocation?: string;
+    projectName?: string;
     applicationStatus: string;
     remarks?: string;
     profilePicture?: string;
