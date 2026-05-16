@@ -297,6 +297,45 @@
         "projectId": { "type": "string" }
       },
       "required": ["id", "date", "invoiceNo", "billAmount", "vatAmount", "totalAmount"]
+    },
+    "CICPARecord": {
+      "title": "CICPA Record",
+      "description": "Security pass application tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "emailId": { "type": "string" },
+        "emiratesId": { "type": "string" },
+        "mobileNumber": { "type": "string" },
+        "permissionNumber": { "type": "string" },
+        "dob": { "type": "string" },
+        "uidNumber": { "type": "string" },
+        "nameEnglish": { "type": "string" },
+        "nameArabic": { "type": "string" },
+        "nationality": { "type": "string" },
+        "religion": { "type": "string" },
+        "passportNo": { "type": "string" },
+        "passportExpireDate": { "type": "string" },
+        "visaResidenceNumber": { "type": "string" },
+        "visaExpireDate": { "type": "string" },
+        "designationCode": { "type": "string" },
+        "designationOccupation": { "type": "string" },
+        "tempLabourCardNumber": { "type": "string" },
+        "tempLcApprovedDate": { "type": "string" },
+        "tempLcExpireDate": { "type": "string" },
+        "proNumber": { "type": "string" },
+        "cicpaApplicationDate": { "type": "string" },
+        "cicpaApprovedDate": { "type": "string" },
+        "cicpaExpireDate": { "type": "string" },
+        "siteLocation": { "type": "string" },
+        "applicationStatus": { "type": "string" },
+        "remarks": { "type": "string" },
+        "profilePicture": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "emiratesId", "nameEnglish", "applicationStatus"]
     }
   },
   "firestore": {
@@ -355,6 +394,10 @@
     "/everyday_expenses/{eeId}": {
       "schema": "EverydayExpense",
       "description": "Everyday expense records"
+    },
+    "/cicpa_records/{recordId}": {
+      "schema": "CICPARecord",
+      "description": "CICPA application tracking records"
     },
     "/settings/about": {
       "schema": "object",

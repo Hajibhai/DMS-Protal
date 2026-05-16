@@ -96,6 +96,11 @@ service cloud.firestore {
       allow write: if hasPermission('canManagePayroll');
     }
 
+    match /cicpa_records/{recordId} {
+      allow read: if isAuthenticated();
+      allow write: if hasPermission('canManageEmployees');
+    }
+
     match /companies/{companyId} {
       allow read: if isAuthenticated();
       allow write: if hasPermission('canManageSettings');
