@@ -8525,11 +8525,10 @@ const ReportsView = ({
             </motion.div>
         </div>
     );
-};
-
-const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
+};const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState<any>(null);
+    const [viewMode, setViewMode] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
 
     const filtered = records.filter((r: any) => 
@@ -8624,7 +8623,10 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                         {isExporting ? 'Exporting...' : 'Sync to Google Sheet'}
                     </button>
                     <button 
-                        onClick={() => setShowModal({ applicationStatus: 'WP' })}
+                        onClick={() => {
+                            setViewMode(false);
+                            setShowModal({ applicationStatus: 'WP' });
+                        }}
                         className="px-8 py-4 bg-brand-600 text-white rounded-3xl font-black text-sm shadow-xl shadow-brand-200 hover:scale-105 hover:bg-brand-700 active:scale-95 transition-all flex items-center gap-2"
                     >
                         <Plus className="w-5 h-5" /> New Application
@@ -8715,14 +8717,29 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button 
-                                                    onClick={() => setShowModal(r)}
+                                                    onClick={() => {
+                                                        setViewMode(true);
+                                                        setShowModal(r);
+                                                    }}
+                                                    className="p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                                                    title="View Details"
+                                                >
+                                                    <Eye className="w-4 h-4" />
+                                                </button>
+                                                <button 
+                                                    onClick={() => {
+                                                        setViewMode(false);
+                                                        setShowModal(r);
+                                                    }}
                                                     className="p-2 text-brand-600 hover:bg-brand-50 rounded-xl transition-all"
+                                                    title="Edit Record"
                                                 >
                                                     <Edit className="w-4 h-4" />
                                                 </button>
                                                 <button 
                                                     onClick={() => onDelete(r.id)}
                                                     className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                                                    title="Delete Record"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
@@ -8733,7 +8750,7 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                             })}
                             {filtered.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-20 text-center">
+                                    <td colSpan={7} className="px-6 py-20 text-center">
                                         <div className="flex flex-col items-center gap-4">
                                             <div className="w-16 h-16 bg-slate-100 rounded-3xl flex items-center justify-center">
                                                 <Plus className="w-8 h-8 text-slate-300" />
@@ -8770,12 +8787,17 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                             <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white relative z-10">
                                 <div>
                                     <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
-                                        {showModal.id ? 'Edit Application' : 'New CICPA Application'}
-                                        <span className="px-4 py-1 bg-brand-50 text-brand-600 text-[10px] font-black uppercase tracking-widest rounded-full">
-                                            {showModal.applicationStatus || 'Draft'}
+                                        {viewMode ? 'Application Details' : (showModal.id ? 'Edit Application' : 'New CICPA Application')}
+                                        <span className={cn(
+                                            "px-4 py-1 text-[10px] font-black uppercase tracking-widest rounded-full",
+                                            getStatusInfo(showModal.applicationStatus).color
+                                        )}>
+                                            {getStatusInfo(showModal.applicationStatus).label}
                                         </span>
                                     </h2>
-                                    <p className="text-slate-500 text-sm font-medium">Complete all mandatory fields for pass processing.</p>
+                                    <p className="text-slate-500 text-sm font-medium">
+                                        {viewMode ? 'Comprehensive view of security pass application.' : 'Complete all mandatory fields for pass processing.'}
+                                    </p>
                                 </div>
                                 <button onClick={() => setShowModal(null)} className="p-3 hover:bg-slate-50 rounded-2xl transition-all">
                                     <X className="w-6 h-6 text-slate-400" />
@@ -8784,7 +8806,7 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
 
                             <form onSubmit={(e) => {
                                 e.preventDefault();
-                                onSave(showModal);
+                                if (!viewMode) onSave(showModal);
                             }} className="overflow-y-auto p-10 flex-1 bg-slate-50/50">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
                                     {/* Sidebar: Profile & Status */}
@@ -8796,66 +8818,80 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                                                     {showModal.profilePicture ? (
                                                         <img src={showModal.profilePicture} alt="Preview" className="w-full h-full object-cover" />
                                                     ) : (
-                                                        <Plus className="w-10 h-10 text-slate-200 group-hover:text-brand-300 transition-colors" />
+                                                        <Plus className="w-10 h-10 text-slate-200 transition-colors" />
                                                     )}
                                                 </div>
-                                                <input 
-                                                    type="file" 
-                                                    accept="image/*"
-                                                    onChange={(e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (file) {
-                                                            const reader = new FileReader();
-                                                            reader.onloadend = () => setShowModal({ ...showModal, profilePicture: reader.result as string });
-                                                            reader.readAsDataURL(file);
-                                                        }
-                                                    }}
-                                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                                />
+                                                {!viewMode && (
+                                                    <input 
+                                                        type="file" 
+                                                        accept="image/*"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) {
+                                                                const reader = new FileReader();
+                                                                reader.onloadend = () => setShowModal({ ...showModal, profilePicture: reader.result as string });
+                                                                reader.readAsDataURL(file);
+                                                            }
+                                                        }}
+                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                    />
+                                                )}
                                             </div>
                                         </div>
 
                                         <div className="space-y-3">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Application Status</label>
-                                            <select 
-                                                value={showModal.applicationStatus}
-                                                onChange={(e) => setShowModal({ ...showModal, applicationStatus: e.target.value })}
-                                                className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
-                                            >
-                                                <option value="WP">Waiting for Approval</option>
-                                                <option value="Approved">Approved</option>
-                                                <option value="CP">Completed</option>
-                                                <option value="RE">Renewed</option>
-                                                <option value="UP">Updated</option>
-                                                <option value="CD">Cancelled</option>
-                                                <option value="NA">Not Applicable</option>
-                                            </select>
+                                            {viewMode ? (
+                                                <div className="px-5 py-4 bg-white/50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-700">
+                                                    {getStatusInfo(showModal.applicationStatus).label}
+                                                </div>
+                                            ) : (
+                                                <select 
+                                                    value={showModal.applicationStatus}
+                                                    onChange={(e) => setShowModal({ ...showModal, applicationStatus: e.target.value })}
+                                                    className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 shadow-sm"
+                                                >
+                                                    <option value="WP">Waiting for Approval</option>
+                                                    <option value="Approved">Approved</option>
+                                                    <option value="CP">Completed</option>
+                                                    <option value="RE">Renewed</option>
+                                                    <option value="UP">Updated</option>
+                                                    <option value="CD">Cancelled</option>
+                                                    <option value="NA">Not Applicable</option>
+                                                </select>
+                                            )}
                                         </div>
 
                                         <div className="space-y-3">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Remarks</label>
-                                            <textarea 
-                                                value={showModal.remarks || ''}
-                                                onChange={(e) => setShowModal({ ...showModal, remarks: e.target.value })}
-                                                placeholder="Additional notes..."
-                                                className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 shadow-sm min-h-[120px]"
-                                            />
+                                            {viewMode ? (
+                                                <div className="px-5 py-4 bg-white/50 border border-slate-100 rounded-2xl text-sm font-medium text-slate-600 min-h-[120px] whitespace-pre-wrap">
+                                                    {showModal.remarks || 'No remarks recorded.'}
+                                                </div>
+                                            ) : (
+                                                <textarea 
+                                                    value={showModal.remarks || ''}
+                                                    onChange={(e) => setShowModal({ ...showModal, remarks: e.target.value })}
+                                                    placeholder="Additional notes..."
+                                                    className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 shadow-sm min-h-[120px]"
+                                                />
+                                            )}
                                         </div>
                                     </div>
 
                                     {/* Main Form Fields */}
                                     <div className="md:col-span-2 space-y-10">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <FormField label="Full Name (English)" value={showModal.nameEnglish} onChange={(v) => setShowModal({ ...showModal, nameEnglish: v })} placeholder="As per passport" required />
-                                            <FormField label="Full Name (Arabic)" value={showModal.nameArabic} onChange={(v) => setShowModal({ ...showModal, nameArabic: v })} placeholder="As per Emirates ID" />
-                                            <FormField label="Emirates ID" value={showModal.emiratesId} onChange={(v) => setShowModal({ ...showModal, emiratesId: v })} placeholder="784-XXXX-XXXXXXX-X" required />
-                                            <FormField label="UID Number" value={showModal.uidNumber} onChange={(v) => setShowModal({ ...showModal, uidNumber: v })} placeholder="Unified Number" />
-                                            <FormField label="Date of Birth" value={showModal.dob} onChange={(v) => setShowModal({ ...showModal, dob: v })} type="date" />
-                                            <FormField label="Nationality" value={showModal.nationality} onChange={(v) => setShowModal({ ...showModal, nationality: v })} placeholder="Country" />
-                                            <FormField label="Religion" value={showModal.religion} onChange={(v) => setShowModal({ ...showModal, religion: v })} placeholder="Optional" />
-                                            <FormField label="Mobile Number" value={showModal.mobileNumber} onChange={(v) => setShowModal({ ...showModal, mobileNumber: v })} placeholder="+971" />
-                                            <FormField label="Email ID" value={showModal.emailId} onChange={(v) => setShowModal({ ...showModal, emailId: v })} type="email" placeholder="example@domain.com" />
-                                            <FormField label="Permission Number" value={showModal.permissionNumber} onChange={(v) => setShowModal({ ...showModal, permissionNumber: v })} placeholder="CICPA Permission Ref" />
+                                            <FormField label="Full Name (English)" value={showModal.nameEnglish} onChange={(v) => setShowModal({ ...showModal, nameEnglish: v })} placeholder="As per passport" required readOnly={viewMode} />
+                                            <FormField label="Full Name (Arabic)" value={showModal.nameArabic} onChange={(v) => setShowModal({ ...showModal, nameArabic: v })} placeholder="As per Emirates ID" readOnly={viewMode} />
+                                            <FormField label="Emirates ID" value={showModal.emiratesId} onChange={(v) => setShowModal({ ...showModal, emiratesId: v })} placeholder="784-XXXX-XXXXXXX-X" required readOnly={viewMode} />
+                                            <FormField label="UID Number" value={showModal.uidNumber} onChange={(v) => setShowModal({ ...showModal, uidNumber: v })} placeholder="Unified Number" readOnly={viewMode} />
+                                            <FormField label="Date of Birth" value={showModal.dob} onChange={(v) => setShowModal({ ...showModal, dob: v })} type="date" readOnly={viewMode} />
+                                            <FormField label="Nationality" value={showModal.nationality} onChange={(v) => setShowModal({ ...showModal, nationality: v })} placeholder="Country" readOnly={viewMode} />
+                                            <FormField label="Religion" value={showModal.religion} onChange={(v) => setShowModal({ ...showModal, religion: v })} placeholder="Optional" readOnly={viewMode} />
+                                            <FormField label="Mobile Number" value={showModal.mobileNumber} onChange={(v) => setShowModal({ ...showModal, mobileNumber: v })} placeholder="+971" readOnly={viewMode} />
+                                            <FormField label="Email ID" value={showModal.emailId} onChange={(v) => setShowModal({ ...showModal, emailId: v })} type="email" placeholder="example@domain.com" readOnly={viewMode} />
+                                            <FormField label="Permission Number" value={showModal.permissionNumber} onChange={(v) => setShowModal({ ...showModal, permissionNumber: v })} placeholder="CICPA Permission Ref" readOnly={viewMode} />
                                         </div>
 
                                         <div className="h-px bg-slate-200" />
@@ -8865,10 +8901,10 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                                                 <Shield className="w-4 h-4 text-brand-600" /> Passport & Visa Details
                                             </h3>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                <FormField label="Passport Number" value={showModal.passportNo} onChange={(v) => setShowModal({ ...showModal, passportNo: v })} />
-                                                <FormField label="Passport Expiry" value={showModal.passportExpireDate} onChange={(v) => setShowModal({ ...showModal, passportExpireDate: v })} type="date" />
-                                                <FormField label="Visa Number" value={showModal.visaResidenceNumber} onChange={(v) => setShowModal({ ...showModal, visaResidenceNumber: v })} />
-                                                <FormField label="Visa Expiry" value={showModal.visaExpireDate} onChange={(v) => setShowModal({ ...showModal, visaExpireDate: v })} type="date" />
+                                                <FormField label="Passport Number" value={showModal.passportNo} onChange={(v) => setShowModal({ ...showModal, passportNo: v })} readOnly={viewMode} />
+                                                <FormField label="Passport Expiry" value={showModal.passportExpireDate} onChange={(v) => setShowModal({ ...showModal, passportExpireDate: v })} type="date" readOnly={viewMode} />
+                                                <FormField label="Visa Number" value={showModal.visaResidenceNumber} onChange={(v) => setShowModal({ ...showModal, visaResidenceNumber: v })} readOnly={viewMode} />
+                                                <FormField label="Visa Expiry" value={showModal.visaExpireDate} onChange={(v) => setShowModal({ ...showModal, visaExpireDate: v })} type="date" readOnly={viewMode} />
                                             </div>
                                         </div>
 
@@ -8879,13 +8915,13 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                                                 <Briefcase className="w-4 h-4 text-brand-600" /> Work & Pass Information
                                             </h3>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                <FormField label="Designation Code" value={showModal.designationCode} onChange={(v) => setShowModal({ ...showModal, designationCode: v })} />
-                                                <FormField label="Project Name" value={showModal.projectName} onChange={(v) => setShowModal({ ...showModal, projectName: v })} placeholder="e.g. CICPA Project" />
-                                                <FormField label="Site Location" value={showModal.siteLocation} onChange={(v) => setShowModal({ ...showModal, siteLocation: v })} placeholder="e.g. Das Island" />
-                                                <FormField label="Temp Labour Card" value={showModal.tempLabourCardNumber} onChange={(v) => setShowModal({ ...showModal, tempLabourCardNumber: v })} />
-                                                <FormField label="Temp LC Expiry" value={showModal.tempLcExpireDate} onChange={(v) => setShowModal({ ...showModal, tempLcExpireDate: v })} type="date" />
-                                                <FormField label="CICPA Applied" value={showModal.cicpaApplicationDate} onChange={(v) => setShowModal({ ...showModal, cicpaApplicationDate: v })} type="date" />
-                                                <FormField label="CICPA Expiry" value={showModal.cicpaExpireDate} onChange={(v) => setShowModal({ ...showModal, cicpaExpireDate: v })} type="date" />
+                                                <FormField label="Designation Code" value={showModal.designationCode} onChange={(v) => setShowModal({ ...showModal, designationCode: v })} readOnly={viewMode} />
+                                                <FormField label="Project Name" value={showModal.projectName} onChange={(v) => setShowModal({ ...showModal, projectName: v })} placeholder="e.g. CICPA Project" readOnly={viewMode} />
+                                                <FormField label="Site Location" value={showModal.siteLocation} onChange={(v) => setShowModal({ ...showModal, siteLocation: v })} placeholder="e.g. Das Island" readOnly={viewMode} />
+                                                <FormField label="Temp Labour Card" value={showModal.tempLabourCardNumber} onChange={(v) => setShowModal({ ...showModal, tempLabourCardNumber: v })} readOnly={viewMode} />
+                                                <FormField label="Temp LC Expiry" value={showModal.tempLcExpireDate} onChange={(v) => setShowModal({ ...showModal, tempLcExpireDate: v })} type="date" readOnly={viewMode} />
+                                                <FormField label="CICPA Applied" value={showModal.cicpaApplicationDate} onChange={(v) => setShowModal({ ...showModal, cicpaApplicationDate: v })} type="date" readOnly={viewMode} />
+                                                <FormField label="CICPA Expiry" value={showModal.cicpaExpireDate} onChange={(v) => setShowModal({ ...showModal, cicpaExpireDate: v })} type="date" readOnly={viewMode} />
                                             </div>
                                         </div>
                                     </div>
@@ -8897,14 +8933,16 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
                                         onClick={() => setShowModal(null)} 
                                         className="px-8 py-4 bg-white border border-slate-200 rounded-3xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all"
                                     >
-                                        Cancel
+                                        {viewMode ? 'Close' : 'Cancel'}
                                     </button>
-                                    <button 
-                                        type="submit" 
-                                        className="px-10 py-4 bg-brand-600 text-white rounded-3xl text-sm font-black shadow-xl shadow-brand-100 hover:bg-brand-700 transition-all"
-                                    >
-                                        {showModal.id ? 'Save Changes' : 'Submit Application'}
-                                    </button>
+                                    {!viewMode && (
+                                        <button 
+                                            type="submit" 
+                                            className="px-10 py-4 bg-brand-600 text-white rounded-3xl text-sm font-black shadow-xl shadow-brand-100 hover:bg-brand-700 transition-all"
+                                        >
+                                            {showModal.id ? 'Save Changes' : 'Submit Application'}
+                                        </button>
+                                    )}
                                 </div>
                             </form>
                         </motion.div>
@@ -8915,19 +8953,25 @@ const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
     );
 };
 
-const FormField = ({ label, value, onChange, placeholder, type = 'text', required = false }: any) => (
+const FormField = ({ label, value, onChange, placeholder, type = 'text', required = false, readOnly = false }: any) => (
     <div className="space-y-2">
         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-            {label} {required && <span className="text-rose-500">*</span>}
+            {label} {required && !readOnly && <span className="text-rose-500">*</span>}
         </label>
-        <input 
-            type={type}
-            value={value || ''}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            required={required}
-            className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 shadow-sm placeholder:text-slate-300 placeholder:font-medium transition-all"
-        />
+        {readOnly ? (
+            <div className="w-full px-5 py-4 bg-white/50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-700">
+                {type === 'date' && value ? new Date(value).toLocaleDateString('en-GB') : (value || '-')}
+            </div>
+        ) : (
+            <input 
+                type={type}
+                value={value || ''}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={placeholder}
+                required={required}
+                className="w-full px-5 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 shadow-sm placeholder:text-slate-300 placeholder:font-medium transition-all"
+            />
+        )}
     </div>
 );
 
