@@ -346,6 +346,40 @@ export interface SystemUser {
     photoURL?: string; // Base64 or URL
 }
 
+export interface CICPARecord {
+    id: string;
+    employeeId?: string;
+    emailId: string;
+    emiratesId: string;
+    mobileNumber: string;
+    permissionNumber: string;
+    dob: string;
+    uidNumber: string;
+    nameEnglish: string;
+    nameArabic: string;
+    nationality: string;
+    religion: string;
+    passportNo: string;
+    passportExpireDate: string;
+    visaResidenceNumber: string;
+    visaExpireDate: string;
+    designationCode?: string;
+    designationOccupation?: string;
+    tempLabourCardNumber?: string;
+    tempLcApprovedDate?: string;
+    tempLcExpireDate?: string;
+    proNumber?: string;
+    cicpaApplicationDate?: string;
+    cicpaApprovedDate?: string;
+    cicpaExpireDate?: string;
+    siteLocation?: string;
+    applicationStatus: string;
+    remarks?: string;
+    profilePicture?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface AuditLog {
   id: string;
   timestamp: string;
