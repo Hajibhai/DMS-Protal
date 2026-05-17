@@ -57,7 +57,8 @@ import {
   ProjectedExpense,
   EverydayExpense,
   AuditLog,
-  CICPARecord
+  CICPARecord,
+  UserPermissions
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -86,6 +87,23 @@ import {
 } from './components/FinanceViews';
 
 // --- Constants & Helpers ---
+const INITIAL_PERMISSIONS: UserPermissions = {
+    canViewDashboard: true,
+    canViewCompanyDashboard: true,
+    canManageEmployees: false,
+    canViewDirectory: false,
+    canManageAttendance: false,
+    canViewTimesheet: false,
+    canManageLeaves: false,
+    canViewPayroll: false,
+    canManagePayroll: false,
+    canViewReports: false,
+    canManageUsers: false,
+    canManageSettings: false,
+    canManageSuppliers: false,
+    canManageProjects: false
+};
+
 const LEGEND: any = {
     [AttendanceStatus.PRESENT]: { label: 'Present', color: 'bg-emerald-500 text-white', code: 'P' },
     [AttendanceStatus.ABSENT]: { label: 'Absent', color: 'bg-red-500 text-white', code: 'A' },
@@ -696,13 +714,13 @@ const OffboardingWizard = ({ employee, onComplete, onCancel }: { employee: Emplo
     );
 };
 
-const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm }: { employee: Employee, onSave: (e: Employee) => void, onCancel: () => void, companies: Company[], openConfirm: any }) => {
+const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm, readOnly }: { employee: Employee, onSave: (e: Employee) => void, onCancel: () => void, companies: Company[], openConfirm: any, readOnly?: boolean }) => {
     const [data, setData] = useState<Employee>(employee);
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh] border border-transparent">
                 <div className="p-6 border-b flex justify-between items-center bg-gray-50">
-                    <h2 className="text-lg font-bold text-gray-900">Edit Employee</h2>
+                    <h2 className="text-lg font-bold text-gray-900">{readOnly ? 'View Employee Details' : 'Edit Employee'}</h2>
                     <button onClick={onCancel} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X className="w-5 h-5 text-gray-500" /></button>
                 </div>
                 <div className="p-6 overflow-y-auto space-y-6">
@@ -718,60 +736,64 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm 
                                         <Users className="w-8 h-8 text-slate-300" />
                                     )}
                                 </div>
-                                <div className="flex flex-col gap-2">
-                                    <input 
-                                        type="file" 
-                                        id="edit-profile-upload"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) {
-                                                const reader = new FileReader();
-                                                reader.onloadend = () => {
-                                                    setData({...data, profileImage: reader.result as string});
-                                                };
-                                                reader.readAsDataURL(file);
-                                            }
-                                        }}
-                                    />
-                                    <label 
-                                        htmlFor="edit-profile-upload"
-                                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer transition-all"
-                                    >
-                                        Change Photo
-                                    </label>
-                                    {data.profileImage && (
-                                        <button 
-                                            onClick={() => setData({...data, profileImage: undefined})}
-                                            className="text-[10px] font-bold text-red-500 hover:text-red-600 text-left px-1"
+                                {!readOnly && (
+                                    <div className="flex flex-col gap-2">
+                                        <input 
+                                            type="file" 
+                                            id="edit-profile-upload"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    const reader = new FileReader();
+                                                    reader.onloadend = () => {
+                                                        setData({...data, profileImage: reader.result as string});
+                                                    };
+                                                    reader.readAsDataURL(file);
+                                                }
+                                            }}
+                                        />
+                                        <label 
+                                            htmlFor="edit-profile-upload"
+                                            className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer transition-all"
                                         >
-                                            Remove Photo
-                                        </button>
-                                    )}
-                                </div>
+                                            Change Photo
+                                        </label>
+                                        {data.profileImage && (
+                                            <button 
+                                                onClick={() => setData({...data, profileImage: undefined})}
+                                                className="text-[10px] font-bold text-red-500 hover:text-red-600 text-left px-1"
+                                            >
+                                                Remove Photo
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                              </div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Code</label><input disabled type="text" value={data.code || ''} className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-500" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Name</label><input type="text" value={data.name || ''} onChange={e => setData({...data, name: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Nationality</label><input type="text" value={data.nationality || ''} onChange={e => setData({...data, nationality: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" placeholder="e.g. UAE" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Mobile Number</label><input type="text" value={data.mobileNumber || ''} onChange={e => setData({...data, mobileNumber: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Code</label><input disabled type="text" value={data.code || ''} className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-500 font-bold" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Name</label><input disabled={readOnly} type="text" value={data.name || ''} onChange={e => setData({...data, name: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Nationality</label><input disabled={readOnly} type="text" value={data.nationality || ''} onChange={e => setData({...data, nationality: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. UAE" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Mobile Number</label><input disabled={readOnly} type="text" value={data.mobileNumber || ''} onChange={e => setData({...data, mobileNumber: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div>
                                  <label className="text-xs font-semibold text-gray-500 uppercase">Staff Type</label>
                                  <input 
+                                     disabled={readOnly}
                                      list="staff-types-edit"
                                      value={data.type || ''} 
                                      onChange={e => setData({...data, type: e.target.value})} 
-                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900"
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50"
                                      placeholder="Select or type staff type"
                                  />
                                  <datalist id="staff-types-edit">
                                      {Object.values(StaffType).map(t => <option key={t} value={t} />)}
                                  </datalist>
                              </div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Designation</label><input type="text" value={data.designation || ''} onChange={e => setData({...data, designation: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Department</label><input type="text" value={data.department || ''} onChange={e => setData({...data, department: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Designation</label><input disabled={readOnly} type="text" value={data.designation || ''} onChange={e => setData({...data, designation: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Department</label><input disabled={readOnly} type="text" value={data.department || ''} onChange={e => setData({...data, department: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Current Project</label><input disabled={readOnly} type="text" value={data.projectName || ''} onChange={e => setData({...data, projectName: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. Burj Khalifa Site" /></div>
                              <div className="col-span-2"><label className="text-xs font-semibold text-gray-500 uppercase">Company</label>
-                                 <select value={data.company || ''} onChange={e => setData({...data, company: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900">
+                                 <select disabled={readOnly} value={data.company || ''} onChange={e => setData({...data, company: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50">
                                      <option value="">Select Company</option>
                                      {companies.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                                  </select>
@@ -783,13 +805,13 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm 
                      <div>
                         <h3 className="text-sm font-bold text-gray-900 uppercase mb-3">Salary Structure (AED)</h3>
                         <div className="grid grid-cols-3 gap-4">
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Basic</label><input type="number" value={data.salary.basic ?? 0} onChange={e => setData({...data, salary: {...data.salary, basic: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Housing</label><input type="number" value={data.salary.housing ?? 0} onChange={e => setData({...data, salary: {...data.salary, housing: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Transport</label><input type="number" value={data.salary.transport ?? 0} onChange={e => setData({...data, salary: {...data.salary, transport: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Other</label><input type="number" value={data.salary.other ?? 0} onChange={e => setData({...data, salary: {...data.salary, other: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Air Ticket</label><input type="number" value={data.salary.airTicket ?? 0} onChange={e => setData({...data, salary: {...data.salary, airTicket: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Leave Salary</label><input type="number" value={data.salary.leaveSalary ?? 0} onChange={e => setData({...data, salary: {...data.salary, leaveSalary: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Hourly Rate</label><input type="number" value={data.salary.hourlyRate ?? 0} onChange={e => setData({...data, salary: {...data.salary, hourlyRate: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Basic</label><input disabled={readOnly} type="number" value={data.salary.basic ?? 0} onChange={e => setData({...data, salary: {...data.salary, basic: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Housing</label><input disabled={readOnly} type="number" value={data.salary.housing ?? 0} onChange={e => setData({...data, salary: {...data.salary, housing: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Transport</label><input disabled={readOnly} type="number" value={data.salary.transport ?? 0} onChange={e => setData({...data, salary: {...data.salary, transport: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Other</label><input disabled={readOnly} type="number" value={data.salary.other ?? 0} onChange={e => setData({...data, salary: {...data.salary, other: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Air Ticket</label><input disabled={readOnly} type="number" value={data.salary.airTicket ?? 0} onChange={e => setData({...data, salary: {...data.salary, airTicket: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Leave Salary</label><input disabled={readOnly} type="number" value={data.salary.leaveSalary ?? 0} onChange={e => setData({...data, salary: {...data.salary, leaveSalary: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Hourly Rate</label><input disabled={readOnly} type="number" value={data.salary.hourlyRate ?? 0} onChange={e => setData({...data, salary: {...data.salary, hourlyRate: Number(e.target.value)}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                         </div>
                     </div>
  
@@ -797,8 +819,8 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm 
                      <div>
                         <h3 className="text-sm font-bold text-gray-900 uppercase mb-3">Banking Details</h3>
                         <div className="grid grid-cols-2 gap-4">
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Bank Name</label><input type="text" value={data.bankName || ''} onChange={e => setData({...data, bankName: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">IBAN / Account</label><input type="text" value={data.iban || ''} onChange={e => setData({...data, iban: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Bank Name</label><input disabled={readOnly} type="text" value={data.bankName || ''} onChange={e => setData({...data, bankName: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">IBAN / Account</label><input disabled={readOnly} type="text" value={data.iban || ''} onChange={e => setData({...data, iban: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                         </div>
                     </div>
  
@@ -806,10 +828,10 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm 
                     <div>
                         <h3 className="text-sm font-bold text-gray-900 uppercase mb-3">Documents & Identification</h3>
                         <div className="grid grid-cols-2 gap-4">
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Emirates ID</label><input type="text" value={data.documents?.emiratesId || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), emiratesId: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">EID Expiry</label><input type="date" value={data.documents?.emiratesIdExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), emiratesIdExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Passport Number</label><input type="text" value={data.documents?.passportNumber || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), passportNumber: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Passport Expiry</label><input type="date" value={data.documents?.passportExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), passportExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Emirates ID</label><input disabled={readOnly} type="text" value={data.documents?.emiratesId || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), emiratesId: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">EID Expiry</label><input disabled={readOnly} type="date" value={data.documents?.emiratesIdExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), emiratesIdExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Passport Number</label><input disabled={readOnly} type="text" value={data.documents?.passportNumber || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), passportNumber: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Passport Expiry</label><input disabled={readOnly} type="date" value={data.documents?.passportExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), passportExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                         </div>
                     </div>
                     {/* Linked Documents */}
@@ -817,15 +839,15 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm 
                         <h3 className="text-sm font-bold text-gray-900 uppercase mb-3">Linked Documents</h3>
                         <GoogleDriveManager 
                             files={data.driveFiles || []}
-                            onAddFile={(file) => setData({ ...data, driveFiles: [...(data.driveFiles || []), file] })}
-                            onRemoveFile={(fileId) => setData({ ...data, driveFiles: (data.driveFiles || []).filter(f => f.id !== fileId) })}
+                            onAddFile={readOnly ? () => {} : (file) => setData({ ...data, driveFiles: [...(data.driveFiles || []), file] })}
+                            onRemoveFile={readOnly ? () => {} : (fileId) => setData({ ...data, driveFiles: (data.driveFiles || []).filter(f => f.id !== fileId) })}
                             openConfirm={openConfirm}
                         />
                     </div>
                 </div>
                 <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
-                    <button onClick={onCancel} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium text-gray-700 transition-colors">Cancel</button>
-                    <button onClick={() => onSave(data)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Save Changes</button>
+                    <button onClick={onCancel} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium text-gray-700 transition-colors">{readOnly ? 'Close' : 'Cancel'}</button>
+                    {!readOnly && <button onClick={() => onSave(data)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Save Changes</button>}
                 </div>
             </div>
         </div>
@@ -993,6 +1015,15 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                         value={data.mobileNumber||''} 
                                         onChange={e=>setData({...data, mobileNumber:e.target.value})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Project Assigned</label>
+                                    <input 
+                                        placeholder="e.g. Burj Khalifa Site" 
+                                        value={data.projectName||''} 
+                                        onChange={e=>setData({...data, projectName:e.target.value})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900 font-bold" 
                                     />
                                 </div>
                                 <div className="space-y-1.5">
@@ -1318,22 +1349,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                 password: '', 
                 role: '', 
                 name: '',
-                permissions: {
-                    canViewDashboard: true, // Default to true for new users
-                    canViewCompanyDashboard: true,
-                    canManageEmployees: false,
-                    canViewDirectory: false,
-                    canManageAttendance: false,
-                    canViewTimesheet: false,
-                    canManageLeaves: false,
-                    canViewPayroll: false,
-                    canManagePayroll: false,
-                    canViewReports: false,
-                    canManageUsers: false,
-                    canManageSettings: false,
-                    canManageSuppliers: false,
-                    canManageProjects: false
-                }
+                permissions: { ...INITIAL_PERMISSIONS }
             });
         } catch (e: any) {
             console.error("Error in handleAdd:", e);
@@ -1445,7 +1461,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                             <div className="space-y-2 mt-4">
                                 <label className="text-[10px] font-bold text-indigo-600 uppercase">Permissions</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {Object.keys(newUser.permissions).map(perm => (
+                                    {Object.keys(INITIAL_PERMISSIONS).map(perm => (
                                         <label key={perm} className="flex items-center gap-2 p-2 border rounded-lg bg-white cursor-pointer hover:bg-indigo-100/30">
                                             <input 
                                                 type="checkbox" 
@@ -1499,14 +1515,18 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                             <div className="space-y-2 mt-4">
                                 <label className="text-[10px] font-bold text-orange-600 uppercase">Permissions</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {Object.keys(editingUser.permissions).map(perm => (
+                                    {Object.keys(INITIAL_PERMISSIONS).map(perm => (
                                         <label key={perm} className="flex items-center gap-2 p-2 border rounded-lg bg-white cursor-pointer hover:bg-orange-100/30">
                                             <input 
                                                 type="checkbox" 
                                                 checked={(editingUser.permissions as any)[perm]} 
                                                 onChange={e => setEditingUser({
                                                     ...editingUser,
-                                                    permissions: { ...editingUser.permissions, [perm]: e.target.checked }
+                                                    permissions: { 
+                                                        ...INITIAL_PERMISSIONS, 
+                                                        ...(editingUser.permissions || {}), 
+                                                        [perm]: e.target.checked 
+                                                    }
                                                 })}
                                                 className="w-4 h-4 text-orange-600 rounded"
                                             />
@@ -2614,7 +2634,7 @@ export default function App() {
   const [showOffboarding, setShowOffboarding] = useState<Employee | null>(null);
   const [showOffboardingDetails, setShowOffboardingDetails] = useState<Employee | null>(null);
   const [showRejoining, setShowRejoining] = useState<Employee | null>(null);
-  const [showEdit, setShowEdit] = useState<Employee | null>(null);
+  const [showEdit, setShowEdit] = useState<(Employee & { readOnly?: boolean }) | null>(null);
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [showManageCompanies, setShowManageCompanies] = useState(false);
   const [showHolidayManagement, setShowHolidayManagement] = useState(false);
@@ -2645,7 +2665,14 @@ export default function App() {
         const userRef = doc(db, 'users', firebaseUser.uid);
         const snap = await getDoc(userRef);
         if (snap.exists()) {
-          const data = snap.data() as SystemUser;
+          const rawData = snap.data();
+          const data = {
+            ...rawData,
+            permissions: {
+              ...INITIAL_PERMISSIONS,
+              ...(rawData.permissions || {})
+            }
+          } as SystemUser;
           // Ensure creator role is correctly set for the default admin
           if (firebaseUser.email === "abdulkaderp3010@gmail.com" && data.role !== UserRole.CREATOR) {
             data.role = UserRole.CREATOR;
@@ -2984,10 +3011,11 @@ export default function App() {
     if (!systemUser) return baseItems.filter(item => !item.permission && !item.creatorOnly);
     
     const isCreator = systemUser.role === UserRole.CREATOR || systemUser.email === 'abdulkaderp3010@gmail.com';
+    const isAdmin = systemUser.role === UserRole.ADMIN || isCreator;
     
     const filterItem = (item: any) => {
         if (item.creatorOnly && !isCreator) return false;
-        if (isCreator) return true;
+        if (isAdmin) return true;
         if (item.permission && !(systemUser.permissions as any)[item.permission]) return false;
         return true;
     };
@@ -3005,8 +3033,9 @@ export default function App() {
   useEffect(() => {
     if (systemUser) {
       const isCreator = systemUser.role === UserRole.CREATOR || systemUser.email === 'abdulkaderp3010@gmail.com';
+      const isAdmin = systemUser.role === UserRole.ADMIN || isCreator;
       const currentTabItem = navItems.find(item => item.id === activeTab);
-      if (currentTabItem && currentTabItem.permission && !isCreator && !(systemUser.permissions as any)[currentTabItem.permission]) {
+      if (currentTabItem && currentTabItem.permission && !isAdmin && !(systemUser.permissions as any)[currentTabItem.permission]) {
         setActiveTab('dashboard');
       }
     }
@@ -3513,11 +3542,16 @@ export default function App() {
           />
         )}
         {showEdit && (
-          <EditEmployeeModal companies={companies} employee={showEdit} openConfirm={openConfirm} onSave={async (d) => { 
-            await saveEmployee(d); 
-            handleLogAction('Employee Updated', `Details for employee ${d.name} (${d.code}) were updated.`, 'update');
-            setShowEdit(null); 
-          }} onCancel={() => setShowEdit(null)} />
+          <EditEmployeeModal 
+            companies={companies} 
+            employee={showEdit.readOnly ? { ...showEdit, readOnly: undefined } : showEdit} 
+            readOnly={showEdit.readOnly}
+            openConfirm={openConfirm} 
+            onSave={async (d) => { 
+                await saveEmployee(d); 
+                handleLogAction('Employee Updated', `Details for employee ${d.name} (${d.code}) were updated.`, 'update');
+                setShowEdit(null); 
+            }} onCancel={() => setShowEdit(null)} />
         )}
         {showUserManagement && (
           <UserManagementModal onClose={() => setShowUserManagement(false)} users={systemUsers} openConfirm={openConfirm} currentUser={systemUser} onLog={handleLogAction} />
@@ -3636,11 +3670,11 @@ const DashboardView = ({ employees, suppliers, vendors, projects, attendance, us
     const otherEmployees = activeStaff.length - officeStaff;
     const activeProjects = projects.filter((p: any) => p.status === 'Active').length;
 
-    const canManageUsers = user?.permissions?.canManageUsers;
-    const canManageSettings = user?.permissions?.canManageSettings;
-    const canManageEmployees = user?.permissions?.canManageEmployees;
-    const canManageAttendance = user?.permissions?.canManageAttendance;
-    const canManagePayroll = user?.permissions?.canManagePayroll;
+    const canManageUsers = user?.permissions?.canManageUsers || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
+    const canManageSettings = user?.permissions?.canManageSettings || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
+    const canManageEmployees = user?.permissions?.canManageEmployees || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
+    const canManageAttendance = user?.permissions?.canManageAttendance || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
+    const canManagePayroll = user?.permissions?.canManagePayroll || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
     
     // Chart Data: Staff by Department
     const deptStats = useMemo(() => {
@@ -4282,7 +4316,7 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
     const [companyFilter, setCompanyFilter] = useState('All');
     const [deptFilter, setDeptFilter] = useState('All');
     const [viewRejoinReason, setViewRejoinReason] = useState<Employee | null>(null);
-    const canManageEmployees = user?.permissions?.canManageEmployees;
+    const canManageEmployees = user?.permissions?.canManageEmployees || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
 
     const calculateExperience = (joiningDate: string, exitDate?: string) => {
         if (!joiningDate) return 'N/A';
@@ -4371,6 +4405,7 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                                 <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Department & Role</th>
                                 <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Organization</th>
                                 <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Nationality</th>
+                                <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-center">Project</th>
                                 <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Status</th>
                                 <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Experience</th>
                                 <th className="p-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-right">Actions</th>
@@ -4457,7 +4492,26 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                                             )}
                                         </td>
                                         <td className="p-6">
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-black text-slate-600 bg-brand-50/50 px-2 py-1 rounded-lg border border-brand-100/50 w-fit">
+                                                    {e.projectName || '-'}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="p-6">
                                             <div className="flex justify-end gap-2">
+                                                {e.active && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            const employeeWithView = { ...e, readOnly: true };
+                                                            onEdit(employeeWithView as any);
+                                                        }} 
+                                                        className="p-2.5 hover:bg-white hover:shadow-lg text-slate-500 rounded-xl transition-all border border-transparent hover:border-slate-100 active:scale-95"
+                                                        title="View All Data"
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                                 {e.active && e.rejoiningReason && (
                                                     <button 
                                                         onClick={() => setViewRejoinReason(e)} 
@@ -4662,9 +4716,10 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
     const [isReordering, setIsReordering] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [viewingDocsSupplier, setViewingDocsSupplier] = useState<Supplier | null>(null);
+    const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role === UserRole.CREATOR || user?.email === 'abdulkaderp3010@gmail.com';
+    const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
 
     const sortedSuppliers = useMemo(() => {
         return [...suppliers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -4968,6 +5023,13 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+                                    <button 
+                                        onClick={() => setViewingSupplier(supplier)}
+                                        className="p-2 hover:bg-brand-50 text-brand-600 rounded-xl transition-colors"
+                                        title="View Details"
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                    </button>
                                     {canManageSuppliers && (
                                         <>
                                             <button 
@@ -5153,6 +5215,34 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                     openConfirm={openConfirm}
                 />
             )}
+
+            {viewingSupplier && (
+                <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-[100] p-4" onClick={() => setViewingSupplier(null)}>
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-white flex flex-col"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Supplier Details</h2>
+                            <button onClick={() => setViewingSupplier(null)} className="p-3 hover:bg-white rounded-2xl transition-all shadow-sm">
+                                <X className="w-5 h-5 text-slate-400" />
+                            </button>
+                        </div>
+                        <div className="p-8 grid grid-cols-2 gap-6 overflow-y-auto max-h-[70vh]">
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Name</label><div className="font-bold">{viewingSupplier.name}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Code</label><div className="font-bold">{viewingSupplier.code}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Contact</label><div className="font-bold">{viewingSupplier.contactPerson || '-'}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Email</label><div className="font-bold">{viewingSupplier.email || '-'}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Phone</label><div className="font-bold">{viewingSupplier.phone || '-'}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Category</label><div className="font-bold">{viewingSupplier.category || '-'}</div></div>
+                            <div className="col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Address</label><div className="font-bold italic">{viewingSupplier.address || '-'}</div></div>
+                            <div className="col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Notes</label><div className="font-medium text-slate-500 italic leading-relaxed">{viewingSupplier.notes || '-'}</div></div>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 };
@@ -5231,9 +5321,10 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
     const [isReordering, setIsReordering] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [viewingDocsProject, setViewingDocsProject] = useState<Project | null>(null);
+    const [viewingProject, setViewingProject] = useState<Project | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const canManageProjects = user?.permissions?.canManageProjects || user?.role === UserRole.CREATOR || user?.email === 'abdulkaderp3010@gmail.com';
+    const canManageProjects = user?.permissions?.canManageProjects || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
 
     const sortedProjects = useMemo(() => {
         return [...projects].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -5533,6 +5624,13 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+                                    <button 
+                                        onClick={() => setViewingProject(project)}
+                                        className="p-2 hover:bg-brand-50 text-brand-600 rounded-xl transition-colors"
+                                        title="View Details"
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                    </button>
                                     {canManageProjects && (
                                         <>
                                             <button 
@@ -5804,6 +5902,35 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
                     openConfirm={openConfirm}
                 />
             )}
+
+            {viewingProject && (
+                <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-[100] p-4" onClick={() => setViewingProject(null)}>
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="bg-white rounded-[3rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-white flex flex-col"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Project Details</h2>
+                            <button onClick={() => setViewingProject(null)} className="p-3 hover:bg-white rounded-2xl transition-all shadow-sm">
+                                <X className="w-5 h-5 text-slate-400" />
+                            </button>
+                        </div>
+                        <div className="p-8 grid grid-cols-2 gap-6 overflow-y-auto max-h-[70vh]">
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Name</label><div className="font-bold">{viewingProject.name}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Code</label><div className="font-bold">{viewingProject.code}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Client</label><div className="font-bold">{viewingProject.clientName || '-'}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Location</label><div className="font-bold">{viewingProject.location || '-'}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Start Date</label><div className="font-bold">{viewingProject.startDate || '-'}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">End Date</label><div className="font-bold">{viewingProject.endDate || '-'}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Status</label><div className="font-bold">{viewingProject.status}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Staff Count</label><div className="font-bold">{viewingProject.assignedStaffCount || 0}</div></div>
+                            <div className="col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Description</label><div className="font-medium text-slate-500 italic leading-relaxed">{viewingProject.description || '-'}</div></div>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 };
@@ -5874,7 +6001,7 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { compan
     const [viewingDocsCompany, setViewingDocsCompany] = useState<Company | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const canManageSettings = user?.permissions?.canManageSettings || user?.role === UserRole.CREATOR;
+    const canManageSettings = user?.permissions?.canManageSettings || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
 
     const sortedCompanies = useMemo(() => {
         return [...companies].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -8530,6 +8657,7 @@ const ReportsView = ({
     const [showModal, setShowModal] = useState<any>(null);
     const [viewMode, setViewMode] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    const canManageEmployees = user?.permissions?.canManageEmployees || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
 
     const filtered = records.filter((r: any) => 
         r.nameEnglish?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -8726,23 +8854,27 @@ const ReportsView = ({
                                                 >
                                                     <Eye className="w-4 h-4" />
                                                 </button>
-                                                <button 
-                                                    onClick={() => {
-                                                        setViewMode(false);
-                                                        setShowModal(r);
-                                                    }}
-                                                    className="p-2 text-brand-600 hover:bg-brand-50 rounded-xl transition-all"
-                                                    title="Edit Record"
-                                                >
-                                                    <Edit className="w-4 h-4" />
-                                                </button>
-                                                <button 
-                                                    onClick={() => onDelete(r.id)}
-                                                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-                                                    title="Delete Record"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
+                                                {canManageEmployees && (
+                                                    <>
+                                                        <button 
+                                                            onClick={() => {
+                                                                setViewMode(false);
+                                                                setShowModal(r);
+                                                            }}
+                                                            className="p-2 text-brand-600 hover:bg-brand-50 rounded-xl transition-all"
+                                                            title="Edit Record"
+                                                        >
+                                                            <Edit className="w-4 h-4" />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => onDelete(r.id)}
+                                                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                                                            title="Delete Record"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>

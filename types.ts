@@ -82,6 +82,7 @@ export interface Employee {
   rejoiningDate?: string;
   rejoiningReason?: string;
   profileImage?: string;
+  projectName?: string;
   
   // New Document Fields
   documents?: EmployeeDocuments;
