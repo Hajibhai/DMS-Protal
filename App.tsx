@@ -7616,9 +7616,7 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                    (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                    (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
         });
-    }, [employees, searchTerm, companies]);
-
-     // Real export functionality
+    }, [employees, searchTerm, companies]);     // Real export functionality
      const handleExport = () => {
         const data = filteredEmployees.map((e: Employee) => {
             const monthRecs = attendance.filter((r: any) => r.employeeId === e.id && r.date.startsWith(selectedMonth));
@@ -7658,6 +7656,344 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
         XLSX.writeFile(wb, `Payroll_Register_${selectedMonth}.xlsx`);
      };
 
+     const getPayslipHtmlForEmployee = (e: Employee, p: any, monthRecs: AttendanceRecord[], monthDeds: DeductionRecord[], selectedMonth: string) => {
+         const isFixedSalary = e.team === 'Office Staff' || e.team === 'Internal Team';
+         const totalHours = monthRecs.reduce((sum: number, r: any) => sum + (r.hoursWorked || 0), 0);
+         const presentDays = monthRecs.filter((r: any) => r.status === AttendanceStatus.PRESENT).length;
+         
+         const fmt = (num: number) => num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' AED';
+
+         const formatMonth = (monthStr: string) => {
+             const parts = monthStr.split('-');
+             if (parts.length !== 2) return monthStr;
+             const year = parseInt(parts[0]);
+             const month = parseInt(parts[1]);
+             const date = new Date(year, month - 1, 1);
+             return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+         };
+
+         const monthLabel = formatMonth(selectedMonth);
+         const companyName = e.company || 'Pioneer Document Management System';
+
+         let earningsRows = '';
+         let totalEarnings = 0;
+
+         if (isFixedSalary) {
+             const { basic = 0, housing = 0, transport = 0, other = 0, airTicket = 0, leaveSalary = 0 } = p.breakdown || {};
+             const earningsList = [
+                 { label: 'Basic Salary', val: basic },
+                 { label: 'Housing Allowance', val: housing },
+                 { label: 'Transport Allowance', val: transport },
+                 { label: 'Air Ticket Allowance', val: airTicket },
+                 { label: 'Leave Salary', val: leaveSalary },
+                 { label: 'Other Allowances', val: other },
+                 { label: 'Overtime Pay', val: p.otAmount }
+             ];
+
+             earningsList.forEach(item => {
+                 if (item.val > 0 || item.label === 'Basic Salary') {
+                     totalEarnings += item.val;
+                     earningsRows += `
+                         <tr style="border-bottom: 1px solid #f1f5f9;">
+                             <td style="padding: 10px 14px; text-align: left; color: #475569; font-weight: 500;">${item.label}</td>
+                             <td style="padding: 10px 14px; text-align: right; color: #0f172a; font-weight: 700;">${fmt(item.val)}</td>
+                         </tr>
+                     `;
+                 }
+             });
+         } else {
+             const hourlyBasePay = p.grossSalary;
+             totalEarnings = hourlyBasePay + p.otAmount;
+             earningsRows += `
+                 <tr style="border-bottom: 1px solid #f1f5f9;">
+                     <td style="padding: 10px 14px; text-align: left; color: #475569; font-weight: 500;">
+                         Hourly Wages
+                         <div style="font-size: 10px; color: #94a3b8; font-weight: normal; margin-top: 2px;">
+                             ${totalHours} Hours Worked @ ${fmt((p.breakdown && p.breakdown.hourlyRate) || 0)}/hr
+                         </div>
+                     </td>
+                     <td style="padding: 10px 14px; text-align: right; color: #0f172a; font-weight: 700;">${fmt(hourlyBasePay)}</td>
+                 </tr>
+             `;
+             if (p.otAmount > 0) {
+                 earningsRows += `
+                     <tr style="border-bottom: 1px solid #f1f5f9;">
+                         <td style="padding: 10px 14px; text-align: left; color: #475569; font-weight: 500;">
+                             Overtime Pay
+                             <div style="font-size: 10px; color: #94a3b8; font-weight: normal; margin-top: 2px;">
+                                 ${p.totalOtHours} OT Hours Worked
+                             </div>
+                         </td>
+                         <td style="padding: 10px 14px; text-align: right; color: #0f172a; font-weight: 700;">${fmt(p.otAmount)}</td>
+                     </tr>
+                 `;
+             }
+         }
+
+         const minRows = 6;
+         let earningsCount = isFixedSalary ? 5 : (p.otAmount > 0 ? 2 : 1);
+         while (earningsCount < minRows) {
+             earningsRows += `
+                 <tr style="border-bottom: 1px solid #f1f5f9;">
+                     <td style="padding: 10px 14px; text-align: left; color: transparent; user-select: none;">-</td>
+                     <td style="padding: 10px 14px; text-align: right; color: transparent; user-select: none;">-</td>
+                 </tr>
+             `;
+             earningsCount++;
+         }
+
+         let deductionsRows = '';
+         let totalDedsAmount = p.lopDeduction;
+
+         if (p.lopDeduction > 0) {
+             deductionsRows += `
+                 <tr style="border-bottom: 1px solid #f1f5f9;">
+                     <td style="padding: 10px 14px; text-align: left; color: #475569; font-weight: 500;">
+                         Loss of Pay (LOP)
+                         <div style="font-size: 10px; color: #cbd5e1; font-weight: normal; margin-top: 2px;">
+                             ${p.totalUnpaidDays} Unpaid / Absent Days
+                         </div>
+                     </td>
+                     <td style="padding: 10px 14px; text-align: right; color: #dc2626; font-weight: 700;">-${fmt(p.lopDeduction)}</td>
+                 </tr>
+             `;
+         }
+
+         monthDeds.forEach(ded => {
+             totalDedsAmount += ded.amount;
+             deductionsRows += `
+                 <tr style="border-bottom: 1px solid #f1f5f9;">
+                     <td style="padding: 10px 14px; text-align: left; color: #475569; font-weight: 500;">
+                         ${ded.type}
+                         ${ded.note ? `<div style="font-size: 10px; color: #a1a1aa; font-weight: normal; margin-top: 2px;">Note: ${ded.note}</div>` : ''}
+                     </td>
+                     <td style="padding: 10px 14px; text-align: right; color: #dc2626; font-weight: 700;">-${fmt(ded.amount)}</td>
+                 </tr>
+             `;
+         });
+
+         let deductionsCount = (p.lopDeduction > 0 ? 1 : 0) + monthDeds.length;
+         while (deductionsCount < minRows) {
+             deductionsRows += `
+                 <tr style="border-bottom: 1px solid #f1f5f9;">
+                     <td style="padding: 10px 14px; text-align: left; color: transparent; user-select: none;">-</td>
+                     <td style="padding: 10px 14px; text-align: right; color: transparent; user-select: none;">-</td>
+                 </tr>
+             `;
+             deductionsCount++;
+         }
+
+         return `
+             <div class="payslip-container" style="page-break-after: always; width: 100%; max-width: 800px; margin: 40px auto; padding: 40px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 20px; background-color: #ffffff;">
+                 
+                 <!-- HEADER -->
+                 <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #e2e8f0; padding-bottom: 24px; margin-bottom: 24px;">
+                     <div>
+                         <h1 style="margin: 0; font-size: 28px; font-weight: 900; color: #0f172a; letter-spacing: -0.03em; text-transform: uppercase;">${companyName}</h1>
+                         <p style="margin: 6px 0 0 0; font-size: 12px; font-weight: 700; color: #64748b; letter-spacing: 0.15em; text-transform: uppercase;">Employee Pay Slip</p>
+                     </div>
+                     <div style="text-align: right;">
+                         <div style="font-size: 14px; font-weight: 850; color: #2563eb; background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 8px 18px; border-radius: 12px; display: inline-block;">
+                             ${monthLabel}
+                         </div>
+                     </div>
+                 </div>
+
+                 <!-- EMPLOYEE INFO GRID -->
+                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background-color: #f8fafc; padding: 24px; border-radius: 16px; margin-bottom: 24px; border: 1px solid #f1f5f9;">
+                     <div>
+                          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                              <tr>
+                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 130px;">Employee ID:</td>
+                                  <td style="padding: 6px 0; color: #0f172a; font-weight: 800;">${e.code}</td>
+                              </tr>
+                              <tr>
+                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Employee Name:</td>
+                                  <td style="padding: 6px 0; color: #0f172a; font-weight: 800;">${e.name}</td>
+                              </tr>
+                              <tr>
+                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Designation:</td>
+                                  <td style="padding: 6px 0; color: #334155; font-weight: 700;">${e.designation}</td>
+                              </tr>
+                              <tr>
+                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Department:</td>
+                                  <td style="padding: 6px 0; color: #334155; font-weight: 700;">${e.department || 'N/A'}</td>
+                              </tr>
+                          </table>
+                     </div>
+                     <div>
+                          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                              <tr>
+                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 130px;">Payment Mode:</td>
+                                  <td style="padding: 6px 0; color: #334155; font-weight: 700;">Bank Transfer</td>
+                              </tr>
+                              <tr>
+                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Bank Name:</td>
+                                  <td style="padding: 6px 0; color: #334155; font-weight: 700;">${e.bankName || 'N/A'}</td>
+                              </tr>
+                              <tr>
+                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Bank IBAN:</td>
+                                  <td style="padding: 6px 0; color: #0f172a; font-family: monospace; font-size: 11px; word-break: break-all; font-weight: 700;">${e.iban || 'N/A'}</td>
+                              </tr>
+                              <tr>
+                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Present Days:</td>
+                                  <td style="padding: 6px 0; color: #10b981; font-weight: 800;">${presentDays} Days</td>
+                              </tr>
+                          </table>
+                     </div>
+                 </div>
+
+                 <!-- EARNINGS & DEDUCTIONS SIDE-BY-SIDE -->
+                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                      <!-- Earnings -->
+                      <div>
+                           <div style="background-color: #0f172a; color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 12px 16px; border-radius: 12px 12px 0 0;">
+                               Earnings & Allowance
+                           </div>
+                           <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; overflow: hidden;">
+                               <tbody>
+                                   ${earningsRows}
+                                   <tr style="background-color: #f8fafc; font-weight: 800; border-top: 2px solid #e2e8f0;">
+                                       <td style="padding: 12px 14px; color: #0f172a; font-size: 13px;">Gross Earnings:</td>
+                                       <td style="padding: 12px 14px; text-align: right; color: #0f172a; font-size: 13px;">${fmt(totalEarnings)}</td>
+                                   </tr>
+                               </tbody>
+                           </table>
+                      </div>
+
+                      <!-- Deductions -->
+                      <div>
+                           <div style="background-color: #dc2626; color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 12px 16px; border-radius: 12px 12px 0 0;">
+                               Deductions
+                           </div>
+                           <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; overflow: hidden;">
+                               <tbody>
+                                   ${deductionsRows}
+                                   <tr style="background-color: #fef2f2; font-weight: 800; border-top: 2px solid #fecaca;">
+                                       <td style="padding: 12px 14px; color: #dc2626; font-size: 13px;">Total Deductions:</td>
+                                       <td style="padding: 12px 14px; text-align: right; color: #dc2626; font-size: 13px;">-${fmt(totalDedsAmount)}</td>
+                                   </tr>
+                               </tbody>
+                           </table>
+                      </div>
+                 </div>
+
+                 <!-- NET SALARY PAID -->
+                 <div style="background-color: #f0fdf4; border: 2px solid #bbf7d0; padding: 20px 24px; border-radius: 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                     <div>
+                          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #166534;">Net Salary Paid</div>
+                          <div style="font-size: 12px; color: #475569; font-weight: 600; margin-top: 4px;">Verified Net Amount = Gross Earnings - Total Deductions</div>
+                     </div>
+                     <div style="text-align: right;">
+                          <div style="font-size: 30px; font-weight: 950; color: #15803d; letter-spacing: -0.03em;">
+                              ${fmt(p.netSalary)}
+                          </div>
+                     </div>
+                 </div>
+
+                 <!-- FOOTER STATEMENT -->
+                 <div style="border-top: 1px solid #f1f5f9; padding-top: 16px; margin-bottom: 40px; font-size: 11px; color: #94a3b8; text-align: center; font-style: italic; font-weight: 500;">
+                      This is a computer-generated salary slip and does not require a physical stamp under digital documentation acts.
+                 </div>
+
+                 <!-- SIGNOFF STAMPS -->
+                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 50px;">
+                      <div style="border-top: 1px dashed #cbd5e1; padding-top: 12px; text-align: center; font-size: 12px; color: #64748b;">
+                           <strong style="color: #334155; display: block; margin-bottom: 4px; font-weight: 700;">Employee Signature</strong>
+                           I hereby acknowledge receipt of my net salary.
+                      </div>
+                      <div style="border-top: 1px dashed #cbd5e1; padding-top: 12px; text-align: center; font-size: 12px; color: #64748b;">
+                           <strong style="color: #334155; display: block; margin-bottom: 4px; font-weight: 700;">Authorized Signatory</strong>
+                           For and on behalf of ${companyName}
+                      </div>
+                 </div>
+             </div>
+         `;
+     };
+
+     const handlePrintPayslip = (e: Employee) => {
+         const monthRecs = attendance.filter((r: any) => r.employeeId === e.id && r.date.startsWith(selectedMonth));
+         const monthDeds = deductions.filter((d: any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
+         const p = calculatePayroll(e, monthRecs, monthDeds);
+
+         const printWindow = window.open('', '_blank');
+         if (!printWindow) return;
+
+         const payslipHtml = getPayslipHtmlForEmployee(e, p, monthRecs, monthDeds, selectedMonth);
+
+         const fullHtml = `
+             <html>
+                 <head>
+                     <title>Pay Slip - ${e.name} - ${selectedMonth}</title>
+                     <style>
+                         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+                         @page { size: A4; margin: 10mm; }
+                         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                         .payslip-container { box-shadow: none !important; border: 1px solid #cbd5e1 !important; }
+                         @media print {
+                             body { background-color: #ffffff; }
+                             .payslip-container { border: none !important; margin: 0 !important; padding: 0 !important; }
+                         }
+                     </style>
+                 </head>
+                 <body>
+                     ${payslipHtml}
+                 </body>
+             </html>
+         `;
+
+         printWindow.document.write(fullHtml);
+         printWindow.document.close();
+         printWindow.focus();
+         setTimeout(() => {
+             printWindow.print();
+             printWindow.close();
+         }, 300);
+     };
+
+     const handlePrintAllPayslips = () => {
+         const printWindow = window.open('', '_blank');
+         if (!printWindow) return;
+
+         let allPayslipsHtml = '';
+         filteredEmployees.forEach((e: Employee) => {
+             const monthRecs = attendance.filter((r: any) => r.employeeId === e.id && r.date.startsWith(selectedMonth));
+             const monthDeds = deductions.filter((d: any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
+             const p = calculatePayroll(e, monthRecs, monthDeds);
+             allPayslipsHtml += getPayslipHtmlForEmployee(e, p, monthRecs, monthDeds, selectedMonth);
+         });
+
+         const fullHtml = `
+             <html>
+                 <head>
+                     <title>All Pay Slips - ${selectedMonth}</title>
+                     <style>
+                         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+                         @page { size: A4; margin: 10mm; }
+                         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                         .payslip-container { box-shadow: none !important; border: 1px solid #cbd5e1 !important; }
+                         @media print {
+                             body { background-color: #ffffff; }
+                             .payslip-container { border: none !important; margin: 0 !important; padding: 20px 0 !important; page-break-after: always; }
+                             .payslip-container:last-child { page-break-after: avoid; }
+                         }
+                     </style>
+                 </head>
+                 <body>
+                     ${allPayslipsHtml}
+                 </body>
+             </html>
+         `;
+
+         printWindow.document.write(fullHtml);
+         printWindow.document.close();
+         printWindow.focus();
+         setTimeout(() => {
+             printWindow.print();
+             printWindow.close();
+         }, 500);
+     };
+
      return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -7666,30 +8002,36 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                     <p className="text-slate-500 text-sm mt-1">Monthly salary breakdown and net pay calculations.</p>
                  </div>
                  <div className="flex items-center gap-3">
-                     <div className="relative group">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
-                        <input 
-                            type="text"
-                            placeholder="Search staff..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="pl-11 pr-6 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-64 shadow-sm"
-                        />
-                    </div>
-                     <div className="relative group">
-                         <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-600 transition-colors" />
+                      <div className="relative group">
+                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
                          <input 
+                             type="text"
+                             placeholder="Search staff..."
+                             value={searchTerm}
+                             onChange={e => setSearchTerm(e.target.value)}
+                             className="pl-11 pr-6 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-64 shadow-sm"
+                         />
+                     </div>
+                      <div className="relative group">
+                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-600 transition-colors" />
+                          <input 
                             type="month" 
                             value={selectedMonth} 
                             onChange={e=>onMonthChange(e.target.value)} 
                             className="pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all shadow-sm" 
-                         />
-                     </div>
+                          />
+                      </div>
+                     <button 
+                        onClick={handlePrintAllPayslips} 
+                        className="neo-button bg-brand-600 hover:bg-brand-700 text-white px-6 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 shadow-sm transition-all text-nowrap"
+                     >
+                          <Printer className="w-4 h-4" /> Download All Slips
+                     </button>
                      <button 
                         onClick={handleExport} 
                         className="neo-button bg-white text-slate-700 px-6 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border border-slate-200 shadow-sm hover:bg-slate-50 transition-all"
                      >
-                         <Download className="w-4 h-4" /> Export
+                          <Download className="w-4 h-4" /> Export
                      </button>
                  </div>
              </div>
@@ -7708,6 +8050,7 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                  <th className="p-5 text-[10px] font-bold text-violet-400 uppercase tracking-widest text-right text-nowrap">OT Hours</th>
                                  <th className="p-5 text-[10px] font-bold text-emerald-400 uppercase tracking-widest text-right text-nowrap">OT Pay</th>
                                  <th className="p-5 text-[10px] font-bold text-slate-900 uppercase tracking-widest text-right">Net Salary</th>
+                                 <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center sticky right-0 bg-white/80 backdrop-blur-md z-10 border-l border-slate-100">Pay Slip</th>
                              </tr>
                          </thead>
                          <tbody className="divide-y divide-slate-50">
@@ -7757,6 +8100,16 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                             <div className="inline-block px-4 py-1.5 bg-brand-50 text-brand-700 rounded-xl text-sm font-black border border-brand-100">
                                                 {p.netSalary.toFixed(0)}
                                             </div>
+                                         </td>
+                                         <td className="p-5 text-center sticky right-0 bg-white group-hover:bg-slate-50/50 transition-colors z-10 border-l border-slate-100">
+                                             <button 
+                                                 onClick={() => handlePrintPayslip(e)}
+                                                 className="p-2 text-brand-600 hover:text-brand-800 hover:bg-brand-50 rounded-xl transition-all inline-flex items-center gap-1.5 font-bold text-xs"
+                                                 title="Download Pay Slip"
+                                             >
+                                                 <Printer className="w-4 h-4" />
+                                                 <span>Slip</span>
+                                             </button>
                                          </td>
                                      </tr>
                                  )
