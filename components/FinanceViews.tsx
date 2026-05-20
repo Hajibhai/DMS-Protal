@@ -548,59 +548,1081 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 };
 
 export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }: any) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedBook, setSelectedBook] = useState('All Books');
+    const [selectedMode, setSelectedMode] = useState('All');
+    const [selectedProject, setSelectedProject] = useState('All');
+    const [dateRange, setDateRange] = useState('All');
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
+    
+    // Export Report Modal states
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [exportTab, setExportTab] = useState<'all' | 'day' | 'contact' | 'category' | 'mode'>('all');
+    const [pdfSettings, setPdfSettings] = useState({
+        fontSize: 'medium', // small, medium, large
+        margin: 'normal',   // compact, normal, wide
+        showLogo: true,
+        theme: 'classic'     // classic, modern, simple
+    });
+    const [showPdfSettings, setShowPdfSettings] = useState(false);
+
+    // Dynamic list of books (categories)
+    const books = useMemo(() => {
+        const cats = new Set<string>();
+        data.forEach((item: any) => {
+            if (item.category) cats.add(item.category);
+        });
+        return ['All Books', ...Array.from(cats)];
+    }, [data]);
+
     const getProjectName = (id?: string) => {
         if (!id) return 'General';
         return projects.find((p: any) => p.id === id)?.name || 'N/A';
     };
 
+    // Filtered data for active workspace list
+    const filteredData = useMemo(() => {
+        let result = [...data];
+
+        // Book/Category filter
+        if (selectedBook !== 'All Books') {
+            result = result.filter(item => item.category === selectedBook);
+        }
+
+        // Mode filter
+        if (selectedMode !== 'All') {
+            result = result.filter(item => (item.mode || 'Cash') === selectedMode);
+        }
+
+        // Project filter
+        if (selectedProject !== 'All') {
+            result = result.filter(item => (item.projectId || '') === selectedProject);
+        }
+
+        // Search term
+        if (searchTerm.trim()) {
+            const query = searchTerm.toLowerCase();
+            result = result.filter(item => 
+                (item.description || '').toLowerCase().includes(query) ||
+                (item.category || '').toLowerCase().includes(query) ||
+                (item.requestedBy || '').toLowerCase().includes(query) ||
+                (item.contact || '').toLowerCase().includes(query)
+            );
+        }
+
+        // Date filter
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (dateRange === 'today') {
+            result = result.filter(item => item.date === todayStr);
+        } else if (dateRange === 'this-month') {
+            const monthStr = new Date().toISOString().slice(0, 7); // yyyy-mm
+            result = result.filter(item => item.date.startsWith(monthStr));
+        } else if (dateRange === 'last-month') {
+            const d = new Date();
+            d.setMonth(d.getMonth() - 1);
+            const prevMonthStr = d.toISOString().slice(0, 7);
+            result = result.filter(item => item.date.startsWith(prevMonthStr));
+        } else if (dateRange === 'this-year') {
+            const yearStr = new Date().getFullYear().toString();
+            result = result.filter(item => item.date.startsWith(yearStr));
+        } else if (dateRange === 'custom') {
+            if (customStartDate) {
+                result = result.filter(item => item.date >= customStartDate);
+            }
+            if (customEndDate) {
+                result = result.filter(item => item.date <= customEndDate);
+            }
+        }
+
+        return result;
+    }, [data, selectedBook, selectedMode, selectedProject, searchTerm, dateRange, customStartDate, customEndDate]);
+
+    // Chronologically sorted entries to compute accurate progressive running balances
+    const sortedWithRunningBalances = useMemo(() => {
+        // Sort ascending by date & ID to make balance calculation stable
+        const sorted = [...filteredData].sort((a, b) => {
+            const dateCompare = a.date.localeCompare(b.date);
+            if (dateCompare !== 0) return dateCompare;
+            return a.id.localeCompare(b.id);
+        });
+
+        let balance = 0;
+        return sorted.map(item => {
+            const amountVal = item.amount || 0;
+            if (item.type === 'Income') {
+                balance += amountVal;
+            } else {
+                balance -= amountVal;
+            }
+            return {
+                ...item,
+                runningBalance: balance
+            };
+        });
+    }, [filteredData]);
+
+    // Visually display latest first in the tables
+    const displayData = useMemo(() => {
+        return [...sortedWithRunningBalances].reverse();
+    }, [sortedWithRunningBalances]);
+
+    // Totals
+    const totals = useMemo(() => {
+        let cashIn = 0;
+        let cashOut = 0;
+        filteredData.forEach(item => {
+            const amountVal = item.amount || 0;
+            if (item.type === 'Income') {
+                cashIn += amountVal;
+            } else {
+                cashOut += amountVal;
+            }
+        });
+        return {
+            cashIn,
+            cashOut,
+            balance: cashIn - cashOut
+        };
+    }, [filteredData]);
+
+    // Grouping analytics for Export tabs
+    const dayWiseData = useMemo(() => {
+        const groups: Record<string, { date: string; cashIn: number; cashOut: number; count: number }> = {};
+        sortedWithRunningBalances.forEach(item => {
+            if (!groups[item.date]) {
+                groups[item.date] = { date: item.date, cashIn: 0, cashOut: 0, count: 0 };
+            }
+            groups[item.date].count += 1;
+            const amountVal = item.amount || 0;
+            if (item.type === 'Income') {
+                groups[item.date].cashIn += amountVal;
+            } else {
+                groups[item.date].cashOut += amountVal;
+            }
+        });
+
+        let balance = 0;
+        return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date)).map(g => {
+            balance += (g.cashIn - g.cashOut);
+            return {
+                ...g,
+                runningBalance: balance
+            };
+        });
+    }, [sortedWithRunningBalances]);
+
+    const contactWiseData = useMemo(() => {
+        const groups: Record<string, { contact: string; count: number; cashIn: number; cashOut: number; categories: Set<string> }> = {};
+        filteredData.forEach(item => {
+            const contactName = item.contact || item.requestedBy || 'General';
+            if (!groups[contactName]) {
+                groups[contactName] = { contact: contactName, count: 0, cashIn: 0, cashOut: 0, categories: new Set() };
+            }
+            groups[contactName].count += 1;
+            const amountVal = item.amount || 0;
+            if (item.type === 'Income') {
+                groups[contactName].cashIn += amountVal;
+            } else {
+                groups[contactName].cashOut += amountVal;
+            }
+            if (item.category) {
+                groups[contactName].categories.add(item.category);
+            }
+        });
+        return Object.values(groups).map(g => ({
+            ...g,
+            categoryList: Array.from(g.categories).join(', ') || 'N/A',
+            balance: g.cashIn - g.cashOut
+        })).sort((a, b) => b.cashIn - a.cashIn);
+    }, [filteredData]);
+
+    const categoryWiseData = useMemo(() => {
+        const groups: Record<string, { category: string; count: number; cashIn: number; cashOut: number }> = {};
+        filteredData.forEach(item => {
+            const cat = item.category || 'Uncategorized';
+            if (!groups[cat]) {
+                groups[cat] = { category: cat, count: 0, cashIn: 0, cashOut: 0 };
+            }
+            groups[cat].count += 1;
+            const amountVal = item.amount || 0;
+            if (item.type === 'Income') {
+                groups[cat].cashIn += amountVal;
+            } else {
+                groups[cat].cashOut += amountVal;
+            }
+        });
+        return Object.values(groups).map(g => ({
+            ...g,
+            balance: g.cashIn - g.cashOut
+        })).sort((a, b) => b.cashIn - a.cashIn);
+    }, [filteredData]);
+
+    const paymentModeWiseData = useMemo(() => {
+        const groups: Record<string, { mode: string; count: number; cashIn: number; cashOut: number }> = {};
+        filteredData.forEach(item => {
+            const mode = item.mode || 'Cash';
+            if (!groups[mode]) {
+                groups[mode] = { mode: mode, count: 0, cashIn: 0, cashOut: 0 };
+            }
+            groups[mode].count += 1;
+            const amountVal = item.amount || 0;
+            if (item.type === 'Income') {
+                groups[mode].cashIn += amountVal;
+            } else {
+                groups[mode].cashOut += amountVal;
+            }
+        });
+        return Object.values(groups).map(g => ({
+            ...g,
+            balance: g.cashIn - g.cashOut
+        })).sort((a, b) => b.cashIn - a.cashIn);
+    }, [filteredData]);
+
+    const handleA4Print = () => {
+        window.print();
+    };
+
+    const handleExcelExport = () => {
+        const wsData = sortedWithRunningBalances.map((item, idx) => ({
+            'Sl No': idx + 1,
+            'Date': item.date,
+            'Category/Book': item.category,
+            'Description': item.description,
+            'Contact/Name': item.contact || item.requestedBy || '-',
+            'Mode': item.mode || 'Cash',
+            'Project': getProjectName(item.projectId),
+            'Cash In (AED)': item.type === 'Income' ? item.amount : 0,
+            'Cash Out (AED)': item.type === 'Expense' ? item.amount : 0,
+            'Running Balance (AED)': item.runningBalance
+        }));
+        const ws = XLSX.utils.json_to_sheet(wsData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Cash_Book_Ledger");
+        XLSX.writeFile(wb, `${selectedBook === 'All Books' ? 'All_Accounts' : selectedBook}_Ledger.xlsx`);
+    };
+
     return (
-        <DataTable<PettyCash>
-            title="Petty Cash"
-            description="Manage small daily expenses and miscellaneous cash transactions."
-            icon={Wallet}
-            data={data}
-            columns={[
-                { key: 'date', label: 'Date', sortable: true },
-                { key: 'category', label: 'Category', sortable: true },
-                { key: 'description', label: 'Description' },
-                { 
-                    key: 'projectId', 
-                    label: 'Project',
-                    render: (item) => getProjectName(item.projectId)
-                },
-                { 
-                    key: 'amount', 
-                    label: 'Amount',
-                    sortable: true,
-                    render: (item) => (
-                        <span className={cn(
-                            "font-black",
-                            item.type === 'Income' ? "text-emerald-600" : "text-red-600"
-                        )}>
-                            {item.type === 'Income' ? '+' : '-'} AED {item.amount.toLocaleString()}
-                        </span>
-                    )
-                },
-                { 
-                    key: 'requestedBy', 
-                    label: 'Requestor / Source',
-                    render: (item) => (
-                        <div className="flex flex-col">
-                            <span className="font-bold text-slate-900">{item.requestedBy}</span>
-                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">
-                                {item.type === 'Income' ? 'Received From' : 'Requested By'}
+        <div className="space-y-6">
+            {/* Main Header */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 no-print">
+                <div className="flex items-start gap-4">
+                    <div className="p-4 bg-brand-50 text-brand-600 rounded-3xl">
+                        <Wallet className="w-8 h-8" />
+                    </div>
+                    <div>
+                        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Petty Cash Accounts</h1>
+                        <p className="text-slate-500 text-sm font-semibold mt-1">Manage, analyze, and print small daily transactions and ledger books.</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button 
+                        onClick={handleExcelExport}
+                        className="px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold flex items-center gap-2 hover:bg-slate-50 active:scale-95 transition-all shadow-sm"
+                    >
+                        <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                        Export Excel
+                    </button>
+                    <button 
+                        onClick={() => setShowExportModal(true)}
+                        className="px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold flex items-center gap-2 hover:bg-slate-50 active:scale-95 transition-all shadow-sm"
+                    >
+                        <Printer className="w-5 h-5 text-brand-600" />
+                        Print A4 Report
+                    </button>
+                    <button 
+                        onClick={onAdd}
+                        className="px-6 py-3 bg-brand-600 text-white rounded-2xl text-sm font-black flex items-center gap-2 hover:bg-brand-700 active:scale-95 transition-all shadow-md shadow-brand-600/10"
+                    >
+                        <Plus className="w-5 h-5" />
+                        Add Transaction
+                    </button>
+                </div>
+            </div>
+
+            {/* Cash Books / Registers Selector */}
+            <div className="space-y-2 no-print">
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select Cash Book Account</label>
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+                    {books.map(book => {
+                        const isSelected = selectedBook === book;
+                        const bookEntries = data.filter((item: any) => book === 'All Books' || item.category === book);
+                        let bookBal = 0;
+                        bookEntries.forEach((item: any) => {
+                            if (item.type === 'Income') bookBal += item.amount;
+                            else bookBal -= item.amount;
+                        });
+
+                        return (
+                            <button
+                                key={book}
+                                onClick={() => setSelectedBook(book)}
+                                className={cn(
+                                    "px-5 py-3 rounded-2xl text-xs font-bold border flex items-center gap-3 whitespace-nowrap active:scale-95 transition-all shadow-sm cursor-pointer",
+                                    isSelected 
+                                        ? "bg-slate-900 border-slate-900 text-white" 
+                                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                                )}
+                            >
+                                <div className={cn(
+                                    "w-2.5 h-2.5 rounded-full",
+                                    bookBal >= 0 ? "bg-emerald-500" : "bg-red-500"
+                                )} />
+                                <span>{book === 'All Books' ? '📁 All Accounts' : `👤 ${book}`}</span>
+                                <span className={cn(
+                                    "px-2 py-0.5 rounded-lg text-[10px] font-black",
+                                    isSelected 
+                                        ? "bg-white/10 text-white" 
+                                        : bookBal >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                                )}>
+                                    AED {bookBal.toLocaleString()}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Dashboard KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 no-print">
+                <div className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Total Cash In</span>
+                            <span className="text-3xl font-black text-emerald-600 tracking-tight">
+                                AED {totals.cashIn.toLocaleString()}
                             </span>
                         </div>
-                    )
-                },
-            ]}
-            onAdd={onAdd}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            searchFields={['description', 'category', 'requestedBy']}
-            exportFileName="Petty_Cash"
-            user={user}
-        />
+                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                            <TrendingUp className="w-6 h-6" />
+                        </div>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-dashed border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span>Income Source Ledger</span>
+                        <span className="font-extrabold text-emerald-600">Active</span>
+                    </div>
+                </div>
+
+                <div className="bg-white p-7 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Total Cash Out</span>
+                            <span className="text-3xl font-black text-red-500 tracking-tight">
+                                AED {totals.cashOut.toLocaleString()}
+                            </span>
+                        </div>
+                        <div className="p-3 bg-red-50 text-red-500 rounded-2xl">
+                            <TrendingDown className="w-6 h-6" />
+                        </div>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-dashed border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span>Expense Settlement</span>
+                        <span className="font-extrabold text-red-500">Settled</span>
+                    </div>
+                </div>
+
+                <div className={cn(
+                    "p-7 rounded-[2.5rem] border shadow-sm relative overflow-hidden transition-all",
+                    totals.balance >= 0 ? "bg-slate-900 border-slate-900 text-white" : "bg-red-50 border-red-100 text-red-950"
+                )}>
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-2">
+                            <span className={cn("text-[10px] font-black uppercase tracking-widest block", totals.balance >= 0 ? "text-slate-400" : "text-red-500")}>Net Cash in Hand</span>
+                            <span className="text-3xl font-black tracking-tight">
+                                AED {totals.balance.toLocaleString()}
+                            </span>
+                        </div>
+                        <div className={cn("p-3 rounded-2xl", totals.balance >= 0 ? "bg-white/10 text-white" : "bg-red-100 text-red-600")}>
+                            <Wallet className="w-6 h-6" />
+                        </div>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-dashed border-slate-600/30 flex items-center justify-between text-xs">
+                        <span className={totals.balance >= 0 ? "text-slate-400" : "text-red-500/80"}>Progressive Safe Balance</span>
+                        <span className={cn(
+                            "px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase",
+                            totals.balance >= 0 ? "bg-emerald-500 text-white animate-pulse" : "bg-red-600 text-white"
+                        )}>
+                            {totals.balance >= 0 ? "Surplus" : "Deficit"}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Filter Suite */}
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4 no-print">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                    {/* Search field */}
+                    <div className="md:col-span-2 relative">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Search description, contacts, or accounts..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        />
+                        {searchTerm && (
+                            <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600">
+                                <X className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Mode Filter */}
+                    <div className="space-y-1">
+                        <select
+                            value={selectedMode}
+                            onChange={e => setSelectedMode(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer"
+                        >
+                            <option value="All">All Modes</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Online">Online</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Card">Card</option>
+                        </select>
+                    </div>
+
+                    {/* Project Filter */}
+                    <div className="space-y-1">
+                        <select
+                            value={selectedProject}
+                            onChange={e => setSelectedProject(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer"
+                        >
+                            <option value="All">All Projects</option>
+                            {projects.map((p: any) => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Date Quick Filter */}
+                    <div className="space-y-1">
+                        <select
+                            value={dateRange}
+                            onChange={e => setDateRange(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer"
+                        >
+                            <option value="All">All Dates</option>
+                            <option value="today">Today</option>
+                            <option value="this-month">This Month</option>
+                            <option value="last-month">Last Month</option>
+                            <option value="this-year">This Year</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Custom Date Inputs */}
+                {dateRange === 'custom' && (
+                    <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl animate-fadeIn">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase text-slate-400">From</span>
+                            <input
+                                type="date"
+                                value={customStartDate}
+                                onChange={e => setCustomStartDate(e.target.value)}
+                                className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase text-slate-400">To</span>
+                            <input
+                                type="date"
+                                value={customEndDate}
+                                onChange={e => setCustomEndDate(e.target.value)}
+                                className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none"
+                            />
+                        </div>
+                        <button
+                            onClick={() => { setCustomStartDate(''); setCustomEndDate(''); }}
+                            className="text-xs font-bold text-brand-600 hover:text-brand-800 ml-auto"
+                        >
+                            Reset Dates
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Main Ledger Table */}
+            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden no-print">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50/75 border-b border-slate-100">
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Date</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Category Book</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Remark / Description</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Contact / Supplier</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Project</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Mode</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Amount</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Progressive Bal</th>
+                                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {displayData.length === 0 ? (
+                                <tr>
+                                    <td colSpan={9} className="px-6 py-12 text-center text-sm text-slate-400 font-bold">
+                                        No cash transactions found matching criteria.
+                                    </td>
+                                </tr>
+                            ) : (
+                                displayData.map((item: any) => {
+                                    const itemMode = item.mode || 'Cash';
+                                    return (
+                                        <tr key={item.id} className="hover:bg-slate-50/50 transition-all">
+                                            <td className="px-6 py-4 text-xs font-black text-slate-500 whitespace-nowrap">{item.date}</td>
+                                            <td className="px-6 py-4">
+                                                <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-[10px] font-extrabold uppercase">
+                                                    {item.category || 'General'}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-xs font-bold text-slate-900 max-w-xs truncate" title={item.description}>
+                                                {item.description || '-'}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-black text-slate-800">{item.contact || item.requestedBy || 'Boss'}</span>
+                                                    <span className="text-[9px] text-slate-400 uppercase tracking-widest">
+                                                        {item.type === 'Income' ? 'Donor / Source' : 'Recipient'}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-xs font-bold text-slate-500">
+                                                {getProjectName(item.projectId)}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={cn(
+                                                    "px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase whitespace-nowrap",
+                                                    itemMode === 'Cash' && "bg-emerald-50 text-emerald-700",
+                                                    itemMode === 'Online' && "bg-sky-50 text-sky-700",
+                                                    itemMode === 'Bank Transfer' && "bg-violet-50 text-violet-700",
+                                                    itemMode === 'Cheque' && "bg-amber-50 text-amber-700",
+                                                    itemMode === 'Card' && "bg-rose-50 text-rose-700"
+                                                )}>
+                                                    {itemMode}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <span className={cn(
+                                                    "text-sm font-black",
+                                                    item.type === 'Income' ? "text-emerald-600" : "text-red-500"
+                                                )}>
+                                                    {item.type === 'Income' ? '+' : '-'} AED {(item.amount || 0).toLocaleString()}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <span className={cn(
+                                                    "text-sm font-black text-slate-800",
+                                                    item.runningBalance < 0 && "text-red-600"
+                                                )}>
+                                                    AED {item.runningBalance.toLocaleString()}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <button 
+                                                        onClick={() => onEdit(item)} 
+                                                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-brand-600 transition-colors"
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => onDelete(item)} 
+                                                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* ========================================================= */}
+            {/* EXPORT TRANSACTIONS PRINT MODAL (Image 1 Replica) */}
+            {/* ========================================================= */}
+            {showExportModal && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print overflow-y-auto">
+                    {/* Inline print overrides to lock background items out strictly on paper */}
+                    <style dangerouslySetInnerHTML={{__html: `
+                        @media print {
+                            body * {
+                                visibility: hidden !important;
+                            }
+                            #printable-report, #printable-report * {
+                                visibility: visible !important;
+                            }
+                            #printable-report {
+                                position: fixed !important;
+                                left: 0 !important;
+                                top: 0 !important;
+                                width: 210mm !important;
+                                height: auto !important;
+                                margin: 0 !important;
+                                padding: 15mm !important;
+                                bg: white !important;
+                                background: white !important;
+                                color: black !important;
+                                box-shadow: none !important;
+                                border: none !important;
+                                z-index: 99999999 !important;
+                            }
+                        }
+                    `}} />
+
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="bg-slate-100 rounded-[2.5rem] w-full max-w-5xl shadow-2xl overflow-hidden border border-slate-200 h-[92vh] flex flex-col"
+                    >
+                        {/* Title Bar */}
+                        <div className="p-6 bg-white border-b border-slate-200 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                                    <Printer className="w-5 h-5 text-brand-600" />
+                                    Export Transactions
+                                </h2>
+                                <p className="text-slate-500 text-xs font-semibold mt-0.5">Select a tab and customise settings before generating and downloading your statement</p>
+                            </div>
+                            <button 
+                                onClick={() => { setShowExportModal(false); setShowPdfSettings(false); }}
+                                className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors shadow-inner"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Top Filters / Report Tabs Bar */}
+                        <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-1.5 bg-slate-200/60 p-1 rounded-2xl">
+                                {(['all', 'day', 'contact', 'category', 'mode'] as const).map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setExportTab(tab)}
+                                        className={cn(
+                                            "px-4 py-2 rounded-xl text-xs font-black capitalize transition-all cursor-pointer",
+                                            exportTab === tab 
+                                                ? "bg-white text-slate-950 shadow-sm"
+                                                : "text-slate-600 hover:text-slate-900"
+                                        )}
+                                    >
+                                        {tab === 'all' && 'All Entries'}
+                                        {tab === 'day' && 'Day-wise'}
+                                        {tab === 'contact' && 'Contact-wise'}
+                                        {tab === 'category' && 'Category-wise'}
+                                        {tab === 'mode' && 'Payment Mode'}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button 
+                                onClick={() => setShowPdfSettings(!showPdfSettings)}
+                                className={cn(
+                                    "px-4 py-2 border rounded-xl text-xs font-black flex items-center gap-1.5 active:scale-95 transition-all",
+                                    showPdfSettings ? "bg-brand-50 border-brand-200 text-brand-700" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                )}
+                            >
+                                <ListFilter className="w-4 h-4" />
+                                PDF Settings
+                            </button>
+                        </div>
+
+                        {/* Middle Content Workspace */}
+                        <div className="flex-1 overflow-hidden flex relative">
+                            {/* Left Settings Panel */}
+                            {showPdfSettings && (
+                                <div className="w-72 bg-white border-r border-slate-200 p-6 space-y-6 overflow-y-auto animate-slideRight">
+                                    <h3 className="text-sm font-black text-slate-900 tracking-tight uppercase">Customise Report Profile</h3>
+                                    <div className="space-y-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase text-slate-400">Font Scale</label>
+                                            <div className="grid grid-cols-3 gap-1.5 bg-slate-50 p-1 rounded-xl">
+                                                {(['small', 'medium', 'large'] as const).map(sz => (
+                                                    <button
+                                                        key={sz}
+                                                        onClick={() => setPdfSettings({ ...pdfSettings, fontSize: sz })}
+                                                        className={cn(
+                                                            "py-1.5 rounded-lg text-[10px] font-extrabold capitalize cursor-pointer",
+                                                            pdfSettings.fontSize === sz ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                                                        )}
+                                                    >
+                                                        {sz}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase text-slate-400">Page Margins</label>
+                                            <div className="grid grid-cols-3 gap-1.5 bg-slate-50 p-1 rounded-xl">
+                                                {(['compact', 'normal', 'wide'] as const).map(mg => (
+                                                    <button
+                                                        key={mg}
+                                                        onClick={() => setPdfSettings({ ...pdfSettings, margin: mg })}
+                                                        className={cn(
+                                                            "py-1.5 rounded-lg text-[10px] font-extrabold capitalize cursor-pointer",
+                                                            pdfSettings.margin === mg ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                                                        )}
+                                                    >
+                                                        {mg}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase text-slate-400">Corporate Branding logo</label>
+                                            <div className="flex items-center gap-1.5">
+                                                <input 
+                                                    type="checkbox"
+                                                    id="show-logo"
+                                                    checked={pdfSettings.showLogo}
+                                                    onChange={e => setPdfSettings({ ...pdfSettings, showLogo: e.target.checked })}
+                                                    className="w-4 h-4 text-brand-600 focus:ring-brand-500 border-slate-300 rounded"
+                                                />
+                                                <label htmlFor="show-logo" className="text-xs font-bold text-slate-700 cursor-pointer">Show Pioneer Header Logo</label>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase text-slate-400">PDF Colour Palette</label>
+                                            <select
+                                                value={pdfSettings.theme}
+                                                onChange={e => setPdfSettings({ ...pdfSettings, theme: e.target.value })}
+                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                                            >
+                                                <option value="classic">Classic Corporate (Slate)</option>
+                                                <option value="emerald">Emerald Ledger (Green)</option>
+                                                <option value="elegant">Ocean Royal (Blue)</option>
+                                                <option value="minimal">Minimal Cash (Charcoal)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 font-semibold pt-4 border-t border-slate-100">
+                                        Note: PDF downloads are optimized for local paper printing and standard A4 sizes. Please use landscape or portrait layout accordingly inside the print interface.
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Live Layout Report Sheet Preview */}
+                            <div className="flex-1 bg-slate-200/50 p-8 overflow-y-auto flex justify-center custom-scrollbar">
+                                <div 
+                                    id="printable-report"
+                                    className={cn(
+                                        "bg-white shadow-xl border w-[210mm] min-h-[297mm] transition-all origin-top shrink-0 text-slate-900 border-slate-300/60 p-[15mm] space-y-6 relative flex flex-col justify-start",
+                                        pdfSettings.fontSize === 'small' && "text-[11px]",
+                                        pdfSettings.fontSize === 'medium' && "text-[13px]",
+                                        pdfSettings.fontSize === 'large' && "text-[15px]",
+                                        pdfSettings.margin === 'compact' && "p-[8mm] space-y-4",
+                                        pdfSettings.margin === 'wide' && "p-[22mm] space-y-8"
+                                    )}
+                                    style={{ fontFamily: "'Inter', sans-serif" }}
+                                >
+                                    {/* Pioneer Company Letterhead Header */}
+                                    <div className="flex items-start justify-between pb-6 border-b-2 border-slate-800">
+                                        <div className="flex items-center gap-4">
+                                            {pdfSettings.showLogo && (
+                                                <div className="w-14 h-14 bg-sky-100 rounded-full flex items-center justify-center border border-sky-300 text-sky-700 font-extrabold shadow-sm shrink-0">
+                                                    {/* Company logo insignia matching standard LLC */}
+                                                    <div className="relative w-8 h-8 flex items-center justify-center">
+                                                        <span className="text-xl font-black">P</span>
+                                                        <span className="absolute -bottom-1 -right-1 text-[9px] font-black uppercase text-slate-500 bg-white px-1 border rounded-md">LLC</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div>
+                                                <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Pioneer General Contracting LLC</h1>
+                                                <p className="text-slate-500 text-xs font-bold leading-none mt-0.5">Petty Cash Statement & Account Ledger Report</p>
+                                                <p className="text-slate-400 text-[10px] font-medium mt-1">Location: Al Ain, Abu Dhabi, UAE • Post Box: 12345</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right space-y-0.5">
+                                            <div className="inline-block px-2.5 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-black tracking-wider uppercase">
+                                                Certified Report
+                                            </div>
+                                            <p className="text-[10px] font-black text-slate-500 mt-2">
+                                                Generated: {new Date().toLocaleDateString('en-GB')} {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                                            </p>
+                                            <p className="text-[10px] font-medium text-slate-400">
+                                                Generated by: {user?.displayName || user?.name || 'Abdul Kader'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Subheader / Book Title */}
+                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between pb-2 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                        <div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Account Register Profile</span>
+                                            <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                                                {selectedBook === 'All Books' ? 'All Books Ledger Account' : `Profile Name: ${selectedBook}`}
+                                            </h2>
+                                        </div>
+                                        <div className="text-right pt-2 md:pt-0">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Active Status</span>
+                                            <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">OPERATIONAL LEDGER</span>
+                                        </div>
+                                    </div>
+
+                                    {/* A4 Report Consolidated Sum-KPI Panel. Matching the dual-border/double dashed metrics layout requested in image */}
+                                    <div className={cn(
+                                        "grid grid-cols-3 gap-1 p-5 rounded-2xl text-center border-t-2 border-b-2",
+                                        pdfSettings.theme === 'emerald' ? "bg-emerald-50/50 border-emerald-600/30" :
+                                        pdfSettings.theme === 'elegant' ? "bg-sky-50/50 border-sky-600/30" :
+                                        pdfSettings.theme === 'minimal' ? "bg-slate-50 border-slate-900/30" :
+                                        "bg-slate-50 border-slate-800"
+                                    )}>
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Total Cash In</span>
+                                            <span className="text-lg font-black text-emerald-600 leading-none block">
+                                                AED {totals.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1 border-l border-r border-slate-300">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Total Cash Out</span>
+                                            <span className="text-lg font-black text-red-500 leading-none block">
+                                                AED {totals.cashOut.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Final Balance</span>
+                                            <span className={cn(
+                                                "text-lg font-black leading-none block",
+                                                totals.balance >= 0 ? "text-slate-900" : "text-red-600"
+                                            )}>
+                                                AED {totals.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between px-1">
+                                        <span>Total Records Count: {filteredData.length}</span>
+                                        <span>Currency: UAE Dirham (AED)</span>
+                                    </div>
+
+                                    {/* The Report Table Workspace */}
+                                    <div className="flex-1 overflow-x-auto min-h-[400px]">
+                                        {exportTab === 'all' && (
+                                            <table className="w-full text-left text-xs border-collapse font-medium">
+                                                <thead>
+                                                    <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[14%]">Date</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px]">Remark / Description</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[18%]">Contact</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[16%]">Category</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[10%]">Mode</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] text-right w-[14%]">Cash In</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] text-right w-[14%]">Cash Out</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] text-right w-[14%]">Balance</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200">
+                                                    {sortedWithRunningBalances.map((item: any, idx: number) => (
+                                                        <tr key={item.id} className="hover:bg-slate-50 odd:bg-slate-50/30">
+                                                            <td className="px-3 py-2 text-[10px] whitespace-nowrap font-bold text-slate-500">{item.date}</td>
+                                                            <td className="px-3 py-2 text-[11px] font-bold text-slate-800 break-words">{item.description || '-'}</td>
+                                                            <td className="px-3 py-2 text-[11px] font-semibold text-slate-700 truncate">{item.contact || item.requestedBy || '-'}</td>
+                                                            <td className="px-3 py-2 text-[10px] font-black uppercase text-slate-500">{item.category || 'General'}</td>
+                                                            <td className="px-3 py-2 text-[10px] font-extrabold uppercase text-slate-600">{item.mode || 'Cash'}</td>
+                                                            <td className="px-3 py-2 text-right font-black text-emerald-600">
+                                                                {item.type === 'Income' ? (item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-black text-red-500">
+                                                                {item.type === 'Expense' ? (item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
+                                                            </td>
+                                                            <td className="px-3 py-2 text-right font-black text-slate-900 whitespace-nowrap">
+                                                                AED {item.runningBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+
+                                        {exportTab === 'day' && (
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Date</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center">Entries Count</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total In</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Out</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Running Net Balance</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200">
+                                                    {dayWiseData.map((day: any) => (
+                                                        <tr key={day.date} className="hover:bg-slate-50 odd:bg-slate-50/30">
+                                                            <td className="px-4 py-2.5 text-[10px] font-bold text-slate-600">{day.date}</td>
+                                                            <td className="px-4 py-2.5 text-center font-bold text-slate-700">{day.count}</td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-emerald-600">
+                                                                {day.cashIn > 0 ? `+ AED ${day.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-red-500">
+                                                                {day.cashOut > 0 ? `- AED ${day.cashOut.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-slate-900">
+                                                                AED {day.runningBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+
+                                        {exportTab === 'contact' && (
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Contact Name</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center">Receipts Count</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Main Categories</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Inflow (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Outflow (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Subtotal Balance</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200">
+                                                    {contactWiseData.map((item: any) => (
+                                                        <tr key={item.contact} className="hover:bg-slate-50 odd:bg-slate-50/30">
+                                                            <td className="px-4 py-2.5 font-black text-slate-800">{item.contact}</td>
+                                                            <td className="px-4 py-2.5 text-center font-bold text-slate-600">{item.count}</td>
+                                                            <td className="px-4 py-2.5 text-[10px] text-slate-400 uppercase font-bold truncate max-w-[120px]">{item.categoryList}</td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-emerald-600">
+                                                                {item.cashIn > 0 ? `+ ${item.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-red-500">
+                                                                {item.cashOut > 0 ? `- ${item.cashOut.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-slate-900">
+                                                                AED {item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+
+                                        {exportTab === 'category' && (
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Category Cash Book</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center">Entries Count</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Inflow (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Outflow (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Net Category Balance</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200">
+                                                    {categoryWiseData.map((item: any) => (
+                                                        <tr key={item.category} className="hover:bg-slate-50 odd:bg-slate-50/30">
+                                                            <td className="px-4 py-2.5 font-black text-slate-800 uppercase text-[10px] tracking-wider">{item.category}</td>
+                                                            <td className="px-4 py-2.5 text-center font-bold text-slate-600">{item.count}</td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-emerald-600">
+                                                                {item.cashIn > 0 ? `+ ${item.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-red-500">
+                                                                {item.cashOut > 0 ? `- ${item.cashOut.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-slate-900">
+                                                                AED {item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+
+                                        {exportTab === 'mode' && (
+                                            <table className="w-full text-left text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Payment Mode Details</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center">Transaction Count</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Cash In (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Cash Out (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Net Subtotal Balance</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200">
+                                                    {paymentModeWiseData.map((item: any) => (
+                                                        <tr key={item.mode} className="hover:bg-slate-50 odd:bg-slate-50/30">
+                                                            <td className="px-4 py-2.5 font-black text-slate-800 uppercase text-[10px] tracking-wider">{item.mode}</td>
+                                                            <td className="px-4 py-2.5 text-center font-bold text-slate-600">{item.count}</td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-emerald-600">
+                                                                {item.cashIn > 0 ? `+ ${item.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-red-500">
+                                                                {item.cashOut > 0 ? `- ${item.cashOut.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-right font-black text-slate-900">
+                                                                AED {item.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </div>
+
+                                    {/* Report Stamp Signoff columns */}
+                                    <div className="pt-12 grid grid-cols-2 gap-16 justify-between mt-auto">
+                                        <div className="space-y-1">
+                                            <div className="h-0.5 bg-slate-300 w-44" />
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Prepared By</p>
+                                            <p className="text-[11px] font-bold text-slate-800">{user?.displayName || user?.name || 'Abdul Kader'}</p>
+                                        </div>
+                                        <div className="space-y-1 text-right ml-auto">
+                                            <div className="h-0.5 bg-slate-300 w-44 ml-auto" />
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Approved Authority Stamp</p>
+                                            <p className="text-[11px] font-bold text-slate-500">Pioneer Contracting Finance LLC</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Page Footer */}
+                                    <div className="pt-4 border-t border-slate-200 text-center text-[9px] text-slate-400 font-bold flex justify-between">
+                                        <span>System Certification: Zoho Cash-Book Sync Standard</span>
+                                        <span>Page 1 of 1</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modals Action Bar footer */}
+                        <div className="p-6 bg-white border-t border-slate-200 flex items-center justify-between">
+                            <span className="text-xs text-slate-500 font-bold">
+                                Statement contains <strong className="text-slate-800">{filteredData.length} records</strong> under <strong className="text-slate-800">{selectedBook}</strong> book register.
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => { setShowExportModal(false); setShowPdfSettings(false); }}
+                                    className="px-5 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-600 hover:bg-slate-50 active:scale-95 transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={handleA4Print}
+                                    className="px-6 py-3 bg-brand-600 text-white rounded-2xl text-xs font-black flex items-center gap-2 hover:bg-brand-700 active:scale-95 transition-all shadow-md shadow-brand-600/10 cursor-pointer"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    Download as PDF Report
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -1067,8 +2089,19 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
         amount: 0,
         type: 'Expense',
         requestedBy: '',
-        projectId: ''
+        projectId: '',
+        mode: 'Cash',
+        contact: ''
     });
+
+    // Make sure contact is synced to requestedBy for safety
+    const handleContactChange = (val: string) => {
+        setFormData({
+            ...formData,
+            contact: val,
+            requestedBy: val
+        });
+    };
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
@@ -1110,13 +2143,13 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Category</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Category / Book</label>
                             <input 
                                 type="text"
                                 value={formData.category}
                                 onChange={e => setFormData({ ...formData, category: e.target.value })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                                placeholder={formData.type === 'Income' ? "e.g. From Boss, Bank" : "e.g. Fuel, Stationery"}
+                                placeholder={formData.type === 'Income' ? "e.g. Jamel G, Office Cash Book" : "e.g. Fuel, Stationery, Site Expense"}
                             />
                         </div>
                         <div className="space-y-1">
@@ -1129,37 +2162,56 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                             />
                         </div>
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
-                        <select 
-                            value={formData.projectId}
-                            onChange={e => setFormData({ ...formData, projectId: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                        >
-                            <option value="">General / No Project</option>
-                            {projects.map((p: any) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Payment Mode</label>
+                            <select
+                                value={formData.mode || 'Cash'}
+                                onChange={e => setFormData({ ...formData, mode: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer"
+                            >
+                                <option value="Cash">Cash</option>
+                                <option value="Online">Online</option>
+                                <option value="Bank Transfer">Bank Transfer</option>
+                                <option value="Cheque">Cheque</option>
+                                <option value="Card">Card</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
+                            <select 
+                                value={formData.projectId}
+                                onChange={e => setFormData({ ...formData, projectId: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            >
+                                <option value="">General / No Project</option>
+                                {projects.map((p: any) => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
+
                     <div className="space-y-1">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
-                            {formData.type === 'Income' ? 'Received From' : 'Requested By'}
+                            {formData.type === 'Income' ? 'Received From / Contact' : 'Requested By / Recipient'}
                         </label>
                         <input 
                             type="text"
-                            value={formData.requestedBy}
-                            onChange={e => setFormData({ ...formData, requestedBy: e.target.value })}
+                            value={formData.contact || formData.requestedBy || ''}
+                            onChange={e => handleContactChange(e.target.value)}
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                            placeholder={formData.type === 'Income' ? "Name of person/entity" : "Employee name"}
+                            placeholder={formData.type === 'Income' ? "Name of person/entity (e.g. Boss)" : "Employee name or recipient"}
                         />
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Description</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Remark / Description</label>
                         <textarea 
                             value={formData.description}
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[80px]"
+                            placeholder="Mention specific description details..."
                         />
                     </div>
                 </div>
