@@ -337,9 +337,25 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "emiratesId", "nameEnglish", "applicationStatus"]
+    },
+    "Holiday": {
+      "title": "Holiday",
+      "description": "Public or private corporate holiday",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" }
+      },
+      "required": ["id", "date", "name"]
     }
   },
   "firestore": {
+    "/holidays/{holidayId}": {
+      "schema": "Holiday",
+      "description": "Calendar corporate holidays"
+    },
     "/employees/{employeeId}": {
       "schema": "Employee",
       "description": "Collection of employee profiles"

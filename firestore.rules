@@ -120,5 +120,10 @@ service cloud.firestore {
       allow read: if true;
       allow write: if hasPermission('canManageSettings');
     }
+
+    match /holidays/{holidayId} {
+      allow read: if isAuthenticated();
+      allow write: if hasPermission('canManageSettings');
+    }
   }
 }

@@ -58,7 +58,8 @@ import {
   EverydayExpense,
   AuditLog,
   CICPARecord,
-  UserPermissions
+  UserPermissions,
+  PublicHoliday
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -75,7 +76,8 @@ import {
   savePettyCash, deletePettyCash,
   saveProjectedExpense, deleteProjectedExpense,
   saveEverydayExpense, deleteEverydayExpense,
-  testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType
+  testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType,
+  saveHoliday, deleteHoliday
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
 import SmartCommand from './components/SmartCommand';
@@ -85,6 +87,7 @@ import {
   VendorView, AccountsPayableView, AccountsReceivableView, PettyCashView, ProjectedExpenseView, EverydayExpenseView,
   VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal, ProjectedExpenseModal, EverydayExpenseModal
 } from './components/FinanceViews';
+import { HolidayManagementModal } from './components/HolidayManagementModal';
 
 // --- Constants & Helpers ---
 const INITIAL_PERMISSIONS: UserPermissions = {
@@ -148,12 +151,21 @@ const calculatePayroll = (employee: Employee, attendance: AttendanceRecord[], de
     const otRatePerHour = isFixedSalary ? (fixedGrossSalary / 30 / 8) * 1.5 : hourlyRate * 1.5; 
     const otAmount = totalOtHours * otRatePerHour;
 
-    const totalPresentDays = attendance.filter(r => r.status === AttendanceStatus.PRESENT).length;
+    const presentCount = attendance.filter(r => r.status === AttendanceStatus.PRESENT).length;
+    const weekOffCount = attendance.filter(r => r.status === AttendanceStatus.WEEK_OFF).length;
+    const publicHolidayCount = attendance.filter(r => r.status === AttendanceStatus.PUBLIC_HOLIDAY).length;
+
+    const totalPresentDays = isFixedSalary 
+        ? (presentCount + weekOffCount + publicHolidayCount) 
+        : presentCount;
 
     return {
         grossSalary,
         totalUnpaidDays,
         totalPresentDays,
+        presentCount,
+        weekOffCount,
+        publicHolidayCount,
         lopDeduction,
         totalOtHours,
         otAmount,
@@ -2602,6 +2614,7 @@ export default function App() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [deductions, setDeductions] = useState<DeductionRecord[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -2842,6 +2855,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'cicpa_records');
     });
 
+    const unsubHolidays = onSnapshot(collection(db, 'holidays'), (snap) => {
+      setHolidays(snap.docs.map(d => d.data() as PublicHoliday));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'holidays');
+    });
+
     const unsubUsers = (systemUser?.permissions?.canManageUsers || isCreator) ? onSnapshot(collection(db, 'users'), (snap) => {
       setSystemUsers(snap.docs.map(d => d.data() as SystemUser));
     }, (error) => {
@@ -2863,6 +2882,7 @@ export default function App() {
       unsubProjectedExpenses();
       unsubEverydayExpenses();
       unsubCICPA();
+      unsubHolidays();
       unsubUsers();
     };
   }, [isAuthReady, user, systemUser]);
@@ -3304,6 +3324,7 @@ export default function App() {
           onOpenOnboarding={() => setShowOnboarding(true)}
           onUpdate={() => {}}
           setActiveTab={setActiveTab}
+          onOpenHolidayManagement={() => setShowHolidayManagement(true)}
         />
       )}
       {activeTab === 'company' && (
@@ -3373,6 +3394,7 @@ export default function App() {
             companies={companies}
             selectedId={selectedEmployeeId}
             onSelect={setSelectedEmployeeId}
+            onOpenHolidayManagement={() => setShowHolidayManagement(true)}
         />
       )}
       {activeTab === 'deductions' && (
@@ -3566,6 +3588,16 @@ export default function App() {
             onUpdate={handleUpdateCompany}
           />
         )}
+        {showHolidayManagement && (
+          <HolidayManagementModal 
+            onClose={() => setShowHolidayManagement(false)}
+            holidays={holidays}
+            employees={employees}
+            openConfirm={openConfirm}
+            onLog={handleLogAction}
+            canManageSettings={!!(systemUser?.permissions?.canManageSettings || systemUser?.role === UserRole.CREATOR || systemUser?.role === UserRole.ADMIN)}
+          />
+        )}
         {showVendorModal && (
           <VendorModal 
             vendor={typeof showVendorModal === 'object' ? showVendorModal : null}
@@ -3660,7 +3692,7 @@ export default function App() {
 
 // --- Dashboard View ---
 
-const DashboardView = ({ employees, suppliers, vendors, projects, attendance, user, auditLogs, setShowAuditModal, onOpenUserManagement, onOpenManageCompanies, onOpenOnboarding, onUpdate, setActiveTab }: any) => {
+const DashboardView = ({ employees, suppliers, vendors, projects, attendance, user, auditLogs, setShowAuditModal, onOpenUserManagement, onOpenManageCompanies, onOpenOnboarding, onUpdate, setActiveTab, onOpenHolidayManagement }: any) => {
     const [showQuickAdminMenu, setShowQuickAdminMenu] = useState(false);
     
     // Stats Calculation
@@ -3874,6 +3906,14 @@ const DashboardView = ({ employees, suppliers, vendors, projects, attendance, us
                                                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-slate-50 hover:text-brand-600 transition-all"
                                                 >
                                                     <Building2 className="w-4 h-4" /> Manage Companies
+                                                </button>
+                                            )}
+                                            {(user.role === UserRole.CREATOR || canManageSettings) && (
+                                                <button 
+                                                    onClick={() => { onOpenHolidayManagement(); setShowQuickAdminMenu(false); }}
+                                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-slate-50 hover:text-brand-600 transition-all"
+                                                >
+                                                    <Calendar className="w-4 h-4 text-violet-500" /> Manage Holidays
                                                 </button>
                                             )}
                                         </div>
@@ -6629,7 +6669,7 @@ const AttendanceEditModal = ({ employee, date, currentRecord, onUpdate, onClose,
     );
 };
 
-const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, user, onLogAttendance, onDeleteAttendance, companies, openConfirm, selectedId, onSelect }: any) => {
+const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, user, onLogAttendance, onDeleteAttendance, companies, openConfirm, selectedId, onSelect, onOpenHolidayManagement }: any) => {
     const [year, month] = selectedMonth.split('-').map(Number);
     const daysInMonth = new Date(year, month, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -6857,6 +6897,13 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                 <Copy className="w-4 h-4" />
                                 <span className="hidden sm:inline">Copy Attendance</span>
                             </button>
+                            <button 
+                                onClick={onOpenHolidayManagement}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-violet-50 text-violet-600 border border-violet-100 rounded-2xl text-sm font-black hover:bg-violet-100 transition-all active:scale-95 shadow-lg shadow-violet-600/10"
+                            >
+                                <Calendar className="w-4 h-4" />
+                                <span className="hidden sm:inline">Manage Holidays</span>
+                            </button>
                         </>
                     )}
                     <button 
@@ -6955,8 +7002,29 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                     })}
                                     <td className="p-4 font-bold text-slate-900 bg-white/90 backdrop-blur-sm sticky right-0 z-10 border-l border-slate-100 group-hover:bg-brand-50/50 transition-colors">
                                         <div className="flex flex-col items-center">
-                                            <span className="text-brand-600">{attendance.filter(r => r.employeeId === e.id && r.date.startsWith(selectedMonth) && r.status === AttendanceStatus.PRESENT).length}P</span>
-                                            <span className="text-[9px] text-slate-400 font-bold">DAYS</span>
+                                            {(() => {
+                                                const empMonthRecs = attendance.filter(r => r.employeeId === e.id && r.date.startsWith(selectedMonth));
+                                                const isFixedSalary = e.team === 'Office Staff' || e.team === 'Internal Team';
+                                                
+                                                const present = empMonthRecs.filter(r => r.status === AttendanceStatus.PRESENT).length;
+                                                const weekOff = empMonthRecs.filter(r => r.status === AttendanceStatus.WEEK_OFF).length;
+                                                const ph = empMonthRecs.filter(r => r.status === AttendanceStatus.PUBLIC_HOLIDAY).length;
+                                                
+                                                const total = isFixedSalary ? (present + weekOff + ph) : present;
+                                                
+                                                return (
+                                                    <>
+                                                        <span className="text-brand-600 text-sm font-black">{total} Days</span>
+                                                        {isFixedSalary ? (
+                                                            <span className="text-[8px] text-slate-400 font-bold leading-tight text-center mt-0.5" style={{ whiteSpace: 'nowrap' }}>
+                                                                ({present}P + {weekOff}W + {ph}PH)
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[9px] text-slate-400 font-bold">PRESENT</span>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </td>
                                 </tr>
@@ -7835,10 +7903,17 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                   <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Bank IBAN:</td>
                                   <td style="padding: 6px 0; color: #0f172a; font-family: monospace; font-size: 11px; word-break: break-all; font-weight: 700;">${e.iban || 'N/A'}</td>
                               </tr>
-                              <tr>
-                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Present Days:</td>
-                                  <td style="padding: 6px 0; color: #10b981; font-weight: 800;">${presentDays} Days</td>
-                              </tr>
+                               <tr>
+                                  <td style="padding: 6px 0; color: #64748b; font-weight: 600; width: 130px;">Present Days:</td>
+                                  <td style="padding: 6px 0; color: #10b981; font-weight: 800;">
+                                      ${p.totalPresentDays} Days
+                                      ${isFixedSalary ? `
+                                      <div style="font-size: 10px; color: #64748b; font-weight: normal; margin-top: 2px;">
+                                          (${p.presentCount} Present, ${p.weekOffCount} Weekoff, ${p.publicHolidayCount} Holiday)
+                                      </div>
+                                      ` : ''}
+                                  </td>
+                               </tr>
                           </table>
                      </div>
                  </div>
@@ -8088,8 +8163,14 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                              {isFixedSalary ? p.breakdown.basic.toLocaleString() : (p.breakdown.hourlyRate || 0).toLocaleString()}
                                          </td>
                                          <td className="p-5 text-right text-sm text-slate-500">
-                                             <div className="font-bold text-slate-700">{presentDays} Days</div>
-                                             {!isFixedSalary && <div className="text-[10px] text-slate-400">{totalHours} Hours</div>}
+                                             <div className="font-bold text-slate-700">{p.totalPresentDays} Days</div>
+                                             {isFixedSalary ? (
+                                                 <div className="text-[10px] text-slate-400 font-bold mt-0.5">
+                                                     ({p.presentCount}P + {p.weekOffCount}W + {p.publicHolidayCount}PH)
+                                                 </div>
+                                             ) : (
+                                                 <div className="text-[10px] text-slate-400">{totalHours} Hours</div>
+                                             )}
                                          </td>
                                          <td className="p-5 text-right text-sm font-bold text-slate-900">{p.grossSalary.toLocaleString()}</td>
                                          <td className="p-5 text-right text-sm font-bold text-red-500">{p.totalUnpaidDays}</td>

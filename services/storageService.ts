@@ -643,3 +643,47 @@ export const clearAuditLogs = async () => {
     handleFirestoreError(error, OperationType.DELETE, 'audit_logs');
   }
 };
+
+// --- Holidays ---
+export const saveHoliday = async (holiday: PublicHoliday, employees: Employee[]) => {
+  try {
+    const cleaned = cleanData(holiday);
+    await setDoc(doc(db, 'holidays', holiday.id), cleaned);
+    
+    // For each active employee, log attendance as PUBLIC_HOLIDAY on that date
+    const activeEmployees = employees.filter(e => e.status === 'Active' && e.active !== false);
+    for (const e of activeEmployees) {
+      await logAttendance(
+        e.id,
+        AttendanceStatus.PUBLIC_HOLIDAY,
+        holiday.date,
+        0,
+        undefined,
+        'Holiday Sync',
+        `Holiday: ${holiday.name}`
+      );
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `holidays/${holiday.id}`);
+  }
+};
+
+export const deleteHoliday = async (id: string, date: string, employees: Employee[]) => {
+  try {
+    await deleteDoc(doc(db, 'holidays', id));
+    
+    // For each active employee, delete or revert the holiday attendance record
+    const activeEmployees = employees.filter(e => e.status === 'Active' && e.active !== false);
+    for (const e of activeEmployees) {
+      const recordId = `${e.id}_${date}`;
+      const recordRef = doc(db, 'attendance', recordId);
+      const snap = await getDoc(recordRef);
+      if (snap.exists() && snap.data().status === AttendanceStatus.PUBLIC_HOLIDAY) {
+        await deleteDoc(recordRef);
+      }
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `holidays/${id}`);
+  }
+};
+
