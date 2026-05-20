@@ -2094,6 +2094,8 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
         contact: ''
     });
 
+    const [errors, setErrors] = useState<Record<string, string>>({});
+
     // Make sure contact is synced to requestedBy for safety
     const handleContactChange = (val: string) => {
         setFormData({
@@ -2101,124 +2103,289 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
             contact: val,
             requestedBy: val
         });
+        if (errors.contact) {
+            setErrors(prev => ({ ...prev, contact: '' }));
+        }
     };
 
+    const handleFormSubmit = () => {
+        const newErrors: Record<string, string> = {};
+        if (!formData.category.trim()) newErrors.category = 'Category or Book is required';
+        if (formData.amount <= 0) newErrors.amount = 'Amount must be greater than zero';
+        const contactVal = formData.contact || formData.requestedBy;
+        if (!contactVal || !contactVal.trim()) {
+            newErrors.contact = formData.type === 'Income' ? 'Received Source or Name is required' : 'Recipient or requesting person is required';
+        }
+
+        if (Object.keys(newErrors).length > 0) {
+            setErrors(newErrors);
+            return;
+        }
+
+        onSave(formData);
+    };
+
+    const quickCategories = formData.type === 'Income' 
+        ? ['Office Cash Register', 'Director Advance', 'Bank Withdrawal', 'Client Cash Receipt']
+        : ['Fuel & Conveyance', 'Office Stationery', 'Site Materials', 'Pantry & Refreshments', 'Repairs & Maintenance'];
+
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center z-[70] p-4">
             <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                initial={{ opacity: 0, scale: 0.96, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white"
+                className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden border border-slate-200"
             >
-                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                {/* Zoho Corporate Header */}
+                <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{pettyCash ? 'Edit Petty Cash' : 'Add Petty Cash'}</h2>
-                        <p className="text-slate-500 text-sm font-medium mt-1">Enter transaction details below</p>
+                        <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
+                            <h2 className="text-lg font-bold text-slate-900">
+                                {pettyCash ? 'Edit Transaction Ledger' : 'New Transaction Ledger'}
+                            </h2>
+                        </div>
+                        <p className="text-slate-500 text-xs font-semibold mt-0.5">
+                            Fill in details accurately with automatic ledger bookkeeping
+                        </p>
                     </div>
-                    <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
+                    <button 
+                        onClick={onCancel} 
+                        className="p-2 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
+                    >
+                        <X className="w-4.5 h-4.5" />
+                    </button>
                 </div>
 
-                <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Date</label>
-                            <input 
-                                type="date"
-                                value={formData.date}
-                                onChange={e => setFormData({ ...formData, date: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Type</label>
-                            <select 
-                                value={formData.type}
-                                onChange={e => setFormData({ ...formData, type: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                    {/* Zoho Segmented Controller for Transaction Type */}
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Transaction Type
+                        </label>
+                        <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/50">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setFormData({ ...formData, type: 'Expense' });
+                                    setErrors({});
+                                }}
+                                className={cn(
+                                    "py-2.5 rounded-lg text-xs font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer",
+                                    formData.type === 'Expense'
+                                        ? "bg-white text-rose-600 shadow-sm border border-slate-200/50"
+                                        : "text-slate-600 hover:text-slate-900"
+                                )}
                             >
-                                <option value="Expense">Expense (-)</option>
-                                <option value="Income">Cash Received (+)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Category / Book</label>
-                            <input 
-                                type="text"
-                                value={formData.category}
-                                onChange={e => setFormData({ ...formData, category: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                                placeholder={formData.type === 'Income' ? "e.g. Jamel G, Office Cash Book" : "e.g. Fuel, Stationery, Site Expense"}
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Amount (AED)</label>
-                            <input 
-                                type="number"
-                                value={formData.amount}
-                                onChange={e => setFormData({ ...formData, amount: Number(e.target.value) })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                            />
+                                <TrendingDown className="w-4 h-4" />
+                                Payment Out / Expense (-)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setFormData({ ...formData, type: 'Income' });
+                                    setErrors({});
+                                }}
+                                className={cn(
+                                    "py-2.5 rounded-lg text-xs font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer",
+                                    formData.type === 'Income'
+                                        ? "bg-white text-emerald-600 shadow-sm border border-slate-200/50"
+                                        : "text-slate-600 hover:text-slate-900"
+                                )}
+                            >
+                                <TrendingUp className="w-4 h-4" />
+                                Cash In / Received (+)
+                            </button>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Payment Mode</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Transaction Date */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Transaction Date
+                            </label>
+                            <div className="relative">
+                                <input 
+                                    type="date"
+                                    value={formData.date}
+                                    onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all shadow-sm"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Amount in AED */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Amount (AED)
+                            </label>
+                            <div className="relative">
+                                <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 font-extrabold text-xs">
+                                    AED
+                                </span>
+                                <input 
+                                    type="number"
+                                    step="any"
+                                    value={formData.amount || ''}
+                                    onChange={e => {
+                                        setFormData({ ...formData, amount: Number(e.target.value) });
+                                        if (errors.amount) {
+                                            setErrors(prev => ({ ...prev, amount: '' }));
+                                        }
+                                    }}
+                                    className={cn(
+                                        "w-full pl-12 pr-3.5 py-2.5 bg-white border rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all shadow-sm",
+                                        errors.amount ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500/20" : "border-slate-200"
+                                    )}
+                                    placeholder="0.00"
+                                />
+                            </div>
+                            {errors.amount && (
+                                <p className="text-[10px] text-rose-500 font-bold mt-0.5">{errors.amount}</p>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Category / Book Selection with suggested Quick Badges */}
+                    <div className="space-y-1.5">
+                        <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Category / Cash Book Register
+                            </label>
+                            {errors.category && (
+                                <span className="text-[10px] text-rose-500 font-bold">{errors.category}</span>
+                            )}
+                        </div>
+                        <input 
+                            type="text"
+                            value={formData.category}
+                            onChange={e => {
+                                setFormData({ ...formData, category: e.target.value });
+                                if (errors.category) {
+                                    setErrors(prev => ({ ...prev, category: '' }));
+                                }
+                            }}
+                            className={cn(
+                                "w-full px-3.5 py-2.5 bg-white border rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all shadow-sm",
+                                errors.category ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500/20" : "border-slate-200"
+                            )}
+                            placeholder={formData.type === 'Income' ? "Enter Cash Register Book name" : "e.g. Fuel, Stationery, Site Expense"}
+                        />
+                        {/* Quick Suggestions Badges */}
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                            {quickCategories.map(cat => (
+                                <button
+                                    key={cat}
+                                    type="button"
+                                    onClick={() => {
+                                        setFormData({ ...formData, category: cat });
+                                        if (errors.category) {
+                                            setErrors(prev => ({ ...prev, category: '' }));
+                                        }
+                                    }}
+                                    className={cn(
+                                        "px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all border cursor-pointer",
+                                        formData.category === cat
+                                            ? "bg-blue-50 border-blue-200 text-blue-700"
+                                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                    )}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Mode of Payment */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Mode of Payment
+                            </label>
                             <select
                                 value={formData.mode || 'Cash'}
                                 onChange={e => setFormData({ ...formData, mode: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer"
+                                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all cursor-pointer shadow-sm"
                             >
-                                <option value="Cash">Cash</option>
-                                <option value="Online">Online</option>
-                                <option value="Bank Transfer">Bank Transfer</option>
-                                <option value="Cheque">Cheque</option>
-                                <option value="Card">Card</option>
+                                <option value="Cash">💵 Cash</option>
+                                <option value="Online">🌐 Online Gateway</option>
+                                <option value="Bank Transfer">🏦 Bank Transfer</option>
+                                <option value="Cheque">✍️ Cheque Payment</option>
+                                <option value="Card">💳 Credit/Debit Card</option>
                             </select>
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
+
+                        {/* Link to Project */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                Project Link (Optional)
+                            </label>
                             <select 
                                 value={formData.projectId}
                                 onChange={e => setFormData({ ...formData, projectId: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all cursor-pointer shadow-sm"
                             >
-                                <option value="">General / No Project</option>
+                                <option value="">📁 General (No Project Link)</option>
                                 {projects.map((p: any) => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                    <option key={p.id} value={p.id}>🏢 {p.name}</option>
                                 ))}
                             </select>
                         </div>
                     </div>
 
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
-                            {formData.type === 'Income' ? 'Received From / Contact' : 'Requested By / Recipient'}
-                        </label>
+                    {/* Received From / Requested By (Contact) */}
+                    <div className="space-y-1.5">
+                        <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                {formData.type === 'Income' ? 'Donor / Source Contact' : 'Recipient / Contact Associate'}
+                            </label>
+                            {errors.contact && (
+                                <span className="text-[10px] text-rose-500 font-bold">{errors.contact}</span>
+                            )}
+                        </div>
                         <input 
                             type="text"
                             value={formData.contact || formData.requestedBy || ''}
                             onChange={e => handleContactChange(e.target.value)}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                            placeholder={formData.type === 'Income' ? "Name of person/entity (e.g. Boss)" : "Employee name or recipient"}
+                            className={cn(
+                                "w-full px-3.5 py-2.5 bg-white border rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all shadow-sm",
+                                errors.contact ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500/20" : "border-slate-200"
+                            )}
+                            placeholder={formData.type === 'Income' ? "Who provided these funds? e.g. Jamel G" : "Who is receiving or requested this cash?"}
                         />
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Remark / Description</label>
+
+                    {/* Remarks / Narrative Description */}
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Narrative Remarks / Remarks
+                        </label>
                         <textarea 
                             value={formData.description}
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[80px]"
-                            placeholder="Mention specific description details..."
+                            className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all min-h-[90px] shadow-sm resize-none"
+                            placeholder="Provide ledger notes or specific reference numbers if any..."
                         />
                     </div>
                 </div>
 
-                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
-                    <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
-                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Entry</button>
+                {/* Zoho Branded Action Buttons Footer */}
+                <div className="p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                    <button 
+                        type="button"
+                        onClick={onCancel} 
+                        className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50 active:scale-95 transition-all shadow-sm cursor-pointer"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={handleFormSubmit} 
+                        className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 active:scale-95 transition-all shadow-sm hover:shadow-md cursor-pointer"
+                    >
+                        {pettyCash ? 'Update Entry' : 'Save Transaction'}
+                    </button>
                 </div>
             </motion.div>
         </div>
