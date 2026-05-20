@@ -1315,7 +1315,7 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                             )}
 
                             {/* Live Layout Report Sheet Preview */}
-                            <div className="flex-1 bg-slate-200/50 p-8 overflow-y-auto flex justify-center custom-scrollbar">
+                            <div className="flex-1 bg-slate-200/50 p-8 overflow-auto flex justify-center custom-scrollbar">
                                 <div 
                                     id="printable-report"
                                     className={cn(
@@ -1410,29 +1410,29 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                     </div>
 
                                     {/* The Report Table Workspace */}
-                                    <div className="flex-1 overflow-x-auto min-h-[400px]">
+                                    <div className="flex-1 min-h-[400px]">
                                         {exportTab === 'all' && (
-                                            <table className="w-full text-left text-xs border-collapse font-medium">
+                                            <table className="w-full table-fixed text-left text-xs border-collapse font-medium">
                                                 <thead>
                                                     <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
-                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[14%]">Date</th>
-                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px]">Remark / Description</th>
-                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[18%]">Contact</th>
-                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[16%]">Category</th>
-                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[10%]">Mode</th>
-                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] text-right w-[14%]">Cash In</th>
-                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] text-right w-[14%]">Cash Out</th>
-                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] text-right w-[14%]">Balance</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[12%]">Date</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[22%]">Remark / Description</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[14%]">Contact</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[14%]">Category</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] w-[8%]">Mode</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] text-right w-[10%]">Cash In</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] text-right w-[10%]">Cash Out</th>
+                                                        <th className="px-3 py-2.5 font-bold uppercase text-[9px] text-right w-[10%]">Balance</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-200">
                                                     {sortedWithRunningBalances.map((item: any, idx: number) => (
                                                         <tr key={item.id} className="hover:bg-slate-50 odd:bg-slate-50/30">
-                                                            <td className="px-3 py-2 text-[10px] whitespace-nowrap font-bold text-slate-500">{item.date}</td>
-                                                            <td className="px-3 py-2 text-[11px] font-bold text-slate-800 break-words">{item.description || '-'}</td>
-                                                            <td className="px-3 py-2 text-[11px] font-semibold text-slate-700 truncate">{item.contact || item.requestedBy || '-'}</td>
-                                                            <td className="px-3 py-2 text-[10px] font-black uppercase text-slate-500">{item.category || 'General'}</td>
-                                                            <td className="px-3 py-2 text-[10px] font-extrabold uppercase text-slate-600">{item.mode || 'Cash'}</td>
+                                                            <td className="px-3 py-2 text-[10px] font-bold text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis">{item.date}</td>
+                                                            <td className="px-3 py-2 text-[11px] font-bold text-slate-800 break-words whitespace-normal leading-tight">{item.description || '-'}</td>
+                                                            <td className="px-3 py-2 text-[11px] font-semibold text-slate-700 break-words whitespace-normal leading-tight">{item.contact || item.requestedBy || '-'}</td>
+                                                            <td className="px-3 py-2 text-[10px] font-black uppercase text-slate-500 break-words whitespace-normal leading-tight">{item.category || 'General'}</td>
+                                                            <td className="px-3 py-2 text-[10px] font-extrabold uppercase text-slate-600 break-words whitespace-normal leading-tight">{item.mode || 'Cash'}</td>
                                                             <td className="px-3 py-2 text-right font-black text-emerald-600">
                                                                 {item.type === 'Income' ? (item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
                                                             </td>
@@ -1440,7 +1440,7 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                                                 {item.type === 'Expense' ? (item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
                                                             </td>
                                                             <td className="px-3 py-2 text-right font-black text-slate-900 whitespace-nowrap">
-                                                                AED {item.runningBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                {item.runningBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -1449,20 +1449,20 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                         )}
 
                                         {exportTab === 'day' && (
-                                            <table className="w-full text-left text-xs border-collapse">
+                                            <table className="w-full table-fixed text-left text-xs border-collapse">
                                                 <thead>
                                                     <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Date</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center">Entries Count</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total In</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Out</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Running Net Balance</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] w-[20%]">Date</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center w-[15%]">Entries Count</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[20%]">Total In</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[20%]">Total Out</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[25%]">Running Net Balance</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-200">
                                                     {dayWiseData.map((day: any) => (
                                                         <tr key={day.date} className="hover:bg-slate-50 odd:bg-slate-50/30">
-                                                            <td className="px-4 py-2.5 text-[10px] font-bold text-slate-600">{day.date}</td>
+                                                            <td className="px-4 py-2.5 text-[10px] font-bold text-slate-600 whitespace-nowrap overflow-hidden text-ellipsis">{day.date}</td>
                                                             <td className="px-4 py-2.5 text-center font-bold text-slate-700">{day.count}</td>
                                                             <td className="px-4 py-2.5 text-right font-black text-emerald-600">
                                                                 {day.cashIn > 0 ? `+ AED ${day.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
@@ -1480,23 +1480,23 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                         )}
 
                                         {exportTab === 'contact' && (
-                                            <table className="w-full text-left text-xs border-collapse">
+                                            <table className="w-full table-fixed text-left text-xs border-collapse">
                                                 <thead>
                                                     <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Contact Name</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center">Receipts Count</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Main Categories</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Inflow (AED)</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Outflow (AED)</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Subtotal Balance</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] w-[22%]">Contact Name</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center w-[13%]">Receipts Count</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] w-[23%]">Main Categories</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[14%]">Inflow (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[14%]">Outflow (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[14%]">Subtotal Balance</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-200">
                                                     {contactWiseData.map((item: any) => (
                                                         <tr key={item.contact} className="hover:bg-slate-50 odd:bg-slate-50/30">
-                                                            <td className="px-4 py-2.5 font-black text-slate-800">{item.contact}</td>
+                                                            <td className="px-4 py-2.5 font-black text-slate-800 break-words whitespace-normal leading-tight">{item.contact}</td>
                                                             <td className="px-4 py-2.5 text-center font-bold text-slate-600">{item.count}</td>
-                                                            <td className="px-4 py-2.5 text-[10px] text-slate-400 uppercase font-bold truncate max-w-[120px]">{item.categoryList}</td>
+                                                            <td className="px-4 py-2.5 text-[10px] text-slate-400 uppercase font-bold break-words whitespace-normal leading-tight">{item.categoryList}</td>
                                                             <td className="px-4 py-2.5 text-right font-black text-emerald-600">
                                                                 {item.cashIn > 0 ? `+ ${item.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
                                                             </td>
@@ -1513,20 +1513,20 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                         )}
 
                                         {exportTab === 'category' && (
-                                            <table className="w-full text-left text-xs border-collapse">
+                                            <table className="w-full table-fixed text-left text-xs border-collapse">
                                                 <thead>
                                                     <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Category Cash Book</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center">Entries Count</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Inflow (AED)</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Outflow (AED)</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Net Category Balance</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] w-[25%]">Category Cash Book</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center w-[15%]">Entries Count</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[20%]">Total Inflow (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[20%]">Total Outflow (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[20%]">Net Category Balance</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-200">
                                                     {categoryWiseData.map((item: any) => (
                                                         <tr key={item.category} className="hover:bg-slate-50 odd:bg-slate-50/30">
-                                                            <td className="px-4 py-2.5 font-black text-slate-800 uppercase text-[10px] tracking-wider">{item.category}</td>
+                                                            <td className="px-4 py-2.5 font-black text-slate-800 uppercase text-[10px] tracking-wider break-words whitespace-normal leading-tight">{item.category}</td>
                                                             <td className="px-4 py-2.5 text-center font-bold text-slate-600">{item.count}</td>
                                                             <td className="px-4 py-2.5 text-right font-black text-emerald-600">
                                                                 {item.cashIn > 0 ? `+ ${item.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
@@ -1544,20 +1544,20 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                         )}
 
                                         {exportTab === 'mode' && (
-                                            <table className="w-full text-left text-xs border-collapse">
+                                            <table className="w-full table-fixed text-left text-xs border-collapse">
                                                 <thead>
                                                     <tr className="bg-slate-900 text-white font-bold border-b border-slate-300">
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px]">Payment Mode Details</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center">Transaction Count</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Cash In (AED)</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Total Cash Out (AED)</th>
-                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right">Net Subtotal Balance</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] w-[30%]">Payment Mode Details</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-center w-[15%]">Transaction Count</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[18%]">Total Cash In (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[18%]">Total Cash Out (AED)</th>
+                                                        <th className="px-4 py-2.5 font-black uppercase text-[9px] text-right w-[19%]">Net Subtotal Balance</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-200">
                                                     {paymentModeWiseData.map((item: any) => (
                                                         <tr key={item.mode} className="hover:bg-slate-50 odd:bg-slate-50/30">
-                                                            <td className="px-4 py-2.5 font-black text-slate-800 uppercase text-[10px] tracking-wider">{item.mode}</td>
+                                                            <td className="px-4 py-2.5 font-black text-slate-800 uppercase text-[10px] tracking-wider break-words whitespace-normal leading-tight">{item.mode}</td>
                                                             <td className="px-4 py-2.5 text-center font-bold text-slate-600">{item.count}</td>
                                                             <td className="px-4 py-2.5 text-right font-black text-emerald-600">
                                                                 {item.cashIn > 0 ? `+ ${item.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
