@@ -6721,9 +6721,12 @@ const AttendanceEditModal = ({ employee, date, currentRecord, onUpdate, onClose,
                                   <input 
                                       type="number" 
                                       value={hoursWorked}
-                                      readOnly
-                                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-brand-100 rounded-2xl outline-none transition-all font-black text-2xl text-brand-600"
+                                      onChange={(e) => setHoursWorked(parseFloat(e.target.value) || 0)}
+                                      className="w-full pl-12 pr-4 py-4 bg-white border-2 border-brand-200 focus:border-brand-500 rounded-2xl outline-none transition-all font-black text-2xl text-brand-600"
                                       placeholder="0"
+                                      min="0"
+                                      max="24"
+                                      step="0.5"
                                   />
                                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-400 font-bold uppercase text-xs">Hours Worked</span>
                               </div>
