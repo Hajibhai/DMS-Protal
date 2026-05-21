@@ -6797,6 +6797,17 @@ const AttendanceEditModal = ({ employee, date, currentRecord, onUpdate, onClose,
     );
 };
 
+const STATUS_CELL_BG: Record<string, string> = {
+    [AttendanceStatus.PRESENT]: 'bg-emerald-50/40 text-emerald-800 hover:bg-emerald-100/60',
+    [AttendanceStatus.ABSENT]: 'bg-red-50/40 text-red-800 hover:bg-red-100/60',
+    [AttendanceStatus.WEEK_OFF]: 'bg-slate-50/50 text-slate-800 hover:bg-slate-100/70',
+    [AttendanceStatus.PUBLIC_HOLIDAY]: 'bg-violet-50/40 text-violet-800 hover:bg-violet-100/60',
+    [AttendanceStatus.SICK_LEAVE]: 'bg-orange-50/40 text-orange-800 hover:bg-orange-100/60',
+    [AttendanceStatus.ANNUAL_LEAVE]: 'bg-brand-50/40 text-brand-800 hover:bg-brand-100/60',
+    [AttendanceStatus.UNPAID_LEAVE]: 'bg-rose-50/40 text-rose-800 hover:bg-rose-100/60',
+    [AttendanceStatus.EMERGENCY_LEAVE]: 'bg-pink-50/40 text-pink-800 hover:bg-pink-100/60',
+};
+
 const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, user, onLogAttendance, onDeleteAttendance, companies, openConfirm, selectedId, onSelect, onOpenHolidayManagement }: any) => {
     const [year, month] = selectedMonth.split('-').map(Number);
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -6918,7 +6929,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
     };
 
     const handleExport = () => {
-        const headers = ['Code', 'Name', 'Company', 'Department', ...days.map(d => d.toString()), 'Present', 'OT Hours'];
+        const headers = ['Code', 'Name', 'Company', 'Department', ...days.map(d => d.toString()), 'Present Days', 'Hours Worked', 'OT Hours'];
         const data = filteredEmployees.map((e: Employee) => {
             const row: any = {
                 'Code': e.code,
@@ -6927,14 +6938,26 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                 'Department': e.department,
             };
 
+            const isFixedSalary = e.team === 'Office Staff' || e.team === 'Internal Team';
+
             days.forEach(d => {
                 const dateStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
                 const record = attendance.find((r: AttendanceRecord) => r.employeeId === e.id && r.date === dateStr);
-                row[d.toString()] = record ? record.status : '-';
+                if (record) {
+                    if (record.status === AttendanceStatus.PRESENT) {
+                        const hrs = record.hoursWorked !== undefined ? record.hoursWorked : (isFixedSalary ? 8 : 0);
+                        row[d.toString()] = `P (${hrs}h)`;
+                    } else {
+                        row[d.toString()] = record.status || '-';
+                    }
+                } else {
+                    row[d.toString()] = '-';
+                }
             });
 
             const empAtt = attendance.filter(r => r.employeeId === e.id && r.date.startsWith(selectedMonth));
-            row['Present'] = empAtt.filter(r => r.status === AttendanceStatus.PRESENT).length;
+            row['Present Days'] = empAtt.filter(r => r.status === AttendanceStatus.PRESENT).length;
+            row['Hours Worked'] = empAtt.reduce((sum, r) => sum + (r.hoursWorked || 0), 0);
             row['OT Hours'] = empAtt.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
 
             return row;
@@ -7114,28 +7137,30 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                         const isSunday = new Date(year, month - 1, d).getDay() === 0;
                                         return (
                                             <td key={d} className={cn(
-                                                "border-r border-slate-50 p-2 font-bold transition-all relative",
-                                                meta.code ? meta.color : isSunday ? 'bg-red-50/20 text-red-200' : 'text-slate-200 group-hover:text-slate-300'
+                                                "border-r border-slate-50 p-1 font-bold transition-all relative text-center align-middle hover:bg-slate-50/40",
+                                                record?.status ? (STATUS_CELL_BG[record.status] || 'bg-slate-50') : isSunday ? 'bg-red-50/15 text-red-300' : 'text-slate-200 group-hover:text-slate-300 bg-white'
                                             )}>
-                                                <button 
-                                                    onClick={() => setEditingCell({ empId: e.id, date: dateStr })}
-                                                    className={cn(
-                                                        "w-7 h-7 flex items-center justify-center rounded-lg mx-auto transition-transform hover:scale-110 active:scale-90",
-                                                        meta.code && "bg-white shadow-sm border border-slate-100"
+                                                <div className="flex flex-col items-center justify-center gap-1.5 min-h-[50px] py-1">
+                                                    <button 
+                                                        onClick={() => setEditingCell({ empId: e.id, date: dateStr })}
+                                                        className={cn(
+                                                            "w-7 h-7 flex items-center justify-center rounded-lg mx-auto transition-transform hover:scale-105 active:scale-95 shadow-sm border",
+                                                            meta.code ? `${meta.color} border-transparent` : "bg-white border-slate-200/60"
+                                                        )}
+                                                    >
+                                                        <span className={cn(
+                                                            "text-[11px] font-black leading-none",
+                                                            meta.code ? "text-white" : (isSunday ? "text-red-400" : "text-slate-400")
+                                                        )}>
+                                                            {meta.code || (isSunday ? 'S' : '-')}
+                                                        </span>
+                                                    </button>
+                                                    {record?.hoursWorked > 0 && record?.hoursWorked !== 8 && (
+                                                        <div className="bg-slate-900 border border-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded font-black shadow-xs leading-none select-none tracking-tight">
+                                                            {record.hoursWorked}h
+                                                        </div>
                                                     )}
-                                                >
-                                                    <span className={cn(
-                                                        "text-[12px] font-black",
-                                                        meta.code ? "text-slate-900" : (isSunday ? "text-red-400" : "text-slate-300")
-                                                    )}>
-                                                        {meta.code || (isSunday ? 'S' : '-')}
-                                                    </span>
-                                                </button>
-                                                {record?.hoursWorked > 0 && record?.hoursWorked !== 8 && (
-                                                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-white text-[8px] px-1 rounded border border-slate-100 shadow-sm text-brand-600 font-black">
-                                                        {record.hoursWorked}h
-                                                    </div>
-                                                )}
+                                                </div>
                                             </td>
                                         );
                                     })}
