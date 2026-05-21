@@ -1321,6 +1321,14 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
 
 const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }: { onClose: () => void, users: SystemUser[], openConfirm: (title: string, message: string, onConfirm: () => void, type?: 'danger' | 'warning') => void, currentUser: SystemUser, onLog: any }) => {
     const [localUsers, setLocalUsers] = useState<SystemUser[]>(users);
+    const isAuthorizedToManage = 
+        currentUser?.permissions?.canManageUsers || 
+        currentUser?.role === UserRole.ADMIN || 
+        currentUser?.role === UserRole.CREATOR || 
+        currentUser?.role?.toLowerCase() === 'admin' || 
+        currentUser?.role?.toLowerCase() === 'creator' || 
+        currentUser?.email === 'abdulkaderp3010@gmail.com' ||
+        currentUser?.email === CREATOR_USER.username;
     const [showAdd, setShowAdd] = useState(false);
     const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
     const [newUser, setNewUser] = useState({ 
@@ -1386,6 +1394,12 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
             canManageAttendance: false, canViewTimesheet: false, canManageLeaves: false, canViewPayroll: true,
             canManagePayroll: true, canViewReports: true, canManageUsers: false, canManageSettings: false,
             canManageSuppliers: true, canManageProjects: true
+        },
+        [UserRole.EMPLOYEE]: {
+            canViewDashboard: false, canViewCompanyDashboard: false, canManageEmployees: false, canViewDirectory: false,
+            canManageAttendance: false, canViewTimesheet: false, canManageLeaves: false, canViewPayroll: false,
+            canManagePayroll: false, canViewReports: false, canManageUsers: false, canManageSettings: false,
+            canManageSuppliers: false, canManageProjects: false
         }
     };
 
@@ -1526,7 +1540,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                 <div className="p-6 max-h-[70vh] overflow-y-auto">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-semibold text-gray-700">Active System Users</h3>
-                        {(currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CREATOR || currentUser.email === CREATOR_USER.email) && (
+                        {isAuthorizedToManage && (
                             <button onClick={() => { setShowAdd(true); setEditingUser(null); }} className="flex items-center gap-2 bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700">
                                 <Plus className="w-4 h-4" /> Add User
                             </button>
@@ -2221,7 +2235,8 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser, openConfirm }: { is
 
     if (!isOpen) return null;
 
-    const isAdmin = currentUser?.role === UserRole.CREATOR || currentUser?.role === UserRole.ADMIN || currentUser?.email === 'abdulkaderp3010@gmail.com';
+    const isRoleAdminOrCreator = currentUser?.role?.toLowerCase() === 'creator' || currentUser?.role?.toLowerCase() === 'admin';
+    const isAdmin = isRoleAdminOrCreator || currentUser?.email === 'abdulkaderp3010@gmail.com' || currentUser?.email === CREATOR_USER.username;
 
     const users = Array.from(new Set(logs.map(l => l.userName)));
 
@@ -2320,7 +2335,7 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser, openConfirm }: { is
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
-                            {(currentUser?.role === UserRole.CREATOR || currentUser?.email === 'abdulkaderp3010@gmail.com') && (
+                            {(currentUser?.role?.toLowerCase() === 'creator' || currentUser?.email === 'abdulkaderp3010@gmail.com' || currentUser?.email === CREATOR_USER.username) && (
                                 <button 
                                     onClick={handleClearAll}
                                     className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-2xl text-sm font-black hover:bg-red-100 transition-all active:scale-95"
@@ -2517,7 +2532,7 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser, openConfirm }: { is
 
                 <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center">
                     <div>
-                        {(currentUser?.role === UserRole.CREATOR || currentUser?.email === 'abdulkaderp3010@gmail.com') && (
+                        {(currentUser?.role?.toLowerCase() === 'creator' || currentUser?.email === 'abdulkaderp3010@gmail.com' || currentUser?.email === CREATOR_USER.username) && (
                             <button 
                                 onClick={handleClearAll}
                                 className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 rounded-2xl text-sm font-black hover:bg-red-100 transition-all active:scale-95 border border-red-100"
@@ -2854,7 +2869,7 @@ export default function App() {
     if (!db || !user || !systemUser) return;
     
     let q;
-    const isCreator = systemUser?.role === UserRole.CREATOR || user?.email === "abdulkaderp3010@gmail.com";
+    const isCreator = systemUser?.role?.toLowerCase() === 'creator' || user?.email === "abdulkaderp3010@gmail.com" || user?.email === CREATOR_USER.username;
     
     const canViewAudit = isCreator || systemUser.permissions.canManageSettings || systemUser.permissions.canManageUsers || systemUser.permissions.canManageEmployees;
     
@@ -2888,7 +2903,7 @@ export default function App() {
   // 2. Data Listeners
   useEffect(() => {
     if (!isAuthReady || !user) return;
-    const isCreator = systemUser?.role === UserRole.CREATOR || user?.email === "abdulkaderp3010@gmail.com";
+    const isCreator = systemUser?.role?.toLowerCase() === 'creator' || user?.email === "abdulkaderp3010@gmail.com" || user?.email === CREATOR_USER.username;
 
     const unsubEmployees = (systemUser?.permissions?.canViewDirectory || systemUser?.permissions?.canManageEmployees || isCreator) ? onSnapshot(collection(db, 'employees'), (snap) => {
       setEmployees(snap.docs.map(d => d.data() as Employee));
@@ -3082,9 +3097,16 @@ export default function App() {
   };
 
   const handleSaveEverydayExpense = async (data: EverydayExpense) => {
-    await saveEverydayExpense(data);
-    const isUpdate = everydayExpenses.some(ee => ee.id === data.id);
-    handleLogAction(isUpdate ? 'Everyday Expense Updated' : 'Everyday Expense Added', `Everyday expense ${data.invoiceNo} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
+    const enrichedData = {
+      ...data,
+      uploadedBy: data.uploadedBy || systemUser?.name || '',
+      uploadedByUid: data.uploadedByUid || systemUser?.uid || '',
+      updatedBy: systemUser?.name || '',
+      updatedByUid: systemUser?.uid || ''
+    };
+    await saveEverydayExpense(enrichedData);
+    const isUpdate = everydayExpenses.some(ee => ee.id === enrichedData.id);
+    handleLogAction(isUpdate ? 'Everyday Expense Updated' : 'Everyday Expense Added', `Everyday expense ${enrichedData.invoiceNo} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
     setShowEverydayExpenseModal(false);
   };
 
@@ -3149,8 +3171,15 @@ export default function App() {
     
     if (!systemUser) return baseItems.filter(item => !item.permission && !item.creatorOnly);
     
-    const isCreator = systemUser.role === UserRole.CREATOR || systemUser.email === 'abdulkaderp3010@gmail.com';
-    const isAdmin = systemUser.role === UserRole.ADMIN || isCreator;
+    if (systemUser.role === UserRole.EMPLOYEE) {
+        return [
+            { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet }
+        ];
+    }
+    
+    const systemUserRoleLower = systemUser?.role?.toLowerCase() || '';
+    const isCreator = systemUserRoleLower === 'creator' || systemUser.email === 'abdulkaderp3010@gmail.com' || systemUser.email === CREATOR_USER.username;
+    const isAdmin = systemUserRoleLower === 'admin' || isCreator;
     
     const filterItem = (item: any) => {
         if (item.creatorOnly && !isCreator) return false;
@@ -3179,6 +3208,12 @@ export default function App() {
       }
     }
   }, [activeTab, systemUser, navItems]);
+
+  useEffect(() => {
+    if (systemUser?.role === UserRole.EMPLOYEE && activeTab !== 'everyday-expenses') {
+      setActiveTab('everyday-expenses');
+    }
+  }, [systemUser, activeTab]);
 
   const handleOffboard = async (data: OffboardingDetails) => {
       if (showOffboarding) {
@@ -3586,7 +3621,11 @@ export default function App() {
       )}
       {activeTab === 'everyday-expenses' && (
         <EverydayExpenseView 
-          data={everydayExpenses}
+          data={
+            systemUser?.role === UserRole.EMPLOYEE
+              ? everydayExpenses.filter(ee => ee.uploadedByUid === systemUser.uid || ee.uploadedBy === systemUser.name || ee.updatedBy === systemUser.name)
+              : everydayExpenses
+          }
           projects={projects}
           onAdd={() => setShowEverydayExpenseModal(true)}
           onEdit={(ee: EverydayExpense) => setShowEverydayExpenseModal(ee)}
@@ -3714,7 +3753,7 @@ export default function App() {
             employees={employees}
             openConfirm={openConfirm}
             onLog={handleLogAction}
-            canManageSettings={!!(systemUser?.permissions?.canManageSettings || systemUser?.role === UserRole.CREATOR || systemUser?.role === UserRole.ADMIN)}
+            canManageSettings={!!(systemUser?.permissions?.canManageSettings || systemUser?.role?.toLowerCase() === 'creator' || systemUser?.role?.toLowerCase() === 'admin' || systemUser?.email === 'abdulkaderp3010@gmail.com')}
           />
         )}
         {showVendorModal && (
@@ -3766,6 +3805,7 @@ export default function App() {
             projects={projects}
             onSave={handleSaveEverydayExpense}
             onCancel={() => setShowEverydayExpenseModal(false)}
+            user={systemUser}
           />
         )}
         {showAuditModal && (
@@ -3821,11 +3861,14 @@ const DashboardView = ({ employees, suppliers, vendors, projects, attendance, us
     const otherEmployees = activeStaff.length - officeStaff;
     const activeProjects = projects.filter((p: any) => p.status === 'Active').length;
 
-    const canManageUsers = user?.permissions?.canManageUsers || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
-    const canManageSettings = user?.permissions?.canManageSettings || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
-    const canManageEmployees = user?.permissions?.canManageEmployees || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
-    const canManageAttendance = user?.permissions?.canManageAttendance || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
-    const canManagePayroll = user?.permissions?.canManagePayroll || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
+    const userRoleLower = user?.role?.toLowerCase() || '';
+    const isUserAdminOrCreator = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
+
+    const canManageUsers = user?.permissions?.canManageUsers || isUserAdminOrCreator;
+    const canManageSettings = user?.permissions?.canManageSettings || isUserAdminOrCreator;
+    const canManageEmployees = user?.permissions?.canManageEmployees || isUserAdminOrCreator;
+    const canManageAttendance = user?.permissions?.canManageAttendance || isUserAdminOrCreator;
+    const canManagePayroll = user?.permissions?.canManagePayroll || isUserAdminOrCreator;
     
     // Chart Data: Staff by Department
     const deptStats = useMemo(() => {
@@ -4002,7 +4045,7 @@ const DashboardView = ({ employees, suppliers, vendors, projects, attendance, us
                             <h3 className="text-xl font-black tracking-tight">Quick Operations</h3>
                             <div className="relative">
                                 <button 
-                                    onClick={() => (user.role === UserRole.CREATOR || canManageUsers || canManageSettings) && setShowQuickAdminMenu(!showQuickAdminMenu)}
+                                    onClick={() => (canManageUsers || canManageSettings) && setShowQuickAdminMenu(!showQuickAdminMenu)}
                                     className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center hover:bg-white/30 transition-all"
                                 >
                                     <LayoutGrid className="w-5 h-5" />
@@ -4011,7 +4054,7 @@ const DashboardView = ({ employees, suppliers, vendors, projects, attendance, us
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setShowQuickAdminMenu(false)}></div>
                                         <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2 z-20 text-slate-900">
-                                            {(user.role === UserRole.CREATOR || canManageUsers) && (
+                                            {canManageUsers && (
                                                 <button 
                                                     onClick={() => { onOpenUserManagement(); setShowQuickAdminMenu(false); }}
                                                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-slate-50 hover:text-brand-600 transition-all"
@@ -4019,7 +4062,7 @@ const DashboardView = ({ employees, suppliers, vendors, projects, attendance, us
                                                     <UserCog className="w-4 h-4" /> System User Management
                                                 </button>
                                             )}
-                                            {(user.role === UserRole.CREATOR || canManageSettings) && (
+                                            {canManageSettings && (
                                                 <button 
                                                     onClick={() => { onOpenManageCompanies(); setShowQuickAdminMenu(false); }}
                                                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-slate-50 hover:text-brand-600 transition-all"
@@ -4027,7 +4070,7 @@ const DashboardView = ({ employees, suppliers, vendors, projects, attendance, us
                                                     <Building2 className="w-4 h-4" /> Manage Companies
                                                 </button>
                                             )}
-                                            {(user.role === UserRole.CREATOR || canManageSettings) && (
+                                            {canManageSettings && (
                                                 <button 
                                                     onClick={() => { onOpenHolidayManagement(); setShowQuickAdminMenu(false); }}
                                                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold hover:bg-slate-50 hover:text-brand-600 transition-all"
@@ -4475,7 +4518,7 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
     const [companyFilter, setCompanyFilter] = useState('All');
     const [deptFilter, setDeptFilter] = useState('All');
     const [viewRejoinReason, setViewRejoinReason] = useState<Employee | null>(null);
-    const canManageEmployees = user?.permissions?.canManageEmployees || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
+    const canManageEmployees = user?.permissions?.canManageEmployees || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
     const calculateExperience = (joiningDate: string, exitDate?: string) => {
         if (!joiningDate) return 'N/A';
@@ -4878,7 +4921,7 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
     const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
+    const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
     const sortedSuppliers = useMemo(() => {
         return [...suppliers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -5483,7 +5526,7 @@ const ProjectView = ({ projects, openConfirm, onUpdate, onAdd, user }: { project
     const [viewingProject, setViewingProject] = useState<Project | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const canManageProjects = user?.permissions?.canManageProjects || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
+    const canManageProjects = user?.permissions?.canManageProjects || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
     const sortedProjects = useMemo(() => {
         return [...projects].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -6160,7 +6203,7 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { compan
     const [viewingDocsCompany, setViewingDocsCompany] = useState<Company | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState<string | null>(null);
-    const canManageSettings = user?.permissions?.canManageSettings || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN;
+    const canManageSettings = user?.permissions?.canManageSettings || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
     const sortedCompanies = useMemo(() => {
         return [...companies].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -8489,6 +8532,9 @@ const ReportsView = ({
         [UserRole.ACCOUNTANT]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
             'corporate_tax', 'payroll', 'projects', 'finance'
+        ],
+        [UserRole.EMPLOYEE]: [
+            'everyday'
         ]
     }), []);
 
@@ -9398,7 +9444,7 @@ const ReportsView = ({
     const [showModal, setShowModal] = useState<any>(null);
     const [viewMode, setViewMode] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
-    const canManageEmployees = user?.permissions?.canManageEmployees || user?.role === UserRole.CREATOR || user?.role === UserRole.ADMIN || user?.email === 'abdulkaderp3010@gmail.com';
+    const canManageEmployees = user?.permissions?.canManageEmployees || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
     const filtered = records.filter((r: any) => 
         r.nameEnglish?.toLowerCase().includes(searchTerm.toLowerCase()) ||

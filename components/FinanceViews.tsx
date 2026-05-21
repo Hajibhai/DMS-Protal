@@ -2847,7 +2847,8 @@ export const EverydayExpenseModal: React.FC<{
     projects: Project[];
     onSave: (data: EverydayExpense) => void;
     onCancel: () => void;
-}> = ({ expense, projects, onSave, onCancel }) => {
+    user: any;
+}> = ({ expense, projects, onSave, onCancel, user }) => {
     const [formData, setFormData] = useState<EverydayExpense>(expense || {
         id: Math.random().toString(36).substr(2, 9),
         siNo: '',
@@ -2861,7 +2862,9 @@ export const EverydayExpenseModal: React.FC<{
         vatAmount: 0,
         totalAmount: 0,
         description: '',
-        projectId: ''
+        projectId: '',
+        uploadedBy: user?.name || '',
+        uploadedByUid: user?.uid || ''
     });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2879,9 +2882,55 @@ export const EverydayExpenseModal: React.FC<{
         reader.onload = () => {
             const base64 = reader.result as string;
             setTempImageData({ image: base64, mime: file.type });
-            setUploaderName(formData.uploadedBy || formData.updatedBy || '');
-            setShowNamePrompt(true);
+            const nameToSuggest = formData.uploadedBy || formData.updatedBy || user?.name || '';
+            setUploaderName(nameToSuggest);
             setScanError(null);
+
+            if (nameToSuggest) {
+                // Already have user name, proceed to scan directly!
+                setIsScanning(true);
+                fetch("/api/gemini/extract-receipt", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        image: base64,
+                        mimeType: file.type,
+                        type: "everyday"
+                    })
+                })
+                .then(async (response) => {
+                    if (!response.ok) {
+                        const errResult = await response.json();
+                        throw new Error(errResult.error || "Failed to scan receipt");
+                    }
+                    return response.json();
+                })
+                .then((data) => {
+                    setFormData(prev => ({
+                        ...prev,
+                        ...data,
+                        uploadedBy: nameToSuggest,
+                        uploadedByUid: user?.uid || '',
+                        updatedBy: nameToSuggest,
+                        updatedByUid: user?.uid || ''
+                    }));
+                })
+                .catch((error: any) => {
+                    console.error("Scanning failed:", error);
+                    setScanError(error.message || "An error occurred while scanning with Gemini");
+                })
+                .finally(() => {
+                    setIsScanning(false);
+                    setTempImageData(null);
+                    if (fileInputRef.current) {
+                        fileInputRef.current.value = '';
+                    }
+                });
+            } else {
+                setShowNamePrompt(true);
+            }
         };
         reader.onerror = () => {
             setScanError("Failed to read the image file");
@@ -2923,7 +2972,9 @@ export const EverydayExpenseModal: React.FC<{
                 ...prev,
                 ...data,
                 uploadedBy: uploaderName,
-                updatedBy: uploaderName
+                uploadedByUid: user?.uid || '',
+                updatedBy: uploaderName,
+                updatedByUid: user?.uid || ''
             }));
         } catch (error: any) {
             console.error("Scanning failed:", error);

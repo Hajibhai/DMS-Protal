@@ -289,6 +289,8 @@ export interface EverydayExpense {
     projectId?: string; // Optional link to project
     uploadedBy?: string;
     updatedBy?: string;
+    uploadedByUid?: string;
+    updatedByUid?: string;
 }
 
 export interface DashboardStats {
@@ -321,7 +323,8 @@ export enum UserRole {
     HR = 'HR',
     SUPERVISOR = 'Supervisor',
     ENGINEER = 'Engineer',
-    ACCOUNTANT = 'Accountant'
+    ACCOUNTANT = 'Accountant',
+    EMPLOYEE = 'Employee'
 }
 
 export interface UserPermissions {
