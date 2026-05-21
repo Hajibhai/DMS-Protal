@@ -6498,16 +6498,102 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { compan
 const AttendanceEditModal = ({ employee, date, currentRecord, onUpdate, onClose, openConfirm }: any) => {
     const isFixedSalary = employee.team === 'Office Staff' || employee.team === 'Internal Team';
     const [status, setStatus] = useState<AttendanceStatus | null>(currentRecord?.status || (isFixedSalary ? null : AttendanceStatus.PRESENT));
+    
+    // Helper to parse time string
+    const parseTimeValue = (timeStr?: string) => {
+        if (!timeStr) return '';
+        if (timeStr.includes('T')) {
+            try {
+                const d = new Date(timeStr);
+                const hrs = String(d.getHours()).padStart(2, '0');
+                const mins = String(d.getMinutes()).padStart(2, '0');
+                return `${hrs}:${mins}`;
+            } catch (e) {
+                return '';
+            }
+        }
+        return timeStr;
+    };
+
+    // Auto-calculate initial check-in and check-out times based on available record
+    const getInitialTimes = () => {
+        if (currentRecord?.checkInTime) {
+            const inTimeStr = parseTimeValue(currentRecord.checkInTime);
+            if (currentRecord?.checkOutTime) {
+                return {
+                    inTime: inTimeStr,
+                    outTime: parseTimeValue(currentRecord.checkOutTime)
+                };
+            }
+            const hrs = currentRecord.hoursWorked || 0;
+            const [inH, inM] = inTimeStr.split(':').map(Number);
+            const totalMins = Math.round(hrs * 60);
+            const outTotalMins = (inH * 60 + inM + totalMins) % (24 * 60);
+            const outH = String(Math.floor(outTotalMins / 60)).padStart(2, '0');
+            const outM = String(outTotalMins % 60).padStart(2, '0');
+            return { inTime: inTimeStr, outTime: `${outH}:${outM}` };
+        }
+        if (!isFixedSalary && currentRecord?.hoursWorked !== undefined) {
+            const hrs = currentRecord.hoursWorked;
+            const inTimeStr = '08:00';
+            const totalMins = Math.round(hrs * 60);
+            const outTotalMins = (8 * 60 + totalMins) % (24 * 60);
+            const outH = String(Math.floor(outTotalMins / 60)).padStart(2, '0');
+            const outM = String(outTotalMins % 60).padStart(2, '0');
+            return { inTime: inTimeStr, outTime: `${outH}:${outM}` };
+        }
+        return { inTime: '08:00', outTime: '17:00' };
+    };
+
+    const initialTimes = getInitialTimes();
+    const [checkInTime, setCheckInTime] = useState<string>(initialTimes.inTime);
+    const [checkOutTime, setCheckOutTime] = useState<string>(initialTimes.outTime);
+
     const [hoursWorked, setHoursWorked] = useState<number>(currentRecord?.hoursWorked || (isFixedSalary ? 8 : 0));
     const [otHours, setOtHours] = useState<number>(currentRecord?.overtimeHours || 0);
     const [note, setNote] = useState<string>(currentRecord?.note || '');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const calculateHours = (inTime: string, outTime: string) => {
+        if (!inTime || !outTime) return 0;
+        const [inH, inM] = inTime.split(':').map(Number);
+        const [outH, outM] = outTime.split(':').map(Number);
+        
+        let diffMins = (outH * 60 + outM) - (inH * 60 + inM);
+        if (diffMins < 0) {
+            diffMins += 24 * 60;
+        }
+        
+        const totalHrs = diffMins / 60;
+        return parseFloat(totalHrs.toFixed(2));
+    };
+
+    // Calculate how many hours they are working each day automatically
+    useEffect(() => {
+        if (!isFixedSalary) {
+            if (status === AttendanceStatus.PRESENT) {
+                const calculated = calculateHours(checkInTime, checkOutTime);
+                setHoursWorked(calculated);
+            } else {
+                setHoursWorked(0);
+            }
+        }
+    }, [checkInTime, checkOutTime, status, isFixedSalary]);
+
     const handleSave = async () => {
         if (!status) return;
         setIsSubmitting(true);
         try {
-            await onUpdate(employee.id, date, status, otHours, note, hoursWorked);
+            await onUpdate(
+                employee.id, 
+                date, 
+                status, 
+                otHours, 
+                note, 
+                hoursWorked, 
+                !isFixedSalary && status === AttendanceStatus.PRESENT ? checkInTime : undefined, 
+                !isFixedSalary && status === AttendanceStatus.PRESENT ? checkOutTime : undefined
+            );
             onClose();
         } catch (error) {
             console.error(error);
@@ -6552,83 +6638,93 @@ const AttendanceEditModal = ({ employee, date, currentRecord, onUpdate, onClose,
                             )}
                         </div>
                         <div>
-                            <h3 className="text-2xl font-black text-slate-900 leading-tight">{employee.name}</h3>
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className="px-2 py-0.5 bg-brand-100 text-brand-700 rounded-lg text-[10px] font-black uppercase tracking-wider">{employee.code}</span>
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                                    {new Date(date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all active:scale-90 shadow-sm">
-                        <X className="w-6 h-6 text-slate-400" />
-                    </button>
-                </div>
+                          <h3 className="text-2xl font-black text-slate-900 leading-tight">{employee.name}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                              <span className="px-2 py-0.5 bg-brand-100 text-brand-700 rounded-lg text-[10px] font-black uppercase tracking-wider">{employee.code}</span>
+                              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                  {new Date(date).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                              </span>
+                          </div>
+                      </div>
+                  </div>
+                  <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all active:scale-90 shadow-sm">
+                      <X className="w-6 h-6 text-slate-400" />
+                  </button>
+              </div>
 
-                <div className="p-8 overflow-y-auto space-y-8">
-                    <section>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 block">
-                            {isFixedSalary ? 'Select Status' : 'Attendance Status'}
-                        </label>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            {Object.entries(LEGEND).map(([s, m]: any) => {
-                                // For non-fixed salary, we might want to restrict or emphasize hours
-                                if (!isFixedSalary && s !== AttendanceStatus.PRESENT && s !== AttendanceStatus.ABSENT && s !== AttendanceStatus.WEEK_OFF) {
-                                    // Still allow all statuses but maybe emphasize Present/Absent
-                                }
-                                return (
-                                    <button
-                                        key={s}
-                                        onClick={() => {
-                                            setStatus(s as AttendanceStatus);
-                                            if (s !== AttendanceStatus.PRESENT) setHoursWorked(0);
-                                            else if (hoursWorked === 0) setHoursWorked(8);
-                                        }}
-                                        className={cn(
-                                            "flex flex-col items-center justify-center gap-2 p-4 rounded-[1.5rem] border-2 transition-all active:scale-95",
-                                            status === s 
-                                                ? "border-brand-500 bg-brand-50/50 ring-4 ring-brand-500/10" 
-                                                : "border-slate-100 hover:border-brand-200 bg-white"
-                                        )}
-                                    >
-                                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black shadow-sm", m.color)}>
-                                            {m.code}
-                                        </div>
-                                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{m.label}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </section>
+              <div className="p-8 overflow-y-auto space-y-8">
+                  <section>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 block">
+                          {isFixedSalary ? 'Select Status' : 'Attendance Status'}
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {Object.entries(LEGEND).map(([s, m]: any) => {
+                              return (
+                                  <button
+                                      key={s}
+                                      onClick={() => {
+                                          setStatus(s as AttendanceStatus);
+                                      }}
+                                      className={cn(
+                                          "flex flex-col items-center justify-center gap-2 p-4 rounded-[1.5rem] border-2 transition-all active:scale-95",
+                                          status === s 
+                                              ? "border-brand-500 bg-brand-50/50 ring-4 ring-brand-500/10" 
+                                              : "border-slate-100 hover:border-brand-200 bg-white"
+                                      )}
+                                  >
+                                      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black shadow-sm", m.color)}>
+                                          {m.code}
+                                      </div>
+                                      <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">{m.label}</span>
+                                  </button>
+                              );
+                          })}
+                      </div>
+                  </section>
 
-                    {!isFixedSalary && (
-                        <section className="bg-brand-50/50 p-6 rounded-[2rem] border border-brand-100">
-                            <label className="text-[10px] font-black text-brand-600 uppercase tracking-[0.2em] mb-3 block">Daily Working Hours</label>
-                            <div className="relative">
-                                <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-500" />
-                                <input 
-                                    type="number" 
-                                    value={hoursWorked}
-                                    onChange={(e) => {
-                                        const val = Number(e.target.value);
-                                        setHoursWorked(val);
-                                        if (val > 0 && status !== AttendanceStatus.PRESENT) {
-                                            setStatus(AttendanceStatus.PRESENT);
-                                        }
-                                    }}
-                                    className="w-full pl-12 pr-4 py-4 bg-white border-2 border-brand-200 focus:border-brand-500 rounded-2xl outline-none transition-all font-black text-2xl text-brand-600"
-                                    placeholder="0"
-                                    min="0"
-                                    max="24"
-                                />
-                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-400 font-bold uppercase text-xs">Hours</span>
-                            </div>
-                            <p className="text-[10px] text-brand-400 font-bold mt-2 uppercase tracking-wider">Manual entry for daily hourly calculation</p>
-                        </section>
-                    )}
+                  {!isFixedSalary && (
+                      <section className="bg-brand-50/50 p-6 rounded-[2rem] border border-brand-100 space-y-4">
+                          <label className="text-[10px] font-black text-brand-600 uppercase tracking-[0.2em] block">Working Hours Calculator</label>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Check-In</label>
+                                  <input 
+                                      type="time" 
+                                      value={checkInTime}
+                                      onChange={(e) => setCheckInTime(e.target.value)}
+                                      className="w-full px-4 py-3 bg-white border-2 border-brand-200 focus:border-brand-500 rounded-xl outline-none font-bold text-slate-700 transition-all"
+                                  />
+                              </div>
+                              <div className="space-y-1">
+                                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Check-Out</label>
+                                  <input 
+                                      type="time" 
+                                      value={checkOutTime}
+                                      onChange={(e) => setCheckOutTime(e.target.value)}
+                                      className="w-full px-4 py-3 bg-white border-2 border-brand-200 focus:border-brand-500 rounded-xl outline-none font-bold text-slate-700 transition-all"
+                                  />
+                              </div>
+                          </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                          <div className="relative pt-2">
+                              <label className="text-[10px] font-black text-brand-600 uppercase tracking-[0.2em] mb-3 block">Daily Working Hours</label>
+                              <div className="relative">
+                                  <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-brand-500" />
+                                  <input 
+                                      type="number" 
+                                      value={hoursWorked}
+                                      readOnly
+                                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-brand-100 rounded-2xl outline-none transition-all font-black text-2xl text-brand-600"
+                                      placeholder="0"
+                                  />
+                                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-400 font-bold uppercase text-xs">Hours Worked</span>
+                              </div>
+                          </div>
+                      </section>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <section>
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 block">Overtime Hours</label>
                             <div className="relative">
@@ -6723,7 +6819,16 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
         onMonthChange(`${nextYear}-${String(nextMonth).padStart(2, '0')}`);
     };
 
-    const handleStatusUpdate = async (employeeId: string, date: string, status: AttendanceStatus | null, otHours: number = 0, note: string = '', hoursWorked?: number) => {
+    const handleStatusUpdate = async (
+        employeeId: string, 
+        date: string, 
+        status: AttendanceStatus | null, 
+        otHours: number = 0, 
+        note: string = '', 
+        hoursWorked?: number,
+        checkInTime?: string,
+        checkOutTime?: string
+    ) => {
         try {
             if (status === null) {
                 await onDeleteAttendance(employeeId, date);
@@ -6736,7 +6841,9 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                     undefined,
                     user?.username || 'System',
                     note || 'Manual Update',
-                    hoursWorked
+                    hoursWorked,
+                    checkInTime,
+                    checkOutTime
                 );
             }
         } catch (error) {

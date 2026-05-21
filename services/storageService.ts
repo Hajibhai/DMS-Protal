@@ -170,7 +170,9 @@ export const logAttendance = async (
   otAttachment?: string,
   updatedBy?: string,
   note?: string,
-  hoursWorked?: number
+  hoursWorked?: number,
+  checkInTime?: string,
+  checkOutTime?: string
 ) => {
   const now = new Date();
   let dateStr = dateOverride;
@@ -197,7 +199,8 @@ export const logAttendance = async (
         status,
         hoursWorked: hours,
         overtimeHours: overtimeHours || 0,
-        checkInTime: status === AttendanceStatus.PRESENT ? new Date().toISOString() : undefined,
+        checkInTime: checkInTime || (status === AttendanceStatus.PRESENT ? new Date().toISOString() : undefined),
+        checkOutTime: checkOutTime,
         otAttachment: otAttachment,
         updatedBy: updatedBy || 'System',
         note: note
@@ -212,7 +215,9 @@ export const logAttendance = async (
       if (note !== undefined) updates.note = note;
       if (overtimeHours !== undefined) updates.overtimeHours = overtimeHours;
       if (otAttachment !== undefined) updates.otAttachment = otAttachment;
-      if (status === AttendanceStatus.PRESENT && !snap.data().checkInTime) {
+      if (checkInTime !== undefined) updates.checkInTime = checkInTime;
+      if (checkOutTime !== undefined) updates.checkOutTime = checkOutTime;
+      if (status === AttendanceStatus.PRESENT && checkInTime === undefined && !snap.data().checkInTime) {
         updates.checkInTime = new Date().toISOString();
       }
       await updateDoc(recordRef, updates);
