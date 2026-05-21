@@ -316,7 +316,8 @@ export enum UserRole {
     ADMIN = 'Admin',
     HR = 'HR',
     SUPERVISOR = 'Supervisor',
-    ENGINEER = 'Engineer'
+    ENGINEER = 'Engineer',
+    ACCOUNTANT = 'Accountant'
 }
 
 export interface UserPermissions {

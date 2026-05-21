@@ -1350,6 +1350,66 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
         setLocalUsers(users);
     }, [users]);
 
+    const ROLE_DEFAULT_PERMISSIONS: Record<string, Partial<UserPermissions>> = {
+        [UserRole.CREATOR]: {
+            canViewDashboard: true, canViewCompanyDashboard: true, canManageEmployees: true, canViewDirectory: true,
+            canManageAttendance: true, canViewTimesheet: true, canManageLeaves: true, canViewPayroll: true,
+            canManagePayroll: true, canViewReports: true, canManageUsers: true, canManageSettings: true,
+            canManageSuppliers: true, canManageProjects: true
+        },
+        [UserRole.ADMIN]: {
+            canViewDashboard: true, canViewCompanyDashboard: true, canManageEmployees: true, canViewDirectory: true,
+            canManageAttendance: true, canViewTimesheet: true, canManageLeaves: true, canViewPayroll: true,
+            canManagePayroll: true, canViewReports: true, canManageUsers: true, canManageSettings: true,
+            canManageSuppliers: true, canManageProjects: true
+        },
+        [UserRole.HR]: {
+            canViewDashboard: true, canViewCompanyDashboard: true, canManageEmployees: true, canViewDirectory: true,
+            canManageAttendance: true, canViewTimesheet: true, canManageLeaves: true, canViewPayroll: true,
+            canManagePayroll: true, canViewReports: true, canManageUsers: false, canManageSettings: false,
+            canManageSuppliers: true, canManageProjects: false
+        },
+        [UserRole.SUPERVISOR]: {
+            canViewDashboard: true, canViewCompanyDashboard: false, canManageEmployees: false, canViewDirectory: true,
+            canManageAttendance: false, canViewTimesheet: true, canManageLeaves: false, canViewPayroll: false,
+            canManagePayroll: false, canViewReports: true, canManageUsers: false, canManageSettings: false,
+            canManageSuppliers: false, canManageProjects: false
+        },
+        [UserRole.ENGINEER]: {
+            canViewDashboard: true, canViewCompanyDashboard: false, canManageEmployees: false, canViewDirectory: true,
+            canManageAttendance: false, canViewTimesheet: true, canManageLeaves: false, canViewPayroll: false,
+            canManagePayroll: false, canViewReports: true, canManageUsers: false, canManageSettings: false,
+            canManageSuppliers: false, canManageProjects: true
+        },
+        [UserRole.ACCOUNTANT]: {
+            canViewDashboard: true, canViewCompanyDashboard: true, canManageEmployees: false, canViewDirectory: true,
+            canManageAttendance: false, canViewTimesheet: false, canManageLeaves: false, canViewPayroll: true,
+            canManagePayroll: true, canViewReports: true, canManageUsers: false, canManageSettings: false,
+            canManageSuppliers: true, canManageProjects: true
+        }
+    };
+
+    const applySuggestedRole = (role: string) => {
+        const defaultPerms = ROLE_DEFAULT_PERMISSIONS[role] || {};
+        const mergedPerms = { ...INITIAL_PERMISSIONS, ...defaultPerms };
+        setNewUser({
+            ...newUser,
+            role,
+            permissions: mergedPerms
+        });
+    };
+
+    const applySuggestedRoleToEditing = (role: string) => {
+        if (!editingUser) return;
+        const defaultPerms = ROLE_DEFAULT_PERMISSIONS[role] || {};
+        const mergedPerms = { ...INITIAL_PERMISSIONS, ...defaultPerms };
+        setEditingUser({
+            ...editingUser,
+            role: role as any,
+            permissions: mergedPerms as any
+        });
+    };
+
     const handleAdd = async () => {
         console.log("Attempting to add new user:", { ...newUser, password: '***' });
         if (!newUser.username || !newUser.password || !newUser.name || !newUser.role) {
@@ -1488,14 +1548,31 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                     <label className="text-[10px] font-bold text-indigo-600 uppercase">Password</label>
                                     <input className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900" type="password" placeholder="Password" value={newUser.password} onChange={e=>setNewUser({...newUser, password: e.target.value})} />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-indigo-600 uppercase">Role</label>
+                                <div className="space-y-1 col-span-2">
+                                    <label className="text-[10px] font-bold text-indigo-600 uppercase">Role (Custom type or select suggestion below)</label>
                                     <input 
-                                        className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900" 
-                                        placeholder="Enter Role Manually" 
+                                        className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900 focus:ring-1 focus:ring-indigo-500" 
+                                        placeholder="Type customized role or click a suggestion below..." 
                                         value={newUser.role} 
                                         onChange={e=>setNewUser({...newUser, role: e.target.value})} 
                                     />
+                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                        {Object.values(UserRole).filter((srv: string) => srv !== UserRole.CREATOR).map((srv: string) => (
+                                            <button
+                                                key={srv}
+                                                type="button"
+                                                onClick={() => applySuggestedRole(srv)}
+                                                className={cn(
+                                                    "px-2.5 py-1 text-[11px] rounded-lg font-bold transition-all border shadow-xs flex items-center gap-1",
+                                                    newUser.role === srv 
+                                                        ? "bg-indigo-600 text-white border-transparent" 
+                                                        : "bg-white text-indigo-600 border-indigo-200/60 hover:bg-indigo-55/40"
+                                                )}
+                                            >
+                                                {srv}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 
@@ -1542,14 +1619,31 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                     <label className="text-[10px] font-bold text-orange-600 uppercase">Password</label>
                                     <input className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900" type="password" placeholder="Password" value={editingUser.password || ''} onChange={e=>setEditingUser({...editingUser, password: e.target.value})} />
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-orange-600 uppercase">Role</label>
+                                <div className="space-y-1 col-span-2">
+                                    <label className="text-[10px] font-bold text-orange-600 uppercase">Role (Custom type or select suggestion below)</label>
                                     <input 
-                                        className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900" 
-                                        placeholder="Enter Role Manually" 
+                                        className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900 focus:ring-1 focus:ring-orange-500" 
+                                        placeholder="Type customized role or click a suggestion below..." 
                                         value={editingUser.role} 
                                         onChange={e=>setEditingUser({...editingUser, role: e.target.value as any})} 
                                     />
+                                    <div className="flex flex-wrap gap-1.5 pt-1">
+                                        {Object.values(UserRole).filter((srv: string) => srv !== UserRole.CREATOR).map((srv: string) => (
+                                            <button
+                                                key={srv}
+                                                type="button"
+                                                onClick={() => applySuggestedRoleToEditing(srv)}
+                                                className={cn(
+                                                    "px-2.5 py-1 text-[11px] rounded-lg font-bold transition-all border shadow-xs flex items-center gap-1",
+                                                    editingUser.role === srv 
+                                                        ? "bg-orange-600 text-white border-transparent" 
+                                                        : "bg-white text-orange-600 border-orange-200/60 hover:bg-orange-55/40"
+                                                )}
+                                            >
+                                                {srv}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                             
@@ -1587,11 +1681,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                     <div className="space-y-2">
                         {localUsers
                             .filter(u => {
-                                // Creator sees everyone
-                                if (currentUser.role === UserRole.CREATOR || currentUser.email === CREATOR_USER.email) {
-                                    return true;
-                                }
-                                // Others see everyone EXCEPT the Creator (by role or email)
+                                // Creator details don't show anywhere
                                 return u.role !== UserRole.CREATOR && u.email !== CREATOR_USER.email;
                             })
                             .map(u => (
@@ -8374,7 +8464,48 @@ const ReportsView = ({
     suppliers, vendors, user 
 }: any) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-    const [reportType, setReportType] = useState('staff');
+    
+    // Role-based access configuration for reports
+    const ROLE_REPORT_ACCESS = useMemo(() => ({
+        [UserRole.CREATOR]: [
+            'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
+            'corporate_tax', 'staff', 'attendance', 'payroll', 'projects', 
+            'finance', 'everyday', 'projected'
+        ],
+        [UserRole.ADMIN]: [
+            'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
+            'corporate_tax', 'staff', 'attendance', 'payroll', 'projects', 
+            'finance', 'everyday', 'projected'
+        ],
+        [UserRole.HR]: [
+            'staff', 'attendance', 'payroll', 'projects'
+        ],
+        [UserRole.ENGINEER]: [
+            'attendance', 'projects', 'projected'
+        ],
+        [UserRole.SUPERVISOR]: [
+            'attendance', 'projects', 'everyday'
+        ],
+        [UserRole.ACCOUNTANT]: [
+            'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
+            'corporate_tax', 'payroll', 'projects', 'finance'
+        ]
+    }), []);
+
+    const userRole = user?.role || UserRole.CREATOR;
+    const allowedReports = useMemo(() => {
+        return ROLE_REPORT_ACCESS[userRole] || ROLE_REPORT_ACCESS[UserRole.CREATOR];
+    }, [userRole, ROLE_REPORT_ACCESS]);
+
+    const [reportType, setReportType] = useState(() => {
+        return allowedReports.includes('summary') ? 'summary' : (allowedReports[0] || 'attendance');
+    });
+
+    useEffect(() => {
+        if (!allowedReports.includes(reportType)) {
+            setReportType(allowedReports.includes('summary') ? 'summary' : (allowedReports[0] || 'attendance'));
+        }
+    }, [allowedReports, reportType]);
 
     const [year, month] = selectedMonth.split('-').map(Number);
     const currentMonth = month - 1;
@@ -8728,6 +8859,18 @@ const ReportsView = ({
         { id: 'projected', label: 'Projected', icon: BarChart3 },
     ];
 
+    if (allowedReports.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center p-12 bg-white rounded-3xl border border-slate-100 shadow-sm text-center">
+                <ShieldAlert className="w-16 h-16 text-rose-500 mb-4 stroke-[1.5]" />
+                <h3 className="text-xl font-bold text-slate-950 mb-2">No Access to Reports</h3>
+                <p className="text-slate-500 max-w-sm">
+                    Your current system role does not have access permissions configured for the Intelligence Hub reports.
+                </p>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-8 pb-12">
             <motion.div 
@@ -8741,8 +8884,8 @@ const ReportsView = ({
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center bg-white border border-slate-200 rounded-2xl p-1 shadow-sm">
-                        {reportOptions.map((opt) => (
+                    <div className="flex flex-wrap items-center bg-white border border-slate-200 rounded-2xl p-1 shadow-sm max-w-full gap-1">
+                        {reportOptions.filter(opt => allowedReports.includes(opt.id)).map((opt) => (
                             <button
                                 key={opt.id}
                                 onClick={() => setReportType(opt.id)}
