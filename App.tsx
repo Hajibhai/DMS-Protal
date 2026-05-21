@@ -804,7 +804,14 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Designation</label><input disabled={readOnly} type="text" value={data.designation || ''} onChange={e => setData({...data, designation: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Department</label><input disabled={readOnly} type="text" value={data.department || ''} onChange={e => setData({...data, department: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Current Project</label><input disabled={readOnly} type="text" value={data.projectName || ''} onChange={e => setData({...data, projectName: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. Burj Khalifa Site" /></div>
-                             <div className="col-span-2"><label className="text-xs font-semibold text-gray-500 uppercase">Company</label>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Team</label>
+                                 <select disabled={readOnly} value={data.team || ''} onChange={e => setData({...data, team: e.target.value as any})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50">
+                                     <option value="Internal Team">Internal Team</option>
+                                     <option value="External Team">External Team</option>
+                                     <option value="Office Staff">Office Staff</option>
+                                 </select>
+                             </div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Company</label>
                                  <select disabled={readOnly} value={data.company || ''} onChange={e => setData({...data, company: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50">
                                      <option value="">Select Company</option>
                                      {companies.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
