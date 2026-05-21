@@ -552,6 +552,7 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
     const [selectedBook, setSelectedBook] = useState('All Books');
     const [selectedMode, setSelectedMode] = useState('All');
     const [selectedProject, setSelectedProject] = useState('All');
+    const [selectedContact, setSelectedContact] = useState('All');
     const [dateRange, setDateRange] = useState('All');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
@@ -576,6 +577,18 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
         return ['All Books', ...Array.from(cats)];
     }, [data]);
 
+    // Dynamic list of unique contacts / suppliers
+    const contacts = useMemo(() => {
+        const list = new Set<string>();
+        data.forEach((item: any) => {
+            const name = item.contact || item.requestedBy || 'Boss';
+            if (name && name.trim()) {
+                list.add(name.trim());
+            }
+        });
+        return Array.from(list).sort((a, b) => a.localeCompare(b));
+    }, [data]);
+
     const getProjectName = (id?: string) => {
         if (!id) return 'General';
         return projects.find((p: any) => p.id === id)?.name || 'N/A';
@@ -598,6 +611,14 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
         // Project filter
         if (selectedProject !== 'All') {
             result = result.filter(item => (item.projectId || '') === selectedProject);
+        }
+
+        // Contact / Supplier filter
+        if (selectedContact !== 'All') {
+            result = result.filter(item => {
+                const name = item.contact || item.requestedBy || 'Boss';
+                return name.trim() === selectedContact;
+            });
         }
 
         // Search term
@@ -636,7 +657,7 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
         }
 
         return result;
-    }, [data, selectedBook, selectedMode, selectedProject, searchTerm, dateRange, customStartDate, customEndDate]);
+    }, [data, selectedBook, selectedMode, selectedProject, selectedContact, searchTerm, dateRange, customStartDate, customEndDate]);
 
     // Chronologically sorted entries to compute accurate progressive running balances
     const sortedWithRunningBalances = useMemo(() => {
@@ -950,7 +971,7 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
 
             {/* Filter Suite */}
             <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4 no-print">
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                     {/* Search field */}
                     <div className="md:col-span-2 relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -966,6 +987,20 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                 <X className="w-4 h-4" />
                             </button>
                         )}
+                    </div>
+
+                    {/* Contact / Supplier Filter */}
+                    <div className="space-y-1">
+                        <select
+                            value={selectedContact}
+                            onChange={e => setSelectedContact(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer"
+                        >
+                            <option value="All">All Contacts</option>
+                            {contacts.map((contactName: string) => (
+                                <option key={contactName} value={contactName}>{contactName}</option>
+                            ))}
+                        </select>
                     </div>
 
                     {/* Mode Filter */}
