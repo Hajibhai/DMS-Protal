@@ -844,6 +844,8 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">EID Expiry</label><input disabled={readOnly} type="date" value={data.documents?.emiratesIdExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), emiratesIdExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Passport Number</label><input disabled={readOnly} type="text" value={data.documents?.passportNumber || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), passportNumber: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Passport Expiry</label><input disabled={readOnly} type="date" value={data.documents?.passportExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), passportExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Labour Card Number</label><input disabled={readOnly} type="text" value={data.documents?.labourCardNumber || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), labourCardNumber: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Labour Card Expiry</label><input disabled={readOnly} type="date" value={data.documents?.labourCardExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), labourCardExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                         </div>
                     </div>
                     {/* Linked Documents */}
@@ -879,7 +881,9 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
             emiratesId: '',
             emiratesIdExpiry: '',
             passportNumber: '',
-            passportExpiry: ''
+            passportExpiry: '',
+            labourCardNumber: '',
+            labourCardExpiry: ''
         }
     });
 
@@ -1239,6 +1243,24 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                         type="date" 
                                         value={data.documents?.passportExpiry||''} 
                                         onChange={e=>setData({...data, documents:{...data.documents!, passportExpiry:e.target.value}})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Labour Card Number</label>
+                                    <input 
+                                        placeholder="e.g. L123456" 
+                                        value={data.documents?.labourCardNumber||''} 
+                                        onChange={e=>setData({...data, documents:{...data.documents!, labourCardNumber:e.target.value}})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Labour Card Expiry</label>
+                                    <input 
+                                        type="date" 
+                                        value={data.documents?.labourCardExpiry||''} 
+                                        onChange={e=>setData({...data, documents:{...data.documents!, labourCardExpiry:e.target.value}})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
