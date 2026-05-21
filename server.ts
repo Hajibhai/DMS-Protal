@@ -3,12 +3,118 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { google } from "googleapis";
 import cookieParser from "cookie-parser";
+import { GoogleGenAI, Type } from "@google/genai";
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+// Set up JSON body parser with increased limit to handle base64 images
+app.use(express.json({ limit: "20mb" }));
 app.use(cookieParser());
+
+let geminiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI {
+  if (!geminiClient) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new Error("GEMINI_API_KEY environment variable is required but missing");
+    }
+    geminiClient = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+  }
+  return geminiClient;
+}
+
+// Gemini Receipt Extraction Endpoint
+app.post("/api/gemini/extract-receipt", async (req, res) => {
+  try {
+    const { image, mimeType, type } = req.body;
+    if (!image) {
+      return res.status(400).json({ error: "Missing image data" });
+    }
+
+    const ai = getGeminiClient();
+
+    // Clean up base64 image
+    let base64Data = image;
+    let actualMimeType = mimeType || "image/jpeg";
+    if (image.includes(";base64,")) {
+      const parts = image.split(";base64,");
+      const match = parts[0].match(/data:(.*)/);
+      if (match) {
+        actualMimeType = match[1];
+      }
+      base64Data = parts[1];
+    }
+
+    const imagePart = {
+      inlineData: {
+        mimeType: actualMimeType,
+        data: base64Data,
+      },
+    };
+
+    let responseSchema;
+    let prompt;
+
+    if (type === "everyday") {
+      responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          siNo: { type: Type.STRING, description: "Sequential number/serial number of the invoice if printed, or empty string" },
+          date: { type: Type.STRING, description: "Transaction date in YYYY-MM-DD format" },
+          invoiceNo: { type: Type.STRING, description: "Invoice or reference number on the receipt" },
+          trnNo: { type: Type.STRING, description: "Tax Registration Number (TRN) in UAE format (often 15 digits) or empty if not present" },
+          clientName: { type: Type.STRING, description: "Company or Client Name to whom invoice is billed (e.g. Pioneer General Contracting LLC - SPC)" },
+          supplierName: { type: Type.STRING, description: "Supplier or vendor name selling the items" },
+          shopName: { type: Type.STRING, description: "Shop name or Trading name if different from supplier" },
+          billAmount: { type: Type.NUMBER, description: "Subtotal or net value before tax/VAT" },
+          vatAmount: { type: Type.NUMBER, description: "VAT amount (usually 5% in UAE)" },
+          totalAmount: { type: Type.NUMBER, description: "Total amount including VAT" },
+          description: { type: Type.STRING, description: "Brief description of the goods or services purchased" },
+        },
+        required: ["date", "billAmount", "totalAmount"]
+      };
+      prompt = "Analyze this receipt image and extract the following everyday operational invoice details into a JSON object.";
+    } else {
+      responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          date: { type: Type.STRING, description: "Transaction date in YYYY-MM-DD format" },
+          category: { type: Type.STRING, description: "Book category or ledger category. Must be one of: 'Fuel & Conveyance', 'Office Stationery', 'Site Materials', 'Pantry & Refreshments', 'Repairs & Maintenance' or another relevant category" },
+          description: { type: Type.STRING, description: "Short description of what the expense was for" },
+          amount: { type: Type.NUMBER, description: "Transaction amount" },
+          type: { type: Type.STRING, description: "Must be 'Expense' or 'Income'" },
+          contact: { type: Type.STRING, description: "Recipient, payee or recipient person's name on the receipt" },
+        },
+        required: ["date", "amount", "category"]
+      };
+      prompt = "Analyze this receipt image and extract the petty cash transaction details into a JSON object.";
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: [imagePart, { text: prompt }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: responseSchema,
+      },
+    });
+
+    const text = response.text || "{}";
+    const parsedData = JSON.parse(text);
+    res.json(parsedData);
+  } catch (error: any) {
+    console.error("Error extracting receipt with Gemini:", error);
+    res.status(500).json({ error: error.message || "Failed to extract receipt" });
+  }
+});
 
 const getOAuth2Client = (req?: express.Request) => {
   const redirectUri = process.env.APP_URL 

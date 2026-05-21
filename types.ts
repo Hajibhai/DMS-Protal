@@ -254,6 +254,8 @@ export interface PettyCash {
     attachment?: string;
     mode?: string; // e.g. 'Cash', 'Online', 'Bank Transfer', 'Cheque', 'Card'
     contact?: string; // contact name (customer/vendor/contact)
+    uploadedBy?: string;
+    updatedBy?: string;
 }
 
 export interface ProjectedExpense {
@@ -285,6 +287,8 @@ export interface EverydayExpense {
     totalAmount: number;
     description: string;
     projectId?: string; // Optional link to project
+    uploadedBy?: string;
+    updatedBy?: string;
 }
 
 export interface DashboardStats {

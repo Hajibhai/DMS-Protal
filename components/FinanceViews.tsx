@@ -1125,6 +1125,11 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                                     <span className="text-[9px] text-slate-400 uppercase tracking-widest">
                                                         {item.type === 'Income' ? 'Donor / Source' : 'Recipient'}
                                                     </span>
+                                                    {item.uploadedBy && (
+                                                        <span className="text-[8px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-1 w-max uppercase tracking-wider">
+                                                            📸 {item.uploadedBy}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-xs font-bold text-slate-500">
@@ -2131,6 +2136,81 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
 
     const [errors, setErrors] = useState<Record<string, string>>({});
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [showNamePrompt, setShowNamePrompt] = useState(false);
+    const [tempImageData, setTempImageData] = useState<{ image: string, mime: string } | null>(null);
+    const [uploaderName, setUploaderName] = useState('');
+    const [isScanning, setIsScanning] = useState(false);
+    const [scanError, setScanError] = useState<string | null>(null);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const base64 = reader.result as string;
+            setTempImageData({ image: base64, mime: file.type });
+            setUploaderName(formData.uploadedBy || formData.updatedBy || formData.requestedBy || '');
+            setShowNamePrompt(true);
+            setScanError(null);
+        };
+        reader.onerror = () => {
+            setScanError("Failed to read the image file");
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleConfirmNameAndScan = async () => {
+        if (!uploaderName.trim()) {
+            alert("Please enter your name to proceed.");
+            return;
+        }
+        if (!tempImageData) return;
+
+        setShowNamePrompt(false);
+        setIsScanning(true);
+        setScanError(null);
+
+        try {
+            const response = await fetch("/api/gemini/extract-receipt", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    image: tempImageData.image,
+                    mimeType: tempImageData.mime,
+                    type: "petty cash"
+                })
+            });
+
+            if (!response.ok) {
+                const errResult = await response.json();
+                throw new Error(errResult.error || "Failed to scan receipt");
+            }
+
+            const data = await response.json();
+            setFormData((prev: any) => ({
+                ...prev,
+                ...data,
+                uploadedBy: uploaderName,
+                updatedBy: uploaderName,
+                contact: prev.contact || data.contact || uploaderName,
+                requestedBy: prev.requestedBy || data.requestedBy || data.contact || uploaderName
+            }));
+        } catch (error: any) {
+            console.error("Scanning failed:", error);
+            setScanError(error.message || "An error occurred while scanning with Gemini");
+        } finally {
+            setIsScanning(false);
+            setTempImageData(null);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
     // Make sure contact is synced to requestedBy for safety
     const handleContactChange = (val: string) => {
         setFormData({
@@ -2193,6 +2273,49 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                 </div>
 
                 <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                    {/* Gemini AI Scan Panel */}
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50/50 p-4 rounded-xl border border-blue-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
+                                <Paperclip className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">AI Receipt Scanner</h4>
+                                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Upload receipt photo to auto-fill details.</p>
+                                {(formData.uploadedBy || formData.updatedBy) && (
+                                    <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100/50 rounded text-blue-900 text-[9px] font-bold">
+                                        <span className="w-1 h-1 rounded-full bg-blue-600 animate-pulse" />
+                                        Recorded by: {formData.uploadedBy || formData.updatedBy}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="w-full sm:w-auto">
+                            <button 
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-full sm:w-auto px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <Paperclip className="w-3 h-3" />
+                                Scan Photo
+                            </button>
+                            <input 
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                ref={fileInputRef}
+                                className="hidden"
+                                onChange={handleFileChange}
+                            />
+                        </div>
+                    </div>
+
+                    {scanError && (
+                        <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-[11px] font-semibold text-left">
+                            ⚠️ {scanError}
+                        </div>
+                    )}
+
                     {/* Zoho Segmented Controller for Transaction Type */}
                     <div className="space-y-1.5">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -2403,6 +2526,20 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                             placeholder="Provide ledger notes or specific reference numbers if any..."
                         />
                     </div>
+
+                    {/* Uploaded / Updated By Tracker */}
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Uploaded / Updated By (Your Name)
+                        </label>
+                        <input 
+                            type="text"
+                            placeholder="Identify yourself e.g. Sreeraj, Jamel..."
+                            value={formData.uploadedBy || formData.updatedBy || ''}
+                            onChange={e => setFormData({ ...formData, uploadedBy: e.target.value, updatedBy: e.target.value })}
+                            className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all shadow-sm"
+                        />
+                    </div>
                 </div>
 
                 {/* Zoho Branded Action Buttons Footer */}
@@ -2423,6 +2560,64 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                     </button>
                 </div>
             </motion.div>
+
+            {/* Dialog Overlays */}
+            {showNamePrompt && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[110] p-4 text-left">
+                    <div className="bg-white rounded-[2rem] p-6 w-full max-w-sm border border-slate-150 shadow-2xl space-y-4 text-left">
+                        <div className="text-center space-y-1">
+                            <span className="inline-flex items-center justify-center p-3 bg-blue-50 text-blue-600 rounded-2xl mb-2">
+                                <Paperclip className="w-6 h-6" />
+                            </span>
+                            <h3 className="text-base font-black text-slate-800">Identify Yourself</h3>
+                            <p className="text-xs text-slate-500 font-semibold">Who is uploading or updating this record?</p>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Your Full Name</label>
+                            <input 
+                                type="text" 
+                                value={uploaderName}
+                                onChange={e => setUploaderName(e.target.value)}
+                                placeholder="e.g. Sreeraj, Jamel..."
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                autoFocus
+                            />
+                        </div>
+                        <div className="flex gap-2.5 pt-2">
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    setShowNamePrompt(false);
+                                    setTempImageData(null);
+                                    if (fileInputRef.current) fileInputRef.current.value = '';
+                                }}
+                                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={handleConfirmNameAndScan}
+                                className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+                            >
+                                Confirm & Scan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isScanning && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center z-[120] p-4 text-center">
+                    <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-sm flex flex-col items-center gap-4 border border-slate-100 text-left">
+                        <div className="w-12 h-12 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin" />
+                        <div>
+                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Gemini AI OCR</h3>
+                            <p className="text-xs text-slate-500 font-semibold mt-1">Reading receipt image and extracting ledger details...</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -2608,6 +2803,7 @@ export const EverydayExpenseView: React.FC<{
         { key: 'billAmount', label: 'Bill Amount', sortable: true, render: (item: EverydayExpense) => item.billAmount.toLocaleString() },
         { key: 'vatAmount', label: 'VAT Amount', sortable: true, render: (item: EverydayExpense) => item.vatAmount.toLocaleString() },
         { key: 'totalAmount', label: 'Total Amount', sortable: true, render: (item: EverydayExpense) => item.totalAmount.toLocaleString() },
+        { key: 'uploadedBy', label: 'Uploaded/Updated By', sortable: true, render: (item: EverydayExpense) => item.uploadedBy || item.updatedBy || '-' },
     ];
 
     const filterOptions = [
@@ -2668,6 +2864,79 @@ export const EverydayExpenseModal: React.FC<{
         projectId: ''
     });
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [showNamePrompt, setShowNamePrompt] = useState(false);
+    const [tempImageData, setTempImageData] = useState<{ image: string, mime: string } | null>(null);
+    const [uploaderName, setUploaderName] = useState('');
+    const [isScanning, setIsScanning] = useState(false);
+    const [scanError, setScanError] = useState<string | null>(null);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const base64 = reader.result as string;
+            setTempImageData({ image: base64, mime: file.type });
+            setUploaderName(formData.uploadedBy || formData.updatedBy || '');
+            setShowNamePrompt(true);
+            setScanError(null);
+        };
+        reader.onerror = () => {
+            setScanError("Failed to read the image file");
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleConfirmNameAndScan = async () => {
+        if (!uploaderName.trim()) {
+            alert("Please enter your name to proceed.");
+            return;
+        }
+        if (!tempImageData) return;
+
+        setShowNamePrompt(false);
+        setIsScanning(true);
+        setScanError(null);
+
+        try {
+            const response = await fetch("/api/gemini/extract-receipt", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    image: tempImageData.image,
+                    mimeType: tempImageData.mime,
+                    type: "everyday"
+                })
+            });
+
+            if (!response.ok) {
+                const errResult = await response.json();
+                throw new Error(errResult.error || "Failed to scan receipt");
+            }
+
+            const data = await response.json();
+            setFormData(prev => ({
+                ...prev,
+                ...data,
+                uploadedBy: uploaderName,
+                updatedBy: uploaderName
+            }));
+        } catch (error: any) {
+            console.error("Scanning failed:", error);
+            setScanError(error.message || "An error occurred while scanning with Gemini");
+        } finally {
+            setIsScanning(false);
+            setTempImageData(null);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
     const handleAmountChange = (val: number) => {
         const vat = val * 0.05;
         const total = val + vat;
@@ -2699,6 +2968,49 @@ export const EverydayExpenseModal: React.FC<{
                 </div>
 
                 <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    {/* Gemini AI Scan Panel */}
+                    <div className="bg-gradient-to-r from-brand-50 to-emerald-50/50 p-5 rounded-3xl border border-brand-100/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                            <div className="p-2.5 bg-brand-100 text-brand-700 rounded-2xl">
+                                <Paperclip className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">AI Receipt Scanner</h4>
+                                <p className="text-[11px] text-slate-500 font-semibold mt-0.5">Take a photo or upload receipt to auto-fill details.</p>
+                                {(formData.uploadedBy || formData.updatedBy) && (
+                                    <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 bg-brand-100/50 rounded-lg text-brand-900 text-[10px] font-bold">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-pulse" />
+                                        Recorded by: {formData.uploadedBy || formData.updatedBy}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="w-full sm:w-auto">
+                            <button 
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-full sm:w-auto px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                                <Paperclip className="w-3.5 h-3.5" />
+                                Scan Photo
+                            </button>
+                            <input 
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                ref={fileInputRef}
+                                className="hidden"
+                                onChange={handleFileChange}
+                            />
+                        </div>
+                    </div>
+
+                    {scanError && (
+                        <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl text-xs font-semibold">
+                            ⚠️ {scanError}
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-1">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">SI No</label>
@@ -2795,6 +3107,17 @@ export const EverydayExpenseModal: React.FC<{
                         </select>
                     </div>
 
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Uploaded / Updated By (Your Name)</label>
+                        <input 
+                            type="text"
+                            placeholder="Enter your name..."
+                            value={formData.uploadedBy || formData.updatedBy || ''}
+                            onChange={e => setFormData({ ...formData, uploadedBy: e.target.value, updatedBy: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        />
+                    </div>
+
                     <div className="grid grid-cols-3 gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100">
                         <div className="space-y-1">
                             <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Bill Amount</label>
@@ -2825,6 +3148,64 @@ export const EverydayExpenseModal: React.FC<{
                     <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Expense</button>
                 </div>
             </motion.div>
+
+            {/* Dialog Overlays */}
+            {showNamePrompt && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[110] p-4 animate-fade-in">
+                    <div className="bg-white rounded-[2rem] p-6 w-full max-w-sm border border-slate-150 shadow-2xl space-y-4 text-left">
+                        <div className="text-center space-y-1">
+                            <span className="inline-flex items-center justify-center p-3 bg-brand-50 text-brand-600 rounded-2xl mb-2">
+                                <Paperclip className="w-6 h-6" />
+                            </span>
+                            <h3 className="text-base font-black text-slate-800">Identify Yourself</h3>
+                            <p className="text-xs text-slate-500 font-semibold">Who is uploading or updating this record?</p>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Your Full Name</label>
+                            <input 
+                                type="text" 
+                                value={uploaderName}
+                                onChange={e => setUploaderName(e.target.value)}
+                                placeholder="e.g. Sreeraj, Jamel..."
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                autoFocus
+                            />
+                        </div>
+                        <div className="flex gap-2.5 pt-2">
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    setShowNamePrompt(false);
+                                    setTempImageData(null);
+                                    if (fileInputRef.current) fileInputRef.current.value = '';
+                                }}
+                                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={handleConfirmNameAndScan}
+                                className="flex-1 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+                            >
+                                Confirm & Scan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isScanning && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center z-[120] p-4 text-center">
+                    <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-sm flex flex-col items-center gap-4 border border-slate-100 text-left">
+                        <div className="w-12 h-12 border-4 border-slate-100 border-t-brand-600 rounded-full animate-spin" />
+                        <div>
+                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Gemini AI OCR</h3>
+                            <p className="text-xs text-slate-500 font-semibold mt-1">Reading receipt image and extracting ledger details...</p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
