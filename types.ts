@@ -308,6 +308,7 @@ export interface PublicHoliday {
   id: string;
   date: string; // YYYY-MM-DD
   name: string;
+  type?: string; // 'Public Holiday' | 'Site Holiday' | custom text
 }
 
 export interface AboutData {
