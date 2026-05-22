@@ -5,7 +5,8 @@ import {
   ChevronDown, X, FileText, Globe, Truck, 
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
-  FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle
+  FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle,
+  Camera, Upload
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -2131,6 +2132,151 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
     );
 };
 
+const LiveCameraCapture = ({ 
+    onCapture, 
+    onClose 
+}: { 
+    onCapture: (base64: string, mime: string) => void, 
+    onClose: () => void 
+}) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [stream, setStream] = useState<MediaStream | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+    const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+
+    React.useEffect(() => {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+            setError("Webcam access is not supported by your browser in this mode.");
+            return;
+        }
+        navigator.mediaDevices.enumerateDevices()
+            .then(devs => {
+                const videoDevs = devs.filter(d => d.kind === 'videoinput');
+                setDevices(videoDevs);
+                if (videoDevs.length > 0) {
+                    setSelectedDeviceId(videoDevs[0].deviceId);
+                }
+            })
+            .catch(err => {
+                console.error("enumerateDevices error", err);
+                setError("Error finding camera devices.");
+            });
+    }, []);
+
+    React.useEffect(() => {
+        if (!selectedDeviceId) return;
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+        }
+
+        navigator.mediaDevices.getUserMedia({ 
+            video: { deviceId: { exact: selectedDeviceId } } 
+        })
+        .then(str => {
+            setStream(str);
+            if (videoRef.current) {
+                videoRef.current.srcObject = str;
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(str => {
+                    setStream(str);
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = str;
+                    }
+                })
+                .catch(err2 => {
+                    setError("Could not access camera. Please ensure permissions are granted.");
+                });
+        });
+
+        return () => {
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+            }
+        };
+    }, [selectedDeviceId]);
+
+    const handleCapture = () => {
+        if (!videoRef.current) return;
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const base64 = canvas.toDataURL('image/jpeg');
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+            }
+            onCapture(base64, 'image/jpeg');
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Live Receipt Capture</h3>
+                    <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                {error ? (
+                    <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-xs font-semibold text-center">
+                        ⚠️ {error}
+                    </div>
+                ) : (
+                    <div className="relative aspect-video bg-black rounded-2xl overflow-hidden border border-slate-100">
+                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                    </div>
+                )}
+
+                {devices.length > 1 && !error && (
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">Select Camera</label>
+                        <select 
+                            value={selectedDeviceId} 
+                            onChange={e => setSelectedDeviceId(e.target.value)}
+                            className="w-full p-2 text-xs border border-slate-200 rounded-xl bg-white text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                            {devices.map((d, index) => (
+                                <option key={d.deviceId} value={d.deviceId}>
+                                    {d.label || `Camera ${index + 1}`}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                    <button 
+                        type="button" 
+                        onClick={onClose} 
+                        className="flex-1 py-3 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-700 transition"
+                    >
+                        Cancel
+                    </button>
+                    {!error && (
+                        <button 
+                            type="button" 
+                            onClick={handleCapture} 
+                            className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition shadow-sm uppercase tracking-wider"
+                        >
+                            Capture Photo
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) => {
     const [formData, setFormData] = useState(pettyCash || { 
         id: Math.random().toString(36).substr(2, 9),
@@ -2148,6 +2294,8 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
     const [errors, setErrors] = useState<Record<string, string>>({});
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
+    const [showCamera, setShowCamera] = useState(false);
     const [showNamePrompt, setShowNamePrompt] = useState(false);
     const [tempImageData, setTempImageData] = useState<{ image: string, mime: string } | null>(null);
     const [uploaderName, setUploaderName] = useState('');
@@ -2236,6 +2384,9 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
+            if (cameraInputRef.current) {
+                cameraInputRef.current.value = '';
+            }
         }
     };
 
@@ -2309,7 +2460,7 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                             </div>
                             <div>
                                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">AI Receipt Scanner</h4>
-                                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Upload receipt photo to auto-fill details.</p>
+                                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Upload receipt photo or take a new picture to auto-fill details.</p>
                                 {(formData.uploadedBy || formData.updatedBy) && (
                                     <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100/50 rounded text-blue-900 text-[9px] font-bold">
                                         <span className="w-1 h-1 rounded-full bg-blue-600 animate-pulse" />
@@ -2318,20 +2469,42 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                                 )}
                             </div>
                         </div>
-                        <div className="w-full sm:w-auto">
+                        <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
                             <button 
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
                                 className="w-full sm:w-auto px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                                <Paperclip className="w-3 h-3" />
-                                Scan Photo
+                                <Upload className="w-3 h-3" />
+                                Upload Photo
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                                    if (isMobile && cameraInputRef.current) {
+                                        cameraInputRef.current.click();
+                                    } else {
+                                        setShowCamera(true);
+                                    }
+                                }}
+                                className="w-full sm:w-auto px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                                <Camera className="w-3 h-3" />
+                                Take Photo
                             </button>
                             <input 
                                 type="file"
                                 accept="image/*"
-                                capture="environment"
                                 ref={fileInputRef}
+                                className="hidden"
+                                onChange={handleFileChange}
+                            />
+                            <input 
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                ref={cameraInputRef}
                                 className="hidden"
                                 onChange={handleFileChange}
                             />
@@ -2645,6 +2818,19 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                         </div>
                     </div>
                 </div>
+            )}
+
+            {showCamera && (
+                <LiveCameraCapture 
+                    onClose={() => setShowCamera(false)}
+                    onCapture={(base64, mime) => {
+                        setTempImageData({ image: base64, mime: mime });
+                        setUploaderName(formData.uploadedBy || formData.updatedBy || formData.requestedBy || '');
+                        setShowNamePrompt(true);
+                        setScanError(null);
+                        setShowCamera(false);
+                    }}
+                />
             )}
         </div>
     );
@@ -2982,6 +3168,8 @@ export const EverydayExpenseModal: React.FC<{
     });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
+    const [showCamera, setShowCamera] = useState(false);
     const [showNamePrompt, setShowNamePrompt] = useState(false);
     const [tempImageData, setTempImageData] = useState<{ image: string, mime: string } | null>(null);
     const [uploaderName, setUploaderName] = useState('');
@@ -3112,6 +3300,9 @@ export const EverydayExpenseModal: React.FC<{
                     if (fileInputRef.current) {
                         fileInputRef.current.value = '';
                     }
+                    if (cameraInputRef.current) {
+                        cameraInputRef.current.value = '';
+                    }
                 });
             } else {
                 setShowNamePrompt(true);
@@ -3198,6 +3389,9 @@ export const EverydayExpenseModal: React.FC<{
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
+            if (cameraInputRef.current) {
+                cameraInputRef.current.value = '';
+            }
         }
     };
 
@@ -3240,7 +3434,7 @@ export const EverydayExpenseModal: React.FC<{
                             </div>
                             <div>
                                 <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">AI Receipt Scanner</h4>
-                                <p className="text-[11px] text-slate-500 font-semibold mt-0.5">Take a photo or upload receipt to auto-fill details.</p>
+                                <p className="text-[11px] text-slate-500 font-semibold mt-0.5">Upload receipt photo or take a new picture to auto-fill details.</p>
                                 {(formData.uploadedBy || formData.updatedBy) && (
                                     <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 bg-brand-100/50 rounded-lg text-brand-900 text-[10px] font-bold">
                                         <span className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-pulse" />
@@ -3249,20 +3443,42 @@ export const EverydayExpenseModal: React.FC<{
                                 )}
                             </div>
                         </div>
-                        <div className="w-full sm:w-auto">
+                        <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
                             <button 
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
+                                className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                                <Upload className="w-3.5 h-3.5" />
+                                Upload Photo
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                                    if (isMobile && cameraInputRef.current) {
+                                        cameraInputRef.current.click();
+                                    } else {
+                                        setShowCamera(true);
+                                    }
+                                }}
                                 className="w-full sm:w-auto px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
                             >
-                                <Paperclip className="w-3.5 h-3.5" />
-                                Scan Photo
+                                <Camera className="w-3.5 h-3.5" />
+                                Take Photo
                             </button>
                             <input 
                                 type="file"
                                 accept="image/*"
-                                capture="environment"
                                 ref={fileInputRef}
+                                className="hidden"
+                                onChange={handleFileChange}
+                            />
+                            <input 
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                ref={cameraInputRef}
                                 className="hidden"
                                 onChange={handleFileChange}
                             />
@@ -3622,6 +3838,85 @@ export const EverydayExpenseModal: React.FC<{
                         </div>
                     </motion.div>
                 </div>
+            )}
+
+            {showCamera && (
+                <LiveCameraCapture 
+                    onClose={() => setShowCamera(false)}
+                    onCapture={(base64, mime) => {
+                        setTempImageData({ image: base64, mime: mime });
+                        const nameToSuggest = formData.uploadedBy || formData.updatedBy || user?.name || '';
+                        setUploaderName(nameToSuggest);
+                        setScanError(null);
+                        setShowCamera(false);
+
+                        if (nameToSuggest) {
+                            setIsScanning(true);
+                            fetch("/api/gemini/extract-receipt", {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify({
+                                    image: base64,
+                                    mimeType: mime,
+                                    type: "everyday"
+                                })
+                            })
+                            .then(async (response) => {
+                                const text = await response.text();
+                                if (!response.ok) {
+                                    let errMsg = "Failed to scan receipt";
+                                    try {
+                                        const errResult = JSON.parse(text);
+                                        errMsg = errResult.error || errMsg;
+                                    } catch {
+                                        errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
+                                        if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
+                                            errMsg = "Please make sure your server is running and configured correctly.";
+                                        }
+                                    }
+                                    throw new Error(errMsg);
+                                }
+                                try {
+                                    return JSON.parse(text);
+                                } catch {
+                                    throw new Error("Invalid response format received from server (expected JSON)");
+                                }
+                            })
+                            .then((data) => {
+                                setFormData(prev => {
+                                    const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', nameToSuggest);
+                                    const updated = {
+                                        ...prev,
+                                        ...data,
+                                        siNo: calculatedSiNo,
+                                        uploadedBy: nameToSuggest,
+                                        uploadedByUid: user?.uid || '',
+                                        uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
+                                        updatedBy: nameToSuggest,
+                                        updatedByUid: user?.uid || '',
+                                        attachment: base64
+                                    };
+                                    const duplicate = findDuplicateEntry(updated);
+                                    if (duplicate) {
+                                        setDuplicateMatch(duplicate);
+                                    }
+                                    return updated;
+                                });
+                            })
+                            .catch((error: any) => {
+                                console.error("Scanning failed:", error);
+                                setScanError(error.message || "An error occurred while scanning with Gemini");
+                            })
+                            .finally(() => {
+                                setIsScanning(false);
+                            });
+                        } else {
+                            setShowNamePrompt(true);
+                        }
+                    }}
+                />
             )}
         </div>
     );
