@@ -2184,7 +2184,40 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
         setScanError(null);
 
         try {
-            const data = await executeReceiptScan(tempImageData.image, tempImageData.mime, 'petty');
+            const response = await fetch("/api/gemini/extract-receipt", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    image: tempImageData.image,
+                    mimeType: tempImageData.mime,
+                    type: "petty cash"
+                })
+            });
+
+            const text = await response.text();
+
+            if (!response.ok) {
+                let errMsg = "Failed to scan receipt";
+                try {
+                    const errResult = JSON.parse(text);
+                    errMsg = errResult.error || errMsg;
+                } catch {
+                    errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
+                    if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
+                        errMsg = "Please make sure your server is running and configured correctly. (Vite dev server or backend received 404/500)";
+                    }
+                }
+                throw new Error(errMsg);
+            }
+
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                throw new Error("Invalid response format received from server (expected JSON)");
+            }
 
             setFormData((prev: any) => ({
                 ...prev,
@@ -2306,56 +2339,8 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                     </div>
 
                     {scanError && (
-                        <div className="space-y-3">
-                            <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-[11px] font-semibold text-left">
-                                {scanError.includes("CONNECTION_FAILED") || scanError.toLowerCase().includes("failed to fetch") ? (
-                                    <span>⚠️ Connection Blocked (CORS or Server Offline). The browser could not reach the backend proxy server.</span>
-                                ) : (
-                                    <span>⚠️ {scanError}</span>
-                                )}
-                            </div>
-                            
-                            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-[10px] space-y-2 text-left">
-                                <p className="font-bold text-amber-800">💡 Direct Browser AI Scanning</p>
-                                <p className="leading-normal">
-                                    If you are accessing from an external deployment like <strong className="font-bold">dms-protal.vercel.app</strong>, direct server API calls are blocked by security gates. Enter your own <strong className="font-bold">Gemini API Key</strong> to process scans directly from your browser:
-                                </p>
-                                <div className="flex gap-1.5">
-                                    <input 
-                                        type="password"
-                                        placeholder="AIzaSy... (Gemini API Key)"
-                                        id="petty-user-gemini-key"
-                                        defaultValue={localStorage.getItem('user_gemini_api_key') || ''}
-                                        className="flex-1 px-2.5 py-1.5 bg-white border border-amber-200 rounded-lg text-[10px] outline-none font-mono"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const input = document.getElementById('petty-user-gemini-key') as HTMLInputElement;
-                                            if (input) {
-                                                const val = input.value.trim();
-                                                if (val) {
-                                                    localStorage.setItem('user_gemini_api_key', val);
-                                                    window.dispatchEvent(new Event('storage'));
-                                                    alert("Saved successfully! Click 'Scan Photo' again to extract your receipt.");
-                                                    setScanError(null);
-                                                } else {
-                                                    localStorage.removeItem('user_gemini_api_key');
-                                                    window.dispatchEvent(new Event('storage'));
-                                                    alert("Key cleared. Reverting to backend proxy.");
-                                                    setScanError(null);
-                                                }
-                                            }
-                                        }}
-                                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[9px] uppercase tracking-wider cursor-pointer"
-                                    >
-                                        Save Key
-                                    </button>
-                                </div>
-                                <p className="text-[8px] text-amber-600/80 font-semibold leading-normal">
-                                    * Your API Key is stored only in your local browser storage and is sent directly to googleapis.com.
-                                </p>
-                            </div>
+                        <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-[11px] font-semibold text-left">
+                            ⚠️ {scanError}
                         </div>
                     )}
 
@@ -2826,158 +2811,6 @@ export const ProjectedExpenseModal = ({ expense, projects, onSave, onCancel }: a
     );
 };
 
-export const getApiUrl = (endpoint: string) => {
-    return endpoint;
-};
-
-export const extractReceiptDirectClientSide = async (image: string, mimeType: string, type: 'everyday' | 'petty', apiKey: string) => {
-    let base64Data = image;
-    let actualMimeType = mimeType || "image/jpeg";
-    if (image.includes(";base64,")) {
-        const parts = image.split(";base64,");
-        const match = parts[0].match(/data:(.*)/);
-        if (match) {
-            actualMimeType = match[1];
-        }
-        base64Data = parts[1];
-    }
-
-    let responseSchema;
-    let prompt;
-
-    if (type === "everyday") {
-        responseSchema = {
-            type: "OBJECT",
-            properties: {
-                siNo: { type: "STRING", description: "Sequential number/serial number of the invoice if printed, or empty string" },
-                date: { type: "STRING", description: "Transaction date in YYYY-MM-DD format" },
-                invoiceNo: { type: "STRING", description: "Invoice or reference number on the receipt" },
-                trnNo: { type: "STRING", description: "Tax Registration Number (TRN) in UAE format (often 15 digits) or empty if not present" },
-                clientName: { type: "STRING", description: "Company or Client Name to whom invoice is billed (e.g. Pioneer General Contracting LLC - SPC)" },
-                supplierName: { type: "STRING", description: "Supplier or vendor name selling the items" },
-                shopName: { type: "STRING", description: "Shop name or Trading name if different from supplier" },
-                billAmount: { type: "NUMBER", description: "Subtotal or net value before tax/VAT" },
-                vatAmount: { type: "NUMBER", description: "VAT amount (usually 5% in UAE)" },
-                totalAmount: { type: "NUMBER", description: "Total amount including VAT" },
-                description: { type: "STRING", description: "Brief description of the goods or services purchased" },
-            },
-            required: ["date", "billAmount", "totalAmount"]
-        };
-        prompt = "Analyze this receipt image and extract the following everyday operational invoice details into a JSON object.";
-    } else {
-        responseSchema = {
-            type: "OBJECT",
-            properties: {
-                date: { type: "STRING", description: "Transaction date in YYYY-MM-DD format" },
-                category: { type: "STRING", description: "Book category or ledger category. Must be one of: 'Fuel & Conveyance', 'Office Stationery', 'Site Materials', 'Pantry & Refreshments', 'Repairs & Maintenance' or another relevant category" },
-                description: { type: "STRING", description: "Short description of what the expense was for" },
-                amount: { type: "NUMBER", description: "Transaction amount" },
-                type: { type: "STRING", description: "Must be 'Expense' or 'Income'" },
-                contact: { type: "STRING", description: "Recipient, payee or recipient person's name on the receipt" },
-            },
-            required: ["date", "amount", "category"]
-        };
-        prompt = "Analyze this receipt image and extract the petty cash transaction details into a JSON object.";
-    }
-
-    const mName = "gemini-2.5-flash";
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${mName}:generateContent?key=${apiKey}`;
-
-    const res = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            contents: [
-                {
-                    parts: [
-                        { inlineData: { mimeType: actualMimeType, data: base64Data } },
-                        { text: prompt }
-                    ]
-                }
-            ],
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: responseSchema
-            }
-        })
-    });
-
-    if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Gemini API Error: ${errText || res.statusText}`);
-    }
-
-    const json = await res.json();
-    const textVal = json.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!textVal) throw new Error("No response content from Gemini");
-    return JSON.parse(textVal.trim());
-};
-
-export const executeReceiptScan = async (image: string, mime: string, type: 'everyday' | 'petty') => {
-    const clientKey = localStorage.getItem('user_gemini_api_key') || '';
-
-    // If a client-side key has been explicitly provided in localStorage, we can use it directly
-    if (clientKey) {
-        try {
-            return await extractReceiptDirectClientSide(image, mime, type, clientKey);
-        } catch (err: any) {
-            console.error("Direct client-side scanning failed, trying backend proxy fallback:", err);
-        }
-    }
-
-    // Default: Try secure proxy request via server-side endpoint
-    try {
-        const response = await fetch(getApiUrl("/api/gemini/extract-receipt"), {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                image: image,
-                mimeType: mime,
-                type: type
-            })
-        });
-
-        const text = await response.text();
-
-        if (!response.ok) {
-            let errMsg = "Failed to scan receipt";
-            try {
-                const errResult = JSON.parse(text);
-                errMsg = errResult.error || errMsg;
-            } catch {
-                errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
-                if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
-                    errMsg = "Please make sure your server is running and configured correctly.";
-                }
-            }
-            throw new Error(errMsg);
-        }
-
-        try {
-            return JSON.parse(text);
-        } catch {
-            throw new Error("Invalid response format received from server (expected JSON)");
-        }
-    } catch (error: any) {
-        console.error("Fetch request error:", error);
-        const isNetworkErr = error instanceof TypeError || 
-                             (error.message && (
-                                error.message.toLowerCase().includes('failed to fetch') || 
-                                error.message.toLowerCase().includes('networkerror') ||
-                                error.message.toLowerCase().includes('cors') ||
-                                error.message.toLowerCase().includes('preflight')
-                             ));
-        if (isNetworkErr) {
-            throw new Error("CONNECTION_FAILED");
-        }
-        throw error;
-    }
-};
-
 export const formatDisplayDate = (dateStr?: string) => {
     if (!dateStr) return '';
     if (dateStr.includes('-')) {
@@ -3216,7 +3049,38 @@ export const EverydayExpenseModal: React.FC<{
             if (nameToSuggest) {
                 // Already have user name, proceed to scan directly!
                 setIsScanning(true);
-                executeReceiptScan(base64, file.type, "everyday")
+                fetch("/api/gemini/extract-receipt", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        image: base64,
+                        mimeType: file.type,
+                        type: "everyday"
+                    })
+                })
+                .then(async (response) => {
+                    const text = await response.text();
+                    if (!response.ok) {
+                        let errMsg = "Failed to scan receipt";
+                        try {
+                            const errResult = JSON.parse(text);
+                            errMsg = errResult.error || errMsg;
+                        } catch {
+                            errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
+                            if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
+                                errMsg = "Please make sure your server is running and configured correctly. (Vite dev server or backend received 404/500)";
+                            }
+                        }
+                        throw new Error(errMsg);
+                    }
+                    try {
+                        return JSON.parse(text);
+                    } catch {
+                        throw new Error("Invalid response format received from server (expected JSON)");
+                    }
+                })
                 .then((data) => {
                     setFormData(prev => {
                         const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', nameToSuggest);
@@ -3271,7 +3135,40 @@ export const EverydayExpenseModal: React.FC<{
         setScanError(null);
 
         try {
-            const data = await executeReceiptScan(tempImageData.image, tempImageData.mime, "everyday");
+            const response = await fetch("/api/gemini/extract-receipt", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    image: tempImageData.image,
+                    mimeType: tempImageData.mime,
+                    type: "everyday"
+                })
+            });
+
+            const text = await response.text();
+
+            if (!response.ok) {
+                let errMsg = "Failed to scan receipt";
+                try {
+                    const errResult = JSON.parse(text);
+                    errMsg = errResult.error || errMsg;
+                } catch {
+                    errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
+                    if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
+                        errMsg = "Please make sure your server is running and configured correctly. (Vite dev server or backend received 404/500)";
+                    }
+                }
+                throw new Error(errMsg);
+            }
+
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                throw new Error("Invalid response format received from server (expected JSON)");
+            }
 
             setFormData(prev => {
                 const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', uploaderName);
@@ -3373,56 +3270,8 @@ export const EverydayExpenseModal: React.FC<{
                     </div>
 
                     {scanError && (
-                        <div className="space-y-4">
-                            <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl text-xs font-semibold">
-                                {scanError.includes("CONNECTION_FAILED") || scanError.toLowerCase().includes("failed to fetch") ? (
-                                    <span>⚠️ Connection Blocked (CORS or Server Offline). The browser could not reach the backend proxy server.</span>
-                                ) : (
-                                    <span>⚠️ {scanError}</span>
-                                )}
-                            </div>
-                            
-                            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-[11px] space-y-2.5 text-left">
-                                <p className="font-bold text-amber-800 text-xs">💡 Direct Browser AI Scanning</p>
-                                <p className="leading-relaxed">
-                                    If you are accessing from an external deployment like <strong className="font-bold">dms-protal.vercel.app</strong>, direct server API calls are blocked by security gates. Enter your own <strong className="font-bold">Gemini API Key</strong> to process scans directly from your browser:
-                                </p>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="password"
-                                        placeholder="AIzaSy... (Gemini API Key)"
-                                        id="everyday-user-gemini-key"
-                                        defaultValue={localStorage.getItem('user_gemini_api_key') || ''}
-                                        className="flex-1 px-3.5 py-2 bg-white border border-amber-200 rounded-xl text-xs outline-none font-mono"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const input = document.getElementById('everyday-user-gemini-key') as HTMLInputElement;
-                                            if (input) {
-                                                const val = input.value.trim();
-                                                if (val) {
-                                                    localStorage.setItem('user_gemini_api_key', val);
-                                                    window.dispatchEvent(new Event('storage'));
-                                                    alert("Saved successfully! Click 'Scan Photo' again to extract your receipt.");
-                                                    setScanError(null);
-                                                } else {
-                                                    localStorage.removeItem('user_gemini_api_key');
-                                                    window.dispatchEvent(new Event('storage'));
-                                                    alert("Key cleared. Reverting to backend proxy.");
-                                                    setScanError(null);
-                                                }
-                                            }
-                                        }}
-                                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-[10px] uppercase tracking-wider cursor-pointer transition-colors"
-                                    >
-                                        Save Key
-                                    </button>
-                                </div>
-                                <p className="text-[9px] text-amber-600/80 font-semibold leading-normal">
-                                    * Your API Key is stored only in your local browser storage and is sent directly to googleapis.com.
-                                </p>
-                            </div>
+                        <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl text-xs font-semibold">
+                            ⚠️ {scanError}
                         </div>
                     )}
 

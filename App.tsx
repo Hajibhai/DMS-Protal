@@ -2814,64 +2814,32 @@ export default function App() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        try {
-          // Fetch or create system user profile
-          const userRef = doc(db, 'users', firebaseUser.uid);
-          const snap = await getDoc(userRef);
-          if (snap.exists()) {
-            const rawData = snap.data();
-            const data = {
-              ...rawData,
-              permissions: {
-                ...INITIAL_PERMISSIONS,
-                ...(rawData.permissions || {})
-              }
-            } as SystemUser;
-            // Ensure creator role is correctly set for the default admin
-            if (firebaseUser.email === "abdulkaderp3010@gmail.com" && data.role !== UserRole.CREATOR) {
-              data.role = UserRole.CREATOR;
-              await saveSystemUser(data);
+        // Fetch or create system user profile
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const rawData = snap.data();
+          const data = {
+            ...rawData,
+            permissions: {
+              ...INITIAL_PERMISSIONS,
+              ...(rawData.permissions || {})
             }
-            setSystemUser(data);
-          } else {
-            // Create default profile for new user
-            const isDefaultAdmin = firebaseUser.email === "abdulkaderp3010@gmail.com";
-            const newProfile: SystemUser = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              username: firebaseUser.email?.split('@')[0] || firebaseUser.uid,
-              name: firebaseUser.displayName || 'New User',
-              role: isDefaultAdmin ? UserRole.CREATOR : UserRole.HR,
-              active: true,
-              permissions: {
-                canViewDashboard: true,
-                canViewCompanyDashboard: true,
-                canManageEmployees: true,
-                canViewDirectory: true,
-                canManageAttendance: true,
-                canViewTimesheet: true,
-                canManageLeaves: true,
-                canViewPayroll: true,
-                canManagePayroll: isDefaultAdmin,
-                canViewReports: true,
-                canManageUsers: isDefaultAdmin,
-                canManageSettings: isDefaultAdmin,
-                canManageSuppliers: isDefaultAdmin,
-                canManageProjects: isDefaultAdmin
-              }
-            };
-            await saveSystemUser(newProfile);
-            setSystemUser(newProfile);
+          } as SystemUser;
+          // Ensure creator role is correctly set for the default admin
+          if (firebaseUser.email === "abdulkaderp3010@gmail.com" && data.role !== UserRole.CREATOR) {
+            data.role = UserRole.CREATOR;
+            await saveSystemUser(data);
           }
-        } catch (error) {
-          console.error("Failed to load user profile from Firestore:", error);
-          // Fallback user profile in case database setup is missing or permission is blocked, allowing UI to load
+          setSystemUser(data);
+        } else {
+          // Create default profile for new user
           const isDefaultAdmin = firebaseUser.email === "abdulkaderp3010@gmail.com";
-          const fallbackProfile: SystemUser = {
+          const newProfile: SystemUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email || '',
             username: firebaseUser.email?.split('@')[0] || firebaseUser.uid,
-            name: firebaseUser.displayName || 'User Profile',
+            name: firebaseUser.displayName || 'New User',
             role: isDefaultAdmin ? UserRole.CREATOR : UserRole.HR,
             active: true,
             permissions: {
@@ -2891,7 +2859,8 @@ export default function App() {
               canManageProjects: isDefaultAdmin
             }
           };
-          setSystemUser(fallbackProfile);
+          await saveSystemUser(newProfile);
+          setSystemUser(newProfile);
         }
       } else {
         setSystemUser(null);
