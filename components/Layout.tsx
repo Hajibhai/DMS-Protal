@@ -500,7 +500,10 @@ export const Layout: React.FC<LayoutProps> = ({
                                   <span className="text-[10px] font-bold text-slate-400">{doc.date}</span>
                                 </div>
                                 <p className="text-xs font-bold text-slate-900">
-                                  {doc.type === 'company' ? `Company: ${doc.employeeName}` : doc.employeeName}
+                                  {doc.type === 'company' ? `Company: ${doc.employeeName}` : 
+                                   doc.type === 'cicpa' ? `CICPA: ${doc.employeeName}` :
+                                   doc.type === 'safety' ? `Safety: ${doc.employeeName}` :
+                                   doc.employeeName}
                                 </p>
                                 <p className="text-[10px] font-medium text-slate-500">{doc.docName}</p>
                               </div>

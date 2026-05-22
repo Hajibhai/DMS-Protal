@@ -3465,8 +3465,41 @@ export default function App() {
         });
     });
 
+    // Check CICPA documents
+    cicpaRecords.forEach(r => {
+        const docs = [
+            { name: 'CICPA Passport', date: r.passportExpireDate },
+            { name: 'CICPA Visa', date: r.visaExpireDate },
+            { name: 'CICPA Temp LC', date: r.tempLcExpireDate },
+            { name: 'CICPA Card', date: r.cicpaExpireDate }
+        ];
+        
+        docs.forEach(doc => {
+            if (doc.date) {
+                const expiry = new Date(doc.date);
+                if (expiry <= now) {
+                    results.push({ employeeName: r.nameEnglish, docName: doc.name, status: 'Expired', date: doc.date, type: 'cicpa' });
+                } else if (expiry <= tenDaysFromNow) {
+                    results.push({ employeeName: r.nameEnglish, docName: doc.name, status: 'Expiring Soon', date: doc.date, type: 'cicpa' });
+                }
+            }
+        });
+    });
+
+    // Check Safety documents
+    safetyRecords.forEach(r => {
+        if (r.certificateExpireDate) {
+            const expiry = new Date(r.certificateExpireDate);
+            if (expiry <= now) {
+                results.push({ employeeName: r.employeeName, docName: `Safety: ${r.certificateName}`, status: 'Expired', date: r.certificateExpireDate, type: 'safety' });
+            } else if (expiry <= tenDaysFromNow) {
+                results.push({ employeeName: r.employeeName, docName: `Safety: ${r.certificateName}`, status: 'Expiring Soon', date: r.certificateExpireDate, type: 'safety' });
+            }
+        }
+    });
+
     return results;
-  }, [employees, companies]);
+  }, [employees, companies, cicpaRecords, safetyRecords]);
 
   if (!isAuthReady) {
     return (
