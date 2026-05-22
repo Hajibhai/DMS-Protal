@@ -63,6 +63,8 @@ export interface Employee {
   id: string;
   code: string; // e.g., 10001
   name: string;
+  nickName?: string;
+  employeeNickName?: string;
   nationality?: string;
   designation: string; // e.g., Helper, Driver
   department: string; // e.g., Cleaning, Maintenance

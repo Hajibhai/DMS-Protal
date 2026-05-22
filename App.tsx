@@ -785,8 +785,19 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                              </div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Code</label><input disabled type="text" value={data.code || ''} className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-500 font-bold" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Name</label><input disabled={readOnly} type="text" value={data.name || ''} onChange={e => setData({...data, name: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Nationality</label><input disabled={readOnly} type="text" value={data.nationality || ''} onChange={e => setData({...data, nationality: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. UAE" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Team</label>
+                                 <select disabled={readOnly} value={data.team || ''} onChange={e => setData({...data, team: e.target.value as any})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50">
+                                     <option value="Internal Team">Internal Team</option>
+                                     <option value="External Team">External Team</option>
+                                     <option value="Office Staff">Office Staff</option>
+                                 </select>
+                             </div>
+
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Mobile Number</label><input disabled={readOnly} type="text" value={data.mobileNumber || ''} onChange={e => setData({...data, mobileNumber: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Nick Name</label><input disabled={readOnly} type="text" value={data.nickName || ''} onChange={e => setData({...data, nickName: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. Nick" /></div>
+
                              <div>
                                  <label className="text-xs font-semibold text-gray-500 uppercase">Staff Type</label>
                                  <input 
@@ -801,16 +812,11 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                                      {Object.values(StaffType).map(t => <option key={t} value={t} />)}
                                  </datalist>
                              </div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Employee Nick Name</label><input disabled={readOnly} type="text" value={data.employeeNickName || ''} onChange={e => setData({...data, employeeNickName: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. Shashi" /></div>
+
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Designation</label><input disabled={readOnly} type="text" value={data.designation || ''} onChange={e => setData({...data, designation: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Department</label><input disabled={readOnly} type="text" value={data.department || ''} onChange={e => setData({...data, department: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Current Project</label><input disabled={readOnly} type="text" value={data.projectName || ''} onChange={e => setData({...data, projectName: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. Burj Khalifa Site" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Team</label>
-                                 <select disabled={readOnly} value={data.team || ''} onChange={e => setData({...data, team: e.target.value as any})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50">
-                                     <option value="Internal Team">Internal Team</option>
-                                     <option value="External Team">External Team</option>
-                                     <option value="Office Staff">Office Staff</option>
-                                 </select>
-                             </div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Company</label>
                                  <select disabled={readOnly} value={data.company || ''} onChange={e => setData({...data, company: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50">
                                      <option value="">Select Company</option>
@@ -1055,6 +1061,24 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                         placeholder="e.g. UAE, India, UK" 
                                         value={data.nationality||''} 
                                         onChange={e=>setData({...data, nationality:e.target.value})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Nick Name</label>
+                                    <input 
+                                        placeholder="e.g. Nick" 
+                                        value={data.nickName||''} 
+                                        onChange={e=>setData({...data, nickName:e.target.value})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Employee Nick Name</label>
+                                    <input 
+                                        placeholder="e.g. Shashi" 
+                                        value={data.employeeNickName||''} 
+                                        onChange={e=>setData({...data, employeeNickName:e.target.value})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
