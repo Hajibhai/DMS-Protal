@@ -5,7 +5,7 @@ import {
   ChevronDown, X, FileText, Globe, Truck, 
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
-  FileSpreadsheet, ExternalLink, Paperclip, Printer
+  FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -29,6 +29,7 @@ interface DataTableProps<T> {
     onAdd?: () => void;
     onEdit?: (item: T) => void;
     onDelete?: (item: T) => void;
+    onViewBill?: (item: T) => void;
     searchPlaceholder?: string;
     searchFields: (keyof T)[];
     exportFileName: string;
@@ -49,6 +50,7 @@ export function DataTable<T extends { id: string }>({
     onAdd,
     onEdit,
     onDelete,
+    onViewBill,
     searchPlaceholder = "Search...",
     searchFields,
     exportFileName,
@@ -301,7 +303,7 @@ export function DataTable<T extends { id: string }>({
                                         </div>
                                     </th>
                                 ))}
-                                {(onEdit || onDelete) && (
+                                {(onEdit || onDelete || onViewBill) && (
                                     <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
                                         Actions
                                     </th>
@@ -316,9 +318,18 @@ export function DataTable<T extends { id: string }>({
                                             {col.render ? col.render(item) : String((item as any)[col.key] || '-')}
                                         </td>
                                     ))}
-                                    {(onEdit || onDelete) && (
+                                    {(onEdit || onDelete || onViewBill) && (
                                         <td className="px-6 py-5 text-right">
                                             <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {onViewBill && (item as any).attachment && (
+                                                    <button 
+                                                        onClick={() => onViewBill(item)}
+                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                        title="View Attached Bill"
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                                 {onEdit && (
                                                     <button 
                                                         onClick={() => onEdit(item)}
@@ -2819,6 +2830,8 @@ export const EverydayExpenseView: React.FC<{
     onDelete: (item: EverydayExpense) => void;
     user: SystemUser;
 }> = ({ data, projects, onAdd, onEdit, onDelete, user }) => {
+    const [viewingBill, setViewingBill] = useState<string | null>(null);
+
     const columns = [
         { key: 'siNo', label: 'SI No', sortable: true },
         { key: 'date', label: 'Date', sortable: true },
@@ -2865,20 +2878,71 @@ export const EverydayExpenseView: React.FC<{
     ];
 
     return (
-        <DataTable 
-            title="Everyday Expenses"
-            description="Track daily operational expenses and billings."
-            icon={Wallet}
-            data={data}
-            columns={columns}
-            onAdd={onAdd}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description']}
-            exportFileName="Everyday_Expenses"
-            user={user}
-            filterOptions={filterOptions}
-        />
+        <>
+            <DataTable 
+                title="Everyday Expenses"
+                description="Track daily operational expenses and billings."
+                icon={Wallet}
+                data={data}
+                columns={columns}
+                onAdd={onAdd}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onViewBill={(item) => setViewingBill(item.attachment || null)}
+                searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description']}
+                exportFileName="Everyday_Expenses"
+                user={user}
+                filterOptions={filterOptions}
+            />
+
+            {viewingBill && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]"
+                    >
+                        <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div>
+                                <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">View Bill Receipt</h3>
+                                <p className="text-slate-500 text-xs font-semibold">Attached document for everyday expense.</p>
+                            </div>
+                            <button 
+                                onClick={() => setViewingBill(null)}
+                                className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm cursor-pointer"
+                            >
+                                <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 sm:p-8 overflow-y-auto flex items-center justify-center bg-slate-100/50 flex-1 min-h-[300px]">
+                            {viewingBill.startsWith('data:image') || viewingBill.startsWith('http') ? (
+                                <img 
+                                    src={viewingBill} 
+                                    alt="Bill Receipt" 
+                                    className="max-w-full max-h-[55vh] object-contain rounded-2xl shadow-md border border-slate-200"
+                                    referrerPolicy="no-referrer"
+                                />
+                            ) : (
+                                <div className="p-8 bg-white rounded-2xl border border-slate-200 text-center max-w-sm shadow-sm">
+                                    <FileText className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                                    <p className="text-sm font-bold text-slate-700 mb-2">Attached File Doc</p>
+                                    <p className="text-xs text-slate-500 font-semibold mb-4">The attached bill cannot be previewed directly as an image.</p>
+                                    <a 
+                                        href={viewingBill} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                                    >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                        Open Document
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+        </>
     );
 };
 
@@ -2982,7 +3046,8 @@ export const EverydayExpenseModal: React.FC<{
                             uploadedByUid: user?.uid || '',
                             uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
                             updatedBy: nameToSuggest,
-                            updatedByUid: user?.uid || ''
+                            updatedByUid: user?.uid || '',
+                            attachment: base64
                         };
                     });
                 })
@@ -3064,7 +3129,8 @@ export const EverydayExpenseModal: React.FC<{
                     uploadedByUid: user?.uid || '',
                     uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
                     updatedBy: uploaderName,
-                    updatedByUid: user?.uid || ''
+                    updatedByUid: user?.uid || '',
+                    attachment: tempImageData.image
                 };
             });
         } catch (error: any) {
@@ -3150,6 +3216,43 @@ export const EverydayExpenseModal: React.FC<{
                     {scanError && (
                         <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl text-xs font-semibold">
                             ⚠️ {scanError}
+                        </div>
+                    )}
+
+                    {formData.attachment && (
+                        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200/60 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-brand-50 text-brand-700 rounded-2xl">
+                                    <FileText className="w-5 h-5" />
+                                </div>
+                                <div className="text-left">
+                                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Bill Attached</h4>
+                                    <p className="text-[10px] text-slate-500 font-bold mt-0.5">A receipt image is linked to this expense.</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const win = window.open();
+                                        if (win) {
+                                            win.document.write(`<iframe src="${formData.attachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                                        }
+                                    }}
+                                    className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
+                                >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    Preview
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, attachment: undefined }))}
+                                    className="p-2 hover:bg-rose-50 text-rose-500 hover:text-rose-600 rounded-xl transition-all cursor-pointer"
+                                    title="Remove attachment"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
                     )}
 

@@ -292,6 +292,7 @@ export interface EverydayExpense {
     uploadedByUid?: string;
     updatedByUid?: string;
     uploadedDate?: string;
+    attachment?: string;
 }
 
 export interface DashboardStats {
