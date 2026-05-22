@@ -2306,8 +2306,56 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                     </div>
 
                     {scanError && (
-                        <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-[11px] font-semibold text-left">
-                            ⚠️ {scanError}
+                        <div className="space-y-3">
+                            <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-[11px] font-semibold text-left">
+                                {scanError.includes("CONNECTION_FAILED") || scanError.toLowerCase().includes("failed to fetch") ? (
+                                    <span>⚠️ Connection Blocked (CORS or Server Offline). The browser could not reach the backend proxy server.</span>
+                                ) : (
+                                    <span>⚠️ {scanError}</span>
+                                )}
+                            </div>
+                            
+                            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-[10px] space-y-2 text-left">
+                                <p className="font-bold text-amber-800">💡 Direct Browser AI Scanning</p>
+                                <p className="leading-normal">
+                                    If you are accessing from an external deployment like <strong className="font-bold">dms-protal.vercel.app</strong>, direct server API calls are blocked by security gates. Enter your own <strong className="font-bold">Gemini API Key</strong> to process scans directly from your browser:
+                                </p>
+                                <div className="flex gap-1.5">
+                                    <input 
+                                        type="password"
+                                        placeholder="AIzaSy... (Gemini API Key)"
+                                        id="petty-user-gemini-key"
+                                        defaultValue={localStorage.getItem('user_gemini_api_key') || ''}
+                                        className="flex-1 px-2.5 py-1.5 bg-white border border-amber-200 rounded-lg text-[10px] outline-none font-mono"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const input = document.getElementById('petty-user-gemini-key') as HTMLInputElement;
+                                            if (input) {
+                                                const val = input.value.trim();
+                                                if (val) {
+                                                    localStorage.setItem('user_gemini_api_key', val);
+                                                    window.dispatchEvent(new Event('storage'));
+                                                    alert("Saved successfully! Click 'Scan Photo' again to extract your receipt.");
+                                                    setScanError(null);
+                                                } else {
+                                                    localStorage.removeItem('user_gemini_api_key');
+                                                    window.dispatchEvent(new Event('storage'));
+                                                    alert("Key cleared. Reverting to backend proxy.");
+                                                    setScanError(null);
+                                                }
+                                            }
+                                        }}
+                                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[9px] uppercase tracking-wider cursor-pointer"
+                                    >
+                                        Save Key
+                                    </button>
+                                </div>
+                                <p className="text-[8px] text-amber-600/80 font-semibold leading-normal">
+                                    * Your API Key is stored only in your local browser storage and is sent directly to googleapis.com.
+                                </p>
+                            </div>
                         </div>
                     )}
 
@@ -2916,6 +2964,16 @@ export const executeReceiptScan = async (image: string, mime: string, type: 'eve
         }
     } catch (error: any) {
         console.error("Fetch request error:", error);
+        const isNetworkErr = error instanceof TypeError || 
+                             (error.message && (
+                                error.message.toLowerCase().includes('failed to fetch') || 
+                                error.message.toLowerCase().includes('networkerror') ||
+                                error.message.toLowerCase().includes('cors') ||
+                                error.message.toLowerCase().includes('preflight')
+                             ));
+        if (isNetworkErr) {
+            throw new Error("CONNECTION_FAILED");
+        }
         throw error;
     }
 };
@@ -3315,8 +3373,56 @@ export const EverydayExpenseModal: React.FC<{
                     </div>
 
                     {scanError && (
-                        <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl text-xs font-semibold">
-                            ⚠️ {scanError}
+                        <div className="space-y-4">
+                            <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl text-xs font-semibold">
+                                {scanError.includes("CONNECTION_FAILED") || scanError.toLowerCase().includes("failed to fetch") ? (
+                                    <span>⚠️ Connection Blocked (CORS or Server Offline). The browser could not reach the backend proxy server.</span>
+                                ) : (
+                                    <span>⚠️ {scanError}</span>
+                                )}
+                            </div>
+                            
+                            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-[11px] space-y-2.5 text-left">
+                                <p className="font-bold text-amber-800 text-xs">💡 Direct Browser AI Scanning</p>
+                                <p className="leading-relaxed">
+                                    If you are accessing from an external deployment like <strong className="font-bold">dms-protal.vercel.app</strong>, direct server API calls are blocked by security gates. Enter your own <strong className="font-bold">Gemini API Key</strong> to process scans directly from your browser:
+                                </p>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="password"
+                                        placeholder="AIzaSy... (Gemini API Key)"
+                                        id="everyday-user-gemini-key"
+                                        defaultValue={localStorage.getItem('user_gemini_api_key') || ''}
+                                        className="flex-1 px-3.5 py-2 bg-white border border-amber-200 rounded-xl text-xs outline-none font-mono"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const input = document.getElementById('everyday-user-gemini-key') as HTMLInputElement;
+                                            if (input) {
+                                                const val = input.value.trim();
+                                                if (val) {
+                                                    localStorage.setItem('user_gemini_api_key', val);
+                                                    window.dispatchEvent(new Event('storage'));
+                                                    alert("Saved successfully! Click 'Scan Photo' again to extract your receipt.");
+                                                    setScanError(null);
+                                                } else {
+                                                    localStorage.removeItem('user_gemini_api_key');
+                                                    window.dispatchEvent(new Event('storage'));
+                                                    alert("Key cleared. Reverting to backend proxy.");
+                                                    setScanError(null);
+                                                }
+                                            }
+                                        }}
+                                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-[10px] uppercase tracking-wider cursor-pointer transition-colors"
+                                    >
+                                        Save Key
+                                    </button>
+                                </div>
+                                <p className="text-[9px] text-amber-600/80 font-semibold leading-normal">
+                                    * Your API Key is stored only in your local browser storage and is sent directly to googleapis.com.
+                                </p>
+                            </div>
                         </div>
                     )}
 
