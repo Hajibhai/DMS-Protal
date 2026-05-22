@@ -787,7 +787,7 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Name</label><input disabled={readOnly} type="text" value={data.name || ''} onChange={e => setData({...data, name: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Nationality</label><input disabled={readOnly} type="text" value={data.nationality || ''} onChange={e => setData({...data, nationality: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. UAE" /></div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Team</label>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Team Name</label>
                                  <select disabled={readOnly} value={data.team || ''} onChange={e => setData({...data, team: e.target.value as any})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50">
                                      <option value="Internal Team">Internal Team</option>
                                      <option value="External Team">External Team</option>
@@ -1109,7 +1109,7 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Team</label>
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Team Name</label>
                                     <select 
                                         value={data.team||''} 
                                         onChange={e=>setData({...data, team:e.target.value as any})} 
