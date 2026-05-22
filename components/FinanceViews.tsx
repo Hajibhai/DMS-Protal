@@ -2184,7 +2184,7 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
         setScanError(null);
 
         try {
-            const response = await fetch("/api/gemini/extract-receipt", {
+            const response = await fetch(getApiUrl("/api/gemini/extract-receipt"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
@@ -2811,6 +2811,18 @@ export const ProjectedExpenseModal = ({ expense, projects, onSave, onCancel }: a
     );
 };
 
+export const getApiUrl = (endpoint: string) => {
+    const hostname = window.location.hostname;
+    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+    const isCloudRun = hostname.endsWith('run.app');
+    
+    if (!isLocal && !isCloudRun) {
+        // Fallback to the Cloud Run backend where the full-stack server is deployed and running
+        return `https://ais-pre-v4mrfjw3fcteq56t4224i4-133183371533.europe-west2.run.app${endpoint}`;
+    }
+    return endpoint;
+};
+
 export const formatDisplayDate = (dateStr?: string) => {
     if (!dateStr) return '';
     if (dateStr.includes('-')) {
@@ -3049,7 +3061,7 @@ export const EverydayExpenseModal: React.FC<{
             if (nameToSuggest) {
                 // Already have user name, proceed to scan directly!
                 setIsScanning(true);
-                fetch("/api/gemini/extract-receipt", {
+                fetch(getApiUrl("/api/gemini/extract-receipt"), {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
@@ -3135,7 +3147,7 @@ export const EverydayExpenseModal: React.FC<{
         setScanError(null);
 
         try {
-            const response = await fetch("/api/gemini/extract-receipt", {
+            const response = await fetch(getApiUrl("/api/gemini/extract-receipt"), {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
