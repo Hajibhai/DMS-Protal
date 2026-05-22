@@ -3615,7 +3615,7 @@ export const EverydayExpenseModal: React.FC<{
                         <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100 flex gap-3">
                             <button 
                                 onClick={() => setDuplicateMatch(null)}
-                                className="w-full py-4 bg-slate-850 hover:bg-slate-900 text-white rounded-2xl text-sm font-bold transition-all shadow-md cursor-pointer text-center"
+                                className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-sm font-bold transition-all shadow-md cursor-pointer text-center"
                             >
                                 Close Warning
                             </button>
