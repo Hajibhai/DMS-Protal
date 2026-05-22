@@ -5,7 +5,7 @@ import {
   ChevronDown, X, FileText, Globe, Truck, 
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
-  FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye
+  FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -2987,6 +2987,52 @@ export const EverydayExpenseModal: React.FC<{
     const [uploaderName, setUploaderName] = useState('');
     const [isScanning, setIsScanning] = useState(false);
     const [scanError, setScanError] = useState<string | null>(null);
+    const [duplicateMatch, setDuplicateMatch] = useState<EverydayExpense | null>(null);
+
+    const findDuplicateEntry = (newExpense: EverydayExpense) => {
+        if (!everydayExpenses || everydayExpenses.length === 0) return null;
+        
+        return everydayExpenses.find(existing => {
+            if (existing.id === newExpense.id) return false;
+            
+            // 1. Check Invoice number match (case-insensitive, trimmed, not empty)
+            if (
+                newExpense.invoiceNo && 
+                existing.invoiceNo && 
+                newExpense.invoiceNo.trim().length > 2 &&
+                newExpense.invoiceNo.trim().toLowerCase() === existing.invoiceNo.trim().toLowerCase()
+            ) {
+                return true;
+            }
+            
+            // 2. Check TRN number + Date + Total Amount
+            if (
+                newExpense.trnNo && 
+                existing.trnNo &&
+                newExpense.trnNo.trim().length > 2 &&
+                newExpense.trnNo.trim().toLowerCase() === existing.trnNo.trim().toLowerCase() &&
+                newExpense.date === existing.date &&
+                Number(newExpense.totalAmount) === Number(existing.totalAmount)
+            ) {
+                return true;
+            }
+
+            // 3. Check Supplier + Date + Total Amount
+            if (
+                newExpense.supplierName &&
+                existing.supplierName &&
+                newExpense.supplierName.trim().length > 2 &&
+                existing.supplierName.trim().length > 2 &&
+                newExpense.supplierName.trim().toLowerCase() === existing.supplierName.trim().toLowerCase() &&
+                newExpense.date === existing.date &&
+                Number(newExpense.totalAmount) === Number(existing.totalAmount)
+            ) {
+                return true;
+            }
+
+            return false;
+        });
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -3038,7 +3084,7 @@ export const EverydayExpenseModal: React.FC<{
                 .then((data) => {
                     setFormData(prev => {
                         const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', nameToSuggest);
-                        return {
+                        const updated = {
                             ...prev,
                             ...data,
                             siNo: calculatedSiNo,
@@ -3049,6 +3095,11 @@ export const EverydayExpenseModal: React.FC<{
                             updatedByUid: user?.uid || '',
                             attachment: base64
                         };
+                        const duplicate = findDuplicateEntry(updated);
+                        if (duplicate) {
+                            setDuplicateMatch(duplicate);
+                        }
+                        return updated;
                     });
                 })
                 .catch((error: any) => {
@@ -3121,7 +3172,7 @@ export const EverydayExpenseModal: React.FC<{
 
             setFormData(prev => {
                 const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', uploaderName);
-                return {
+                const updated = {
                     ...prev,
                     ...data,
                     siNo: calculatedSiNo,
@@ -3132,6 +3183,11 @@ export const EverydayExpenseModal: React.FC<{
                     updatedByUid: user?.uid || '',
                     attachment: tempImageData.image
                 };
+                const duplicate = findDuplicateEntry(updated);
+                if (duplicate) {
+                    setDuplicateMatch(duplicate);
+                }
+                return updated;
             });
         } catch (error: any) {
             console.error("Scanning failed:", error);
@@ -3353,7 +3409,7 @@ export const EverydayExpenseModal: React.FC<{
                     </div>
 
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Uploaded / Updated By (Your Name)</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1" id="uploader-label-everyday-uniq">Uploaded / Updated By (Your Name)</label>
                         <input 
                             type="text"
                             placeholder="Enter your name..."
@@ -3390,7 +3446,19 @@ export const EverydayExpenseModal: React.FC<{
 
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
                     <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
-                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Expense</button>
+                    <button 
+                        onClick={() => {
+                            const duplicate = findDuplicateEntry(formData);
+                            if (duplicate) {
+                                setDuplicateMatch(duplicate);
+                            } else {
+                                onSave(formData);
+                            }
+                        }} 
+                        className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20"
+                    >
+                        Save Expense
+                    </button>
                 </div>
             </motion.div>
 
@@ -3449,6 +3517,110 @@ export const EverydayExpenseModal: React.FC<{
                             <p className="text-xs text-slate-500 font-semibold mt-1">Reading receipt image and extracting ledger details...</p>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {duplicateMatch && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[130] p-4 no-print">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]"
+                    >
+                        <div className="p-6 sm:p-8 bg-rose-50 border-b border-rose-100 flex items-center gap-4 text-left">
+                            <span className="p-3 bg-rose-100 text-rose-600 rounded-2xl">
+                                <AlertTriangle className="w-6 h-6 animate-pulse" />
+                            </span>
+                            <div>
+                                <h3 className="text-lg font-black text-rose-950 tracking-tight uppercase">Double Entry Blocked</h3>
+                                <p className="text-rose-700 text-xs font-semibold">This bill / receipt has already been added.</p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 sm:p-8 overflow-y-auto space-y-5 bg-slate-50/50 flex-1 text-left">
+                            <div className="bg-white rounded-3xl p-5 border border-slate-200/60 shadow-sm space-y-4">
+                                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2 flex items-center gap-1.5">
+                                    <FileText className="w-4 h-4 text-slate-500" />
+                                    First Entry Details
+                                </h4>
+                                
+                                <div className="grid grid-cols-2 gap-y-3.5 gap-x-4">
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SI No / ID</p>
+                                        <p className="text-xs font-black text-slate-800 mt-0.5">{duplicateMatch.siNo || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Invoice Date</p>
+                                        <p className="text-xs font-black text-slate-800 mt-0.5">{formatDisplayDate(duplicateMatch.date) || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Invoice No</p>
+                                        <p className="text-xs font-mono font-black text-slate-800 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 inline-block mt-0.5">{duplicateMatch.invoiceNo || 'N/A'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">TRN No</p>
+                                        <p className="text-xs font-mono font-black text-slate-800 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 inline-block mt-0.5">{duplicateMatch.trnNo || 'N/A'}</p>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Supplier & Shop</p>
+                                        <p className="text-xs font-black text-slate-800 mt-0.5">
+                                            {duplicateMatch.supplierName || '-'} 
+                                            {duplicateMatch.shopName ? ` (${duplicateMatch.shopName})` : ''}
+                                        </p>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Description</p>
+                                        <p className="text-xs font-bold text-slate-600 mt-0.5 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100 min-h-[36px]">{duplicateMatch.description || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Amount</p>
+                                        <p className="text-sm font-black text-brand-600 mt-0.5">{duplicateMatch.totalAmount?.toLocaleString() || '0'} AED</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Recorded By</p>
+                                        <p className="text-xs font-black text-slate-800 mt-0.5">
+                                            {duplicateMatch.uploadedBy || duplicateMatch.updatedBy || 'System'}
+                                            {duplicateMatch.uploadedDate ? ` (on ${formatDisplayDate(duplicateMatch.uploadedDate)})` : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {duplicateMatch.attachment && (
+                                <div className="p-4 bg-brand-50/50 rounded-2xl border border-brand-100 flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-left">
+                                        <FileText className="w-5 h-5 text-brand-600" />
+                                        <div>
+                                            <p className="text-xs font-black text-slate-800">Original Bill Attached</p>
+                                            <p className="text-[10px] text-slate-500 font-semibold">An image copy of the first bill is available.</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const win = window.open();
+                                            if (win) {
+                                                win.document.write(`<iframe src="${duplicateMatch.attachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                                            }
+                                        }}
+                                        className="px-3.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1"
+                                    >
+                                        <Eye className="w-3.5 h-3.5" />
+                                        View Bill
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100 flex gap-3">
+                            <button 
+                                onClick={() => setDuplicateMatch(null)}
+                                className="w-full py-4 bg-slate-850 hover:bg-slate-900 text-white rounded-2xl text-sm font-bold transition-all shadow-md cursor-pointer text-center"
+                            >
+                                Close Warning
+                            </button>
+                        </div>
+                    </motion.div>
                 </div>
             )}
         </div>
