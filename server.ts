@@ -28,7 +28,7 @@ app.use((req, res, next) => {
 });
 
 // Set up JSON body parser with increased limit to handle base64 images
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({ limit: "20mb", type: ["application/json", "text/plain"] }));
 app.use(cookieParser());
 
 let geminiClient: GoogleGenAI | null = null;
