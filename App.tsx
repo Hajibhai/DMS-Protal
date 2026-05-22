@@ -9513,6 +9513,7 @@ const ReportsView = ({
     const [showModal, setShowModal] = useState<any>(null);
     const [viewMode, setViewMode] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
     const canManageEmployees = user?.permissions?.canManageEmployees || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
     const filtered = records.filter((r: any) => 
@@ -9609,7 +9610,23 @@ const ReportsView = ({
                     <button 
                         onClick={() => {
                             setViewMode(false);
-                            setShowModal({ applicationStatus: 'WP' });
+                            setShowModal({ 
+                                applicationStatus: 'WP',
+                                profilePicture: '',
+                                cicpaCardFront: '',
+                                cicpaCardBack: '',
+                                nameEnglish: '',
+                                nameArabic: '',
+                                emiratesId: '',
+                                uidNumber: '',
+                                dob: '',
+                                nationality: '',
+                                religion: '',
+                                mobileNumber: '',
+                                emailId: '',
+                                permissionNumber: '',
+                                remarks: ''
+                            });
                         }}
                         className="px-8 py-4 bg-brand-600 text-white rounded-3xl font-black text-sm shadow-xl shadow-brand-200 hover:scale-105 hover:bg-brand-700 active:scale-95 transition-all flex items-center gap-2"
                     >
@@ -9637,6 +9654,8 @@ const ReportsView = ({
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Profile</th>
+                                <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">CICPA Card (Front)</th>
+                                <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">CICPA Card (Back)</th>
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Name (English/Arabic)</th>
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Emirates ID / UID</th>
                                 <th className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Project Name</th>
@@ -9652,13 +9671,43 @@ const ReportsView = ({
                                 return (
                                     <tr key={r.id} className="hover:bg-slate-50/50 transition-colors group">
                                         <td className="px-6 py-4">
-                                            <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-slate-200">
+                                            <div 
+                                                onClick={() => r.profilePicture && setPreviewImage(r.profilePicture)}
+                                                className={`w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-md bg-slate-200 flex items-center justify-center ${r.profilePicture ? 'cursor-pointer hover:scale-105 transition-transform' : ''}`}
+                                                title={r.profilePicture ? "Click to preview Profile Picture" : undefined}
+                                            >
                                                 {r.profilePicture ? (
                                                     <img src={r.profilePicture} alt="Profile" className="w-full h-full object-cover" />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center text-slate-400">
                                                         <Plus className="w-4 h-4 opacity-20" />
                                                     </div>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div 
+                                                onClick={() => r.cicpaCardFront && setPreviewImage(r.cicpaCardFront)}
+                                                className={`w-16 h-10 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center ${r.cicpaCardFront ? 'cursor-pointer hover:scale-105 transition-transform' : ''}`}
+                                                title={r.cicpaCardFront ? "Click to preview CICPA card front" : "No front card image uploaded"}
+                                            >
+                                                {r.cicpaCardFront ? (
+                                                    <img src={r.cicpaCardFront} alt="CICPA Front" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <ShieldCheck className="w-4 h-4 text-slate-300" />
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div 
+                                                onClick={() => r.cicpaCardBack && setPreviewImage(r.cicpaCardBack)}
+                                                className={`w-16 h-10 rounded-xl overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center ${r.cicpaCardBack ? 'cursor-pointer hover:scale-105 transition-transform' : ''}`}
+                                                title={r.cicpaCardBack ? "Click to preview CICPA card back" : "No back card image uploaded"}
+                                            >
+                                                {r.cicpaCardBack ? (
+                                                    <img src={r.cicpaCardBack} alt="CICPA Back" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <ShieldCheck className="w-4 h-4 text-slate-300" />
                                                 )}
                                             </div>
                                         </td>
@@ -9801,12 +9850,19 @@ const ReportsView = ({
                                     <div className="space-y-8">
                                         <div className="space-y-3">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Profile Photo</label>
-                                            <div className="relative group">
-                                                <div className="aspect-square bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-inner flex items-center justify-center">
+                                            <div className="relative group rounded-3xl overflow-hidden">
+                                                <div 
+                                                    onClick={() => showModal.profilePicture && setPreviewImage(showModal.profilePicture)}
+                                                    className={`aspect-square bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-inner flex items-center justify-center ${showModal.profilePicture ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
+                                                    title={showModal.profilePicture ? "Click to preview Profile Picture" : undefined}
+                                                >
                                                     {showModal.profilePicture ? (
                                                         <img src={showModal.profilePicture} alt="Preview" className="w-full h-full object-cover" />
                                                     ) : (
-                                                        <Plus className="w-10 h-10 text-slate-200 transition-colors" />
+                                                        <div className="flex flex-col items-center gap-2">
+                                                            <Plus className="w-10 h-10 text-slate-250 transition-colors" />
+                                                            <span className="text-xs font-semibold text-slate-400">Upload Photo</span>
+                                                        </div>
                                                     )}
                                                 </div>
                                                 {!viewMode && (
@@ -9823,6 +9879,115 @@ const ReportsView = ({
                                                         }}
                                                         className="absolute inset-0 opacity-0 cursor-pointer"
                                                     />
+                                                )}
+                                                {showModal.profilePicture && !viewMode && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowModal({ ...showModal, profilePicture: '' });
+                                                        }}
+                                                        className="absolute top-3 right-3 p-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95"
+                                                        title="Remove Image"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">CICPA Card (Front Side)</label>
+                                            <div className="relative group rounded-3xl overflow-hidden">
+                                                <div 
+                                                    onClick={() => showModal.cicpaCardFront && setPreviewImage(showModal.cicpaCardFront)}
+                                                    className={`aspect-[3/2] bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-inner flex items-center justify-center ${showModal.cicpaCardFront ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
+                                                    title={showModal.cicpaCardFront ? "Click to preview CICPA Card Front" : undefined}
+                                                >
+                                                    {showModal.cicpaCardFront ? (
+                                                        <img src={showModal.cicpaCardFront} alt="CICPA Front Card Preview" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="flex flex-col items-center gap-1.5 text-center p-4">
+                                                            <Camera className="w-7 h-7 text-slate-250 transition-colors" />
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Upload Card Front</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {!viewMode && (
+                                                    <input 
+                                                        type="file" 
+                                                        accept="image/*"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) {
+                                                                const reader = new FileReader();
+                                                                reader.onloadend = () => setShowModal({ ...showModal, cicpaCardFront: reader.result as string });
+                                                                reader.readAsDataURL(file);
+                                                            }
+                                                        }}
+                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                    />
+                                                )}
+                                                {showModal.cicpaCardFront && !viewMode && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowModal({ ...showModal, cicpaCardFront: '' });
+                                                        }}
+                                                        className="absolute top-3 right-3 p-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95"
+                                                        title="Remove Image"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">CICPA Card (Back Side)</label>
+                                            <div className="relative group rounded-3xl overflow-hidden">
+                                                <div 
+                                                    onClick={() => showModal.cicpaCardBack && setPreviewImage(showModal.cicpaCardBack)}
+                                                    className={`aspect-[3/2] bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-inner flex items-center justify-center ${showModal.cicpaCardBack ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''}`}
+                                                    title={showModal.cicpaCardBack ? "Click to preview CICPA Card Back" : undefined}
+                                                >
+                                                    {showModal.cicpaCardBack ? (
+                                                        <img src={showModal.cicpaCardBack} alt="CICPA Back Card Preview" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="flex flex-col items-center gap-1.5 text-center p-4">
+                                                            <Camera className="w-7 h-7 text-slate-250 transition-colors" />
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Upload Card Back</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {!viewMode && (
+                                                    <input 
+                                                        type="file" 
+                                                        accept="image/*"
+                                                        onChange={(e) => {
+                                                            const file = e.target.files?.[0];
+                                                            if (file) {
+                                                                const reader = new FileReader();
+                                                                reader.onloadend = () => setShowModal({ ...showModal, cicpaCardBack: reader.result as string });
+                                                                reader.readAsDataURL(file);
+                                                            }
+                                                        }}
+                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                    />
+                                                )}
+                                                {showModal.cicpaCardBack && !viewMode && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShowModal({ ...showModal, cicpaCardBack: '' });
+                                                        }}
+                                                        className="absolute top-3 right-3 p-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95"
+                                                        title="Remove Image"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
                                                 )}
                                             </div>
                                         </div>
@@ -9933,6 +10098,40 @@ const ReportsView = ({
                                     )}
                                 </div>
                             </form>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Image Preview Lightbox */}
+            <AnimatePresence>
+                {previewImage && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setPreviewImage(null)}
+                            className="absolute inset-0 bg-slate-950/90 backdrop-blur-md cursor-zoom-out"
+                        />
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-transparent max-w-5xl max-h-[85vh] w-auto relative z-10 flex flex-col items-center justify-center p-2"
+                        >
+                            <img 
+                                src={previewImage} 
+                                alt="High Resolution Preview" 
+                                className="max-w-full max-h-[80vh] rounded-2xl object-contain shadow-2xl border-4 border-slate-900 border-opacity-50"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setPreviewImage(null)}
+                                className="mt-4 px-6 py-2.5 bg-white text-slate-900 text-xs font-black uppercase tracking-widest rounded-full shadow-lg hover:bg-slate-100 transition-all flex items-center gap-2 border border-slate-200"
+                            >
+                                Close Preview
+                            </button>
                         </motion.div>
                     </div>
                 )}

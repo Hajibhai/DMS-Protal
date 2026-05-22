@@ -333,6 +333,8 @@
         "applicationStatus": { "type": "string" },
         "remarks": { "type": "string" },
         "profilePicture": { "type": "string" },
+        "cicpaCardFront": { "type": "string" },
+        "cicpaCardBack": { "type": "string" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -357,6 +359,7 @@
       "properties": {
         "id": { "type": "string" },
         "employeeImage": { "type": "string" },
+        "safetyCardFront": { "type": "string" },
         "employeeName": { "type": "string" },
         "emiratesIdNumber": { "type": "string" },
         "safetyProviderName": { "type": "string" },

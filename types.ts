@@ -392,6 +392,8 @@ export interface CICPARecord {
     applicationStatus: string;
     remarks?: string;
     profilePicture?: string;
+    cicpaCardFront?: string;
+    cicpaCardBack?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -411,6 +413,7 @@ export interface AuditLog {
 export interface SafetyRecord {
     id: string;
     employeeImage?: string; // base64 representation or URL
+    safetyCardFront?: string; // base64 or URL
     employeeName: string;
     emiratesIdNumber: string;
     safetyProviderName: string;
