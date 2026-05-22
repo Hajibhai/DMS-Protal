@@ -2185,12 +2185,29 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                 })
             });
 
+            const text = await response.text();
+
             if (!response.ok) {
-                const errResult = await response.json();
-                throw new Error(errResult.error || "Failed to scan receipt");
+                let errMsg = "Failed to scan receipt";
+                try {
+                    const errResult = JSON.parse(text);
+                    errMsg = errResult.error || errMsg;
+                } catch {
+                    errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
+                    if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
+                        errMsg = "Please make sure your server is running and configured correctly. (Vite dev server or backend received 404/500)";
+                    }
+                }
+                throw new Error(errMsg);
             }
 
-            const data = await response.json();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                throw new Error("Invalid response format received from server (expected JSON)");
+            }
+
             setFormData((prev: any) => ({
                 ...prev,
                 ...data,
@@ -2783,6 +2800,17 @@ export const ProjectedExpenseModal = ({ expense, projects, onSave, onCancel }: a
     );
 };
 
+export const formatDisplayDate = (dateStr?: string) => {
+    if (!dateStr) return '';
+    if (dateStr.includes('-')) {
+        const parts = dateStr.split('-');
+        if (parts.length === 3 && parts[0].length === 4) {
+            return `${parts[1]}/${parts[2]}/${parts[0]}`; // MM/DD/YYYY format
+        }
+    }
+    return dateStr;
+};
+
 export const EverydayExpenseView: React.FC<{
     data: EverydayExpense[];
     projects: Project[];
@@ -2803,7 +2831,19 @@ export const EverydayExpenseView: React.FC<{
         { key: 'billAmount', label: 'Bill Amount', sortable: true, render: (item: EverydayExpense) => item.billAmount.toLocaleString() },
         { key: 'vatAmount', label: 'VAT Amount', sortable: true, render: (item: EverydayExpense) => item.vatAmount.toLocaleString() },
         { key: 'totalAmount', label: 'Total Amount', sortable: true, render: (item: EverydayExpense) => item.totalAmount.toLocaleString() },
-        { key: 'uploadedBy', label: 'Uploaded/Updated By', sortable: true, render: (item: EverydayExpense) => item.uploadedBy || item.updatedBy || '-' },
+        { 
+            key: 'uploadedBy', 
+            label: 'Uploaded/Updated By', 
+            sortable: true, 
+            render: (item: EverydayExpense) => {
+                const who = item.uploadedBy || item.updatedBy || '-';
+                const uploadDate = item.uploadedDate || item.date || '';
+                if (who !== '-' && uploadDate) {
+                    return `${who} (on ${formatDisplayDate(uploadDate)})`;
+                }
+                return who;
+            } 
+        },
     ];
 
     const filterOptions = [
@@ -2848,10 +2888,19 @@ export const EverydayExpenseModal: React.FC<{
     onSave: (data: EverydayExpense) => void;
     onCancel: () => void;
     user: any;
-}> = ({ expense, projects, onSave, onCancel, user }) => {
+    everydayExpenses?: EverydayExpense[];
+}> = ({ expense, projects, onSave, onCancel, user, everydayExpenses = [] }) => {
+    const calculateNextSiNo = (uid: string, name: string) => {
+        const userExpenses = everydayExpenses.filter(ee => 
+            (ee.uploadedByUid && uid && ee.uploadedByUid === uid) || 
+            (ee.uploadedBy && name && ee.uploadedBy.toLowerCase() === name.toLowerCase())
+        );
+        return String(userExpenses.length + 1);
+    };
+
     const [formData, setFormData] = useState<EverydayExpense>(expense || {
         id: Math.random().toString(36).substr(2, 9),
-        siNo: '',
+        siNo: expense ? expense.siNo : calculateNextSiNo(user?.uid || '', user?.name || ''),
         date: new Date().toISOString().split('T')[0],
         invoiceNo: '',
         trnNo: '',
@@ -2864,7 +2913,8 @@ export const EverydayExpenseModal: React.FC<{
         description: '',
         projectId: '',
         uploadedBy: user?.name || '',
-        uploadedByUid: user?.uid || ''
+        uploadedByUid: user?.uid || '',
+        uploadedDate: new Date().toISOString().split('T')[0]
     });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2901,21 +2951,40 @@ export const EverydayExpenseModal: React.FC<{
                     })
                 })
                 .then(async (response) => {
+                    const text = await response.text();
                     if (!response.ok) {
-                        const errResult = await response.json();
-                        throw new Error(errResult.error || "Failed to scan receipt");
+                        let errMsg = "Failed to scan receipt";
+                        try {
+                            const errResult = JSON.parse(text);
+                            errMsg = errResult.error || errMsg;
+                        } catch {
+                            errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
+                            if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
+                                errMsg = "Please make sure your server is running and configured correctly. (Vite dev server or backend received 404/500)";
+                            }
+                        }
+                        throw new Error(errMsg);
                     }
-                    return response.json();
+                    try {
+                        return JSON.parse(text);
+                    } catch {
+                        throw new Error("Invalid response format received from server (expected JSON)");
+                    }
                 })
                 .then((data) => {
-                    setFormData(prev => ({
-                        ...prev,
-                        ...data,
-                        uploadedBy: nameToSuggest,
-                        uploadedByUid: user?.uid || '',
-                        updatedBy: nameToSuggest,
-                        updatedByUid: user?.uid || ''
-                    }));
+                    setFormData(prev => {
+                        const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', nameToSuggest);
+                        return {
+                            ...prev,
+                            ...data,
+                            siNo: calculatedSiNo,
+                            uploadedBy: nameToSuggest,
+                            uploadedByUid: user?.uid || '',
+                            uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
+                            updatedBy: nameToSuggest,
+                            updatedByUid: user?.uid || ''
+                        };
+                    });
                 })
                 .catch((error: any) => {
                     console.error("Scanning failed:", error);
@@ -2962,20 +3031,42 @@ export const EverydayExpenseModal: React.FC<{
                 })
             });
 
+            const text = await response.text();
+
             if (!response.ok) {
-                const errResult = await response.json();
-                throw new Error(errResult.error || "Failed to scan receipt");
+                let errMsg = "Failed to scan receipt";
+                try {
+                    const errResult = JSON.parse(text);
+                    errMsg = errResult.error || errMsg;
+                } catch {
+                    errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
+                    if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
+                        errMsg = "Please make sure your server is running and configured correctly. (Vite dev server or backend received 404/500)";
+                    }
+                }
+                throw new Error(errMsg);
             }
 
-            const data = await response.json();
-            setFormData(prev => ({
-                ...prev,
-                ...data,
-                uploadedBy: uploaderName,
-                uploadedByUid: user?.uid || '',
-                updatedBy: uploaderName,
-                updatedByUid: user?.uid || ''
-            }));
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                throw new Error("Invalid response format received from server (expected JSON)");
+            }
+
+            setFormData(prev => {
+                const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', uploaderName);
+                return {
+                    ...prev,
+                    ...data,
+                    siNo: calculatedSiNo,
+                    uploadedBy: uploaderName,
+                    uploadedByUid: user?.uid || '',
+                    uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
+                    updatedBy: uploaderName,
+                    updatedByUid: user?.uid || ''
+                };
+            });
         } catch (error: any) {
             console.error("Scanning failed:", error);
             setScanError(error.message || "An error occurred while scanning with Gemini");
@@ -3031,7 +3122,7 @@ export const EverydayExpenseModal: React.FC<{
                                 {(formData.uploadedBy || formData.updatedBy) && (
                                     <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 bg-brand-100/50 rounded-lg text-brand-900 text-[10px] font-bold">
                                         <span className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-pulse" />
-                                        Recorded by: {formData.uploadedBy || formData.updatedBy}
+                                        Recorded by: {formData.uploadedBy || formData.updatedBy} {formData.uploadedDate ? `on ${formatDisplayDate(formData.uploadedDate)}` : `on ${formatDisplayDate(new Date().toISOString().split('T')[0])}`}
                                     </div>
                                 )}
                             </div>

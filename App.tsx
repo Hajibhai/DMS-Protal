@@ -3107,6 +3107,7 @@ export default function App() {
       ...data,
       uploadedBy: data.uploadedBy || systemUser?.name || '',
       uploadedByUid: data.uploadedByUid || systemUser?.uid || '',
+      uploadedDate: data.uploadedDate || new Date().toISOString().split('T')[0],
       updatedBy: systemUser?.name || '',
       updatedByUid: systemUser?.uid || ''
     };
@@ -3814,6 +3815,7 @@ export default function App() {
             onSave={handleSaveEverydayExpense}
             onCancel={() => setShowEverydayExpenseModal(false)}
             user={systemUser}
+            everydayExpenses={everydayExpenses}
           />
         )}
         {showAuditModal && (
