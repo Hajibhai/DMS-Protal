@@ -1404,7 +1404,10 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
     };
 
     const applySuggestedRole = (role: string) => {
-        const defaultPerms = ROLE_DEFAULT_PERMISSIONS[role] || {};
+        const matchedKey = Object.keys(ROLE_DEFAULT_PERMISSIONS).find(
+            k => k.toLowerCase() === role.toLowerCase()
+        ) || '';
+        const defaultPerms = ROLE_DEFAULT_PERMISSIONS[matchedKey] || {};
         const mergedPerms = { ...INITIAL_PERMISSIONS, ...defaultPerms };
         setNewUser({
             ...newUser,
@@ -1415,7 +1418,10 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
 
     const applySuggestedRoleToEditing = (role: string) => {
         if (!editingUser) return;
-        const defaultPerms = ROLE_DEFAULT_PERMISSIONS[role] || {};
+        const matchedKey = Object.keys(ROLE_DEFAULT_PERMISSIONS).find(
+            k => k.toLowerCase() === role.toLowerCase()
+        ) || '';
+        const defaultPerms = ROLE_DEFAULT_PERMISSIONS[matchedKey] || {};
         const mergedPerms = { ...INITIAL_PERMISSIONS, ...defaultPerms };
         setEditingUser({
             ...editingUser,
@@ -3171,7 +3177,7 @@ export default function App() {
     
     if (!systemUser) return baseItems.filter(item => !item.permission && !item.creatorOnly);
     
-    if (systemUser.role === UserRole.EMPLOYEE) {
+    if (systemUser.role === UserRole.EMPLOYEE || systemUser.role?.toLowerCase() === 'employee') {
         return [
             { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet }
         ];
@@ -3200,8 +3206,9 @@ export default function App() {
 
   useEffect(() => {
     if (systemUser) {
-      const isCreator = systemUser.role === UserRole.CREATOR || systemUser.email === 'abdulkaderp3010@gmail.com';
-      const isAdmin = systemUser.role === UserRole.ADMIN || isCreator;
+      const systemUserRoleLower = systemUser.role?.toLowerCase() || '';
+      const isCreator = systemUserRoleLower === 'creator' || systemUser.email === 'abdulkaderp3010@gmail.com';
+      const isAdmin = systemUserRoleLower === 'admin' || isCreator;
       const currentTabItem = navItems.find(item => item.id === activeTab);
       if (currentTabItem && currentTabItem.permission && !isAdmin && !(systemUser.permissions as any)[currentTabItem.permission]) {
         setActiveTab('dashboard');
@@ -3210,7 +3217,8 @@ export default function App() {
   }, [activeTab, systemUser, navItems]);
 
   useEffect(() => {
-    if (systemUser?.role === UserRole.EMPLOYEE && activeTab !== 'everyday-expenses') {
+    const isEmployee = systemUser?.role === UserRole.EMPLOYEE || systemUser?.role?.toLowerCase() === 'employee';
+    if (isEmployee && activeTab !== 'everyday-expenses') {
       setActiveTab('everyday-expenses');
     }
   }, [systemUser, activeTab]);
@@ -3622,7 +3630,7 @@ export default function App() {
       {activeTab === 'everyday-expenses' && (
         <EverydayExpenseView 
           data={
-            systemUser?.role === UserRole.EMPLOYEE
+            (systemUser?.role === UserRole.EMPLOYEE || systemUser?.role?.toLowerCase() === 'employee')
               ? everydayExpenses.filter(ee => ee.uploadedByUid === systemUser.uid || ee.uploadedBy === systemUser.name || ee.updatedBy === systemUser.name)
               : everydayExpenses
           }
@@ -8540,7 +8548,10 @@ const ReportsView = ({
 
     const userRole = user?.role || UserRole.CREATOR;
     const allowedReports = useMemo(() => {
-        return ROLE_REPORT_ACCESS[userRole] || ROLE_REPORT_ACCESS[UserRole.CREATOR];
+        const foundKey = Object.keys(ROLE_REPORT_ACCESS).find(
+            k => k.toLowerCase() === userRole.toLowerCase()
+        ) || UserRole.CREATOR;
+        return (ROLE_REPORT_ACCESS as any)[foundKey] || ROLE_REPORT_ACCESS[UserRole.CREATOR];
     }, [userRole, ROLE_REPORT_ACCESS]);
 
     const [reportType, setReportType] = useState(() => {
