@@ -58,6 +58,7 @@ import {
   EverydayExpense,
   AuditLog,
   CICPARecord,
+  SafetyRecord,
   UserPermissions,
   PublicHoliday
 } from './types';
@@ -88,6 +89,7 @@ import {
   VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal, ProjectedExpenseModal, EverydayExpenseModal
 } from './components/FinanceViews';
 import { HolidayManagementModal } from './components/HolidayManagementModal';
+import { SafetyView } from './components/SafetyView';
 
 // --- Constants & Helpers ---
 const INITIAL_PERMISSIONS: UserPermissions = {
@@ -2789,6 +2791,8 @@ export default function App() {
   const [everydayExpenses, setEverydayExpenses] = useState<EverydayExpense[]>([]);
   const [cicpaRecords, setCicpaRecords] = useState<CICPARecord[]>([]);
   const [showCICPAModal, setShowCICPAModal] = useState<CICPARecord | boolean>(false);
+  const [safetyRecords, setSafetyRecords] = useState<SafetyRecord[]>([]);
+  const [showSafetyModal, setShowSafetyModal] = useState<SafetyRecord | boolean>(false);
   const hasLoggedLogin = useRef(false);
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -3019,6 +3023,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'cicpa_records');
     });
 
+    const unsubSafety = onSnapshot(collection(db, 'safety_records'), (snap) => {
+      setSafetyRecords(snap.docs.map(d => ({ ...d.data(), id: d.id }) as SafetyRecord));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'safety_records');
+    });
+
     const unsubHolidays = onSnapshot(collection(db, 'holidays'), (snap) => {
       setHolidays(snap.docs.map(d => d.data() as PublicHoliday));
     }, (error) => {
@@ -3046,6 +3056,7 @@ export default function App() {
       unsubProjectedExpenses();
       unsubEverydayExpenses();
       unsubCICPA();
+      unsubSafety();
       unsubHolidays();
       unsubUsers();
     };
@@ -3161,6 +3172,7 @@ export default function App() {
           { id: 'suppliers', label: 'Suppliers', icon: Truck, permission: 'canManageSuppliers' },
           { id: 'projects', label: 'Projects', icon: Briefcase, permission: 'canManageProjects' },
           { id: 'cicpa', label: 'CICPA', icon: ShieldCheck, permission: 'canManageEmployees' },
+          { id: 'safety', label: 'Safety', icon: ShieldAlert, permission: 'canManageEmployees' },
           { id: 'vendors', label: 'Clients', icon: Truck, permission: 'canManageProjects' },
         ]
       },
@@ -3702,6 +3714,26 @@ export default function App() {
                 openConfirm("Delete CICPA Record", "Are you sure you want to delete this record? This cannot be undone.", async () => {
                     await deleteDoc(doc(db, 'cicpa_records', id));
                     handleLogAction('CICPA Deleted', `A CICPA record was permanently removed.`, 'delete');
+                });
+            }}
+            user={systemUser}
+        />
+      )}
+      {activeTab === 'safety' && (
+        <SafetyView 
+            records={safetyRecords} 
+            onSave={async (data) => {
+                const isUpdate = !!data.id;
+                const recordId = isUpdate ? data.id : doc(collection(db, 'safety_records')).id;
+                const finalData = { ...data, id: recordId, updatedAt: new Date().toISOString(), createdAt: data.createdAt || new Date().toISOString() };
+                await setDoc(doc(db, 'safety_records', recordId), finalData);
+                handleLogAction(isUpdate ? 'Safety Certificate Updated' : 'Safety Certificate Added', `Safety certificate for ${data.employeeName} was ${isUpdate ? 'updated' : 'submitted'}.`, isUpdate ? 'update' : 'create');
+                setShowSafetyModal(false);
+            }}
+            onDelete={async (id) => {
+                openConfirm("Delete Safety Certificate", "Are you sure you want to delete this safety certificate? This cannot be undone.", async () => {
+                    await deleteDoc(doc(db, 'safety_records', id));
+                    handleLogAction('Safety Certificate Deleted', `A safety certificate record was permanently removed.`, 'delete');
                 });
             }}
             user={systemUser}

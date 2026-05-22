@@ -349,6 +349,27 @@
         "type": { "type": "string" }
       },
       "required": ["id", "date", "name"]
+    },
+    "SafetyRecord": {
+      "title": "Safety Record",
+      "description": "Employee safety training and certificate credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employeeImage": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "emiratesIdNumber": { "type": "string" },
+        "safetyProviderName": { "type": "string" },
+        "safetyProviderContact": { "type": "string" },
+        "certificateName": { "type": "string" },
+        "safetyCertificateNumber": { "type": "string" },
+        "certificateIssueDate": { "type": "string" },
+        "certificateExpireDate": { "type": "string" },
+        "employeeCompanyName": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "employeeName", "emiratesIdNumber", "certificateName", "safetyCertificateNumber"]
     }
   },
   "firestore": {
@@ -415,6 +436,10 @@
     "/cicpa_records/{recordId}": {
       "schema": "CICPARecord",
       "description": "CICPA application tracking records"
+    },
+    "/safety_records/{recordId}": {
+      "schema": "SafetyRecord",
+      "description": "Safety credentials and training certificates for employees"
     },
     "/settings/about": {
       "schema": "object",

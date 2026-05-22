@@ -407,3 +407,20 @@ export interface AuditLog {
   type: 'create' | 'update' | 'delete' | 'system';
   isCreator: boolean;
 }
+
+export interface SafetyRecord {
+    id: string;
+    employeeImage?: string; // base64 representation or URL
+    employeeName: string;
+    emiratesIdNumber: string;
+    safetyProviderName: string;
+    safetyProviderContact: string; // contact number / email id
+    certificateName: string;
+    safetyCertificateNumber: string;
+    certificateIssueDate: string;
+    certificateExpireDate: string;
+    employeeCompanyName: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
