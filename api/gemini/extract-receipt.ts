@@ -87,6 +87,23 @@ export default async function handler(req: any, res: any) {
         required: ["date", "billAmount", "totalAmount"]
       };
       prompt = "Analyze this receipt image and extract the following everyday operational invoice details into a JSON object.";
+    } else if (type === "safety") {
+      responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          employeeName: { type: Type.STRING, description: "Full name of the employee on the certification or safety card" },
+          emiratesIdNumber: { type: Type.STRING, description: "Emirates ID card number in standard UAE format (784-XXXX-XXXXXXX-X) or digits, else empty string" },
+          employeeCompanyName: { type: Type.STRING, description: "Company or Employer Name on the certificate if present" },
+          certificateName: { type: Type.STRING, description: "Name/Title of the safety training course or certificate (e.g., Working at Heights, Hydrogen Sulfide Safety, HSE Induction, Confined Space Entry)" },
+          safetyCertificateNumber: { type: Type.STRING, description: "Certificate, badge, card or registration serial number" },
+          certificateIssueDate: { type: Type.STRING, description: "Date of issue in YYYY-MM-DD format (if only month/year is given, use the first date of that month)" },
+          certificateExpireDate: { type: Type.STRING, description: "Date of expiry in YYYY-MM-DD format" },
+          safetyProviderName: { type: Type.STRING, description: "Academy, company, center or authority body conducting the safety training" },
+          safetyProviderContact: { type: Type.STRING, description: "Contact phone, mobile or email of the training provider if present" }
+        },
+        required: ["employeeName", "certificateName"]
+      };
+      prompt = "Analyze this safety training certificate or safety permit card image and extract the credential details into a JSON object.";
     } else {
       responseSchema = {
         type: Type.OBJECT,

@@ -3588,6 +3588,11 @@ export default function App() {
           onUpdate={() => {}}
           setActiveTab={setActiveTab}
           onOpenHolidayManagement={() => setShowHolidayManagement(true)}
+          accountsPayable={accountsPayable}
+          accountsReceivable={accountsReceivable}
+          pettyCash={pettyCash}
+          everydayExpenses={everydayExpenses}
+          projectedExpenses={projectedExpenses}
         />
       )}
       {activeTab === 'company' && (
@@ -3981,7 +3986,27 @@ export default function App() {
 
 // --- Dashboard View ---
 
-const DashboardView = ({ employees, suppliers, vendors, projects, attendance, user, auditLogs, setShowAuditModal, onOpenUserManagement, onOpenManageCompanies, onOpenOnboarding, onUpdate, setActiveTab, onOpenHolidayManagement }: any) => {
+const DashboardView = ({ 
+    employees = [], 
+    suppliers = [], 
+    vendors = [], 
+    projects = [], 
+    attendance = [], 
+    user, 
+    auditLogs = [], 
+    setShowAuditModal, 
+    onOpenUserManagement, 
+    onOpenManageCompanies, 
+    onOpenOnboarding, 
+    onUpdate, 
+    setActiveTab, 
+    onOpenHolidayManagement,
+    accountsPayable = [],
+    accountsReceivable = [],
+    pettyCash = [],
+    everydayExpenses = [],
+    projectedExpenses = []
+}: any) => {
     const [showQuickAdminMenu, setShowQuickAdminMenu] = useState(false);
     
     // Stats Calculation
@@ -4000,11 +4025,25 @@ const DashboardView = ({ employees, suppliers, vendors, projects, attendance, us
     const canManageAttendance = user?.permissions?.canManageAttendance || isUserAdminOrCreator;
     const canManagePayroll = user?.permissions?.canManagePayroll || isUserAdminOrCreator;
     
+    // Financial Metrics Calculation
+    const totalAP = useMemo(() => accountsPayable.reduce((sum: number, x: any) => sum + (x.totalAmount || 0), 0), [accountsPayable]);
+    const totalAR = useMemo(() => accountsReceivable.reduce((sum: number, x: any) => sum + (x.totalAmount || 0), 0), [accountsReceivable]);
+    const totalPettyExpenses = useMemo(() => pettyCash.filter((x: any) => x.type === 'Expense').reduce((sum: number, x: any) => sum + (x.amount || 0), 0), [pettyCash]);
+    const totalEveryday = useMemo(() => everydayExpenses.reduce((sum: number, x: any) => sum + (x.totalAmount || x.billAmount || 0), 0), [everydayExpenses]);
+
+    const financialData = useMemo(() => [
+        { name: 'Receivables', amount: totalAR, color: '#10b981' },
+        { name: 'Payables', amount: totalAP, color: '#ef4444' },
+        { name: 'Everyday Costs', amount: totalEveryday, color: '#f59e0b' },
+        { name: 'Petty Cash', amount: totalPettyExpenses, color: '#6366f1' },
+    ], [totalAR, totalAP, totalEveryday, totalPettyExpenses]);
+
     // Chart Data: Staff by Department
     const deptStats = useMemo(() => {
         const counts: Record<string, number> = {};
         activeStaff.forEach((e:any) => {
-            counts[e.department] = (counts[e.department] || 0) + 1;
+            const dept = e.department || 'Other';
+            counts[dept] = (counts[dept] || 0) + 1;
         });
         return Object.entries(counts).map(([name, value]) => ({ name, value }));
     }, [activeStaff]);
@@ -4127,6 +4166,96 @@ const DashboardView = ({ employees, suppliers, vendors, projects, attendance, us
                     color="emerald"
                     className="lg:col-span-2"
                 />
+
+                {/* Financial Health & Runways (6 columns) */}
+                <div className="md:col-span-2 lg:col-span-6 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col min-h-[400px]">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-emerald-50 rounded-2xl text-emerald-600 animate-pulse">
+                                <Wallet className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Financial Footprint</h3>
+                                <p className="text-xs text-slate-500 font-semibold">Consolidated accounts receivable, payable, everyday and cash expenses.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 w-full min-h-[260px]">
+                        <ResponsiveContainer width="100%" height={260}>
+                            <BarChart data={financialData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
+                                <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickFormatter={(val) => `AED ${val.toLocaleString()}`} tickLine={false} />
+                                <Tooltip
+                                    formatter={(value: any) => [`AED ${Number(value).toLocaleString()}`, 'Total Amount']}
+                                    contentStyle={{ background: '#ffffff', borderRadius: '1.25rem', borderColor: '#e2e8f0', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }}
+                                />
+                                <Bar dataKey="amount" radius={[8, 8, 0, 0]}>
+                                    {financialData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Personnel Allocation (4 columns) */}
+                <div className="md:col-span-2 lg:col-span-4 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col min-h-[400px]">
+                    <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-brand-50 rounded-2xl text-brand-600">
+                                <Users className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Staff Allocation</h3>
+                                <p className="text-xs text-slate-500 font-semibold">Active workers by operational department.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 flex flex-col justify-center items-center">
+                        {deptStats.length > 0 ? (
+                            <>
+                                <div className="w-full h-[180px]">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={deptStats}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={60}
+                                                outerRadius={80}
+                                                paddingAngle={4}
+                                                dataKey="value"
+                                            >
+                                                {deptStats.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip formatter={(value) => [`${value} Personnel`, 'Count']} />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-4 w-full text-left">
+                                    {deptStats.map((item, index) => (
+                                        <div key={item.name} className="flex items-center gap-2 overflow-hidden truncate">
+                                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
+                                            <span className="text-[11px] font-bold text-slate-600 truncate">{item.name}</span>
+                                            <span className="text-[11px] font-black text-slate-900 shrink-0 ml-auto">({item.value})</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                                <Users className="w-10 h-10 mb-2 opacity-20" />
+                                <p className="text-xs font-bold font-semibold">No active department stats</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
 
                 {/* Recent Activity Log */}
                 <div className="md:col-span-2 lg:col-span-5 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col">

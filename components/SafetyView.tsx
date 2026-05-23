@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, Plus, Eye, Edit, Trash2, Download, Shield, Briefcase, 
-  Phone, ShieldAlert, Calendar, Camera, User, Mail, ShieldCheck
+  Phone, ShieldAlert, Calendar, Camera, User, Mail, ShieldCheck, Sparkles
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SafetyRecord } from '../types';
@@ -20,6 +20,8 @@ export const SafetyView = ({ records, onSave, onDelete, user }: SafetyViewProps)
     const [viewMode, setViewMode] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [isScanning, setIsScanning] = useState(false);
+    const [scanError, setScanError] = useState<string | null>(null);
 
     const canManageEmployees = user?.permissions?.canManageEmployees || 
                                user?.role?.toLowerCase() === 'creator' || 
@@ -444,6 +446,7 @@ export const SafetyView = ({ records, onSave, onDelete, user }: SafetyViewProps)
                                                                 const reader = new FileReader();
                                                                 reader.onloadend = () => setShowModal({ ...showModal, safetyCardFront: reader.result as string });
                                                                 reader.readAsDataURL(file);
+                                                                setScanError(null);
                                                             }
                                                         }}
                                                         className="absolute inset-0 opacity-0 cursor-pointer"
@@ -455,6 +458,7 @@ export const SafetyView = ({ records, onSave, onDelete, user }: SafetyViewProps)
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             setShowModal({ ...showModal, safetyCardFront: '' });
+                                                            setScanError(null);
                                                         }}
                                                         className="absolute top-3 right-3 p-2 bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95"
                                                         title="Remove Image"
@@ -463,6 +467,52 @@ export const SafetyView = ({ records, onSave, onDelete, user }: SafetyViewProps)
                                                     </button>
                                                 )}
                                             </div>
+                                            {showModal.safetyCardFront && !viewMode && (
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        setIsScanning(true);
+                                                        setScanError(null);
+                                                        try {
+                                                            const response = await fetch("/api/gemini/extract-receipt", {
+                                                                method: "POST",
+                                                                headers: { "Content-Type": "application/json" },
+                                                                body: JSON.stringify({
+                                                                    image: showModal.safetyCardFront,
+                                                                    type: "safety"
+                                                                })
+                                                            });
+                                                            if (!response.ok) throw new Error("Could not parse safety card");
+                                                            const data = await response.json();
+                                                            setShowModal((prev: any) => ({
+                                                                ...prev,
+                                                                employeeName: data.employeeName || prev.employeeName,
+                                                                emiratesIdNumber: data.emiratesIdNumber || prev.emiratesIdNumber,
+                                                                employeeCompanyName: data.employeeCompanyName || prev.employeeCompanyName,
+                                                                certificateName: data.certificateName || prev.certificateName,
+                                                                safetyCertificateNumber: data.safetyCertificateNumber || prev.safetyCertificateNumber,
+                                                                certificateIssueDate: data.certificateIssueDate || prev.certificateIssueDate,
+                                                                certificateExpireDate: data.certificateExpireDate || prev.certificateExpireDate,
+                                                                safetyProviderName: data.safetyProviderName || prev.safetyProviderName,
+                                                                safetyProviderContact: data.safetyProviderContact || prev.safetyProviderContact
+                                                            }));
+                                                        } catch (err) {
+                                                            console.error(err);
+                                                            setScanError("Failed to auto-scan document. Please enter details manually.");
+                                                        } finally {
+                                                            setIsScanning(false);
+                                                        }
+                                                    }}
+                                                    disabled={isScanning}
+                                                    className="w-full mt-2 py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all border border-indigo-100 disabled:opacity-50 cursor-pointer"
+                                                >
+                                                    <Sparkles className="w-3.5 h-3.5" />
+                                                    {isScanning ? "AI Parsing Credentials..." : "🪄 AI Scan with Gemini"}
+                                                </button>
+                                            )}
+                                            {scanError && (
+                                                <p className="text-[10px] text-rose-500 font-bold mt-1 text-center bg-rose-50 p-1.5 rounded">{scanError}</p>
+                                            )}
                                         </div>
                                     </div>
 
