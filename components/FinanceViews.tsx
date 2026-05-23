@@ -11,10 +11,10 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { cn } from '../utils';
-import { 
-  Vendor, AccountsPayable, AccountsReceivable, PettyCash, 
+import { Vendor, AccountsPayable, AccountsReceivable, PettyCash, 
   Supplier, Project, SystemUser, UserRole, ProjectedExpense, EverydayExpense 
 } from '../types';
+import { PrintModal, PrintOptions } from './PrintModal';
 
 interface DataTableProps<T> {
     title: string;
@@ -123,7 +123,13 @@ export function DataTable<T extends { id: string }>({
         XLSX.writeFile(wb, `${exportFileName}.xlsx`);
     };
 
-    const handlePrint = () => {
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+    const handlePrintClick = () => {
+        setIsPrintModalOpen(true);
+    };
+
+    const handlePrintWithConfig = (options: PrintOptions) => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
 
@@ -132,8 +138,25 @@ export function DataTable<T extends { id: string }>({
                 <head>
                     <title>${title}</title>
                     <style>
-                        @page { size: A4; margin: 20mm; }
-                        body { font-family: sans-serif; color: #333; }
+                        @page { 
+                            size: ${options.orientation}; 
+                            margin: ${options.margins === 'none' ? '0' : options.margins === 'minimum' ? '5mm' : '20mm'}; 
+                        }
+                        body { 
+                            font-family: sans-serif; 
+                            color: #333; 
+                            filter: ${options.colorMode === 'mono' ? 'grayscale(100%) !important' : 'none'};
+                            ${options.fitToPaper ? 'zoom: 92%; max-width: 100%;' : ''}
+                            -webkit-print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                            print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                        }
+                        ${options.highContrast ? `
+                            * {
+                                color: #000000 !important;
+                                background-color: #ffffff !important;
+                                border-color: #000000 !important;
+                            }
+                        ` : ''}
                         h1 { text-align: center; color: #000; margin-bottom: 5px; }
                         p { text-align: center; color: #666; margin-bottom: 20px; font-size: 12px; }
                         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
@@ -196,7 +219,7 @@ export function DataTable<T extends { id: string }>({
                         Export Excel
                     </button>
                     <button 
-                        onClick={handlePrint}
+                        onClick={handlePrintClick}
                         className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
                     >
                         <Printer className="w-4 h-4" />
@@ -368,6 +391,13 @@ export function DataTable<T extends { id: string }>({
                     </table>
                 </div>
             </div>
+
+            <PrintModal 
+                isOpen={isPrintModalOpen}
+                onClose={() => setIsPrintModalOpen(false)}
+                onPrint={handlePrintWithConfig}
+                title={`Print ${title}`}
+            />
         </div>
     );
 }
@@ -812,8 +842,49 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
         })).sort((a, b) => b.cashIn - a.cashIn);
     }, [filteredData]);
 
+    const [isPettyCashPrintModalOpen, setIsPettyCashPrintModalOpen] = useState(false);
+
     const handleA4Print = () => {
+        setIsPettyCashPrintModalOpen(true);
+    };
+
+    const handleA4PrintWithConfig = (options: PrintOptions) => {
+        const styleId = 'pettycash-print-overrides';
+        let styleEl = document.getElementById(styleId);
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = styleId;
+            document.head.appendChild(styleEl);
+        }
+        styleEl.innerHTML = `
+            @media print {
+                @page { 
+                    size: ${options.orientation}; 
+                    margin: ${options.margins === 'none' ? '0' : options.margins === 'minimum' ? '5mm' : '10mm'}; 
+                }
+                body { 
+                    filter: ${options.colorMode === 'mono' ? 'grayscale(100%) !important' : 'none'};
+                    ${options.fitToPaper ? 'zoom: 92% !important; max-width: 100vw !important; overflow: hidden !important;' : ''}
+                    -webkit-print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                    print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                }
+                ${options.highContrast ? `
+                    * {
+                        color: #000000 !important;
+                        background-color: #ffffff !important;
+                        border-color: #000000 !important;
+                    }
+                ` : ''}
+            }
+        `;
+        
         window.print();
+        
+        setTimeout(() => {
+            if (styleEl && styleEl.parentNode) {
+                styleEl.parentNode.removeChild(styleEl);
+            }
+        }, 1500);
     };
 
     const handleExcelExport = () => {
@@ -1674,6 +1745,13 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                     </motion.div>
                 </div>
             )}
+
+            <PrintModal 
+                isOpen={isPettyCashPrintModalOpen}
+                onClose={() => setIsPettyCashPrintModalOpen(false)}
+                onPrint={handleA4PrintWithConfig}
+                title="Print Petty Cash Statement"
+            />
         </div>
     );
 };

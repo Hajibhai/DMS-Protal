@@ -5,6 +5,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 import { cn } from './utils';
+import { PrintModal, PrintOptions } from './components/PrintModal';
 
 const DirhamIcon = ({ className }: { className?: string }) => (
   <div className={cn("flex items-center justify-center font-black text-[10px] leading-none tracking-tighter", className)}>
@@ -550,7 +551,13 @@ const OffboardingWizard = ({ employee, onComplete, onCancel }: { employee: Emplo
 
     useEffect(() => { calculateSettlement(); }, [details.gratuity, details.leaveEncashment, details.salaryDues, details.otherDues, details.deductions]);
 
-    const handlePrint = () => {
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+    const handlePrintClick = () => {
+        setIsPrintModalOpen(true);
+    };
+
+    const handlePrintWithConfig = (options: PrintOptions) => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
         
@@ -563,11 +570,28 @@ const OffboardingWizard = ({ employee, onComplete, onCancel }: { employee: Emplo
                     <title>Final Settlement - ${employee.name}</title>
                     <script src="https://cdn.tailwindcss.com"></script>
                     <style>
-                        @media print {
-                            body { padding: 0; margin: 0; }
-                            .no-print { display: none; }
+                        @page { 
+                            size: ${options.orientation}; 
+                            margin: ${options.margins === 'none' ? '0' : options.margins === 'minimum' ? '5mm' : '15mm'}; 
                         }
-                        body { font-family: 'Georgia', serif; }
+                        body { 
+                            font-family: 'Georgia', serif; 
+                            background-color: #ffffff;
+                            filter: ${options.colorMode === 'mono' ? 'grayscale(100%) !important' : 'none'};
+                            ${options.fitToPaper ? 'zoom: 92% !important; max-width: 100vw !important; overflow: hidden !important;' : ''}
+                            -webkit-print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                            print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                        }
+                        ${options.highContrast ? `
+                            * {
+                                color: #000000 !important;
+                                background-color: #ffffff !important;
+                                border-color: #000000 !important;
+                            }
+                        ` : ''}
+                        @media print {
+                            .no-print { display: none !important; }
+                        }
                     </style>
                 </head>
                 <body>
@@ -658,7 +682,7 @@ const OffboardingWizard = ({ employee, onComplete, onCancel }: { employee: Emplo
                              <div className="flex justify-between items-center">
                                  <h3 className="text-lg font-semibold text-gray-800">Final Settlement Document</h3>
                                  <button 
-                                    onClick={handlePrint}
+                                    onClick={handlePrintClick}
                                     className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition-colors text-sm font-medium"
                                  >
                                      <Printer className="w-4 h-4" />
@@ -724,6 +748,13 @@ const OffboardingWizard = ({ employee, onComplete, onCancel }: { employee: Emplo
                     )}
                 </div>
             </div>
+
+            <PrintModal 
+                isOpen={isPrintModalOpen}
+                onClose={() => setIsPrintModalOpen(false)}
+                onPrint={handlePrintWithConfig}
+                title="Print Final Settlement"
+            />
         </div>
     );
 };
@@ -8382,7 +8413,13 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
          `;
      };
 
-     const handlePrintPayslip = (e: Employee) => {
+     const [isSinglePayslipModalOpen, setIsSinglePayslipModalOpen] = useState(false);
+     const [isBatchPayslipModalOpen, setIsBatchPayslipModalOpen] = useState(false);
+     const [selectedEmployeeForPrint, setSelectedEmployeeForPrint] = useState<Employee | null>(null);
+
+     const handlePrintPayslipWithConfig = (options: PrintOptions) => {
+         if (!selectedEmployeeForPrint) return;
+         const e = selectedEmployeeForPrint;
          const monthRecs = attendance.filter((r: any) => r.employeeId === e.id && r.date.startsWith(selectedMonth));
          const monthDeds = deductions.filter((d: any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
          const p = calculatePayroll(e, monthRecs, monthDeds);
@@ -8398,8 +8435,27 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                      <title>Pay Slip - ${e.name} - ${selectedMonth}</title>
                      <style>
                          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-                         @page { size: A4; margin: 10mm; }
-                         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                         @page { 
+                             size: ${options.orientation}; 
+                             margin: ${options.margins === 'none' ? '0' : options.margins === 'minimum' ? '5mm' : '10mm'}; 
+                         }
+                         body { 
+                             font-family: 'Inter', sans-serif; 
+                             background-color: #f8fafc; 
+                             margin: 0; 
+                             padding: 0; 
+                             filter: ${options.colorMode === 'mono' ? 'grayscale(100%) !important' : 'none'};
+                             ${options.fitToPaper ? 'zoom: 92% !important; max-width: 100vw !important; overflow: hidden !important;' : ''}
+                             -webkit-print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                             print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                         }
+                         ${options.highContrast ? `
+                             * {
+                                 color: #000000 !important;
+                                 background-color: #ffffff !important;
+                                 border-color: #000000 !important;
+                             }
+                         ` : ''}
                          .payslip-container { box-shadow: none !important; border: 1px solid #cbd5e1 !important; }
                          @media print {
                              body { background-color: #ffffff; }
@@ -8422,14 +8478,22 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
          }, 300);
      };
 
+     const handlePrintPayslip = (e: Employee) => {
+         setSelectedEmployeeForPrint(e);
+         setIsSinglePayslipModalOpen(true);
+     };
+
      const handlePrintAllPayslips = () => {
+         setIsBatchPayslipModalOpen(true);
+     };
+     const handlePrintAllPayslipsWithConfig = (options) => {
          const printWindow = window.open('', '_blank');
          if (!printWindow) return;
 
          let allPayslipsHtml = '';
-         filteredEmployees.forEach((e: Employee) => {
-             const monthRecs = attendance.filter((r: any) => r.employeeId === e.id && r.date.startsWith(selectedMonth));
-             const monthDeds = deductions.filter((d: any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
+         filteredEmployees.forEach((e) => {
+             const monthRecs = attendance.filter((r) => r.employeeId === e.id && r.date.startsWith(selectedMonth));
+             const monthDeds = deductions.filter((d) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
              const p = calculatePayroll(e, monthRecs, monthDeds);
              allPayslipsHtml += getPayslipHtmlForEmployee(e, p, monthRecs, monthDeds, selectedMonth);
          });
@@ -8440,8 +8504,27 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                      <title>All Pay Slips - ${selectedMonth}</title>
                      <style>
                          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-                         @page { size: A4; margin: 10mm; }
-                         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                         @page { 
+                             size: ${options.orientation}; 
+                             margin: ${options.margins === 'none' ? '0' : options.margins === 'minimum' ? '5mm' : '10mm'}; 
+                         }
+                         body { 
+                             font-family: 'Inter', sans-serif; 
+                             background-color: #f8fafc; 
+                             margin: 0; 
+                             padding: 0; 
+                             filter: ${options.colorMode === 'mono' ? 'grayscale(100%) !important' : 'none'};
+                             ${options.fitToPaper ? 'zoom: 92% !important; max-width: 100vw !important; overflow: hidden !important;' : ''}
+                             -webkit-print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                             print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                         }
+                         ${options.highContrast ? `
+                             * {
+                                 color: #000000 !important;
+                                 background-color: #ffffff !important;
+                                 border-color: #000000 !important;
+                             }
+                         ` : ''}
                          .payslip-container { box-shadow: none !important; border: 1px solid #cbd5e1 !important; }
                          @media print {
                              body { background-color: #ffffff; }
@@ -8595,9 +8678,23 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                      </table>
                  </div>
              </div>
-        </div>
-     );
-};
+        
+             <PrintModal 
+                 isOpen={isSinglePayslipModalOpen}
+                 onClose={() => setIsSinglePayslipModalOpen(false)}
+                 onPrint={handlePrintPayslipWithConfig}
+                 title="Print Payslip"
+             />
+
+             <PrintModal 
+                 isOpen={isBatchPayslipModalOpen}
+                 onClose={() => setIsBatchPayslipModalOpen(false)}
+                 onPrint={handlePrintAllPayslipsWithConfig}
+                 title="Print All Payslips"
+             />
+         </div>
+      );
+ };
 
 const ReportsView = ({ 
     employees, attendance, leaveRequests, deductions, 
@@ -8606,6 +8703,51 @@ const ReportsView = ({
     suppliers, vendors, user 
 }: any) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    
+    const [isReportPrintModalOpen, setIsReportPrintModalOpen] = useState(false);
+
+    const handlePrint = () => {
+        setIsReportPrintModalOpen(true);
+    };
+
+    const handlePrintWithConfig = (options: PrintOptions) => {
+        const styleId = 'report-print-overrides';
+        let styleEl = document.getElementById(styleId);
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = styleId;
+            document.head.appendChild(styleEl);
+        }
+        styleEl.innerHTML = `
+            @media print {
+                @page { 
+                    size: ${options.orientation}; 
+                    margin: ${options.margins === 'none' ? '0' : options.margins === 'minimum' ? '5mm' : '12mm'}; 
+                }
+                body { 
+                    filter: ${options.colorMode === 'mono' ? 'grayscale(100%) !important' : 'none'};
+                    ${options.fitToPaper ? 'zoom: 92% !important; max-width: 100vw !important; overflow: hidden !important;' : ''}
+                    -webkit-print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                    print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
+                }
+                ${options.highContrast ? `
+                    * {
+                        color: #000000 !important;
+                        background-color: #ffffff !important;
+                        border-color: #000000 !important;
+                    }
+                ` : ''}
+            }
+        `;
+        
+        window.print();
+        
+        setTimeout(() => {
+            if (styleEl && styleEl.parentNode) {
+                styleEl.parentNode.removeChild(styleEl);
+            }
+        }, 1500);
+    };
     
     // Role-based access configuration for reports
     const ROLE_REPORT_ACCESS = useMemo(() => ({
@@ -8985,10 +9127,6 @@ const ReportsView = ({
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Report");
         XLSX.writeFile(wb, `${fileName}.xlsx`);
-    };
-
-    const handlePrint = () => {
-        window.print();
     };
 
     const reportOptions = [
@@ -9539,6 +9677,13 @@ const ReportsView = ({
                     </table>
                 </div>
             </motion.div>
+            <PrintModal 
+                isOpen={isReportPrintModalOpen}
+                onClose={() => setIsReportPrintModalOpen(false)}
+                onPrint={handlePrintWithConfig}
+                title="Print Report"
+            />
+
         </div>
     );
 };const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
@@ -10169,7 +10314,8 @@ const ReportsView = ({
                     </div>
                 )}
             </AnimatePresence>
-        </div>
+
+            </div>
     );
 };
 
