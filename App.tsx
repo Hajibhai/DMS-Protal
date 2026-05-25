@@ -816,7 +816,7 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                                     </div>
                                 )}
                              </div>
-                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Code</label><input disabled type="text" value={data.code || ''} className="w-full p-2 border rounded-lg mt-1 bg-gray-100 text-gray-500 font-bold" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Code</label><input disabled={readOnly} type="text" value={data.code || ''} onChange={e => setData({...data, code: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-100 disabled:text-gray-500" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Name</label><input disabled={readOnly} type="text" value={data.name || ''} onChange={e => setData({...data, name: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Nationality</label><input disabled={readOnly} type="text" value={data.nationality || ''} onChange={e => setData({...data, nationality: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. UAE" /></div>
