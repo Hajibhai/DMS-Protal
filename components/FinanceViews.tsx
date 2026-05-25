@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
   FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle,
-  Camera, Upload
+  Camera, Upload, CheckCircle, AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -485,6 +485,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
             { key: 'code', label: 'Code', sortable: true },
             { key: 'name', label: 'Client Name', sortable: true },
             { key: 'contactPerson', label: 'Contact Person' },
+            { key: 'trn', label: 'TRN (VAT)', render: (item) => <span className="font-mono text-slate-600 font-extrabold">{item.trn || '-'}</span> },
             { key: 'email', label: 'Email' },
             { key: 'phone', label: 'Phone' },
             { key: 'category', label: 'Category', sortable: true },
@@ -492,7 +493,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
         onAdd={onAdd}
         onEdit={onEdit}
         onDelete={onDelete}
-        searchFields={['name', 'code', 'contactPerson', 'email']}
+        searchFields={['name', 'code', 'contactPerson', 'email', 'trn']}
         exportFileName="Vendors_List"
         user={user}
     />
@@ -626,11 +627,15 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    doc.text([
+    const sellerDetails = [
         company?.address || "United Arab Emirates",
         company?.email ? `Email: ${company.email}` : "Email: accounts@pioneer.ae",
         company?.phone ? `Phone: ${company.phone}` : "Phone: +971 4 000 0000"
-    ], 15, headerOffset);
+    ];
+    if (company?.trn || item.companyTrn) {
+        sellerDetails.push(`Seller TRN (VAT ID): ${company?.trn || item.companyTrn}`);
+    }
+    doc.text(sellerDetails, 15, headerOffset);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(22);
@@ -680,11 +685,15 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    doc.text([
+    const clientDetails = [
         client?.address || "Dubai, United Arab Emirates",
         client?.email ? `Email: ${client.email}` : "",
         client?.phone ? `Phone: ${client.phone}` : ""
-    ].filter(Boolean), 15, 80);
+    ];
+    if (client?.trn || item.clientTrn) {
+        clientDetails.push(`Client TRN (VAT ID): ${client?.trn || item.clientTrn}`);
+    }
+    doc.text(clientDetails.filter(Boolean), 15, 80);
 
     let yPos = 105;
     doc.setFont("Helvetica", "bold");
@@ -2616,7 +2625,15 @@ export const ProjectedExpenseView = ({ data, projects, onAdd, onEdit, onDelete, 
 // --- Modals ---
 
 export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
-    const [formData, setFormData] = useState(vendor || { code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '' });
+    const [formData, setFormData] = useState(() => {
+        if (vendor) {
+            return {
+                ...vendor,
+                trn: vendor.trn || ''
+            };
+        }
+        return { code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', trn: '' };
+    });
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
@@ -2628,7 +2645,7 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div>
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight">{vendor ? 'Edit Client' : 'Add Client'}</h2>
-                        <p className="text-slate-500 text-sm font-medium mt-1">Enter client details below</p>
+                        <p className="text-slate-500 text-sm font-medium mt-1">Enter client details and VAT registration information</p>
                     </div>
                     <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
                 </div>
@@ -2663,14 +2680,26 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                         />
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Contact Person</label>
-                        <input 
-                            type="text"
-                            value={formData.contactPerson}
-                            onChange={e => setFormData({ ...formData, contactPerson: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                        />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">TRN (VAT Registration Number)</label>
+                            <input 
+                                type="text"
+                                placeholder="e.g. 100xxxxxxxxxxxx"
+                                value={formData.trn || ''}
+                                onChange={e => setFormData({ ...formData, trn: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-mono font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Contact Person</label>
+                            <input 
+                                type="text"
+                                value={formData.contactPerson}
+                                onChange={e => setFormData({ ...formData, contactPerson: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
@@ -2691,6 +2720,16 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             />
                         </div>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Client Address</label>
+                        <input 
+                            type="text"
+                            placeholder="Dubai, UAE"
+                            value={formData.address || ''}
+                            onChange={e => setFormData({ ...formData, address: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        />
                     </div>
                 </div>
 
@@ -2900,6 +2939,17 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
         return (companies || []).find((c: any) => c.id === formData.companyId);
     }, [companies, formData.companyId]);
 
+    const targetEntity = useMemo(() => {
+        if (formData.entityType === 'Project') {
+            return (projects || []).find((p: any) => p.id === formData.entityId);
+        } else if (formData.entityType === 'Supplier') {
+            return (suppliers || []).find((s: any) => s.id === formData.entityId);
+        } else if (formData.entityType === 'Vendor') {
+            return (vendors || []).find((v: any) => v.id === formData.entityId);
+        }
+        return null;
+    }, [formData.entityType, formData.entityId, projects, suppliers, vendors]);
+
     // Update individual items and auto recalculate totals
     const updateItemValue = (id: string, field: string, val: any) => {
         const nextItems = formData.items.map((it: any) => {
@@ -2998,6 +3048,17 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                     ))}
                                 </select>
                                 <p className="text-[10.5px] text-slate-400 font-medium">The selected company's official corporate logo, name, and address details will automatically render on the Zoho Books Tax Invoice layout and printed PDFs.</p>
+                                {selectedCompany?.trn ? (
+                                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-100/60 rounded-xl text-xs font-bold text-emerald-805 font-mono mt-1">
+                                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>Seller TRN registered: <strong>{selectedCompany.trn}</strong></span>
+                                    </div>
+                                ) : formData.companyId ? (
+                                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-100/60 rounded-xl text-xs font-bold text-amber-700 font-mono mt-1">
+                                        <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>Seller company has no TRN registered in settings!</span>
+                                    </div>
+                                ) : null}
                             </div>
 
                             {/* Company wise Logo Live View box */}
@@ -3066,13 +3127,13 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             </select>
                         </div>
                         <div className="space-y-1.5">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 font-mono">
                                 Select {formData.entityType === 'Vendor' ? 'Client' : formData.entityType}
                             </label>
                             <select 
                                 value={formData.entityId}
                                 onChange={e => setFormData({ ...formData, entityId: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
                             >
                                 <option value="">Select contact...</option>
                                 {formData.entityType === 'Project' && projects.map((p: any) => (
@@ -3085,6 +3146,15 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                     <option key={v.id} value={v.id}>{v.name}</option>
                                 ))}
                             </select>
+                            {targetEntity?.trn ? (
+                                <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-50 border border-teal-100/60 rounded-lg text-[10px] font-black text-teal-700 font-mono mt-1">
+                                    <span>Client TRN: <strong>{targetEntity.trn}</strong></span>
+                                </div>
+                            ) : formData.entityId ? (
+                                <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-100/60 rounded-lg text-[10px] font-black text-amber-600 font-mono mt-1">
+                                    <span>No TRN registered for this contact!</span>
+                                </div>
+                            ) : null}
                         </div>
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Receivable State (Status)</label>
@@ -3232,7 +3302,11 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                 alert("Please select a selling corporate identity company first!");
                                 return;
                             }
-                            onSave(formData);
+                            onSave({
+                                ...formData,
+                                companyTrn: selectedCompany?.trn || '',
+                                clientTrn: targetEntity?.trn || ''
+                            });
                         }} 
                         className="flex-1 px-6 py-4 bg-blue-600 text-white rounded-2xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 cursor-pointer"
                     >

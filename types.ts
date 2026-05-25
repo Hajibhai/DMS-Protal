@@ -159,6 +159,7 @@ export interface Company {
     driveFiles?: DriveFile[];
     driveFolderId?: string;
     order?: number;
+    trn?: string;
 }
 
 export interface Supplier {
@@ -175,6 +176,7 @@ export interface Supplier {
     driveFiles?: DriveFile[];
     driveFolderId?: string;
     order?: number;
+    trn?: string;
 }
 
 export interface Project {
@@ -194,6 +196,7 @@ export interface Project {
     driveFiles?: DriveFile[];
     driveFolderId?: string;
     order?: number;
+    trn?: string;
 }
 
 export interface Vendor {
@@ -210,6 +213,7 @@ export interface Vendor {
     driveFiles?: DriveFile[];
     driveFolderId?: string;
     order?: number;
+    trn?: string;
 }
 
 export interface AccountsPayable {
@@ -245,6 +249,8 @@ export interface AccountsReceivable {
     attachment?: string;
     companyId?: string;
     companyName?: string;
+    companyTrn?: string;
+    clientTrn?: string;
     items?: { id: string; name: string; description: string; quantity: number; rate: number; total: number }[];
 }
 

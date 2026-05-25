@@ -1919,7 +1919,8 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
         address: '',
         email: '',
         phone: '',
-        logo: ''
+        logo: '',
+        trn: ''
     });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -1935,7 +1936,7 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
         setError(null);
         try {
             await onAdd(formData);
-            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '' });
+            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '' });
             setIsAdding(false);
         } catch (err) {
             setError("Failed to save company. Please check your permissions.");
@@ -2071,14 +2072,25 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
                                         />
                                     </div>
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Office Address</label>
-                                    <input 
-                                        className="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-900" 
-                                        placeholder="123 Business St, Suite 100" 
-                                        value={formData.address} 
-                                        onChange={e => setFormData(prev => ({ ...prev, address: e.target.value }))} 
-                                    />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Office Address</label>
+                                        <input 
+                                            className="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-900" 
+                                            placeholder="123 Business St, Suite 100" 
+                                            value={formData.address} 
+                                            onChange={e => setFormData(prev => ({ ...prev, address: e.target.value }))} 
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase">TRN (VAT Number)</label>
+                                        <input 
+                                            className="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-900 font-mono" 
+                                            placeholder="e.g. 100xxxxxxxxxxxx" 
+                                            value={formData.trn} 
+                                            onChange={e => setFormData(prev => ({ ...prev, trn: e.target.value }))} 
+                                        />
+                                    </div>
                                 </div>
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
@@ -2177,6 +2189,15 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
                                                 className="w-full p-2 border border-gray-100 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50/30 text-gray-900" 
                                                 value={c.phone || ''} 
                                                 onChange={e => handleUpdate({...c, phone: e.target.value})} 
+                                            />
+                                        </div>
+                                        <div className="space-y-1 col-span-2">
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">TRN (VAT Registration Number)</label>
+                                            <input 
+                                                className="w-full p-2 border border-gray-100 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50/30 text-gray-900 font-mono" 
+                                                value={c.trn || ''} 
+                                                onChange={e => handleUpdate({...c, trn: e.target.value})} 
+                                                placeholder="e.g. 100xxxxxxxxxxxx"
                                             />
                                         </div>
                                     </div>
@@ -6840,7 +6861,7 @@ const CompanyDocumentsModal = ({ company, onClose, onUpdate, openConfirm }: { co
 };
 
 const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { companies: Company[], openConfirm: any, onUpdate: (c: Company) => void, onAdd: (c: any) => Promise<void>, user: SystemUser }) => {
-    const [formData, setFormData] = useState({ code: '', name: '', address: '', email: '', phone: '', logo: '' });
+    const [formData, setFormData] = useState({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '' });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isReordering, setIsReordering] = useState(false);
@@ -6897,7 +6918,7 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { compan
         setError(null);
         try {
             await onAdd(formData);
-            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '' });
+            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '' });
             setIsAdding(false);
         } catch (err: any) {
             setError("Failed to save company. Please check your connection and permissions.");
@@ -7012,7 +7033,7 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { compan
                         </div>
                     )}
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
                         <div className="space-y-2">
                             <label className="text-xs font-black text-slate-400 uppercase tracking-wider">Company Code</label>
                             <input 
@@ -7056,6 +7077,15 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { compan
                                 placeholder="Full Physical Address" 
                                 value={formData.address} 
                                 onChange={e => setFormData(prev => ({ ...prev, address: e.target.value }))} 
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-wider">TRN (VAT Number)</label>
+                            <input 
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold focus:ring-2 focus:ring-brand-500 outline-none transition-all font-mono" 
+                                placeholder="e.g. 100xxxxxxxxxxxx" 
+                                value={formData.trn} 
+                                onChange={e => setFormData(prev => ({ ...prev, trn: e.target.value }))} 
                             />
                         </div>
                     </div>
@@ -7168,6 +7198,12 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { compan
                                         value={company.address || ''}
                                         onChange={e => updateCompany({ ...company, address: e.target.value })}
                                     />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                                        placeholder="TRN (VAT Registration Number)"
+                                        value={company.trn || ''}
+                                        onChange={e => updateCompany({ ...company, trn: e.target.value })}
+                                    />
                                     <div className="flex gap-2 pt-2">
                                         <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">Cancel</button>
                                         <button onClick={() => handleUpdate(company)} className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold shadow-md shadow-brand-600/20">Save</button>
@@ -7184,7 +7220,18 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { compan
                                             </span>
                                         )}
                                     </div>
-                                    <div className="space-y-3 mt-auto">
+                                    <div className="space-y-3 mt-auto border-t border-slate-100 pt-3">
+                                        {company.trn && (
+                                            <div className="flex items-center gap-3 text-slate-500 bg-brand-50/50 p-2 rounded-xl border border-brand-100/40">
+                                                <div className="p-1.5 bg-brand-100 text-brand-700 rounded-lg">
+                                                    <CreditCard className="w-3.5 h-3.5" />
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">TRN Number</span>
+                                                    <span className="text-xs font-black font-mono text-slate-700 leading-tight">{company.trn}</span>
+                                                </div>
+                                            </div>
+                                        )}
                                         <div className="flex items-center gap-3 text-slate-500">
                                             <div className="p-1.5 bg-slate-50 rounded-lg">
                                                 <FileText className="w-3.5 h-3.5" />
