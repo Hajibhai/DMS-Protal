@@ -8832,6 +8832,7 @@ const ReportsView = ({
     suppliers, vendors, user 
 }: any) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [searchQuery, setSearchQuery] = useState('');
     
     const [isReportPrintModalOpen, setIsReportPrintModalOpen] = useState(false);
 
@@ -9013,6 +9014,114 @@ const ReportsView = ({
             totalEveryday, totalProjected
         };
     }, [payrollData, monthlyAP, monthlyAR, monthlyPettyCash, monthlyEveryday, monthlyProjected]);
+
+    const filteredStaff = useMemo(() => {
+        if (!searchQuery) return activeStaff;
+        const q = searchQuery.toLowerCase();
+        return activeStaff.filter((e: any) => 
+            e.code?.toLowerCase().includes(q) ||
+            e.name?.toLowerCase().includes(q) ||
+            e.nationality?.toLowerCase().includes(q) ||
+            e.company?.toLowerCase().includes(q) ||
+            e.department?.toLowerCase().includes(q) ||
+            e.designation?.toLowerCase().includes(q)
+        );
+    }, [activeStaff, searchQuery]);
+
+    const filteredPayrollData = useMemo(() => {
+        if (!searchQuery) return payrollData;
+        const q = searchQuery.toLowerCase();
+        return payrollData.filter((p: any) => 
+            p.employee.code?.toLowerCase().includes(q) ||
+            p.employee.name?.toLowerCase().includes(q)
+        );
+    }, [payrollData, searchQuery]);
+
+    const filteredProjects = useMemo(() => {
+        if (!searchQuery) return projects;
+        const q = searchQuery.toLowerCase();
+        return projects.filter((p: any) => 
+            p.name?.toLowerCase().includes(q) ||
+            p.clientName?.toLowerCase().includes(q)
+        );
+    }, [projects, searchQuery]);
+
+    const financeData = useMemo(() => {
+        const raw = [
+            ...monthlyAP.map(ap => ({ 
+                type: 'Payable', 
+                date: ap.date, 
+                ref: ap.invoiceNumber, 
+                entity: ap.vendorType === 'Supplier' 
+                    ? (suppliers.find((s: any) => s.id === ap.vendorId)?.name || 'Unknown Supplier')
+                    : (vendors.find((v: any) => v.id === ap.vendorId)?.name || 'Unknown Client'), 
+                amount: ap.amount, 
+                status: ap.status, 
+                color: 'rose' 
+            })),
+            ...monthlyAR.map(ar => {
+                const type = ar.entityType || 'Project';
+                const id = ar.entityId || ar.projectId;
+                let entityName = 'Unknown';
+                if (type === 'Project') entityName = projects.find((p: any) => p.id === id)?.clientName || 'Unknown Client';
+                else if (type === 'Supplier') entityName = suppliers.find((s: any) => s.id === id)?.name || 'Unknown Supplier';
+                else if (type === 'Vendor') entityName = vendors.find((v: any) => v.id === id)?.name || 'Unknown Client';
+
+                return { 
+                    type: 'Receivable', 
+                    date: ar.date, 
+                    ref: ar.invoiceNumber, 
+                    entity: entityName, 
+                    amount: ar.amount, 
+                    status: ar.status, 
+                    color: 'emerald' 
+                };
+            }),
+            ...monthlyPettyCash.map(pc => ({ 
+                type: `Petty Cash (${pc.type === 'Income' ? 'In' : 'Out'})`, 
+                date: pc.date, 
+                ref: pc.description, 
+                entity: pc.requestedBy || pc.receivedFrom, 
+                amount: pc.amount, 
+                status: 'Completed', 
+                color: pc.type === 'Income' ? 'brand' : 'orange' 
+            }))
+        ];
+        return raw.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [monthlyAP, monthlyAR, monthlyPettyCash, suppliers, vendors, projects]);
+
+    const filteredFinanceData = useMemo(() => {
+        if (!searchQuery) return financeData;
+        const q = searchQuery.toLowerCase();
+        return financeData.filter((f: any) => 
+            f.type?.toLowerCase().includes(q) ||
+            f.ref?.toLowerCase().includes(q) ||
+            f.entity?.toLowerCase().includes(q) ||
+            f.status?.toLowerCase().includes(q)
+        );
+    }, [financeData, searchQuery]);
+
+    const filteredEveryday = useMemo(() => {
+        if (!searchQuery) return monthlyEveryday;
+        const q = searchQuery.toLowerCase();
+        return monthlyEveryday.filter((ee: any) => 
+            ee.invoiceNo?.toLowerCase().includes(q) ||
+            (ee.shopName || ee.supplierName)?.toLowerCase().includes(q) ||
+            ee.clientName?.toLowerCase().includes(q) ||
+            ee.description?.toLowerCase().includes(q)
+        );
+    }, [monthlyEveryday, searchQuery]);
+
+    const filteredProjected = useMemo(() => {
+        if (!searchQuery) return monthlyProjected;
+        const q = searchQuery.toLowerCase();
+        return monthlyProjected.filter((pe: any) => 
+            pe.invoiceNumber?.toLowerCase().includes(q) ||
+            pe.clientName?.toLowerCase().includes(q) ||
+            pe.siteLocation?.toLowerCase().includes(q) ||
+            pe.workDescription?.toLowerCase().includes(q)
+        );
+    }, [monthlyProjected, searchQuery]);
 
     const handleExport = () => {
         let data: any[] = [];
@@ -9318,6 +9427,17 @@ const ReportsView = ({
                                 {opt.label}
                             </button>
                         ))}
+                    </div>
+
+                    <div className="relative">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input 
+                            type="text" 
+                            placeholder="Search report..." 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-12 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm w-48 focus:w-64"
+                        />
                     </div>
 
                     <div className="relative">
@@ -9653,7 +9773,7 @@ const ReportsView = ({
                                     <td className="px-6 py-4 text-sm font-black">{r.n !== undefined ? `AED ${r.n.toLocaleString()}` : '-'}</td>
                                 </tr>
                             ))}
-                            {reportType === 'staff' && activeStaff.map((e: any) => (
+                            {reportType === 'staff' && filteredStaff.map((e: any) => (
                                 <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-black text-slate-900">{e.code}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-700">{e.name}</td>
@@ -9664,7 +9784,7 @@ const ReportsView = ({
                                     <td className="px-6 py-4 text-sm font-black text-slate-900">AED {(e.salary.basic + e.salary.housing + e.salary.transport + e.salary.other).toLocaleString()}</td>
                                 </tr>
                             ))}
-                            {reportType === 'attendance' && activeStaff.map((e: any) => {
+                            {reportType === 'attendance' && filteredStaff.map((e: any) => {
                                 const empAtt = monthlyAttendance.filter(r => r.employeeId === e.id);
                                 const present = empAtt.filter(r => r.status === AttendanceStatus.PRESENT).length;
                                 const absent = empAtt.filter(r => r.status === AttendanceStatus.ABSENT).length;
@@ -9687,7 +9807,7 @@ const ReportsView = ({
                                     </tr>
                                 );
                             })}
-                            {reportType === 'payroll' && payrollData.map((p: any) => (
+                            {reportType === 'payroll' && filteredPayrollData.map((p: any) => (
                                 <tr key={p.employee.id} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-black text-slate-900">{p.employee.code}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-700">{p.employee.name}</td>
@@ -9700,7 +9820,7 @@ const ReportsView = ({
                                     <td className="px-6 py-4 text-sm font-black text-emerald-600 bg-emerald-50/30">AED {p.payroll.netSalary.toLocaleString()}</td>
                                 </tr>
                             ))}
-                            {reportType === 'projects' && projects.map((p: any) => {
+                            {reportType === 'projects' && filteredProjects.map((p: any) => {
                                 const projectStaff = activeStaff.filter((e: any) => e.team === p.name);
                                 const projectAR = monthlyAR.filter(ar => (ar.entityId || ar.projectId) === p.id && (ar.entityType || 'Project') === 'Project').reduce((acc, ar) => acc + ar.amount, 0);
                                 const projectAP = monthlyAP.filter(ap => ap.projectId === p.id).reduce((acc, ap) => acc + ap.amount, 0);
@@ -9721,46 +9841,7 @@ const ReportsView = ({
                                     </tr>
                                 );
                             })}
-                            {reportType === 'finance' && [
-                                ...monthlyAP.map(ap => ({ 
-                                    type: 'Payable', 
-                                    date: ap.date, 
-                                    ref: ap.invoiceNumber, 
-                                    entity: ap.vendorType === 'Supplier' 
-                                        ? (suppliers.find((s: any) => s.id === ap.vendorId)?.name || 'Unknown Supplier')
-                                        : (vendors.find((v: any) => v.id === ap.vendorId)?.name || 'Unknown Client'), 
-                                    amount: ap.amount, 
-                                    status: ap.status, 
-                                    color: 'rose' 
-                                })),
-                                ...monthlyAR.map(ar => {
-                                    const type = ar.entityType || 'Project';
-                                    const id = ar.entityId || ar.projectId;
-                                    let entityName = 'Unknown';
-                                    if (type === 'Project') entityName = projects.find((p: any) => p.id === id)?.clientName || 'Unknown Client';
-                                    else if (type === 'Supplier') entityName = suppliers.find((s: any) => s.id === id)?.name || 'Unknown Supplier';
-                                    else if (type === 'Vendor') entityName = vendors.find((v: any) => v.id === id)?.name || 'Unknown Client';
-
-                                    return { 
-                                        type: 'Receivable', 
-                                        date: ar.date, 
-                                        ref: ar.invoiceNumber, 
-                                        entity: entityName, 
-                                        amount: ar.amount, 
-                                        status: ar.status, 
-                                        color: 'emerald' 
-                                    };
-                                }),
-                                ...monthlyPettyCash.map(pc => ({ 
-                                    type: `Petty Cash (${pc.type === 'Income' ? 'In' : 'Out'})`, 
-                                    date: pc.date, 
-                                    ref: pc.description, 
-                                    entity: pc.requestedBy || pc.receivedFrom, 
-                                    amount: pc.amount, 
-                                    status: 'Completed', 
-                                    color: pc.type === 'Income' ? 'brand' : 'orange' 
-                                }))
-                            ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((item, idx) => (
+                            {reportType === 'finance' && filteredFinanceData.map((item: any, idx: number) => (
                                 <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4">
                                         <span className={cn(
@@ -9785,7 +9866,7 @@ const ReportsView = ({
                                     <td className="px-6 py-4 text-sm font-bold text-slate-500">{item.status}</td>
                                 </tr>
                             ))}
-                            {reportType === 'everyday' && monthlyEveryday.map((ee: any) => (
+                            {reportType === 'everyday' && filteredEveryday.map((ee: any) => (
                                 <tr key={ee.id} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-medium text-slate-500">{new Date(ee.date).toLocaleDateString('en-GB')}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-700">{ee.invoiceNo}</td>
@@ -9795,7 +9876,7 @@ const ReportsView = ({
                                     <td className="px-6 py-4 text-sm font-bold text-slate-500">AED {ee.vatAmount.toLocaleString()}</td>
                                 </tr>
                             ))}
-                            {reportType === 'projected' && monthlyProjected.map((pe: any) => (
+                            {reportType === 'projected' && filteredProjected.map((pe: any) => (
                                 <tr key={pe.id} className="hover:bg-slate-50/50 transition-colors">
                                     <td className="px-6 py-4 text-sm font-medium text-slate-500">{new Date(pe.date).toLocaleDateString('en-GB')}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-700">{pe.invoiceNumber}</td>
