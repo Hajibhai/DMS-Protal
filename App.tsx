@@ -16,7 +16,7 @@ const DirhamIcon = ({ className }: { className?: string }) => (
 import { 
   Users, Calendar, UserPlus, LogOut, ArrowRight,
   Building2, CheckCircle, XCircle, Trash2, 
-  AlertCircle, Eye, Edit, CheckSquare, 
+  AlertCircle, Eye, EyeOff, Edit, CheckSquare, 
   Copy, FileText, CreditCard,
   BarChart3, UserMinus, Wallet, Plane, X, Save, Plus,
   ChevronLeft, ChevronRight,
@@ -1388,6 +1388,8 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
         currentUser?.email === CREATOR_USER.username;
     const [showAdd, setShowAdd] = useState(false);
     const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
+    const [showNewPassword, setShowNewPassword] = useState(false);
+    const [showEditingPassword, setShowEditingPassword] = useState(false);
     const [newUser, setNewUser] = useState({ 
         username: '', 
         password: '', 
@@ -1623,7 +1625,22 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-indigo-600 uppercase">Password</label>
-                                    <input className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900" type="password" placeholder="Password" value={newUser.password} onChange={e=>setNewUser({...newUser, password: e.target.value})} />
+                                    <div className="relative">
+                                        <input 
+                                            className="w-full p-2 pr-10 border rounded-lg text-sm bg-white text-gray-900" 
+                                            type={showNewPassword ? "text" : "password"} 
+                                            placeholder="Password" 
+                                            value={newUser.password} 
+                                            onChange={e=>setNewUser({...newUser, password: e.target.value})} 
+                                        />
+                                        <button 
+                                            type="button"
+                                            onClick={() => setShowNewPassword(!showNewPassword)}
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-indigo-600 transition-colors"
+                                        >
+                                            {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="space-y-1 col-span-2">
                                     <label className="text-[10px] font-bold text-indigo-600 uppercase">Role (Custom type or select suggestion below)</label>
@@ -1694,7 +1711,22 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                 </div>
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-orange-600 uppercase">Password</label>
-                                    <input className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900" type="password" placeholder="Password" value={editingUser.password || ''} onChange={e=>setEditingUser({...editingUser, password: e.target.value})} />
+                                    <div className="relative">
+                                        <input 
+                                            className="w-full p-2 pr-10 border rounded-lg text-sm bg-white text-gray-900" 
+                                            type={showEditingPassword ? "text" : "password"} 
+                                            placeholder="Password" 
+                                            value={editingUser.password || ''} 
+                                            onChange={e=>setEditingUser({...editingUser, password: e.target.value})} 
+                                        />
+                                        <button 
+                                            type="button"
+                                            onClick={() => setShowEditingPassword(!showEditingPassword)}
+                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-600 transition-colors"
+                                        >
+                                            {showEditingPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="space-y-1 col-span-2">
                                     <label className="text-[10px] font-bold text-orange-600 uppercase">Role (Custom type or select suggestion below)</label>
@@ -1769,7 +1801,19 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                     </div>
                                     <div>
                                         <p className="font-medium text-gray-800 text-sm">{u.name} <span className="text-gray-400 font-normal">({u.email || u.username})</span></p>
-                                        <p className="text-xs text-indigo-600 font-semibold uppercase">{u.role}</p>
+                                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                                            <span className="text-xs text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md uppercase">{u.role}</span>
+                                            {u.password && (
+                                                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                    <span className="text-slate-300">|</span>
+                                                    <span className="font-medium">Password: </span>
+                                                    <span className="font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200/50 px-2 py-0.5 rounded text-[11px] flex items-center gap-1">
+                                                        <Key className="w-3 h-3 text-amber-600" />
+                                                        {u.password}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
