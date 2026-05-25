@@ -9194,6 +9194,40 @@ const ReportsView = ({
                     -webkit-print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
                     print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
                 }
+                /* Exclude non-print components */
+                .no-print, .print\\:hidden {
+                    display: none !important;
+                }
+                /* Force employee details and code to be a straight line and stop wrapping/breaking */
+                table, tr, th, td {
+                    white-space: nowrap !important;
+                    word-break: keep-all !important;
+                    text-overflow: clip !important;
+                }
+                /* Prevent automated browser hyphen splits on printed pages */
+                td, th, span, div {
+                    -webkit-hyphens: none !important;
+                    -ms-hyphens: none !important;
+                    hyphens: none !important;
+                }
+                /* Slightly condense padding and reduce font size slightly under print to fit page horizontally */
+                th {
+                    font-size: 8px !important;
+                    padding: 8px 6px !important;
+                    text-transform: uppercase !important;
+                }
+                td {
+                    font-size: 9px !important;
+                    padding: 8px 6px !important;
+                }
+                /* Remove extra margins and shadow blocks during print for a clean list sheet */
+                .glass-card {
+                    border: none !important;
+                    box-shadow: none !important;
+                    background: transparent !important;
+                    border-radius: 0 !important;
+                    padding: 0 !important;
+                }
                 ${options.highContrast ? `
                     * {
                         color: #000000 !important;
@@ -9201,9 +9235,6 @@ const ReportsView = ({
                         border-color: #000000 !important;
                     }
                 ` : ''}
-                .no-print, .print\\:hidden {
-                    display: none !important;
-                }
             }
         `;
         
@@ -9922,9 +9953,9 @@ const ReportsView = ({
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
-                                {reportType === 'staff' && ['Code', 'Name', 'Nationality', 'Company', 'Department', 'Designation', 'Gross Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
-                                {reportType === 'attendance' && ['Code', 'Name', 'Present', 'Absent', 'OT Hours', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
-                                {reportType === 'payroll' && ['Code', 'Name', 'Present Days', 'Unpaid Days', 'OT Hours', 'Gross', 'OT Amt', 'Deductions', 'Net Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
+                                {reportType === 'staff' && ['Code', 'Name', 'Nationality', 'Company', 'Department', 'Designation', 'Gross Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
+                                {reportType === 'attendance' && ['Code', 'Name', 'Present', 'Absent', 'OT Hours', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
+                                {reportType === 'payroll' && ['Code', 'Name', 'Present Days', 'Unpaid Days', 'OT Hours', 'Gross', 'OT Amt', 'Deductions', 'Net Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
                                 {reportType === 'projects' && ['Project', 'Client', 'Staff', 'Revenue', 'Expense', 'Margin'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'finance' && ['Type', 'Date', 'Reference', 'Entity', 'Amount', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'everyday' && ['Date', 'Invoice', 'Shop/Supplier', 'Client', 'Amount', 'VAT'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
@@ -10109,13 +10140,13 @@ const ReportsView = ({
                             ))}
                             {reportType === 'staff' && filteredStaff.map((e: any) => (
                                 <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4 text-sm font-black text-slate-900">{e.code}</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-slate-700">{e.name}</td>
-                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.nationality || '-'}</td>
-                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.company}</td>
-                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.department}</td>
-                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium">{e.designation}</td>
-                                    <td className="px-6 py-4 text-sm font-black text-slate-900">AED {(e.salary.basic + e.salary.housing + e.salary.transport + e.salary.other).toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-slate-900 whitespace-nowrap">{e.code}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-700 whitespace-nowrap">{e.name}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap">{e.nationality || '-'}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap">{e.company}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap">{e.department}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap">{e.designation}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-slate-900 whitespace-nowrap">AED {(e.salary.basic + e.salary.housing + e.salary.transport + e.salary.other).toLocaleString()}</td>
                                 </tr>
                             ))}
                             {reportType === 'attendance' && filteredStaff.map((e: any) => {
@@ -10125,12 +10156,12 @@ const ReportsView = ({
                                 const otHours = empAtt.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
                                 return (
                                     <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
-                                        <td className="px-6 py-4 text-sm font-black text-slate-900">{e.code}</td>
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">{e.name}</td>
-                                        <td className="px-6 py-4 text-sm font-bold text-emerald-600">{present} Days</td>
-                                        <td className="px-6 py-4 text-sm font-bold text-rose-600">{absent} Days</td>
-                                        <td className="px-6 py-4 text-sm font-bold text-violet-600">{otHours} Hrs</td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 text-sm font-black text-slate-900 whitespace-nowrap">{e.code}</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700 whitespace-nowrap">{e.name}</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-emerald-600 whitespace-nowrap">{present} Days</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-rose-600 whitespace-nowrap">{absent} Days</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-violet-600 whitespace-nowrap">{otHours} Hrs</td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={cn(
                                                 "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
                                                 empAtt.length > 20 ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"
@@ -10143,15 +10174,15 @@ const ReportsView = ({
                             })}
                             {reportType === 'payroll' && filteredPayrollData.map((p: any) => (
                                 <tr key={p.employee.id} className="hover:bg-slate-50/50 transition-colors">
-                                    <td className="px-6 py-4 text-sm font-black text-slate-900">{p.employee.code}</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-slate-700">{p.employee.name}</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-emerald-600">{p.payroll.totalPresentDays} Days</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-rose-600">{p.payroll.totalUnpaidDays} Days</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-violet-600">{p.payroll.totalOtHours} Hrs</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-slate-900">AED {p.payroll.grossSalary.toLocaleString()}</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-violet-600">AED {p.payroll.otAmount.toLocaleString()}</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-rose-600">AED {p.payroll.totalDeductions.toLocaleString()}</td>
-                                    <td className="px-6 py-4 text-sm font-black text-emerald-600 bg-emerald-50/30">AED {p.payroll.netSalary.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-slate-900 whitespace-nowrap">{p.employee.code}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-700 whitespace-nowrap">{p.employee.name}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-emerald-600 whitespace-nowrap">{p.payroll.totalPresentDays} Days</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-rose-600 whitespace-nowrap">{p.payroll.totalUnpaidDays} Days</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-violet-600 whitespace-nowrap">{p.payroll.totalOtHours} Hrs</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-900 whitespace-nowrap">AED {p.payroll.grossSalary.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-violet-600 whitespace-nowrap">AED {p.payroll.otAmount.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-rose-600 whitespace-nowrap">AED {p.payroll.totalDeductions.toLocaleString()}</td>
+                                    <td className="px-6 py-4 text-sm font-black text-emerald-600 bg-emerald-50/30 whitespace-nowrap">AED {p.payroll.netSalary.toLocaleString()}</td>
                                 </tr>
                             ))}
                             {reportType === 'projects' && filteredProjects.map((p: any) => {
