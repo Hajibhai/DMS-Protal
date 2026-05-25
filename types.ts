@@ -144,6 +144,8 @@ export interface DeductionRecord {
     type: 'Salary Advance' | 'Loan Amount' | 'Damage Material/Asset' | 'Fine Amount' | 'Penalty' | 'Other';
     amount: number;
     note?: string;
+    attachment?: string;
+    attachmentName?: string;
 }
 
 export interface Company {
@@ -258,6 +260,9 @@ export interface PettyCash {
     contact?: string; // contact name (customer/vendor/contact)
     uploadedBy?: string;
     updatedBy?: string;
+    employeeId?: string;
+    signedAttachment?: string;
+    signedAttachmentName?: string;
 }
 
 export interface ProjectedExpense {

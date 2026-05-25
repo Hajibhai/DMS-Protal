@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { jsPDF } from 'jspdf';
 
 import { cn } from './utils';
 import { PrintModal, PrintOptions } from './components/PrintModal';
@@ -25,7 +26,8 @@ import {
   MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, GripVertical,
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
-  ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator
+  ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator,
+  Paperclip, Upload, FileDown
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -3761,8 +3763,10 @@ export default function App() {
         <PettyCashView 
           data={pettyCash}
           projects={projects}
+          employees={employees}
           onAdd={() => setShowPettyCashModal(true)}
           onEdit={(pc: PettyCash) => setShowPettyCashModal(pc)}
+          onSave={handleSavePettyCash}
           onDelete={handleDeletePettyCash}
           user={systemUser}
         />
@@ -3965,6 +3969,7 @@ export default function App() {
           <PettyCashModal 
             pettyCash={typeof showPettyCashModal === 'object' ? showPettyCashModal : null}
             projects={projects}
+            employees={employees}
             onSave={handleSavePettyCash}
             onCancel={() => setShowPettyCashModal(false)}
           />
@@ -7994,14 +7999,163 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
 const DeductionsView = ({ employees, deductions, openConfirm, user, companies }: any) => {
     const [newItem, setNewItem] = useState<Partial<DeductionRecord>>({ type: 'Salary Advance', date: new Date().toISOString().split('T')[0] });
     const [searchTerm, setSearchTerm] = useState('');
+    const [previewAttachment, setPreviewAttachment] = useState<{ data: string; name: string } | null>(null);
     const canManagePayroll = user?.permissions?.canManagePayroll;
 
     const handleAdd = async () => {
         if(newItem.employeeId && newItem.amount && newItem.date) {
             await saveDeduction(newItem as any);
-            setNewItem({ type: 'Salary Advance', date: new Date().toISOString().split('T')[0] });
+            setNewItem({ type: 'Salary Advance', date: new Date().toISOString().split('T')[0], attachment: undefined, attachmentName: undefined });
         }
     }
+
+    const downloadDeductionPDF = (d: DeductionRecord, emp?: any) => {
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        // Color Palette
+        const primaryColor = [15, 23, 42]; // Slate-900
+        const secondaryColor = [71, 85, 105]; // Slate-600
+        const accentColor = [220, 38, 38]; // Red-600
+        const lightBg = [248, 250, 252]; // Slate-50
+
+        // Header Accent Stripe
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.rect(0, 0, 210, 8, 'F');
+
+        // Brand Info
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(18);
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text("PIONEER DMS PORTAL", 15, 25);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+        doc.text("Confidential Employee Deduction & Penalty Voucher", 15, 31);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 15, 35);
+
+        // Document Title
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.text("DEDUCTION & PENALTY VOUCHER", 125, 25);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+        doc.text(`Voucher ID: #DED-${d.id.substring(0, 8).toUpperCase()}`, 125, 31);
+        doc.text(`Status: Logged and Processed`, 125, 35);
+
+        // Divider
+        doc.setDrawColor(226, 232, 240); // Slate-200
+        doc.setLineWidth(0.5);
+        doc.line(15, 42, 195, 42);
+
+        // Section 1: Employee Information
+        doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
+        doc.rect(15, 48, 180, 48, 'F');
+        doc.rect(15, 48, 180, 48, 'D');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text("EMPLOYEE INFORMATION", 20, 55);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(9.5);
+        doc.text(`Name:`, 20, 63);
+        doc.setFont("Helvetica", "bold");
+        doc.text(`${emp?.name || 'Unknown'}`, 55, 63);
+
+        doc.setFont("Helvetica", "normal");
+        doc.text(`Employee Code:`, 20, 70);
+        doc.setFont("Helvetica", "bold");
+        doc.text(`${emp?.code || 'N/A'}`, 55, 70);
+
+        doc.setFont("Helvetica", "normal");
+        doc.text(`Designation:`, 20, 77);
+        doc.text(`${emp?.designation || 'N/A'}`, 55, 77);
+
+        doc.setFont("Helvetica", "normal");
+        doc.text(`Department:`, 20, 84);
+        doc.text(`${emp?.department || 'N/A'}`, 55, 84);
+
+        // Section 2: Transaction Details
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text("TRANSACTION DETAILS", 15, 110);
+
+        // Table Header
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.rect(15, 115, 180, 10, 'F');
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text("Description / Note", 20, 121);
+        doc.text("Category / Type", 75, 121);
+        doc.text("Transaction Date", 125, 121);
+        doc.text("Amount (AED)", 165, 121);
+
+        // Table Row values
+        doc.setFont("Helvetica", "normal");
+        doc.setTextColor(51, 65, 85);
+        doc.text(d.note || "No notes / reasons specified", 20, 132);
+        doc.text(d.type, 75, 132);
+        doc.text(new Date(d.date).toLocaleDateString(), 125, 132);
+
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.text(`AED ${Number(d.amount).toFixed(2)}`, 165, 132);
+
+        // Table Outlines
+        doc.setDrawColor(203, 213, 225); // Slate-300
+        doc.line(15, 125, 15, 137);
+        doc.line(195, 125, 195, 137);
+        doc.line(15, 137, 195, 137);
+
+        // Total sum block
+        doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
+        doc.rect(125, 143, 70, 14, 'F');
+        doc.rect(125, 143, 70, 14, 'D');
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9.5);
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text("Total Deduction:", 129, 152);
+        doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.text(`AED ${Number(d.amount).toFixed(2)}`, 160, 152);
+
+        // Authorizations & Signatures
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9.5);
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text("AUTHORIZED SIGNATURE", 15, 195);
+        doc.line(15, 190, 75, 190);
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(8);
+        doc.text("HR & Operations Dept / Admin", 15, 199);
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9.5);
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text("EMPLOYEE ACKNOWLEDGEMENT", 120, 195);
+        doc.line(120, 190, 195, 190);
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(8);
+        doc.text("Acknowledged receipt & agreement of this record.", 120, 199);
+
+        // Footer disclaimer
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+        doc.text("Confidential statement. Printed directly from Pioneer DMS Portal system.", 105, 280, { align: "center" });
+
+        doc.save(`Deduction_Record_${emp?.name ? emp.name.replace(/\s+/g, '_') : 'Employee'}_${d.date}.pdf`);
+    };
 
     const filteredDeductions = useMemo(() => {
         return deductions.filter((d: DeductionRecord) => {
@@ -8051,70 +8205,121 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                     <h3 className="text-lg font-bold text-slate-800">Record New Transaction</h3>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 items-end">
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Staff Member</label>
-                        <select 
-                            className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
-                            value={newItem.employeeId || ''} 
-                            onChange={e => setNewItem({...newItem, employeeId: e.target.value})}
-                        >
-                            <option value="">Select Employee</option>
-                            {employees.map((e:any)=><option key={e.id} value={e.id}>{e.name}</option>)}
-                        </select>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Date</label>
-                        <input 
-                            type="date" 
-                            className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
-                            value={newItem.date || ''} 
-                            onChange={e => setNewItem({...newItem, date: e.target.value})} 
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Category</label>
-                        <select 
-                            className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
-                            value={newItem.type} 
-                            onChange={e => setNewItem({...newItem, type: e.target.value as any})}
-                        >
-                            <option>Salary Advance</option>
-                            <option>Fine Amount</option>
-                            <option>Damage Material/Asset</option>
-                            <option>Loan Amount</option>
-                            <option>Other</option>
-                        </select>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Amount (AED)</label>
-                        <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">AED</span>
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 items-end">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Staff Member</label>
+                            <select 
+                                className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
+                                value={newItem.employeeId || ''} 
+                                onChange={e => setNewItem({...newItem, employeeId: e.target.value})}
+                            >
+                                <option value="">Select Employee</option>
+                                {employees.map((e:any)=><option key={e.id} value={e.id}>{e.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Date</label>
                             <input 
-                                type="number" 
-                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all font-bold text-slate-900" 
-                                placeholder="0.00" 
-                                value={newItem.amount || ''} 
-                                onChange={e => setNewItem({...newItem, amount: Number(e.target.value)})} 
+                                type="date" 
+                                className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
+                                value={newItem.date || ''} 
+                                onChange={e => setNewItem({...newItem, date: e.target.value})} 
                             />
                         </div>
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Notes</label>
-                        <div className="flex gap-2">
-                            <input 
-                                className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all placeholder:text-slate-400" 
-                                placeholder="Reason..." 
-                                value={newItem.note || ''} 
-                                onChange={e => setNewItem({...newItem, note: e.target.value})} 
-                            />
-                            <button 
-                                onClick={handleAdd}
-                                disabled={!newItem.employeeId || !newItem.amount}
-                                className="p-3 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-all active:scale-95 shadow-lg shadow-brand-200 disabled:opacity-50 disabled:scale-100"
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Category</label>
+                            <select 
+                                className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
+                                value={newItem.type} 
+                                onChange={e => setNewItem({...newItem, type: e.target.value as any})}
                             >
-                                <Check className="w-5 h-5" />
-                            </button>
+                                <option>Salary Advance</option>
+                                <option>Fine Amount</option>
+                                <option>Damage Material/Asset</option>
+                                <option>Loan Amount</option>
+                                <option>Other</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Amount (AED)</label>
+                            <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">AED</span>
+                                <input 
+                                    type="number" 
+                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all font-bold text-slate-900" 
+                                    placeholder="0.00" 
+                                    value={newItem.amount || ''} 
+                                    onChange={e => setNewItem({...newItem, amount: Number(e.target.value)})} 
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Notes</label>
+                            <div className="flex gap-2">
+                                <input 
+                                    className="flex-1 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all placeholder:text-slate-400" 
+                                    placeholder="Reason..." 
+                                    value={newItem.note || ''} 
+                                    onChange={e => setNewItem({...newItem, note: e.target.value})} 
+                                />
+                                <button 
+                                    onClick={handleAdd}
+                                    disabled={!newItem.employeeId || !newItem.amount}
+                                    className="p-3 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-all active:scale-95 shadow-lg shadow-brand-200 disabled:opacity-50 disabled:scale-100"
+                                >
+                                    <Check className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Receipt / Bill Upload Option */}
+                    <div className="pt-4 border-t border-slate-100/80">
+                        <div className="max-w-md space-y-2">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5Packed font-semibold">
+                                <Paperclip className="w-3.5 h-3.5 text-slate-400" />
+                                Bill / Receipt Attachment (Optional)
+                            </label>
+                            <div className="flex items-center gap-3">
+                                <div className="relative flex-1">
+                                    <input 
+                                        type="file" 
+                                        id="deduction-receipt-upload"
+                                        accept="image/*,application/pdf"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => {
+                                                    setNewItem({
+                                                        ...newItem,
+                                                        attachment: reader.result as string,
+                                                        attachmentName: file.name
+                                                    });
+                                                };
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }}
+                                    />
+                                    <label 
+                                        htmlFor="deduction-receipt-upload"
+                                        className="flex items-center gap-3 w-full p-3 bg-slate-55 border border-slate-200 border-dashed rounded-2xl text-xs font-bold text-slate-500 hover:bg-slate-100/50 hover:border-slate-350 cursor-pointer transition-all"
+                                    >
+                                        <Upload className="w-4 h-4 text-slate-400" />
+                                        <span className="truncate">{newItem.attachmentName ? newItem.attachmentName : "Upload Receipt/Bill Image or PDF"}</span>
+                                    </label>
+                                </div>
+                                {newItem.attachment && (
+                                    <button 
+                                        onClick={() => setNewItem({...newItem, attachment: undefined, attachmentName: undefined})}
+                                        className="px-4 py-3 text-xs bg-red-50 text-red-650 hover:bg-red-100/80 border border-red-100 rounded-2xl font-bold transition-all"
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -8151,13 +8356,13 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                             </td>
                                             <td className="p-5">
                                                 <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center text-[10px] font-bold text-brand-600 border border-brand-100 overflow-hidden">
-                                                {emp?.profileImage ? (
-                                                    <img src={emp.profileImage} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                                ) : (
-                                                    emp?.name?.charAt(0) || '?'
-                                                )}
-                                            </div>
+                                                    <div className="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center text-[10px] font-bold text-brand-600 border border-brand-100 overflow-hidden">
+                                                        {emp?.profileImage ? (
+                                                            <img src={emp.profileImage} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                        ) : (
+                                                            emp?.name?.charAt(0) || '?'
+                                                        )}
+                                                    </div>
                                                     <div className="text-sm font-bold text-slate-700">{emp?.name || 'Unknown'}</div>
                                                 </div>
                                             </td>
@@ -8179,12 +8384,29 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                                 <div className="text-sm text-slate-500 italic max-w-xs truncate">{d.note || '-'}</div>
                                             </td>
                                             <td className="p-5">
-                                                <div className="flex justify-end">
+                                                <div className="flex justify-end items-center gap-3">
+                                                    {d.attachment && (
+                                                        <button 
+                                                            onClick={() => setPreviewAttachment({ data: d.attachment!, name: d.attachmentName || 'Attachment' })}
+                                                            className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all"
+                                                            title="View Receipt / Bill"
+                                                        >
+                                                            <Paperclip className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    <button 
+                                                        onClick={() => downloadDeductionPDF(d, emp)}
+                                                        className="p-2 text-slate-400 hover:text-brand-600 hover:bg-slate-50 rounded-xl transition-all"
+                                                        title="Download Record PDF"
+                                                    >
+                                                        <FileDown className="w-4 h-4" />
+                                                    </button>
                                                     <button 
                                                         onClick={() => openConfirm("Delete Deduction", "Are you sure you want to remove this record?", async () => {
                                                             await deleteDeduction(d.id!);
                                                         })}
                                                         className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                        title="Delete Record"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
@@ -8207,6 +8429,61 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                     </div>
                 )}
             </div>
+
+            {/* Document Preview Lightbox / Overlay */}
+            {previewAttachment && (
+                <div 
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={() => setPreviewAttachment(null)}
+                >
+                    <div 
+                        className="bg-white w-full max-w-4xl h-[85vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in scale-in duration-300"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-base">Receipt / Bill Attachment Preview</h3>
+                                <p className="text-xs text-slate-400 font-medium truncate max-w-md">{previewAttachment.name}</p>
+                            </div>
+                            <button 
+                                onClick={() => setPreviewAttachment(null)}
+                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-all"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="flex-1 bg-slate-100 flex items-center justify-center overflow-auto p-6">
+                            {previewAttachment.data.startsWith('data:image') ? (
+                                <img 
+                                    src={previewAttachment.data} 
+                                    alt="Preview" 
+                                    className="max-w-full max-h-full object-contain rounded-2xl shadow-lg border border-slate-200/50" 
+                                    referrerPolicy="no-referrer"
+                                />
+                            ) : previewAttachment.data.startsWith('data:application/pdf') ? (
+                                <iframe 
+                                    src={previewAttachment.data} 
+                                    className="w-full h-full bg-white rounded-2xl shadow-lg border border-slate-200/50" 
+                                    title="Attachment Preview"
+                                />
+                            ) : (
+                                <div className="text-center bg-white p-8 rounded-3xl shadow-lg border border-slate-200/50 max-w-sm">
+                                    <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                                    <p className="font-bold text-slate-800 mb-2">Detailed Preview Unsupported</p>
+                                    <p className="text-slate-500 text-xs mb-5">This file type cannot be rendered directly in the preview, but you can download it to view it locally.</p>
+                                    <a 
+                                        href={previewAttachment.data} 
+                                        download={previewAttachment.name} 
+                                        className="inline-flex items-center gap-2 bg-brand-600 text-white text-xs font-bold px-5 py-3 rounded-2xl hover:bg-brand-700 transition"
+                                    >
+                                        <Download className="w-4 h-4" /> Download File
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

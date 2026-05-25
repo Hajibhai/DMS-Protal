@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
 import { cn } from '../utils';
 import { Vendor, AccountsPayable, AccountsReceivable, PettyCash, 
   Supplier, Project, SystemUser, UserRole, ProjectedExpense, EverydayExpense 
@@ -659,7 +660,155 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     );
 };
 
-export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }: any) => {
+export const downloadPettyCashPDF = (item: any, emp?: any) => {
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    // Color Palette
+    const primaryColor = [15, 23, 42]; // Slate-900
+    const secondaryColor = [71, 85, 105]; // Slate-600
+    const themeColor = [37, 99, 235]; // Blue-600
+    const lightBg = [248, 250, 252]; // Slate-50
+
+    // Header Accent Stripe
+    doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.rect(0, 0, 210, 8, 'F');
+
+    // Brand Info
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("PIONEER DMS PORTAL", 15, 25);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.text("Official Employee Petty Cash Disbursement Voucher", 15, 31);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 15, 35);
+
+    // Document Title
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.text("PETTY CASH VOUCHER", 125, 25);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.text(`Voucher Ref: #PCV-${item.id.substring(0, 8).toUpperCase()}`, 125, 31);
+    doc.text(`Status: Paid & Handed Over`, 125, 35);
+
+    // Divider
+    doc.setDrawColor(226, 232, 240); // Slate-200
+    doc.setLineWidth(0.5);
+    doc.line(15, 42, 195, 42);
+
+    // Section 1: Employee Information
+    doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
+    doc.rect(15, 48, 180, 48, 'F');
+    doc.rect(15, 48, 180, 48, 'D');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("EMPLOYEE / RECIPIENT INFORMATION", 20, 55);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.text(`Name:`, 20, 63);
+    doc.setFont("Helvetica", "bold");
+    doc.text(`${emp?.name || item.contact || item.requestedBy || 'Unknown Employee'}`, 55, 63);
+
+    doc.setFont("Helvetica", "normal");
+    doc.text(`Employee Code:`, 20, 70);
+    doc.setFont("Helvetica", "bold");
+    doc.text(`${emp?.code || 'N/A'}`, 55, 70);
+
+    doc.setFont("Helvetica", "normal");
+    doc.text(`Designation:`, 20, 77);
+    doc.text(`${emp?.designation || 'N/A'}`, 55, 77);
+
+    doc.setFont("Helvetica", "normal");
+    doc.text(`Department:`, 20, 84);
+    doc.text(`${emp?.department || 'N/A'}`, 55, 84);
+
+    // Section 2: Transaction Details
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("DISBURSEMENT DETAILS", 15, 110);
+
+    // Table Header
+    doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.rect(15, 115, 180, 10, 'F');
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Disbursement Purpose / Note", 20, 121);
+    doc.text("Book / Category", 80, 121);
+    doc.text("Payment Mode", 125, 121);
+    doc.text("Amount Paid", 165, 121);
+
+    // Table Row values
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(51, 65, 85);
+    doc.text(item.description || "Petty cash distribution / advance", 20, 132);
+    doc.text(item.category || "General", 80, 132);
+    doc.text(item.mode || "Cash", 125, 132);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.text(`AED ${Number(item.amount).toFixed(2)}`, 165, 132);
+
+    // Table Outlines
+    doc.setDrawColor(203, 213, 225); // Slate-300
+    doc.line(15, 125, 15, 137);
+    doc.line(195, 125, 195, 137);
+    doc.line(15, 137, 195, 137);
+
+    // Total sum block
+    doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
+    doc.rect(125, 143, 70, 14, 'F');
+    doc.rect(125, 143, 70, 14, 'D');
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("Total Handed:", 129, 152);
+    doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.text(`AED ${Number(item.amount).toFixed(2)}`, 160, 152);
+
+    // Authorizations & Signatures
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("DISBURSED BY (HR / ADMIN)", 15, 195);
+    doc.line(15, 190, 75, 190);
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text("Pioneer Operations Dept / Cashier", 15, 199);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("EMPLOYEE SIGNATURE & RECEIPT", 120, 195);
+    doc.line(120, 190, 195, 190);
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text("Received the above sum in complete full.", 120, 199);
+
+    // Footer disclaimer
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.text("This petty cash disbursement voucher represents immediate cashier payment. Scan & re-upload signed copy.", 105, 280, { align: "center" });
+
+    doc.save(`PettyCash_Disbursement_${emp?.name ? emp.name.replace(/\s+/g, '_') : 'Employee'}_${item.date}.pdf`);
+};
+
+export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete, user, employees }: any) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedBook, setSelectedBook] = useState('All Books');
     const [selectedMode, setSelectedMode] = useState('All');
@@ -669,6 +818,34 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     
+    // Row level direct signed voucher upload and lightbox preview properties
+    const [previewSignedAttachment, setPreviewSignedAttachment] = useState<{ data: string; name: string } | null>(null);
+    const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
+    const rowFileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleRowFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !uploadingItemId) return;
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const item = data.find((x: any) => x.id === uploadingItemId);
+            if (item) {
+                const updatedItem = {
+                    ...item,
+                    signedAttachment: reader.result as string,
+                    signedAttachmentName: file.name
+                };
+                if (onSave) {
+                    onSave(updatedItem);
+                }
+            }
+            setUploadingItemId(null);
+            if (rowFileInputRef.current) rowFileInputRef.current.value = '';
+        };
+        reader.readAsDataURL(file);
+    };
+
     // Export Report Modal states
     const [showExportModal, setShowExportModal] = useState(false);
     const [exportTab, setExportTab] = useState<'all' | 'day' | 'contact' | 'category' | 'mode'>('all');
@@ -1278,6 +1455,11 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                                     <span className="text-[9px] text-slate-400 uppercase tracking-widest">
                                                         {item.type === 'Income' ? 'Donor / Source' : 'Recipient'}
                                                     </span>
+                                                    {item.employeeId && (
+                                                        <span className="text-[8px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded mt-1 w-max uppercase tracking-wider">
+                                                            👥 Employee Voucher
+                                                        </span>
+                                                    )}
                                                     {item.uploadedBy && (
                                                         <span className="text-[8px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-1 w-max uppercase tracking-wider">
                                                             📸 {item.uploadedBy}
@@ -1312,12 +1494,50 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                                 <span className={cn(
                                                     "text-sm font-black text-slate-800",
                                                     item.runningBalance < 0 && "text-red-600"
-                                                )}>
-                                                    AED {item.runningBalance.toLocaleString()}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
+                                                 )}>
+                                                     AED {item.runningBalance.toLocaleString()}
+                                                 </span>
+                                             </td>
+                                             <td className="px-6 py-4">
                                                 <div className="flex items-center justify-center gap-1.5">
+                                                    {item.employeeId && (
+                                                        <>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const emp = (employees || []).find((x: any) => x.id === item.employeeId);
+                                                                    downloadPettyCashPDF(item, emp);
+                                                                }}
+                                                                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-450 hover:text-blue-600 transition-colors"
+                                                                title="Download Voucher PDF"
+                                                            >
+                                                                <Download className="w-4 h-4 text-blue-600" />
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setUploadingItemId(item.id);
+                                                                    setTimeout(() => {
+                                                                        rowFileInputRef.current?.click();
+                                                                    }, 100);
+                                                                }}
+                                                                className={cn(
+                                                                    "p-1.5 hover:bg-slate-100 rounded-lg transition-colors",
+                                                                    item.signedAttachment ? "text-emerald-600 hover:text-emerald-700" : "text-slate-400 hover:text-emerald-650"
+                                                                )}
+                                                                title={item.signedAttachment ? "Change Signed Voucher" : "Upload Signed Voucher"}
+                                                            >
+                                                                <Upload className="w-4 h-4" />
+                                                            </button>
+                                                            {item.signedAttachment && (
+                                                                <button
+                                                                    onClick={() => setPreviewSignedAttachment({ data: item.signedAttachment, name: item.signedAttachmentName || 'Signed Voucher.pdf' })}
+                                                                    className="p-1.5 hover:bg-slate-100 rounded-lg text-emerald-500 hover:text-emerald-600 transition-colors"
+                                                                    title="View Signed Voucher"
+                                                                >
+                                                                    <Eye className="w-4 h-4" />
+                                                                </button>
+                                                            )}
+                                                        </>
+                                                    )}
                                                     <button 
                                                         onClick={() => onEdit(item)} 
                                                         className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-brand-600 transition-colors"
@@ -1335,11 +1555,75 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onDelete, user }:
                                         </tr>
                                     );
                                 })
-                            )}
+                             )}
                         </tbody>
                     </table>
                 </div>
             </div>
+
+            {/* Hidden File Input for Row-level Direct Signed Voucher Upload */}
+            <input 
+                type="file"
+                ref={rowFileInputRef}
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={handleRowFileChange}
+            />
+
+            {/* Document Preview Lightbox / Overlay */}
+            {previewSignedAttachment && (
+                <div 
+                    className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                    onClick={() => setPreviewSignedAttachment(null)}
+                >
+                    <div 
+                        className="bg-white w-full max-w-4xl h-[85vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in scale-in duration-300"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100">
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-base">Signed Voucher Attachment Preview</h3>
+                                <p className="text-xs text-slate-400 font-medium truncate max-w-md">{previewSignedAttachment.name}</p>
+                            </div>
+                            <button 
+                                onClick={() => setPreviewSignedAttachment(null)}
+                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-all"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="flex-1 bg-slate-100 flex items-center justify-center overflow-auto p-6">
+                            {previewSignedAttachment.data.startsWith('data:image') ? (
+                                <img 
+                                    src={previewSignedAttachment.data} 
+                                    alt="Preview" 
+                                    className="max-w-full max-h-full object-contain rounded-2xl shadow-lg border border-slate-200/50" 
+                                    referrerPolicy="no-referrer"
+                                />
+                            ) : previewSignedAttachment.data.startsWith('data:application/pdf') ? (
+                                <iframe 
+                                    src={previewSignedAttachment.data} 
+                                    className="w-full h-full bg-white rounded-2xl shadow-lg border border-slate-200/50" 
+                                    title="Signed Voucher Preview"
+                                />
+                            ) : (
+                                <div className="text-center bg-white p-8 rounded-3xl shadow-lg border border-slate-200/50 max-w-sm">
+                                    <AlertTriangle className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                                    <p className="font-bold text-slate-800 mb-2">Detailed Preview Unsupported</p>
+                                    <p className="text-slate-500 text-xs mb-5">This file type cannot be rendered directly in the preview, but you can download it to view it locally.</p>
+                                    <a 
+                                        href={previewSignedAttachment.data} 
+                                        download={previewSignedAttachment.name} 
+                                        className="inline-flex items-center gap-2 bg-brand-600 text-white text-xs font-bold px-5 py-3 rounded-2xl hover:bg-brand-700 transition"
+                                    >
+                                        <Download className="w-4 h-4" /> Download File
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ========================================================= */}
             {/* EXPORT TRANSACTIONS PRINT MODAL (Image 1 Replica) */}
@@ -2425,18 +2709,31 @@ const LiveCameraCapture = ({
     );
 };
 
-export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) => {
-    const [formData, setFormData] = useState(pettyCash || { 
-        id: Math.random().toString(36).substr(2, 9),
-        date: new Date().toISOString().split('T')[0],
-        category: '',
-        description: '',
-        amount: 0,
-        type: 'Expense',
-        requestedBy: '',
-        projectId: '',
-        mode: 'Cash',
-        contact: ''
+export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employees }: any) => {
+    const [formData, setFormData] = useState(() => {
+        if (pettyCash) {
+            return {
+                employeeId: '',
+                signedAttachment: '',
+                signedAttachmentName: '',
+                ...pettyCash
+            };
+        }
+        return {
+            id: Math.random().toString(36).substr(2, 9),
+            date: new Date().toISOString().split('T')[0],
+            category: '',
+            description: '',
+            amount: 0,
+            type: 'Expense',
+            requestedBy: '',
+            projectId: '',
+            mode: 'Cash',
+            contact: '',
+            employeeId: '',
+            signedAttachment: '',
+            signedAttachmentName: ''
+        };
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -2843,6 +3140,132 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
                             </select>
                         </div>
                     </div>
+
+                    {/* Disbursed to Employee (For Voucher & Sign flow) */}
+                    {formData.type === 'Expense' && (
+                        <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200/50">
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input 
+                                    type="checkbox" 
+                                    checked={!!formData.employeeId}
+                                    onChange={e => {
+                                        if (!e.target.checked) {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                employeeId: '',
+                                                contact: '',
+                                                requestedBy: ''
+                                            }));
+                                        } else {
+                                            const firstEmp = (employees && employees[0]) ? employees[0] : null;
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                employeeId: firstEmp ? firstEmp.id : 'select_placeholder',
+                                                contact: firstEmp ? firstEmp.name : '',
+                                                requestedBy: firstEmp ? firstEmp.name : ''
+                                            }));
+                                        }
+                                    }}
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 w-4 h-4"
+                                />
+                                <span className="text-xs font-bold text-slate-705">Given to Staff / Employee (Voucher & Signature Required)</span>
+                            </label>
+
+                            {formData.employeeId ? (
+                                <div className="space-y-3 pt-1 animate-fadeIn">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Select Staff Member</label>
+                                        <select
+                                            value={formData.employeeId === 'select_placeholder' ? '' : formData.employeeId}
+                                            onChange={e => {
+                                                const selectedId = e.target.value;
+                                                const emp = (employees || []).find((x: any) => x.id === selectedId);
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    employeeId: selectedId,
+                                                    contact: emp ? emp.name : '',
+                                                    requestedBy: emp ? emp.name : ''
+                                                }));
+                                                if (errors.contact) {
+                                                    setErrors(prev => ({ ...prev, contact: '' }));
+                                                }
+                                            }}
+                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all cursor-pointer shadow-sm"
+                                        >
+                                            <option value="">-- Choose Employee --</option>
+                                            {(employees || []).map((e: any) => (
+                                                <option key={e.id} value={e.id}>{e.name} ({e.code || 'No Code'})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {formData.employeeId && formData.employeeId !== 'select_placeholder' && (
+                                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                                            {/* Download Voucher Button */}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const emp = (employees || []).find((x: any) => x.id === formData.employeeId);
+                                                    downloadPettyCashPDF(formData, emp);
+                                                }}
+                                                className="flex-1 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200/50 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                                            >
+                                                <Download className="w-4 h-4" />
+                                                Download Voucher PDF
+                                            </button>
+
+                                            {/* Upload signed copy input */}
+                                            <div className="flex-1 relative">
+                                                <input 
+                                                    type="file" 
+                                                    id="signed-voucher-upload"
+                                                    accept="image/*,application/pdf"
+                                                    className="hidden"
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) {
+                                                            const reader = new FileReader();
+                                                            reader.onloadend = () => {
+                                                                setFormData(prev => ({
+                                                                    ...prev,
+                                                                    signedAttachment: reader.result as string,
+                                                                    signedAttachmentName: file.name
+                                                                }));
+                                                            };
+                                                            reader.readAsDataURL(file);
+                                                        }
+                                                    }}
+                                                />
+                                                <label
+                                                    htmlFor="signed-voucher-upload"
+                                                    className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold cursor-pointer transition-all w-full text-center"
+                                                >
+                                                    <Upload className="w-4 h-4" />
+                                                    {formData.signedAttachmentName ? "Change Signed Voucher" : "Upload Signed Voucher"}
+                                                </label>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {formData.signedAttachment && (
+                                        <div className="flex items-center justify-between p-2.5 bg-emerald-50/50 border border-emerald-100 rounded-lg text-xs font-bold text-slate-700 animate-fadeIn">
+                                            <div className="flex items-center gap-2 truncate">
+                                                <Paperclip className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                <span className="truncate text-[11px] text-emerald-800 font-extrabold">{formData.signedAttachmentName || "Signed_Voucher.pdf"}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData(prev => ({ ...prev, signedAttachment: '', signedAttachmentName: '' }))}
+                                                className="text-[10px] text-rose-600 hover:text-rose-805 bg-white hover:bg-rose-50 px-2 py-1 rounded border border-rose-150 transition-all font-black shrink-0"
+                                            >
+                                                Remove File
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : null}
+                        </div>
+                    )}
 
                     {/* Received From / Requested By (Contact) */}
                     <div className="space-y-1.5">
