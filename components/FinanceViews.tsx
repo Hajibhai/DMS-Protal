@@ -3211,6 +3211,11 @@ export const EverydayExpenseView: React.FC<{
             key: 'supplierName',
             label: 'Supplier',
             options: Array.from(new Set(data.map(d => d.supplierName))).filter(Boolean).map(s => ({ label: s, value: s }))
+        },
+        {
+            key: 'uploadedBy',
+            label: 'Uploaded By',
+            options: Array.from(new Set(data.map(d => d.uploadedBy))).filter(Boolean).sort().map(u => ({ label: u, value: u }))
         }
     ];
 
