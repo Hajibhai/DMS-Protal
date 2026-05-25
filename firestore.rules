@@ -57,7 +57,13 @@ service cloud.firestore {
 
     match /everyday_expenses/{eeId} {
       allow read: if isAuthenticated();
-      allow write: if hasPermission('canManagePayroll');
+      allow create: if isAuthenticated();
+      allow update, delete: if hasPermission('canManagePayroll') || 
+                            (isAuthenticated() && (
+                              resource.data.uploadedByUid == request.auth.uid || 
+                              resource.data.uploadedByUid == null || 
+                              resource.data.uploadedByUid == ""
+                            ));
     }
 
     match /audit_logs/{logId} {
