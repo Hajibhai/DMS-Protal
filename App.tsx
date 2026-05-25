@@ -4776,6 +4776,8 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
     const [searchTerm, setSearchTerm] = useState('');
     const [companyFilter, setCompanyFilter] = useState('All');
     const [deptFilter, setDeptFilter] = useState('All');
+    const [sortBy, setSortBy] = useState<'code-asc' | 'code-desc' | 'name' | 'joining-new' | 'joining-old'>('code-asc');
+    const [showGapAnalyzer, setShowGapAnalyzer] = useState(false);
     const [viewRejoinReason, setViewRejoinReason] = useState<Employee | null>(null);
     const canManageEmployees = user?.permissions?.canManageEmployees || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
@@ -4802,8 +4804,122 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
     const companies = useMemo<string[]>(() => ['All', ...Array.from(new Set(employees.map(e => e.company).filter(c => c && c !== 'All')))], [employees]);
     const departments = useMemo<string[]>(() => ['All', ...Array.from(new Set(employees.map(e => e.department).filter(d => d && d !== 'All')))], [employees]);
 
+    // Alphanumeric sequence gap checker
+    const gapAnalysis = useMemo(() => {
+        const groups: { [prefix: string]: { num: number; original: string; employee: Employee }[] } = {};
+        
+        employees.forEach(emp => {
+            if (!emp.code) return;
+            const codeStr = emp.code.trim();
+            // Match letters, spacing, dashes, then numbers at the end
+            const match = codeStr.match(/^([A-Za-z- ]+?)(\d+)$/);
+            
+            let prefix = '';
+            let numVal = 0;
+            
+            if (match) {
+                prefix = match[1];
+                numVal = parseInt(match[2], 10);
+            } else {
+                if (/^\d+$/.test(codeStr)) {
+                    prefix = 'Numeric ID';
+                    numVal = parseInt(codeStr, 10);
+                } else {
+                    prefix = 'Others';
+                    numVal = 0;
+                }
+            }
+            
+            if (!groups[prefix]) {
+                groups[prefix] = [];
+            }
+            groups[prefix].push({ num: numVal, original: codeStr, employee: emp });
+        });
+        
+        const results: {
+            prefix: string;
+            allNumbers: number[];
+            existingCodes: string[];
+            min: number;
+            max: number;
+            gaps: { missingNumber: number; formattedCode: string }[];
+            duplicateCodes: { code: string; names: string[] }[];
+        }[] = [];
+        
+        Object.entries(groups).forEach(([prefix, items]) => {
+            if (prefix === 'Others') return;
+            
+            items.sort((a, b) => a.num - b.num);
+            
+            const allNumbers = items.map(i => i.num);
+            const existingCodes = items.map(i => i.original);
+            const uniqueNumbers = Array.from(new Set(allNumbers));
+            
+            if (uniqueNumbers.length === 0) return;
+            
+            const min = Math.min(...uniqueNumbers);
+            const max = Math.max(...uniqueNumbers);
+            
+            // Check for duplicate assignments of the same code
+            const duplicatesMap: { [code: string]: string[] } = {};
+            items.forEach(item => {
+                if (!duplicatesMap[item.original]) {
+                    duplicatesMap[item.original] = [];
+                }
+                duplicatesMap[item.original].push(item.employee.name);
+            });
+            
+            const duplicateCodes = Object.entries(duplicatesMap)
+                .filter(([_, names]) => names.length > 1)
+                .map(([code, names]) => ({ code, names }));
+
+            const gaps: { missingNumber: number; formattedCode: string }[] = [];
+            
+            // Start check from 1 if min is <= 10 (natural starting sequence), else check from min to max
+            const startCheck = (min <= 10 && min > 1) ? 1 : min;
+            
+            for (let i = startCheck; i <= max; i++) {
+                if (!allNumbers.includes(i)) {
+                    // Retain identical zero-padding lengths for beautiful visual listing (e.g. 008, 042)
+                    const sampleItem = items.find(item => item.num > 0);
+                    let formatLength = 3;
+                    if (sampleItem) {
+                        const lenMatch = sampleItem.original.match(/\d+$/);
+                        if (lenMatch) {
+                            formatLength = lenMatch[0].length;
+                        }
+                    }
+                    
+                    const paddedStr = String(i).padStart(formatLength, '0');
+                    const formattedCode = prefix === 'Numeric ID' ? paddedStr : `${prefix}${paddedStr}`;
+                    
+                    gaps.push({
+                        missingNumber: i,
+                        formattedCode
+                    });
+                }
+            }
+            
+            results.push({
+                prefix,
+                allNumbers,
+                existingCodes,
+                min,
+                max,
+                gaps,
+                duplicateCodes
+            });
+        });
+        
+        return results;
+    }, [employees]);
+
+    const totalGapsCount = useMemo(() => {
+        return gapAnalysis.reduce((total, res) => total + res.gaps.length, 0);
+    }, [gapAnalysis]);
+
     const filteredEmployees = useMemo(() => {
-        return employees.filter((e: Employee) => {
+        const filtered = employees.filter((e: Employee) => {
             const company = companyList.find(c => c.name === e.company);
             const matchesSearch = (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                                 (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
@@ -4812,7 +4928,26 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
             const matchesDept = deptFilter === 'All' || e.department === deptFilter;
             return matchesSearch && matchesCompany && matchesDept;
         });
-    }, [employees, searchTerm, companyFilter, deptFilter, companyList]);
+
+        return [...filtered].sort((a, b) => {
+            if (sortBy === 'name') {
+                return (a.name || '').localeCompare(b.name || '');
+            }
+            if (sortBy === 'code-asc') {
+                return (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' });
+            }
+            if (sortBy === 'code-desc') {
+                return (b.code || '').localeCompare(a.code || '', undefined, { numeric: true, sensitivity: 'base' });
+            }
+            if (sortBy === 'joining-new') {
+                return new Date(b.joiningDate || 0).getTime() - new Date(a.joiningDate || 0).getTime();
+            }
+            if (sortBy === 'joining-old') {
+                return new Date(a.joiningDate || 0).getTime() - new Date(b.joiningDate || 0).getTime();
+            }
+            return 0;
+        });
+    }, [employees, searchTerm, companyFilter, deptFilter, companyList, sortBy]);
 
     return (
         <div className="space-y-6">
@@ -4829,11 +4964,11 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                     />
                 </div>
                 
-                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto p-1">
                     <select 
                         value={companyFilter}
                         onChange={(e) => setCompanyFilter(e.target.value)}
-                        className="flex-1 lg:flex-none px-4 py-3.5 bg-slate-100/50 border-none rounded-2xl text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-brand-500 transition-all appearance-none cursor-pointer min-w-[140px]"
+                        className="flex-1 lg:flex-none px-4 py-3.5 bg-slate-100/50 border-none rounded-2xl text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-brand-500 transition-all appearance-none cursor-pointer min-w-[130px]"
                     >
                         {companies.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
@@ -4841,10 +4976,37 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                     <select 
                         value={deptFilter}
                         onChange={(e) => setDeptFilter(e.target.value)}
-                        className="flex-1 lg:flex-none px-4 py-3.5 bg-slate-100/50 border-none rounded-2xl text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-brand-500 transition-all appearance-none cursor-pointer min-w-[140px]"
+                        className="flex-1 lg:flex-none px-4 py-3.5 bg-slate-100/50 border-none rounded-2xl text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-brand-500 transition-all appearance-none cursor-pointer min-w-[130px]"
                     >
                         {departments.map(d => <option key={d} value={d}>{d}</option>)}
                     </select>
+
+                    <select 
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as any)}
+                        className="flex-1 lg:flex-none px-4 py-3.5 bg-slate-100/50 border-none rounded-2xl text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-brand-500 transition-all appearance-none cursor-pointer min-w-[140px]"
+                        title="Sort List Order-Wise"
+                    >
+                        <option value="code-asc">Code (Order Wise ↑)</option>
+                        <option value="code-desc">Code (Order Wise ↓)</option>
+                        <option value="name">Name (A-Z)</option>
+                        <option value="joining-new">Joining (Newest)</option>
+                        <option value="joining-old">Joining (Oldest)</option>
+                    </select>
+
+                    <button 
+                        onClick={() => setShowGapAnalyzer(true)}
+                        className="flex-1 lg:flex-none bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 px-5  py-3.5 rounded-2xl text-sm font-black flex items-center justify-center gap-2 border border-amber-200 transition-all active:scale-95"
+                        title="Analyze Employee Code Sequences for Gaps"
+                    >
+                        <ShieldAlert className="w-4 h-4 text-amber-600" />
+                        <span>Code Gaps</span>
+                        {totalGapsCount > 0 && (
+                            <span className="bg-amber-600 text-white font-extrabold text-[10px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                                {totalGapsCount}
+                            </span>
+                        )}
+                    </button>
 
                     {!readOnly && canManageEmployees && (
                         <button 
@@ -5102,6 +5264,178 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                                     className="w-full py-4 bg-white text-slate-900 border border-slate-200 rounded-2xl font-black hover:opacity-90 transition-all shadow-xl"
                                 >
                                     Close Details
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Code Gap Analyzer Modal */}
+            <AnimatePresence>
+                {showGapAnalyzer && (
+                    <div className="fixed inset-0 bg-white/60 backdrop-blur-md flex items-center justify-center z-[110] p-4" onClick={() => setShowGapAnalyzer(false)}>
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl overflow-hidden border border-white flex flex-col max-h-[90vh]"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-2.5 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-700">
+                                        <ShieldAlert className="w-5 h-5 text-amber-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-black text-slate-900 tracking-tight">Personnel Code Sequence Analyzer</h2>
+                                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-0.5 animate-pulse">
+                                            Find skipped, duplicated, or missing employee codes in your order of entries
+                                        </p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowGapAnalyzer(false)} className="p-3 hover:bg-slate-100 rounded-2xl transition-all shadow-sm">
+                                    <X className="w-5 h-5 text-slate-400" />
+                                </button>
+                            </div>
+
+                            <div className="p-8 overflow-y-auto space-y-6 flex-1">
+                                {/* Summary cards inside the modal */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="p-5 bg-amber-50 rounded-2xl border border-amber-100/60">
+                                        <div className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Total Sequence Gaps</div>
+                                        <div className="text-3xl font-black text-amber-900 mt-1">{totalGapsCount}</div>
+                                        <p className="text-xs text-amber-600 font-medium mt-1">Skipped numbers in sequences</p>
+                                    </div>
+
+                                    <div className="p-5 bg-brand-50 rounded-2xl border border-brand-100/60">
+                                        <div className="text-[10px] font-black uppercase text-brand-700 tracking-wider">Active Sequences</div>
+                                        <div className="text-3xl font-black text-brand-900 mt-1">{gapAnalysis.length}</div>
+                                        <p className="text-xs text-brand-600 font-medium mt-1">Code prefixes detected</p>
+                                    </div>
+
+                                    <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200/60">
+                                        <div className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Duplicate Codes</div>
+                                        <div className="text-3xl font-black text-slate-900 mt-1">
+                                            {gapAnalysis.reduce((acc, res) => acc + res.duplicateCodes.length, 0)}
+                                        </div>
+                                        <p className="text-xs text-slate-500 font-medium mt-1">Codes assigned to multiple people</p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wildest">Sequence Breakdown & Analysis</h3>
+                                    
+                                    {gapAnalysis.length === 0 ? (
+                                        <div className="p-8 text-center bg-slate-50 rounded-2xl border">
+                                            <p className="text-slate-500 font-black">No employee codes with sequential numbers detected.</p>
+                                        </div>
+                                    ) : (
+                                        gapAnalysis.map((res) => {
+                                            const hasGaps = res.gaps.length > 0;
+                                            const hasDuplicates = res.duplicateCodes.length > 0;
+                                            
+                                            return (
+                                                <div 
+                                                    key={res.prefix} 
+                                                    className={`p-6 bg-white border rounded-3xl transition-all ${
+                                                        hasGaps ? 'border-amber-200 bg-amber-50/5' : 'border-slate-100 bg-white'
+                                                    }`}
+                                                >
+                                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-slate-100 pb-4 mb-4 gap-3">
+                                                        <div>
+                                                            <div className="flex items-center gap-2 animate-fade-in">
+                                                                <span className="font-mono bg-slate-100 text-slate-800 font-bold px-3 py-1.5 rounded-xl text-sm border border-slate-200">
+                                                                    {res.prefix || "Numeric (No Prefix)"}
+                                                                </span>
+                                                                <span className="text-xs text-slate-500 font-black uppercase tracking-wider">
+                                                                    ({res.allNumbers.length} entries)
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-[11px] text-slate-500 font-medium mt-1.5">
+                                                                Sequence range: <strong className="text-slate-800">{res.prefix}{String(res.min).padStart(3, '0')}</strong> to <strong className="text-slate-800">{res.prefix}{String(res.max).padStart(3, '0')}</strong>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-center gap-2">
+                                                            <button 
+                                                                onClick={() => {
+                                                                    setSearchTerm(res.prefix === 'Numeric ID' ? '' : res.prefix);
+                                                                    setShowGapAnalyzer(false);
+                                                                }}
+                                                                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 border"
+                                                            >
+                                                                <Search className="w-3.5 h-3.5" /> Filter List Order
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Duplicates notice */}
+                                                    {hasDuplicates && (
+                                                        <div className="mb-4 bg-rose-50 border border-rose-100 p-4 rounded-2xl">
+                                                            <div className="flex gap-2 items-start text-rose-800">
+                                                                <ShieldAlert className="w-4 h-4 text-rose-600 mt-0.5 flex-shrink-0 animate-bounce" />
+                                                                <div>
+                                                                    <div className="text-xs font-black uppercase text-rose-700">Duplicate Code Assignment Error!</div>
+                                                                    <div className="space-y-1.5 mt-2">
+                                                                        {res.duplicateCodes.map((dup, idx) => (
+                                                                            <div key={idx} className="text-xs font-medium">
+                                                                                Code <strong className="font-mono bg-rose-100 px-1.5 py-0.5 rounded text-rose-900">{dup.code}</strong> is assigned to: <span className="underline font-bold">{dup.names.join(' & ')}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Gaps notice */}
+                                                    <div>
+                                                        {hasGaps ? (
+                                                            <div>
+                                                                <div className="flex items-center gap-1 text-[11px] font-black text-amber-700 uppercase tracking-widest mb-3">
+                                                                    <ShieldAlert className="w-4.5 h-4.5 text-amber-600 inline" />
+                                                                    <span>Missing sequential codes found:</span>
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {res.gaps.map((gap, gIdx) => (
+                                                                        <div 
+                                                                            key={gIdx} 
+                                                                            className="flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1.5 rounded-xl text-xs font-mono font-bold hover:bg-amber-100 hover:scale-105 transition-all cursor-pointer shadow-sm active:scale-95"
+                                                                            onClick={() => {
+                                                                                navigator.clipboard.writeText(gap.formattedCode);
+                                                                                alert(`Copied matching code: ${gap.formattedCode}`);
+                                                                            }}
+                                                                            title="Click code to copy"
+                                                                        >
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                                                            {gap.formattedCode}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                                <p className="text-[10px] text-amber-500/80 font-semibold italic mt-2">
+                                                                    💡 Tip: Click any box to copy the missing code instantly!
+                                                                </p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center gap-2 text-emerald-600 text-xs font-black uppercase bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 w-fit">
+                                                                <Check className="w-4 h-4" /> Perfect Sequence (No Gaps Found)
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex justify-end">
+                                <button 
+                                    onClick={() => setShowGapAnalyzer(false)}
+                                    className="px-6 py-3 bg-white text-slate-900 border border-slate-200 rounded-2xl font-black hover:bg-slate-50 transition-all shadow-sm text-sm"
+                                >
+                                    Dismiss Analyzer
                                 </button>
                             </div>
                         </motion.div>
