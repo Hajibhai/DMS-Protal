@@ -8866,6 +8866,9 @@ const ReportsView = ({
                         border-color: #000000 !important;
                     }
                 ` : ''}
+                .no-print, .print\\:hidden {
+                    display: none !important;
+                }
             }
         `;
         
