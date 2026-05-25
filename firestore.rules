@@ -25,6 +25,7 @@ service cloud.firestore {
     function hasPermission(permission) {
       return isAuthenticated() && 
         (isCreator() || 
+         isAdmin() ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions[permission] == true));
     }
