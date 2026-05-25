@@ -243,6 +243,9 @@ export interface AccountsReceivable {
     dueDate?: string;
     receivedDate?: string;
     attachment?: string;
+    companyId?: string;
+    companyName?: string;
+    items?: { id: string; name: string; description: string; quantity: number; rate: number; total: number }[];
 }
 
 export interface PettyCash {

@@ -3279,7 +3279,7 @@ export default function App() {
         icon: Wallet, 
         subItems: [
           { id: 'accounts-payable', label: 'Accounts Payable', icon: TrendingDown, permission: 'canManagePayroll' },
-          { id: 'accounts-receivable', label: 'Accounts Receivable', icon: TrendingUp, permission: 'canManagePayroll' },
+          { id: 'accounts-receivable', label: 'Invoices (Accounts Receivable)', icon: TrendingUp, permission: 'canManagePayroll' },
           { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManagePayroll' },
           { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManagePayroll' },
           { id: 'projected-expenses', label: 'Projected Expenses', icon: TrendingDown, permission: 'canManagePayroll' },
@@ -3753,9 +3753,11 @@ export default function App() {
           projects={projects}
           suppliers={suppliers}
           vendors={vendors}
+          companies={companies}
           onAdd={() => setShowARModal(true)}
           onEdit={(ar: AccountsReceivable) => setShowARModal(ar)}
           onDelete={handleDeleteAR}
+          onSave={handleSaveAR}
           user={systemUser}
         />
       )}
@@ -3961,6 +3963,7 @@ export default function App() {
             projects={projects}
             suppliers={suppliers}
             vendors={vendors}
+            companies={companies}
             onSave={handleSaveAR}
             onCancel={() => setShowARModal(false)}
           />

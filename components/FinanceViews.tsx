@@ -581,7 +581,239 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     );
 };
 
-export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, user }: any) => {
+export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) => {
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    const primaryColor = [10, 25, 47]; // Deep Navy
+    const accentColor = [59, 130, 246]; // Modern blue/azure
+    const darkTextColor = [33, 37, 41];
+    const lightText = [100, 116, 139];
+    const borderSlate = [226, 232, 240];
+    const tableHeaderBg = [241, 245, 249];
+
+    // High Quality Layout Top Stripe
+    doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
+    doc.rect(0, 0, 210, 6, 'F');
+
+    let headerOffset = 35;
+    if (company?.logo && company.logo.startsWith('data:image')) {
+        try {
+            doc.addImage(company.logo, 'PNG', 15, 12, 25, 25);
+            headerOffset = 42;
+        } catch (e) {
+            console.error("Error drawing logo on pdf:", e);
+        }
+    } else {
+        doc.setFillColor(59, 130, 246);
+        doc.circle(27, 24, 12, 'F');
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(14);
+        doc.setTextColor(255, 255, 255);
+        const initial = company?.name ? company.name.substring(0, 2).toUpperCase() : 'CO';
+        doc.text(initial, 27, 26, { align: 'center' });
+        headerOffset = 42;
+    }
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text(company?.name || "PIONEER DMS GROUP LTD", 15, headerOffset - 4);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+    doc.text([
+        company?.address || "United Arab Emirates",
+        company?.email ? `Email: ${company.email}` : "Email: accounts@pioneer.ae",
+        company?.phone ? `Phone: ${company.phone}` : "Phone: +971 4 000 0000"
+    ], 15, headerOffset);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+    doc.text("INVOICE", 195, 24, { align: 'right' });
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    
+    doc.text(`Invoice No:`, 140, 32);
+    doc.setFont("Helvetica", "bold");
+    doc.text(`${item.invoiceNumber || 'INV-NA'}`, 195, 32, { align: 'right' });
+
+    doc.setFont("Helvetica", "normal");
+    doc.text(`Date:`, 140, 38);
+    doc.text(`${item.date}`, 195, 38, { align: 'right' });
+
+    doc.setFont("Helvetica", "normal");
+    doc.text(`Due Date:`, 140, 44);
+    doc.text(`${item.dueDate || item.date}`, 195, 44, { align: 'right' });
+
+    doc.setFont("Helvetica", "normal");
+    doc.text(`Status:`, 140, 50);
+    doc.setFont("Helvetica", "bold");
+    if (item.status === 'Received') {
+        doc.setTextColor(16, 124, 65);
+    } else {
+        doc.setTextColor(220, 95, 0);
+    }
+    doc.text(`${item.status || 'Pending'}`.toUpperCase(), 195, 50, { align: 'right' });
+
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.setLineWidth(0.4);
+    doc.line(15, 60, 195, 60);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("BILLED TO", 15, 68);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    doc.text(client?.name || item.contact || "Valued Client", 15, 74);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+    doc.text([
+        client?.address || "Dubai, United Arab Emirates",
+        client?.email ? `Email: ${client.email}` : "",
+        client?.phone ? `Phone: ${client.phone}` : ""
+    ].filter(Boolean), 15, 80);
+
+    let yPos = 105;
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("ITEMIZED SERVICE SUMMARY", 15, yPos - 3);
+
+    doc.setFillColor(tableHeaderBg[0], tableHeaderBg[1], tableHeaderBg[2]);
+    doc.rect(15, yPos, 180, 10, 'F');
+    doc.rect(15, yPos, 180, 10, 'D');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("S.No", 18, yPos + 6);
+    doc.text("Items & Description", 30, yPos + 6);
+    doc.text("Quantity", 115, yPos + 6, { align: 'right' });
+    doc.text("Rate (AED)", 145, yPos + 6, { align: 'right' });
+    doc.text("Amount (AED)", 190, yPos + 6, { align: 'right' });
+
+    const lineItems = item.items && item.items.length > 0 ? item.items : [
+        { id: '1', name: item.description || 'General Contracting Services', description: 'Comprehensive services as agreed', quantity: 1, rate: item.amount || 0, total: item.amount || 0 }
+    ];
+
+    yPos += 10;
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+
+    lineItems.forEach((li: any, idx: number) => {
+        doc.line(15, yPos + 12, 195, yPos + 12);
+        
+        doc.setFont("Helvetica", "normal");
+        doc.text(String(idx + 1), 18, yPos + 6);
+        
+        doc.setFont("Helvetica", "bold");
+        doc.text(li.name || 'Contract Item', 30, yPos + 5);
+        
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+        doc.text(li.description || 'Standard service charges as per agreement', 30, yPos + 9);
+        
+        doc.setFontSize(9);
+        doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+        doc.text(String(li.quantity || 1), 115, yPos + 6, { align: 'right' });
+        doc.text(Number(li.rate || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), 145, yPos + 6, { align: 'right' });
+        
+        doc.setFont("Helvetica", "bold");
+        doc.text(Number(li.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), 190, yPos + 6, { align: 'right' });
+
+        yPos += 12;
+    });
+
+    yPos += 8;
+    if (yPos > 240) {
+        doc.addPage();
+        yPos = 30;
+    }
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+    doc.text("Sub Total:", 145, yPos);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    doc.text(`AED ${Number(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos, { align: 'right' });
+
+    yPos += 6;
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+    doc.text("VAT (5.0%):", 145, yPos);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    doc.text(`AED ${Number(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos, { align: 'right' });
+
+    yPos += 8;
+    doc.setFillColor(240, 246, 255);
+    doc.setDrawColor(200, 220, 255);
+    doc.rect(125, yPos - 5, 70, 10, 'F');
+    doc.rect(125, yPos - 5, 70, 10, 'D');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+    doc.text("Total Amount (AED):", 129, yPos + 1.5);
+    doc.setFontSize(10.5);
+    doc.text(`AED ${Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1.5, { align: 'right' });
+
+    yPos += 20;
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("TERMS & INSTRUCTIONS", 15, yPos);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+    doc.text([
+        "1. Please reference the Invoice Number on bank transfers and wire remittance.",
+        "2. Payment is due within the stipulated credit days from invoice date.",
+        "3. Standard 5% UAE VAT applies to all items and charges outlined above."
+    ], 15, yPos + 5);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("AUTHORIZED SIGNATORY", 192, yPos + 22, { align: 'right' });
+    doc.line(135, yPos + 17, 192, yPos + 17);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+    doc.text("Operations / Accounts Dept", 192, yPos + 26, { align: 'right' });
+
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 289, 210, 8, 'F');
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Official electronic tax invoice generated inside Pioneer Group DMS.", 105, 294, { align: "center" });
+
+    doc.save(`Invoice_${item.invoiceNumber || 'INV'}.pdf`);
+};
+
+export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, user, companies }: any) => {
+    const [previewInvoiceItem, setPreviewInvoiceItem] = useState<{ item: any; comp: any; client: any } | null>(null);
+
     const getEntityName = (id: string, type: string) => {
         if (type === 'Project') return projects.find((p: any) => p.id === id)?.name || 'Unknown Project';
         if (type === 'Supplier') return suppliers.find((s: any) => s.id === id)?.name || 'Unknown Supplier';
@@ -589,74 +821,301 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         return 'Unknown';
     };
 
+    const getEntityObject = (id: string, type: string) => {
+        if (type === 'Project') return projects.find((p: any) => p.id === id);
+        if (type === 'Supplier') return suppliers.find((s: any) => s.id === id);
+        if (type === 'Vendor') return vendors.find((v: any) => v.id === id);
+        return null;
+    };
+
     return (
-        <DataTable<AccountsReceivable>
-            title="Accounts Receivable"
-            description="Manage incoming payments and client invoicing for projects."
-            icon={TrendingUp}
-            data={data}
-            columns={[
-                { key: 'date', label: 'Date', sortable: true },
-                { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
-                { 
-                    key: 'entityId', 
-                    label: 'Entity / Project',
-                    render: (item: any) => (
-                        <div className="flex flex-col">
-                            <span className="font-bold text-slate-900">
-                                {getEntityName(item.entityId || item.projectId, item.entityType || 'Project')}
+        <div className="relative">
+            <DataTable<AccountsReceivable>
+                title="Accounts Receivable"
+                description="Manage incoming payments and client invoicing for projects."
+                icon={TrendingUp}
+                data={data}
+                columns={[
+                    { key: 'date', label: 'Date', sortable: true },
+                    { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
+                    { 
+                        key: 'companyId', 
+                        label: 'Seller Company',
+                        render: (item: any) => {
+                            const comp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
+                            return (
+                                <div className="flex items-center gap-2">
+                                    {comp?.logo ? (
+                                        <img src={comp.logo} alt={comp.name} className="w-7 h-7 object-contain rounded-lg border border-slate-100 bg-white p-0.5 shrink-0" referrerPolicy="no-referrer" />
+                                    ) : (
+                                        <div className="w-7 h-7 bg-blue-50 text-blue-600 border border-blue-100/50 rounded-lg flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                                            {(comp?.name || item.companyName || 'CO').substring(0, 2)}
+                                        </div>
+                                    )}
+                                    <span className="font-extrabold text-slate-800 text-xs truncate max-w-[130px]">
+                                        {comp?.name || item.companyName || 'Unassigned'}
+                                    </span>
+                                </div>
+                            );
+                        }
+                    },
+                    { 
+                        key: 'entityId', 
+                        label: 'Entity / Project',
+                        render: (item: any) => (
+                            <div className="flex flex-col">
+                                <span className="font-bold text-slate-900">
+                                    {getEntityName(item.entityId || item.projectId, item.entityType || 'Project')}
+                                </span>
+                                <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+                                    {(item.entityType || 'Project') === 'Vendor' ? 'Client' : (item.entityType || 'Project')}
+                                </span>
+                            </div>
+                        )
+                    },
+                    { 
+                        key: 'amount', 
+                        label: 'Amount',
+                        sortable: true,
+                        render: (item) => (
+                            <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
+                        )
+                    },
+                    { 
+                        key: 'vatAmount', 
+                        label: 'VAT (5%)',
+                        render: (item) => (
+                            <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
+                        )
+                    },
+                    { 
+                        key: 'totalAmount', 
+                        label: 'Total',
+                        sortable: true,
+                        render: (item) => (
+                            <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
+                        )
+                    },
+                    {
+                        key: 'zoho_invoice',
+                        label: 'Zoho Invoice',
+                        render: (item: any) => {
+                            const comp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
+                            const client = getEntityObject(item.entityId, item.entityType);
+                            return (
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                    <button
+                                        onClick={() => downloadZohoInvoicePDF(item, comp, client)}
+                                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-450 hover:text-blue-600 transition-colors shrink-0"
+                                        title="Download Zoho PDF Invoice"
+                                    >
+                                        <Download className="w-4 h-4 text-blue-600" />
+                                    </button>
+                                    <button
+                                        onClick={() => setPreviewInvoiceItem({ item, comp, client })}
+                                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-450 hover:text-emerald-600 transition-colors shrink-0"
+                                        title="View Invoice Live Preview"
+                                    >
+                                        <Eye className="w-4 h-4 text-emerald-600" />
+                                    </button>
+                                </div>
+                            );
+                        }
+                    },
+                    { 
+                        key: 'status', 
+                        label: 'Status',
+                        render: (item) => (
+                            <span className={cn(
+                                "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                                item.status === 'Received' ? "bg-emerald-100 text-emerald-600" :
+                                item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
+                                "bg-blue-100 text-blue-600"
+                            )}>
+                                {item.status}
                             </span>
-                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">
-                                {(item.entityType || 'Project') === 'Vendor' ? 'Client' : (item.entityType || 'Project')}
-                            </span>
+                        )
+                    },
+                ]}
+                onAdd={onAdd}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                searchFields={['invoiceNumber', 'description']}
+                exportFileName="Accounts_Receivable"
+                user={user}
+            />
+
+            {/* Zoho Books Live Invoice Preview Lightbox */}
+            {previewInvoiceItem && (() => {
+                const { item, comp, client } = previewInvoiceItem;
+                const itemsList = item.items && item.items.length > 0 
+                    ? item.items 
+                    : [{ id: '1', name: item.description || 'General Contracting & Technical works', description: 'Detailed project works executed on-site', quantity: 1, rate: item.amount || 0, total: item.amount || 0 }];
+                return (
+                    <div 
+                        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                        onClick={() => setPreviewInvoiceItem(null)}
+                    >
+                        <div 
+                            className="bg-white w-full max-w-4xl h-[90vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-in scale-in duration-300 border border-slate-100"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* Toolbar header */}
+                            <div className="flex justify-between items-center px-8 py-5 border-b border-slate-100 bg-slate-50">
+                                <div>
+                                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-2.5 py-1 rounded-full">Zoho Books Invoice Engine</span>
+                                    <h3 className="font-extrabold text-slate-900 text-lg mt-1">Invoice Preview: {item.invoiceNumber || 'NEW UNIQUE INVOICE'}</h3>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        onClick={() => downloadZohoInvoicePDF(item, comp, client)}
+                                        className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-4 py-2.5 rounded-xl transition shadow-lg shadow-blue-500/10 cursor-pointer"
+                                    >
+                                        <Download className="w-4 h-4" /> Download PDF
+                                    </button>
+                                    <button 
+                                        onClick={() => setPreviewInvoiceItem(null)}
+                                        className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded-xl transition"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Live Zoho Invoice Page Render Container */}
+                            <div className="flex-1 overflow-y-auto bg-slate-100 p-8 flex justify-center">
+                                <div className="bg-white w-[184mm] min-h-[260mm] shadow-lg rounded-2xl p-10 border border-slate-200/60 flex flex-col justify-between relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]">
+                                    
+                                    <div>
+                                        {/* Top Accent line */}
+                                        <div className="absolute top-0 left-0 right-0 h-1.5 bg-blue-500 rounded-t-2xl"></div>
+
+                                        {/* Invoice Header Section */}
+                                        <div className="flex justify-between items-start mb-8">
+                                            {/* Left - Seller details */}
+                                            <div className="space-y-4">
+                                                {comp?.logo ? (
+                                                    <img src={comp.logo} alt={comp.name} className="h-14 object-contain rounded-xl border border-slate-100 bg-white p-1" referrerPolicy="no-referrer" />
+                                                ) : (
+                                                    <div className="w-12 h-12 bg-blue-500 text-white rounded-2xl flex items-center justify-center font-black text-xl shadow-md uppercase">
+                                                        {(comp?.name || item.companyName || 'CO').substring(0, 2)}
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">{comp?.name || 'Pioneer Contracting Group'}</h4>
+                                                    <p className="text-[11px] text-slate-500 font-medium whitespace-pre-line leading-relaxed">
+                                                        {comp?.address || 'United Arab Emirates'}<br />
+                                                        {comp?.email ? `Email: ${comp.email}` : 'Email: accounts@pioneer.ae'}<br />
+                                                        {comp?.phone ? `Phone: ${comp.phone}` : ''}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Right - General Metadata */}
+                                            <div className="text-right">
+                                                <h2 className="text-3xl font-black text-blue-600 tracking-wider mb-2">TAX INVOICE</h2>
+                                                <div className="inline-grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-left">
+                                                    <span className="text-slate-400 font-semibold">Invoice No:</span>
+                                                    <span className="font-bold text-slate-900 text-right">{item.invoiceNumber || 'INV-0000'}</span>
+                                                    
+                                                    <span className="text-slate-400 font-semibold">Date:</span>
+                                                    <span className="font-bold text-slate-950 text-right">{item.date}</span>
+
+                                                    <span className="text-slate-400 font-semibold">Due Date:</span>
+                                                    <span className="font-bold text-slate-950 text-right">{item.dueDate || item.date}</span>
+
+                                                    <span className="text-slate-400 font-semibold">Status:</span>
+                                                    <span className={cn(
+                                                        "font-black text-right uppercase tracking-wide",
+                                                        item.status === 'Received' ? "text-emerald-600" : "text-orange-500"
+                                                    )}>{item.status || 'Pending'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <hr className="border-slate-100 mb-6" />
+
+                                        {/* Bill From and Bill To split grid */}
+                                        <div className="mb-8">
+                                            <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block mb-2">Billed To / Clients</span>
+                                            <h5 className="font-black text-slate-950 text-sm whitespace-nowrap">{client?.name || item.contact || 'Valued Client'}</h5>
+                                            <p className="text-[11px] text-slate-500 whitespace-pre-line leading-relaxed mt-1">
+                                                {client?.address || 'Dubai, United Arab Emirates'}<br />
+                                                {client?.email && `Email: ${client.email}`}<br />
+                                                {client?.phone && `Phone: ${client.phone}`}
+                                            </p>
+                                        </div>
+
+                                        {/* Line items list grid */}
+                                        <div className="border border-slate-200 rounded-xl overflow-hidden mb-8">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                                        <th className="px-4 py-3 text-center w-12">S.No</th>
+                                                        <th className="px-4 py-3">Item Name & Description</th>
+                                                        <th className="px-4 py-3 text-right w-24">Qty</th>
+                                                        <th className="px-4 py-3 text-right w-36">Rate (AED)</th>
+                                                        <th className="px-4 py-3 text-right w-36">Total (AED)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 text-xs">
+                                                    {itemsList.map((li: any, idx: number) => (
+                                                        <tr key={li.id || idx} className="hover:bg-slate-50/50">
+                                                            <td className="px-4 py-3 text-center text-slate-400 font-medium">{idx + 1}</td>
+                                                            <td className="px-4 py-3 pr-8">
+                                                                <span className="font-extrabold text-slate-900 block">{li.name || 'Service Rendering Item'}</span>
+                                                                <span className="text-[10.5px] text-slate-450 block mt-0.5 leading-normal">{li.description || 'General contracting technical work'}</span>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right text-slate-600 font-bold">{li.quantity || 1}</td>
+                                                            <td className="px-4 py-3 text-right text-slate-600 font-bold">AED {Number(li.rate || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                            <td className="px-4 py-3 text-right text-slate-900 font-black">AED {Number(li.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {/* Totals compilation box */}
+                                        <div className="flex justify-end mb-6">
+                                            <div className="w-72 space-y-2 text-xs">
+                                                <div className="flex justify-between items-center text-slate-500 font-medium">
+                                                    <span>Sub Total:</span>
+                                                    <span className="font-bold text-slate-800">AED {Number(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-slate-500 font-medium">
+                                                    <span>VAT (5.00%):</span>
+                                                    <span className="font-bold text-slate-800">AED {Number(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center bg-blue-50/50 border border-blue-100 text-blue-700 p-3 rounded-xl font-black text-sm mt-3">
+                                                    <span>Total Due:</span>
+                                                    <span className="text-base text-blue-600">AED {Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Signatures & Footer block */}
+                                    <div className="space-y-6">
+                                        <div className="flex justify-between items-end border-t border-slate-100 pt-6">
+                                            <div className="text-[10px] text-slate-400 max-w-sm leading-normal">
+                                                <span className="font-bold text-slate-600 block mb-1">TERMS & DISCLOSURES</span>
+                                                Please quote invoice numbers on your remittance. Electronic copy of invoice issued under official corporate authorization.
+                                            </div>
+                                            <div className="text-right space-y-1 justify-end flex flex-col items-end">
+                                                <div className="w-32 border-b border-slate-300 h-8"></div>
+                                                <span className="text-[9px] font-black text-slate-950 uppercase tracking-wider block pt-2">AUTHORIZED SIGNATURE</span>
+                                                <span className="text-[8px] text-slate-400 block">Pioneer Contracting Finance LLC</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
                         </div>
-                    )
-                },
-                { 
-                    key: 'amount', 
-                    label: 'Amount',
-                    sortable: true,
-                    render: (item) => (
-                        <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
-                    )
-                },
-                { 
-                    key: 'vatAmount', 
-                    label: 'VAT (5%)',
-                    render: (item) => (
-                        <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
-                    )
-                },
-                { 
-                    key: 'totalAmount', 
-                    label: 'Total',
-                    sortable: true,
-                    render: (item) => (
-                        <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
-                    )
-                },
-                { 
-                    key: 'status', 
-                    label: 'Status',
-                    render: (item) => (
-                        <span className={cn(
-                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
-                            item.status === 'Received' ? "bg-emerald-100 text-emerald-600" :
-                            item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
-                            "bg-blue-100 text-blue-600"
-                        )}>
-                            {item.status}
-                        </span>
-                    )
-                },
-            ]}
-            onAdd={onAdd}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            searchFields={['invoiceNumber', 'description']}
-            exportFileName="Accounts_Receivable"
-            user={user}
-        />
+                    </div>
+                );
+            })()}
+        </div>
     );
 };
 
@@ -2401,101 +2860,221 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
     );
 };
 
-export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSave, onCancel }: any) => {
+export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSave, onCancel, companies }: any) => {
     const [formData, setFormData] = useState(() => {
+        const defaultItem = { id: Math.random().toString(36).substr(2, 9), name: '', description: '', quantity: 1, rate: 0, total: 0 };
         if (ar) {
             return {
                 ...ar,
+                companyId: ar.companyId || '',
+                companyName: ar.companyName || '',
                 entityId: ar.entityId || ar.projectId || '',
                 entityType: ar.entityType || 'Project',
                 vatAmount: ar.vatAmount || 0,
-                totalAmount: ar.totalAmount || ar.amount || 0
+                totalAmount: ar.totalAmount || ar.amount || 0,
+                dueDate: ar.dueDate || ar.date || new Date().toISOString().split('T')[0],
+                items: ar.items && ar.items.length > 0 ? ar.items : [
+                    { id: Math.random().toString(36).substr(2, 9), name: ar.description || 'General Services', description: 'Technical works as agreed', quantity: 1, rate: ar.amount || 0, total: ar.amount || 0 }
+                ]
             };
         }
         return { 
             id: Math.random().toString(36).substr(2, 9),
             date: new Date().toISOString().split('T')[0],
+            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 30 days credit
             entityId: '',
             entityType: 'Project',
-            invoiceNumber: '',
+            invoiceNumber: 'INV-' + Math.floor(100000 + Math.random() * 900000),
             amount: 0,
             vatAmount: 0,
             totalAmount: 0,
             description: '',
-            status: 'Pending'
+            status: 'Pending',
+            companyId: companies && companies.length > 0 ? companies[0].id : '',
+            companyName: companies && companies.length > 0 ? companies[0].name : '',
+            items: [defaultItem]
         };
     });
 
-    const handleAmountChange = (val: number) => {
-        const vat = val * 0.05;
-        const total = val + vat;
-        setFormData({ 
-            ...formData, 
-            amount: val,
+    const selectedCompany = useMemo(() => {
+        return (companies || []).find((c: any) => c.id === formData.companyId);
+    }, [companies, formData.companyId]);
+
+    // Update individual items and auto recalculate totals
+    const updateItemValue = (id: string, field: string, val: any) => {
+        const nextItems = formData.items.map((it: any) => {
+            if (it.id === id) {
+                const nextIt = { ...it, [field]: val };
+                if (field === 'quantity' || field === 'rate') {
+                    const q = Number(nextIt.quantity) || 0;
+                    const r = Number(nextIt.rate) || 0;
+                    nextIt.total = Number((q * r).toFixed(2));
+                }
+                return nextIt;
+            }
+            return it;
+        });
+
+        recalculateInvoiceTotals(nextItems);
+    };
+
+    const addInvoiceRow = () => {
+        const newItem = { id: Math.random().toString(36).substr(2, 9), name: '', description: '', quantity: 1, rate: 0, total: 0 };
+        recalculateInvoiceTotals([...formData.items, newItem]);
+    };
+
+    const removeInvoiceRow = (id: string) => {
+        if (formData.items.length <= 1) {
+            // Do not delete the last row, just clear it
+            const clearedItems = [{ id: Math.random().toString(36).substr(2, 9), name: '', description: '', quantity: 1, rate: 0, total: 0 }];
+            recalculateInvoiceTotals(clearedItems);
+            return;
+        }
+        const nextItems = formData.items.filter((it: any) => it.id !== id);
+        recalculateInvoiceTotals(nextItems);
+    };
+
+    const recalculateInvoiceTotals = (nextItems: any[]) => {
+        const subtotal = nextItems.reduce((acc: number, it: any) => acc + (Number(it.total) || 0), 0);
+        const vat = subtotal * 0.05;
+        const total = subtotal + vat;
+
+        setFormData({
+            ...formData,
+            items: nextItems,
+            amount: Number(subtotal.toFixed(2)),
             vatAmount: Number(vat.toFixed(2)),
             totalAmount: Number(total.toFixed(2))
         });
     };
 
+    const handleCompanyChange = (id: string) => {
+        const comp = (companies || []).find((c: any) => c.id === id);
+        setFormData({
+            ...formData,
+            companyId: id,
+            companyName: comp ? comp.name : ''
+        });
+    };
+
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4 overflow-y-auto">
             <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                initial={{ opacity: 0, scale: 0.96, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white"
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl overflow-hidden border border-white flex flex-col my-8 max-h-[90vh]"
             >
+                {/* Modal Header */}
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{ar ? 'Edit Receivable' : 'Add Receivable'}</h2>
-                        <p className="text-slate-500 text-sm font-medium mt-1">Enter income details below</p>
+                        <span className="text-[10px] font-black uppercase text-blue-600 tracking-widest bg-blue-50 px-3 py-1.5 rounded-full">Zoho Books Invoice Editor</span>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight mt-1.5">{ar ? 'Edit Tax Invoice' : 'Create Tax Invoice'}</h2>
+                        <p className="text-slate-500 text-sm font-medium">Billed client invoicing matching UAE corporate compliance standards</p>
                     </div>
-                    <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
+                    <button onClick={onCancel} className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm bg-white border border-slate-100"><X className="w-5 h-5" /></button>
                 </div>
 
-                <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Date</label>
+                {/* Form Body Container */}
+                <div className="p-8 space-y-8 overflow-y-auto flex-1">
+                    
+                    {/* Section 1: COMPANY WISE SELECTION & LOGO PREVIEW */}
+                    <div className="bg-slate-50/60 p-6 rounded-[2rem] border border-slate-100/80 space-y-4">
+                        <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center">
+                            
+                            {/* Company dropdown picker */}
+                            <div className="flex-1 w-full space-y-2">
+                                <label className="text-[11px] font-black uppercase tracking-widest text-slate-500 block">
+                                    Seller Corporate Identity (Company Name) <span className="text-red-500 font-extrabold">*</span>
+                                </label>
+                                <select 
+                                    value={formData.companyId || ''}
+                                    onChange={e => handleCompanyChange(e.target.value)}
+                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all shadow-sm cursor-pointer"
+                                    required
+                                >
+                                    <option value="">Select Selling Company...</option>
+                                    {(companies || []).map((c: any) => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
+                                <p className="text-[10.5px] text-slate-400 font-medium">The selected company's official corporate logo, name, and address details will automatically render on the Zoho Books Tax Invoice layout and printed PDFs.</p>
+                            </div>
+
+                            {/* Company wise Logo Live View box */}
+                            <div className="w-full lg:w-fit shrink-0">
+                                <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5 text-center lg:text-left">Selected Identity Logo</span>
+                                <div className="h-24 w-44 bg-white border border-slate-200/80 rounded-2xl flex items-center justify-center p-3 shadow-md relative group overflow-hidden mx-auto lg:mx-0">
+                                    {selectedCompany?.logo ? (
+                                        <img src={selectedCompany.logo} alt="Logo" className="max-h-full max-w-full object-contain" referrerPolicy="no-referrer" />
+                                    ) : (
+                                        <div className="text-center space-y-1">
+                                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mx-auto text-xs font-black">
+                                                ?
+                                            </div>
+                                            <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">No Logo Uploaded</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    {/* Section 2: GENERAL METADATA GRID */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice Date</label>
                             <input 
                                 type="date"
                                 value={formData.date}
                                 onChange={e => setFormData({ ...formData, date: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                             />
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice #</label>
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Due Date (Payment Terms)</label>
+                            <input 
+                                type="date"
+                                value={formData.dueDate}
+                                onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice Number</label>
                             <input 
                                 type="text"
                                 value={formData.invoiceNumber}
                                 onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                             />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
+
+                    {/* Section 3: CUSTOMER / CLIENT LINK SELECTION */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="space-y-1.5">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Entity Type</label>
                             <select 
                                 value={formData.entityType}
                                 onChange={e => setFormData({ ...formData, entityType: e.target.value, entityId: '' })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                             >
                                 <option value="Project">Project</option>
                                 <option value="Supplier">Supplier</option>
                                 <option value="Vendor">Client</option>
                             </select>
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
                                 Select {formData.entityType === 'Vendor' ? 'Client' : formData.entityType}
                             </label>
                             <select 
                                 value={formData.entityId}
                                 onChange={e => setFormData({ ...formData, entityId: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                             >
-                                <option value="">Select...</option>
+                                <option value="">Select contact...</option>
                                 {formData.entityType === 'Project' && projects.map((p: any) => (
                                     <option key={p.id} value={p.id}>{p.name}</option>
                                 ))}
@@ -2507,23 +3086,12 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                 ))}
                             </select>
                         </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Taxable Amount (AED)</label>
-                            <input 
-                                type="number"
-                                value={formData.amount}
-                                onChange={e => handleAmountChange(Number(e.target.value))}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Status</label>
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Receivable State (Status)</label>
                             <select 
                                 value={formData.status}
                                 onChange={e => setFormData({ ...formData, status: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                             >
                                 <option value="Pending">Pending</option>
                                 <option value="Received">Received</option>
@@ -2531,33 +3099,145 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">VAT (5%)</label>
-                            <div className="w-full px-4 py-3 bg-white/50 border border-brand-100 rounded-xl text-sm font-bold text-slate-500">
-                                {formData.vatAmount.toLocaleString()}
-                            </div>
+
+                    {/* Section 4: ITEMS GRID (ZOHO BOOKS SPECIAL BILLING ITEMS LIST) */}
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                            <label className="text-[11px] font-black uppercase tracking-widest text-blue-600 ml-1 block">
+                                Line Items & Work Descriptions (Zoho-Style Grid)
+                            </label>
+                            <button 
+                                type="button" 
+                                onClick={addInvoiceRow}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition text-xs font-black"
+                            >
+                                <Plus className="w-3.5 h-3.5" /> Add Row
+                            </button>
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Total Amount</label>
-                            <div className="w-full px-4 py-3 bg-brand-600 rounded-xl text-sm font-black text-white shadow-md">
-                                {formData.totalAmount.toLocaleString()}
+
+                        <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-slate-50/20">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                        <th className="px-4 py-3">Item/Service Name</th>
+                                        <th className="px-4 py-3">Sub-Description (Scope)</th>
+                                        <th className="px-4 py-3 text-right w-20">Qty</th>
+                                        <th className="px-4 py-3 text-right w-32">Rate (AED)</th>
+                                        <th className="px-4 py-3 text-right w-36">Total (AED)</th>
+                                        <th className="p-3 text-center w-12"></th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-150">
+                                    {formData.items.map((it: any) => (
+                                        <tr key={it.id} className="hover:bg-slate-50/50">
+                                            <td className="p-3">
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Item or service name"
+                                                    value={it.name}
+                                                    onChange={e => updateItemValue(it.id, 'name', e.target.value)}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    required
+                                                />
+                                            </td>
+                                            <td className="p-3">
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="Scope notes or sub-details"
+                                                    value={it.description}
+                                                    onChange={e => updateItemValue(it.id, 'description', e.target.value)}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                                                />
+                                            </td>
+                                            <td className="p-3">
+                                                <input 
+                                                    type="number" 
+                                                    min="1"
+                                                    placeholder="1"
+                                                    value={it.quantity}
+                                                    onChange={e => updateItemValue(it.id, 'quantity', Number(e.target.value))}
+                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    required
+                                                />
+                                            </td>
+                                            <td className="p-3">
+                                                <input 
+                                                    type="number" 
+                                                    min="0.01" 
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    value={it.rate}
+                                                    onChange={e => updateItemValue(it.id, 'rate', Number(e.target.value))}
+                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    required
+                                                />
+                                            </td>
+                                            <td className="p-3 text-right font-black text-slate-800 text-xs">
+                                                AED {Number(it.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => removeInvoiceRow(it.id)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-slate-100 transition"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Section 5: TOTALS CALCULATIONS BLOCK */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                        {/* Overall General Description */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">General Notes / Footnotes</label>
+                            <textarea 
+                                value={formData.description}
+                                onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                placeholder="Additional notes to display on the Zoho Invoice footer..."
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all min-h-[100px]"
+                            />
+                        </div>
+
+                        {/* Calculation Panel */}
+                        <div className="bg-slate-50/50 border border-slate-150 rounded-[2rem] p-6 space-y-3.5">
+                            <div className="flex justify-between items-center text-xs text-slate-500 font-bold px-1">
+                                <span>TAXABLE SUB TOTAL:</span>
+                                <span>AED {formData.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-slate-500 font-bold px-1 border-b border-dashed border-slate-200 pb-3">
+                                <span>UAE VAT STANDARD (5%):</span>
+                                <span>AED {formData.vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex justify-between items-center bg-blue-600 text-white rounded-2xl p-4 shadow-lg shadow-blue-500/10">
+                                <span className="text-xs font-black uppercase tracking-wide">GRAND TOTAL (INCL. VAT):</span>
+                                <span className="text-lg font-black">AED {formData.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
                         </div>
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Description</label>
-                        <textarea 
-                            value={formData.description}
-                            onChange={e => setFormData({ ...formData, description: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[100px]"
-                        />
-                    </div>
+
                 </div>
 
+                {/* Modal Footer Controls */}
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
                     <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
-                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Entry</button>
+                    <button 
+                        onClick={() => {
+                            if (!formData.companyId) {
+                                alert("Please select a selling corporate identity company first!");
+                                return;
+                            }
+                            onSave(formData);
+                        }} 
+                        className="flex-1 px-6 py-4 bg-blue-600 text-white rounded-2xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 cursor-pointer"
+                    >
+                        {ar ? 'Update Zoho Invoice' : 'Create Zoho Invoice'}
+                    </button>
                 </div>
             </motion.div>
         </div>
