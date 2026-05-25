@@ -16,6 +16,76 @@ import { Vendor, AccountsPayable, AccountsReceivable, PettyCash,
 } from '../types';
 import { PrintModal, PrintOptions } from './PrintModal';
 
+/**
+ * Downscale and compress an image file to prevent "Request Entity Too Large" errors
+ * on mobile phone uploads or camera pictures while preserving high legibility for AI OCR.
+ */
+const compressImageFile = (file: File, maxDimension = 1200, quality = 0.85): Promise<{ base64: string; mimeType: string }> => {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const base64 = e.target?.result as string;
+            // Only compress image files
+            if (!file.type.startsWith('image/')) {
+                resolve({ base64, mimeType: file.type });
+                return;
+            }
+
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    let width = img.width;
+                    let height = img.height;
+
+                    // Only downscale if it exceeds maxDimension
+                    if (width > maxDimension || height > maxDimension) {
+                        if (width > height) {
+                            height = Math.round((height * maxDimension) / width);
+                            width = maxDimension;
+                        } else {
+                            width = Math.round((width * maxDimension) / height);
+                            height = maxDimension;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        resolve({ base64, mimeType: file.type });
+                        return;
+                    }
+
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // Use image/jpeg for excellent photographic/receipt compression
+                    const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+                    const compressedBase64 = canvas.toDataURL(outputType, quality);
+                    
+                    // Only use compressed if it's actually smaller
+                    if (compressedBase64.length < base64.length) {
+                        resolve({ base64: compressedBase64, mimeType: outputType });
+                    } else {
+                        resolve({ base64, mimeType: file.type });
+                    }
+                } catch (err) {
+                    console.error("Image compression failed, using original file:", err);
+                    resolve({ base64, mimeType: file.type });
+                }
+            };
+            img.onerror = () => {
+                resolve({ base64, mimeType: file.type });
+            };
+            img.src = base64;
+        };
+        reader.onerror = () => {
+            resolve({ base64: '', mimeType: file.type });
+        };
+        reader.readAsDataURL(file);
+    });
+};
+
 interface DataTableProps<T> {
     title: string;
     description: string;
@@ -2380,22 +2450,25 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel }: any) =
     const [isScanning, setIsScanning] = useState(false);
     const [scanError, setScanError] = useState<string | null>(null);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = () => {
-            const base64 = reader.result as string;
-            setTempImageData({ image: base64, mime: file.type });
+        setIsScanning(true);
+        setScanError(null);
+        try {
+            const result = await compressImageFile(file);
+            if (!result.base64) {
+                throw new Error("Failed to process the uploaded image");
+            }
+            setTempImageData({ image: result.base64, mime: result.mimeType });
             setUploaderName(formData.uploadedBy || formData.updatedBy || formData.requestedBy || '');
             setShowNamePrompt(true);
-            setScanError(null);
-        };
-        reader.onerror = () => {
-            setScanError("Failed to read the image file");
-        };
-        reader.readAsDataURL(file);
+        } catch (err: any) {
+            setScanError(err.message || "Failed to process the file");
+        } finally {
+            setIsScanning(false);
+        }
     };
 
     const handleConfirmNameAndScan = async () => {
@@ -3300,21 +3373,24 @@ export const EverydayExpenseModal: React.FC<{
         });
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = () => {
-            const base64 = reader.result as string;
-            setTempImageData({ image: base64, mime: file.type });
+        setIsScanning(true);
+        setScanError(null);
+        try {
+            const { base64, mimeType } = await compressImageFile(file);
+            if (!base64) {
+                throw new Error("Failed to process the uploaded image");
+            }
+            setTempImageData({ image: base64, mime: mimeType });
             const nameToSuggest = formData.uploadedBy || formData.updatedBy || user?.name || '';
             setUploaderName(nameToSuggest);
-            setScanError(null);
 
             if (nameToSuggest) {
                 // Already have user name, proceed to scan directly!
-                setIsScanning(true);
+                // Note: isScanning is already true
                 fetch("/api/gemini/extract-receipt", {
                     method: "POST",
                     headers: {
@@ -3322,7 +3398,7 @@ export const EverydayExpenseModal: React.FC<{
                     },
                     body: JSON.stringify({
                         image: base64,
-                        mimeType: file.type,
+                        mimeType: mimeType,
                         type: "everyday"
                     })
                 })
@@ -3384,12 +3460,13 @@ export const EverydayExpenseModal: React.FC<{
                 });
             } else {
                 setShowNamePrompt(true);
+                setIsScanning(false);
             }
-        };
-        reader.onerror = () => {
-            setScanError("Failed to read the image file");
-        };
-        reader.readAsDataURL(file);
+        } catch (err: any) {
+            console.error("Image processing error:", err);
+            setScanError(err.message || "Failed to process the uploaded file");
+            setIsScanning(false);
+        }
     };
 
     const handleConfirmNameAndScan = async () => {
