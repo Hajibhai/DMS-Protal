@@ -7470,30 +7470,30 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
             </div>
 
             <div className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-xl shadow-slate-200/50">
-                <div className="overflow-x-auto">
+                <div className="max-h-[calc(100vh-280px)] overflow-auto scrollbar-thin">
                     <table className="w-full text-center border-collapse text-[11px]">
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
-                                <th className="p-4 text-left bg-slate-50/80 backdrop-blur-sm sticky left-0 z-20 border-r border-slate-100 min-w-[180px]">
+                                <th className="p-4 text-left bg-slate-50 sticky top-0 left-0 z-30 border-r border-b border-slate-100 min-w-[180px] shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">
                                     <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Employee Name</span>
                                 </th>
-                                <th className="p-4 font-bold text-slate-500 border-r border-slate-100 uppercase tracking-widest text-[10px]">Leave</th>
-                                <th className="p-4 font-bold text-brand-600 border-r border-slate-100 uppercase tracking-widest text-[10px]">OT</th>
+                                <th className="p-4 font-bold text-slate-500 border-r border-b border-slate-100 uppercase tracking-widest text-[10px] sticky top-0 z-20 bg-slate-50 shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">Leave</th>
+                                <th className="p-4 font-bold text-brand-600 border-r border-b border-slate-100 uppercase tracking-widest text-[10px] sticky top-0 z-20 bg-slate-50 shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">OT</th>
                                 {days.map(d => {
                                     const date = new Date(year, month - 1, d);
                                     const dayName = date.toLocaleString('default', { weekday: 'narrow' });
                                     const isSunday = date.getDay() === 0;
                                     return (
                                         <th key={d} className={cn(
-                                            "p-2 w-10 border-r border-slate-50 min-w-[36px]",
-                                            isSunday ? 'bg-red-50/30 text-red-500' : 'text-slate-600'
+                                            "p-2 w-10 border-r border-slate-50 min-w-[36px] sticky top-0 z-20 border-b border-slate-100 shadow-[inset_0_-1px_0_rgba(226,232,240,1)] animate-none",
+                                            isSunday ? 'bg-red-50 text-red-500 font-bold' : 'bg-slate-50 text-slate-600'
                                         )}>
                                             <div className="font-bold text-sm">{d}</div>
                                             <div className="text-[9px] font-bold uppercase opacity-60">{dayName}</div>
                                         </th>
                                     );
                                 })}
-                                <th className="p-4 font-bold text-slate-900 bg-slate-50/80 backdrop-blur-sm sticky right-0 z-20 border-l border-slate-100 uppercase tracking-widest text-[10px]">Total</th>
+                                <th className="p-4 font-bold text-slate-900 bg-slate-50 sticky top-0 right-0 z-30 border-l border-b border-slate-100 uppercase tracking-widest text-[10px] shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">Total</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
