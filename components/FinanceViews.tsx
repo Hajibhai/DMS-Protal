@@ -3339,6 +3339,17 @@ export const EverydayExpenseModal: React.FC<{
         return everydayExpenses.find(existing => {
             if (existing.id === newExpense.id) return false;
             
+            // If both entries have different non-empty invoice numbers, they are NOT duplicates
+            if (
+                newExpense.invoiceNo && 
+                existing.invoiceNo && 
+                newExpense.invoiceNo.trim().length > 2 &&
+                existing.invoiceNo.trim().length > 2 &&
+                newExpense.invoiceNo.trim().toLowerCase() !== existing.invoiceNo.trim().toLowerCase()
+            ) {
+                return false;
+            }
+            
             // 1. Check Invoice number match (case-insensitive, trimmed, not empty)
             if (
                 newExpense.invoiceNo && 
@@ -3991,9 +4002,18 @@ export const EverydayExpenseModal: React.FC<{
                         <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-100 flex gap-3">
                             <button 
                                 onClick={() => setDuplicateMatch(null)}
-                                className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-sm font-bold transition-all shadow-md cursor-pointer text-center"
+                                className="flex-1 py-4 bg-white border border-slate-200 text-slate-700 rounded-2xl text-sm font-bold hover:bg-slate-50 transition-all cursor-pointer text-center"
                             >
-                                Close Warning
+                                Cancel / Edit
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    setDuplicateMatch(null);
+                                    onSave(formData);
+                                }}
+                                className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-bold transition-all shadow-md cursor-pointer text-center"
+                            >
+                                Save Anyway
                             </button>
                         </div>
                     </motion.div>
