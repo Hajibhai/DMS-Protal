@@ -1005,7 +1005,14 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         });
         const balance = totalBilled - totalPaid;
 
-        const selectedCompanyObj = (companies || []).find((c: any) => c.id === soaCompanyId) || (companies && companies.length > 0 ? companies[0] : null);
+        let selectedCompanyObj = (companies || []).find((c: any) => c.id === soaCompanyId);
+        if (!selectedCompanyObj && soaFilteredItems.length > 0) {
+            const firstItem = soaFilteredItems[0];
+            selectedCompanyObj = (companies || []).find((c: any) => c.id === firstItem.companyId || c.name === firstItem.companyName);
+        }
+        if (!selectedCompanyObj && companies && companies.length > 0) {
+            selectedCompanyObj = companies[0];
+        }
 
         generatePdfSOA({
             title: "SUPPLIER STATEMENT OF ACCOUNT (SOA)",
@@ -2734,7 +2741,14 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         });
         const balance = totalBilled - totalPaid;
 
-        const selectedCompanyObj = (companies || []).find((c: any) => c.id === soaCompanyId) || (companies && companies.length > 0 ? companies[0] : null);
+        let selectedCompanyObj = (companies || []).find((c: any) => c.id === soaCompanyId);
+        if (!selectedCompanyObj && soaFilteredItems.length > 0) {
+            const firstItem = soaFilteredItems[0];
+            selectedCompanyObj = (companies || []).find((c: any) => c.id === firstItem.companyId || c.name === firstItem.companyName);
+        }
+        if (!selectedCompanyObj && companies && companies.length > 0) {
+            selectedCompanyObj = companies[0];
+        }
 
         generatePdfSOA({
             title: "CLIENT STATEMENT OF ACCOUNT (SOA)",
@@ -3531,6 +3545,23 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                     {arClientOptions.map((opt: any) => (
                                         <option key={opt.value} value={opt.value}>
                                             {opt.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Select Company Origin/Seller */}
+                            <div className="space-y-1.5">
+                                <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider text-brand-600">Select Company Issuer</label>
+                                <select 
+                                    value={soaCompanyId} 
+                                    onChange={e => setSoaCompanyId(e.target.value)}
+                                    className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-850 outline-hidden font-extrabold cursor-pointer text-xs text-brand-600 hover:border-brand-300 transition-colors"
+                                >
+                                    <option value="All">All Companies (Default Pioneer Header)</option>
+                                    {(companies || []).map((c: any) => (
+                                        <option key={c.id} value={c.id}>
+                                            💼 {c.name}
                                         </option>
                                     ))}
                                 </select>
