@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
   FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle,
-  Camera, Upload, CheckCircle, AlertCircle
+  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -500,6 +500,9 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
 );
 
 export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, user }: any) => {
+    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights'>('ledger');
+    const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
+
     const getVendorName = (id: string, type: string) => {
         if (type === 'Supplier') return suppliers.find((s: any) => s.id === id)?.name || 'Unknown';
         return vendors.find((v: any) => v.id === id)?.name || 'Unknown';
@@ -510,75 +513,538 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         return projects.find((p: any) => p.id === id)?.name || 'N/A';
     };
 
+    // Calculate dynamic high-level metrics
+    const metrics = useMemo(() => {
+        let totalBills = 0;
+        let totalPaid = 0;
+        let totalPending = 0;
+        let totalVat = 0;
+
+        (data || []).forEach((item: any) => {
+            const amount = item.totalAmount || item.amount || 0;
+            const vat = item.vatAmount || 0;
+            totalBills += amount;
+            totalVat += vat;
+
+            if (item.status === 'Paid') {
+                totalPaid += amount;
+            } else {
+                totalPending += amount;
+            }
+        });
+
+        return {
+            totalBills,
+            totalPaid,
+            totalPending,
+            totalVat,
+            count: data?.length || 0,
+            pendingCount: (data || []).filter((item: any) => item.status !== 'Paid').length,
+            paidCount: (data || []).filter((item: any) => item.status === 'Paid').length
+        };
+    }, [data]);
+
+    // Aging Buckets Calculation
+    const agingBuckets = useMemo(() => {
+        const buckets: { [key: string]: { label: string; amount: number; count: number; color: string; desc: string; items: any[] } } = {
+            current: { label: 'Current / Not Due', amount: 0, count: 0, color: 'bg-emerald-500', desc: 'Bills within standard terms', items: [] },
+            days30: { label: '1 - 30 Days Due', amount: 0, count: 0, color: 'bg-indigo-500', desc: 'Overdue up to 1 month', items: [] },
+            days60: { label: '31 - 60 Days Due', amount: 0, count: 0, color: 'bg-amber-500', desc: 'Overdue 1 to 2 months', items: [] },
+            days90: { label: '61 - 90 Days Due', amount: 0, count: 0, color: 'bg-orange-500', desc: 'Overdue 2 to 3 months', items: [] },
+            daysOver90: { label: '90+ Days Overdue', amount: 0, count: 0, color: 'bg-rose-500', desc: 'Unpaid bills over 90 days', items: [] }
+        };
+
+        const today = new Date();
+        today.setHours(0,0,0,0);
+
+        (data || []).forEach((item: any) => {
+            // Only non-Paid items belong to aging
+            if (item.status === 'Paid') return;
+
+            const refDateStr = item.dueDate || item.date;
+            if (!refDateStr) return;
+
+            const refDate = new Date(refDateStr);
+            refDate.setHours(0,0,0,0);
+
+            const diffTime = today.getTime() - refDate.getTime();
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            const amount = item.totalAmount || item.amount || 0;
+
+            if (diffDays <= 0) {
+                buckets.current.amount += amount;
+                buckets.current.count += 1;
+                buckets.current.items.push(item);
+            } else if (diffDays <= 30) {
+                buckets.days30.amount += amount;
+                buckets.days30.count += 1;
+                buckets.days30.items.push(item);
+            } else if (diffDays <= 60) {
+                buckets.days60.amount += amount;
+                buckets.days60.count += 1;
+                buckets.days60.items.push(item);
+            } else if (diffDays <= 90) {
+                buckets.days90.amount += amount;
+                buckets.days90.count += 1;
+                buckets.days90.items.push(item);
+            } else {
+                buckets.daysOver90.amount += amount;
+                buckets.daysOver90.count += 1;
+                buckets.daysOver90.items.push(item);
+            }
+        });
+
+        return buckets;
+    }, [data]);
+
+    // Monthly Trends Calculation
+    const monthlyTrends = useMemo(() => {
+        const trends: { [key: string]: { label: string; bBilled: number; pPaid: number; pPending: number; itemsCount: number } } = {};
+
+        (data || []).forEach((item: any) => {
+            const dateStr = item.date;
+            if (!dateStr) return;
+
+            const monthKey = dateStr.substring(0, 7); // YYYY-MM
+            if (!trends[monthKey]) {
+                const [yr, mn] = monthKey.split('-');
+                const d = new Date(parseInt(yr), parseInt(mn) - 1, 1);
+                const humanLabel = d.toLocaleDateString('default', { month: 'short', year: 'numeric' });
+                trends[monthKey] = {
+                    label: humanLabel,
+                    bBilled: 0,
+                    pPaid: 0,
+                    pPending: 0,
+                    itemsCount: 0
+                };
+            }
+
+            const amount = item.totalAmount || item.amount || 0;
+            trends[monthKey].bBilled += amount;
+            trends[monthKey].itemsCount += 1;
+
+            if (item.status === 'Paid') {
+                trends[monthKey].pPaid += amount;
+            } else {
+                trends[monthKey].pPending += amount;
+            }
+        });
+
+        return Object.keys(trends)
+            .sort()
+            .map(key => ({
+                key,
+                ...trends[key]
+            }));
+    }, [data]);
+
+    const totalAgingAmount = Object.values(agingBuckets).reduce((acc, curr) => acc + curr.amount, 0);
+
+    const activeAgingList = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.items || [] : [];
+    const activeAgingLabel = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.label : '';
+
     return (
-        <DataTable<AccountsPayable>
-            title="Accounts Payable"
-            description="Track and manage outgoing payments to suppliers and clients."
-            icon={TrendingDown}
-            data={data}
-            columns={[
-                { key: 'date', label: 'Date', sortable: true },
-                { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
-                { 
-                    key: 'vendorId', 
-                    label: 'Client/Supplier',
-                    render: (item) => (
-                        <div className="flex flex-col">
-                            <span className="font-bold text-slate-900">{getVendorName(item.vendorId, item.vendorType)}</span>
-                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">{item.vendorType === 'Vendor' ? 'Client' : item.vendorType}</span>
+        <div className="relative space-y-6">
+            
+            {/* Header with Mode Toggles */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-5 border border-slate-100 rounded-3xl gap-4 shadow-sm">
+                <div>
+                    <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+                        <TrendingDown className="w-6 h-6 text-rose-600" />
+                        <span>Supplier Accounts Payable</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 font-medium">Track supplier liabilities, outstanding aged bills, and payment outflows.</p>
+                </div>
+                <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/45 shrink-0">
+                    <button 
+                        onClick={() => setActiveTabMode('ledger')}
+                        className={cn(
+                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                            activeTabMode === 'ledger' ? "bg-white text-rose-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                        )}
+                    >
+                        📋 Bill Ledger Table
+                    </button>
+                    <button 
+                        onClick={() => {
+                            setActiveTabMode('insights');
+                            setSelectedAgingBucket('days30'); // Default to 1-30 days overdue
+                        }}
+                        className={cn(
+                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                            activeTabMode === 'insights' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                        )}
+                    >
+                        📊 Aging & Monthly Reports
+                    </button>
+                </div>
+            </div>
+
+            {/* Financial Summary Ribbons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-blue-100 transition-all">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Total Supplier Bills</span>
+                        <div className="p-2 bg-blue-50 text-blue-600 rounded-2xl">
+                            <FileText className="w-4 h-4" />
                         </div>
-                    )
-                },
-                { 
-                    key: 'projectId', 
-                    label: 'Project',
-                    render: (item) => getProjectName(item.projectId)
-                },
-                { 
-                    key: 'amount', 
-                    label: 'Amount',
-                    sortable: true,
-                    render: (item) => (
-                        <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
-                    )
-                },
-                { 
-                    key: 'vatAmount', 
-                    label: 'VAT (5%)',
-                    render: (item) => (
-                        <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
-                    )
-                },
-                { 
-                    key: 'totalAmount', 
-                    label: 'Total',
-                    sortable: true,
-                    render: (item) => (
-                        <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
-                    )
-                },
-                { 
-                    key: 'status', 
-                    label: 'Status',
-                    render: (item) => (
-                        <span className={cn(
-                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
-                            item.status === 'Paid' ? "bg-emerald-100 text-emerald-600" :
-                            item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
-                            "bg-blue-100 text-blue-600"
-                        )}>
-                            {item.status}
-                        </span>
-                    )
-                },
-            ]}
-            onAdd={onAdd}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            searchFields={['invoiceNumber', 'description']}
-            exportFileName="Accounts_Payable"
-            user={user}
-        />
+                    </div>
+                    <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalBills.toLocaleString()}</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono">Billed count: {metrics.count} invoices</p>
+                </div>
+
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-emerald-100 transition-all">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Cleared Outflows (Paid)</span>
+                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-2xl">
+                            <CheckCircle className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalPaid.toLocaleString()}</p>
+                    <p className="text-[10px] text-emerald-600 font-bold mt-2 font-mono">
+                        Payment rate: {metrics.totalBills > 0 ? ((metrics.totalPaid / metrics.totalBills) * 100).toFixed(1) : 0}% ({metrics.paidCount} paid)
+                    </p>
+                </div>
+
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-rose-100 transition-all">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Aged Supplier Payables</span>
+                        <div className="p-2 bg-rose-50 text-rose-600 rounded-2xl">
+                            <Clock className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalPending.toLocaleString()}</p>
+                    <p className="text-[10px] text-rose-600 font-bold mt-2 font-mono">
+                        {metrics.totalBills > 0 ? ((metrics.totalPending / metrics.totalBills) * 100).toFixed(1) : 0}% outstanding ({metrics.pendingCount} unpaid)
+                    </p>
+                </div>
+
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-slate-200 transition-all">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">5% Input Tax (Recoverable)</span>
+                        <div className="p-2 bg-slate-50 text-slate-600 rounded-2xl">
+                            <Percent className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalVat.toLocaleString()}</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono">Claimable VAT on ledger</p>
+                </div>
+            </div>
+
+            {/* Main Dynamic Panel */}
+            {activeTabMode === 'ledger' ? (
+                <DataTable<AccountsPayable>
+                    title="Accounts Payable Ledger"
+                    description="Standard general ledger list of supplier billings and payments."
+                    icon={TrendingDown}
+                    data={data}
+                    columns={[
+                        { key: 'date', label: 'Date', sortable: true },
+                        { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
+                        { 
+                            key: 'vendorId', 
+                            label: 'Client/Supplier',
+                            render: (item) => (
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-slate-900">{getVendorName(item.vendorId, item.vendorType)}</span>
+                                    <span className="text-[10px] text-slate-400 uppercase tracking-wider">{item.vendorType === 'Vendor' ? 'Client' : item.vendorType}</span>
+                                </div>
+                            )
+                        },
+                        { 
+                            key: 'projectId', 
+                            label: 'Project',
+                            render: (item) => getProjectName(item.projectId)
+                        },
+                        { 
+                            key: 'amount', 
+                            label: 'Amount',
+                            sortable: true,
+                            render: (item) => (
+                                <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
+                            )
+                        },
+                        { 
+                            key: 'vatAmount', 
+                            label: 'VAT (5%)',
+                            render: (item) => (
+                                <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
+                            )
+                        },
+                        { 
+                            key: 'totalAmount', 
+                            label: 'Total',
+                            sortable: true,
+                            render: (item) => (
+                                <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
+                            )
+                        },
+                        { 
+                            key: 'status', 
+                            label: 'Status',
+                            render: (item) => (
+                                <span className={cn(
+                                    "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                                    item.status === 'Paid' ? "bg-emerald-100 text-emerald-600" :
+                                    item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
+                                    "bg-blue-100 text-blue-600"
+                                )}>
+                                    {item.status}
+                                </span>
+                            )
+                        },
+                    ]}
+                    onAdd={onAdd}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    searchFields={['invoiceNumber', 'description']}
+                    exportFileName="Accounts_Payable"
+                    user={user}
+                />
+            ) : (
+                <div className="space-y-6">
+                    {/* Interactive Aging Wheel & Progress metrics */}
+                    <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 pb-5 gap-3">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                    <BarChart3 className="w-5 h-5 text-indigo-600" />
+                                    <span>Supplier Aging Analysis Tracker</span>
+                                </h3>
+                                <p className="text-xs text-slate-400 font-medium">Click on any age group to view detailed outstanding supplier bills.</p>
+                            </div>
+                            <div className="text-left md:text-right bg-slate-50 border border-slate-100 rounded-2xl p-3 shrink-0">
+                                <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider font-mono">Total Unpaid Outflows</span>
+                                <h4 className="text-xl font-black text-slate-800 font-mono">AED {totalAgingAmount.toLocaleString()}</h4>
+                            </div>
+                        </div>
+
+                        {/* Interactive Aging Cards Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                            {Object.entries(agingBuckets).map(([key, bucket]) => {
+                                const selected = selectedAgingBucket === key;
+                                const pctOfTotal = totalAgingAmount > 0 ? (bucket.amount / totalAgingAmount) * 100 : 0;
+                                return (
+                                    <button
+                                        key={key}
+                                        onClick={() => setSelectedAgingBucket(key)}
+                                        className={cn(
+                                            "flex flex-col text-left p-4 rounded-3xl border-2 transition-all cursor-pointer relative overflow-hidden",
+                                            selected 
+                                                ? "border-rose-600 bg-rose-50/20 shadow-md shadow-rose-600/5 scale-[1.02]" 
+                                                : "border-slate-100 hover:border-slate-300 bg-white"
+                                        )}
+                                    >
+                                        <div className="flex justify-between items-start mb-4">
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 font-mono">
+                                                {bucket.label}
+                                            </span>
+                                            {bucket.count > 0 && (
+                                                <span className={cn(
+                                                    "px-1.5 py-0.5 rounded-lg text-[9px] font-black text-white shrink-0 font-mono",
+                                                    bucket.color
+                                                )}>
+                                                    {bucket.count}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <p className="text-[16px] font-black text-slate-900 leading-none">AED {bucket.amount.toLocaleString()}</p>
+                                        <p className="text-[10px] text-slate-400 font-bold mt-1.5 font-mono">{pctOfTotal.toFixed(1)}% of total</p>
+                                        
+                                        {/* Colored Progress Bar Segment */}
+                                        <div className="w-full bg-slate-100 h-1.5 rounded-full mt-4 overflow-hidden">
+                                            <div 
+                                                className={cn("h-full rounded-full", bucket.color)} 
+                                                style={{ width: `${pctOfTotal}%` }} 
+                                            />
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Selected Aging Bucket Details */}
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={selectedAgingBucket || 'none'}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="bg-slate-50/80 border border-slate-100 rounded-3xl p-5 md:p-6"
+                            >
+                                <div className="flex justify-between items-center border-b border-slate-200/50 pb-4 mb-4">
+                                    <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                                        <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-full animate-pulse" />
+                                        <span>Details for Group:</span>
+                                        <strong className="text-rose-600">{activeAgingLabel}</strong>
+                                    </h4>
+                                    <span className="text-[10px] text-slate-400 font-bold font-mono">
+                                        {activeAgingList.length} supplier invoices in this bucket
+                                    </span>
+                                </div>
+
+                                {activeAgingList.length === 0 ? (
+                                    <div className="py-8 text-center text-slate-400">
+                                        <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                                        <p className="font-extrabold text-slate-700 text-sm">No Outstanding Liabilities!</p>
+                                        <p className="text-[11px] text-slate-400 font-medium">All supplier bills in this aging group have been cleared.</p>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">
+                                                    <th className="py-3 px-2">Invoice #</th>
+                                                    <th className="py-3 px-2">Supplier Name</th>
+                                                    <th className="py-3 px-2">Project</th>
+                                                    <th className="py-3 px-2">Bill Date</th>
+                                                    <th className="py-3 px-2">Due Date</th>
+                                                    <th className="py-3 px-2">Aged Overdue</th>
+                                                    <th className="py-3 px-2 text-right">Liability Balance</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-150">
+                                                {activeAgingList.map((item: any) => {
+                                                    const today = new Date();
+                                                    today.setHours(0,0,0,0);
+                                                    const refDate = new Date(item.dueDate || item.date);
+                                                    const diffDays = Math.floor((today.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
+
+                                                    return (
+                                                        <tr key={item.id} className="text-xs hover:bg-slate-100/50 transition-colors">
+                                                            <td className="py-3.5 px-2 font-black text-slate-900 font-mono">{item.invoiceNumber || 'N/A'}</td>
+                                                            <td className="py-3.5 px-2">
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-bold text-slate-800">{getVendorName(item.vendorId, item.vendorType)}</span>
+                                                                    <span className="text-[10px] text-slate-400 font-mono uppercase shrink-0">
+                                                                        {item.vendorType === 'Vendor' ? 'Client' : item.vendorType}
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-3.5 px-2 font-semibold text-slate-700">{getProjectName(item.projectId)}</td>
+                                                            <td className="py-3.5 px-2 font-medium text-slate-505 font-mono">{item.date}</td>
+                                                            <td className="py-3.5 px-2 font-semibold text-slate-600 font-mono">{item.dueDate || 'N/A'}</td>
+                                                            <td className="py-3.5 px-2 font-bold">
+                                                                {diffDays <= 0 ? (
+                                                                    <span className="text-emerald-600 font-mono text-[10px] bg-emerald-50 px-2 py-0.5 rounded-full font-bold">Not overdue</span>
+                                                                ) : (
+                                                                    <span className="text-rose-600 font-mono text-[10px] bg-rose-50 px-2 py-0.5 rounded-full font-bold">{diffDays} days past due</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-3.5 px-2 text-right font-black text-slate-900 font-mono">
+                                                                AED {(item.totalAmount || item.amount).toLocaleString()}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
+
+                    {/* Monthly Trends Dashboard */}
+                    <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-5">
+                        <div>
+                            <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                <Calendar className="w-5 h-5 text-indigo-600" />
+                                <span>Monthly Supplier Billings & Liquidation</span>
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium">Visual calendar ledger tracking supplier claims received, payments released, and outstanding credits.</p>
+                        </div>
+
+                        {monthlyTrends.length === 0 ? (
+                            <div className="py-12 text-center text-slate-400 border border-dashed border-slate-200 rounded-3xl">
+                                <p className="font-bold">No monthly billings data available yet</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Left: Monthly Trends Table */}
+                                <div className="border border-slate-100 rounded-3xl overflow-hidden shadow-xs bg-white">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-slate-50 border-b border-slate-150 text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">
+                                                <th className="py-3.5 px-4 font-bold text-slate-500">Billing Month</th>
+                                                <th className="py-3.5 px-4 text-right">Invoiced (AED)</th>
+                                                <th className="py-3.5 px-4 text-right">Paid Out (AED)</th>
+                                                <th className="py-3.5 px-4 text-right">Pending Balance</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 text-xs">
+                                            {monthlyTrends.map((trend: any) => {
+                                                const paidPct = trend.bBilled > 0 ? (trend.pPaid / trend.bBilled) * 100 : 0;
+                                                return (
+                                                    <tr key={trend.key} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="py-3.5 px-4 font-extrabold text-slate-800">{trend.label}</td>
+                                                        <td className="py-3.5 px-4 text-right font-bold text-slate-500">{trend.bBilled.toLocaleString()}</td>
+                                                        <td className="py-3.5 px-4 text-right font-extrabold text-emerald-600 whitespace-nowrap">
+                                                            {trend.pPaid.toLocaleString()}
+                                                            <span className="block text-[9px] font-bold font-mono text-emerald-500 mt-0.5">{paidPct.toFixed(0)}% Disbursed</span>
+                                                        </td>
+                                                        <td className="py-3.5 px-4 text-right font-black text-rose-600">{trend.pPending.toLocaleString()}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Right: Visual Progress Chart representation of Month-on-Month billing */}
+                                <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 md:p-6 flex flex-col justify-between">
+                                    <div className="space-y-4">
+                                        <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider font-mono">Month-on-Month Liability Liquidation</h4>
+                                        <div className="space-y-4 max-h-[260px] overflow-y-auto pr-1">
+                                            {monthlyTrends.map((trend: any) => {
+                                                const paidPct = trend.bBilled > 0 ? (trend.pPaid / trend.bBilled) * 100 : 0;
+                                                return (
+                                                    <div key={trend.key} className="space-y-1">
+                                                        <div className="flex justify-between items-center text-[11px] font-semibold text-slate-700">
+                                                            <span className="font-extrabold">{trend.label}</span>
+                                                            <span className="font-mono text-slate-500">AED {trend.bBilled.toLocaleString()}</span>
+                                                        </div>
+                                                        <div className="relative w-full h-3 bg-slate-200/50 rounded-full overflow-hidden flex">
+                                                            {/* Color for paid */}
+                                                            <div 
+                                                                className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-full rounded-l-full relative group transition-all" 
+                                                                style={{ width: `${paidPct}%` }}
+                                                                title={`Paid: AED ${trend.pPaid.toLocaleString()}`}
+                                                            />
+                                                            {/* Color for unpaid */}
+                                                            <div 
+                                                                className="bg-gradient-to-r from-rose-400 to-rose-600 h-full rounded-r-full transition-all" 
+                                                                style={{ width: `${100 - paidPct}%` }}
+                                                                title={`Liability balance: AED ${trend.pPending.toLocaleString()}`}
+                                                            />
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-[9px] font-mono text-slate-400">
+                                                            <span>Paid Ratio: {paidPct.toFixed(1)}%</span>
+                                                            <span>Outstanding: {(100 - paidPct).toFixed(1)}%</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 pt-4 border-t border-slate-200/50 flex justify-around text-[10px] font-bold font-mono">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                                            <span className="text-slate-505">Paid Liabilities</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
+                                            <span className="text-slate-505">Outstanding Balance</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -822,6 +1288,8 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
 
 export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, user, companies }: any) => {
     const [previewInvoiceItem, setPreviewInvoiceItem] = useState<{ item: any; comp: any; client: any } | null>(null);
+    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights'>('ledger');
+    const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
 
     const getEntityName = (id: string, type: string) => {
         if (type === 'Project') return projects.find((p: any) => p.id === id)?.name || 'Unknown Project';
@@ -837,122 +1305,593 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         return null;
     };
 
+    // Calculate dynamic high-level metrics
+    const metrics = useMemo(() => {
+        let totalBilled = 0;
+        let totalCollected = 0;
+        let totalPending = 0;
+        let totalVat = 0;
+        
+        (data || []).forEach((item: any) => {
+            const amount = item.totalAmount || item.amount || 0;
+            const vat = item.vatAmount || 0;
+            totalBilled += amount;
+            totalVat += vat;
+
+            if (item.status === 'Received') {
+                totalCollected += amount;
+            } else {
+                totalPending += amount;
+            }
+        });
+
+        return {
+            totalBilled,
+            totalCollected,
+            totalPending,
+            totalVat,
+            count: data?.length || 0,
+            pendingCount: (data || []).filter((item: any) => item.status !== 'Received').length,
+            collectedCount: (data || []).filter((item: any) => item.status === 'Received').length
+        };
+    }, [data]);
+
+    // Aging Buckets Calculation
+    const agingBuckets = useMemo(() => {
+        const buckets: { [key: string]: { label: string; amount: number; count: number; color: string; desc: string; items: any[] } } = {
+            current: { label: 'Current / Not Due', amount: 0, count: 0, color: 'bg-emerald-500', desc: 'Invoices within standard terms', items: [] },
+            days30: { label: '1 - 30 Days Due', amount: 0, count: 0, color: 'bg-indigo-500', desc: 'Overdue up to 1 month', items: [] },
+            days60: { label: '31 - 60 Days Due', amount: 0, count: 0, color: 'bg-amber-500', desc: 'Overdue 1 to 2 months', items: [] },
+            days90: { label: '61 - 90 Days Due', amount: 0, count: 0, color: 'bg-orange-500', desc: 'Overdue 2 to 3 months', items: [] },
+            daysOver90: { label: '90+ Days Overdue', amount: 0, count: 0, color: 'bg-rose-500', desc: 'Action required immediately', items: [] }
+        };
+
+        const today = new Date();
+        today.setHours(0,0,0,0);
+
+        (data || []).forEach((item: any) => {
+            // Only non-Received items belong to aging
+            if (item.status === 'Received') return;
+
+            const refDateStr = item.dueDate || item.date;
+            if (!refDateStr) return;
+
+            const refDate = new Date(refDateStr);
+            refDate.setHours(0,0,0,0);
+
+            const diffTime = today.getTime() - refDate.getTime();
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            const amount = item.totalAmount || item.amount || 0;
+
+            if (diffDays <= 0) {
+                buckets.current.amount += amount;
+                buckets.current.count += 1;
+                buckets.current.items.push(item);
+            } else if (diffDays <= 30) {
+                buckets.days30.amount += amount;
+                buckets.days30.count += 1;
+                buckets.days30.items.push(item);
+            } else if (diffDays <= 60) {
+                buckets.days60.amount += amount;
+                buckets.days60.count += 1;
+                buckets.days60.items.push(item);
+            } else if (diffDays <= 90) {
+                buckets.days90.amount += amount;
+                buckets.days90.count += 1;
+                buckets.days90.items.push(item);
+            } else {
+                buckets.daysOver90.amount += amount;
+                buckets.daysOver90.count += 1;
+                buckets.daysOver90.items.push(item);
+            }
+        });
+
+        return buckets;
+    }, [data]);
+
+    // Monthly Trends Calculation
+    const monthlyTrends = useMemo(() => {
+        const trends: { [key: string]: { label: string; bBilled: number; cCollected: number; pPending: number; itemsCount: number } } = {};
+
+        (data || []).forEach((item: any) => {
+            const dateStr = item.date;
+            if (!dateStr) return;
+
+            const monthKey = dateStr.substring(0, 7); // YYYY-MM
+            if (!trends[monthKey]) {
+                const [yr, mn] = monthKey.split('-');
+                const d = new Date(parseInt(yr), parseInt(mn) - 1, 1);
+                const humanLabel = d.toLocaleDateString('default', { month: 'short', year: 'numeric' });
+                trends[monthKey] = {
+                    label: humanLabel,
+                    bBilled: 0,
+                    cCollected: 0,
+                    pPending: 0,
+                    itemsCount: 0
+                };
+            }
+
+            const amount = item.totalAmount || item.amount || 0;
+            trends[monthKey].bBilled += amount;
+            trends[monthKey].itemsCount += 1;
+
+            if (item.status === 'Received') {
+                trends[monthKey].cCollected += amount;
+            } else {
+                trends[monthKey].pPending += amount;
+            }
+        });
+
+        return Object.keys(trends)
+            .sort()
+            .map(key => ({
+                key,
+                ...trends[key]
+            }));
+    }, [data]);
+
+    // Outstanding items helper for list below aging selectors
+    const totalAgingAmount = Object.values(agingBuckets).reduce((acc, curr) => acc + curr.amount, 0);
+
+    const activeAgingList = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.items || [] : [];
+    const activeAgingLabel = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.label : '';
+
     return (
-        <div className="relative">
-            <DataTable<AccountsReceivable>
-                title="Accounts Receivable"
-                description="Manage incoming payments and client invoicing for projects."
-                icon={TrendingUp}
-                data={data}
-                columns={[
-                    { key: 'date', label: 'Date', sortable: true },
-                    { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
-                    { 
-                        key: 'companyId', 
-                        label: 'Seller Company',
-                        render: (item: any) => {
-                            const comp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
-                            return (
-                                <div className="flex items-center gap-2">
-                                    {comp?.logo ? (
-                                        <img src={comp.logo} alt={comp.name} className="w-7 h-7 object-contain rounded-lg border border-slate-100 bg-white p-0.5 shrink-0" referrerPolicy="no-referrer" />
-                                    ) : (
-                                        <div className="w-7 h-7 bg-blue-50 text-blue-600 border border-blue-100/50 rounded-lg flex items-center justify-center font-bold text-xs uppercase shrink-0">
-                                            {(comp?.name || item.companyName || 'CO').substring(0, 2)}
-                                        </div>
-                                    )}
-                                    <span className="font-extrabold text-slate-800 text-xs truncate max-w-[130px]">
-                                        {comp?.name || item.companyName || 'Unassigned'}
+        <div className="relative space-y-6">
+            
+            {/* Header with Mode Toggles */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-5 border border-slate-100 rounded-3xl gap-4 shadow-sm">
+                <div>
+                    <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+                        <TrendingUp className="w-6 h-6 text-blue-600" />
+                        <span>Client Accounts Receivable</span>
+                    </h2>
+                    <p className="text-xs text-slate-400 font-medium">Analyze client invoices, outstanding aged debts, and payment trends.</p>
+                </div>
+                <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/45 shrink-0">
+                    <button 
+                        onClick={() => setActiveTabMode('ledger')}
+                        className={cn(
+                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                            activeTabMode === 'ledger' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                        )}
+                    >
+                        📋 Invoice Ledger Table
+                    </button>
+                    <button 
+                        onClick={() => {
+                            setActiveTabMode('insights');
+                            setSelectedAgingBucket('days30'); // Default to 1-30 days overdue
+                        }}
+                        className={cn(
+                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                            activeTabMode === 'insights' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                        )}
+                    >
+                        📊 Aging & Monthly Reports
+                    </button>
+                </div>
+            </div>
+
+            {/* Financial Summary Ribbons */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-blue-100 transition-all">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Total Billed Invoices</span>
+                        <div className="p-2 bg-blue-50 text-blue-600 rounded-2xl">
+                            <FileText className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalBilled.toLocaleString()}</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono">Invoiced count: {metrics.count} bills</p>
+                </div>
+
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-emerald-100 transition-all">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Revenue Collected</span>
+                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-2xl">
+                            <CheckCircle className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalCollected.toLocaleString()}</p>
+                    <p className="text-[10px] text-emerald-600 font-bold mt-2 font-mono">
+                        Settle rate: {metrics.totalBilled > 0 ? ((metrics.totalCollected / metrics.totalBilled) * 100).toFixed(1) : 0}% ({metrics.collectedCount} settled)
+                    </p>
+                </div>
+
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-indigo-100 transition-all">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Outstanding Receivables</span>
+                        <div className="p-2 bg-indigo-50 text-indigo-600 rounded-2xl">
+                            <Clock className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalPending.toLocaleString()}</p>
+                    <p className="text-[10px] text-amber-600 font-bold mt-2 font-mono">
+                        {metrics.totalBilled > 0 ? ((metrics.totalPending / metrics.totalBilled) * 100).toFixed(1) : 0}% pending ({metrics.pendingCount} unpaid)
+                    </p>
+                </div>
+
+                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-slate-200 transition-all">
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">5% Output Tax (VAT)</span>
+                        <div className="p-2 bg-slate-50 text-slate-600 rounded-2xl">
+                            <Percent className="w-4 h-4" />
+                        </div>
+                    </div>
+                    <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalVat.toLocaleString()}</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono">Collected Output VAT on ledger</p>
+                </div>
+            </div>
+
+            {/* Main Dynamic Panel */}
+            {activeTabMode === 'ledger' ? (
+                <DataTable<AccountsReceivable>
+                    title="Accounts Receivable Ledger"
+                    description="Standard general ledger list of client billings and collections."
+                    icon={TrendingUp}
+                    data={data}
+                    columns={[
+                        { key: 'date', label: 'Date', sortable: true },
+                        { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
+                        { 
+                            key: 'companyId', 
+                            label: 'Seller Company',
+                            render: (item: any) => {
+                                const comp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
+                                return (
+                                    <div className="flex items-center gap-2">
+                                        {comp?.logo ? (
+                                            <img src={comp.logo} alt={comp.name} className="w-7 h-7 object-contain rounded-lg border border-slate-100 bg-white p-0.5 shrink-0" referrerPolicy="no-referrer" />
+                                        ) : (
+                                            <div className="w-7 h-7 bg-blue-50 text-blue-600 border border-blue-100/50 rounded-lg flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                                                {(comp?.name || item.companyName || 'CO').substring(0, 2)}
+                                            </div>
+                                        )}
+                                        <span className="font-extrabold text-slate-800 text-xs truncate max-w-[130px]">
+                                            {comp?.name || item.companyName || 'Unassigned'}
+                                        </span>
+                                    </div>
+                                );
+                            }
+                        },
+                        { 
+                            key: 'entityId', 
+                            label: 'Entity / Project',
+                            render: (item: any) => (
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-slate-900">
+                                        {getEntityName(item.entityId || item.projectId, item.entityType || 'Project')}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+                                        {(item.entityType || 'Project') === 'Vendor' ? 'Client' : (item.entityType || 'Project')}
                                     </span>
                                 </div>
-                            );
-                        }
-                    },
-                    { 
-                        key: 'entityId', 
-                        label: 'Entity / Project',
-                        render: (item: any) => (
-                            <div className="flex flex-col">
-                                <span className="font-bold text-slate-900">
-                                    {getEntityName(item.entityId || item.projectId, item.entityType || 'Project')}
+                            )
+                        },
+                        { 
+                            key: 'amount', 
+                            label: 'Amount',
+                            sortable: true,
+                            render: (item) => (
+                                <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
+                            )
+                        },
+                        { 
+                            key: 'vatAmount', 
+                            label: 'VAT (5%)',
+                            render: (item) => (
+                                <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
+                            )
+                        },
+                        { 
+                            key: 'totalAmount', 
+                            label: 'Total',
+                            sortable: true,
+                            render: (item) => (
+                                <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
+                            )
+                        },
+                        {
+                            key: 'zoho_invoice',
+                            label: 'Zoho Invoice',
+                            render: (item: any) => {
+                                const comp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
+                                const client = getEntityObject(item.entityId, item.entityType);
+                                return (
+                                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                        <button
+                                            onClick={() => downloadZohoInvoicePDF(item, comp, client)}
+                                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-450 hover:text-blue-600 transition-colors shrink-0"
+                                            title="Download Zoho PDF Invoice"
+                                        >
+                                            <Download className="w-4 h-4 text-blue-600" />
+                                        </button>
+                                        <button
+                                            onClick={() => setPreviewInvoiceItem({ item, comp, client })}
+                                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-450 hover:text-emerald-600 transition-colors shrink-0"
+                                            title="View Invoice Live Preview"
+                                        >
+                                            <Eye className="w-4 h-4 text-emerald-600" />
+                                        </button>
+                                    </div>
+                                );
+                            }
+                        },
+                        { 
+                            key: 'status', 
+                            label: 'Status',
+                            render: (item) => (
+                                <span className={cn(
+                                    "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                                    item.status === 'Received' ? "bg-emerald-100 text-emerald-600" :
+                                    item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
+                                    "bg-blue-100 text-blue-600"
+                                )}>
+                                    {item.status}
                                 </span>
-                                <span className="text-[10px] text-slate-400 uppercase tracking-wider">
-                                    {(item.entityType || 'Project') === 'Vendor' ? 'Client' : (item.entityType || 'Project')}
-                                </span>
+                            )
+                        },
+                    ]}
+                    onAdd={onAdd}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    searchFields={['invoiceNumber', 'description']}
+                    exportFileName="Accounts_Receivable"
+                    user={user}
+                />
+            ) : (
+                <div className="space-y-6">
+                    {/* Interactive Aging Wheel & Progress metrics */}
+                    <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-100 pb-5 gap-3">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                    <BarChart3 className="w-5 h-5 text-indigo-600" />
+                                    <span>Client Aging Analysis Tracker</span>
+                                </h3>
+                                <p className="text-xs text-slate-400 font-medium">Click on any age group to view detailed outstanding client invoices.</p>
                             </div>
-                        )
-                    },
-                    { 
-                        key: 'amount', 
-                        label: 'Amount',
-                        sortable: true,
-                        render: (item) => (
-                            <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
-                        )
-                    },
-                    { 
-                        key: 'vatAmount', 
-                        label: 'VAT (5%)',
-                        render: (item) => (
-                            <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
-                        )
-                    },
-                    { 
-                        key: 'totalAmount', 
-                        label: 'Total',
-                        sortable: true,
-                        render: (item) => (
-                            <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
-                        )
-                    },
-                    {
-                        key: 'zoho_invoice',
-                        label: 'Zoho Invoice',
-                        render: (item: any) => {
-                            const comp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
-                            const client = getEntityObject(item.entityId, item.entityType);
-                            return (
-                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            <div className="text-left md:text-right bg-slate-50 border border-slate-100 rounded-2xl p-3 shrink-0">
+                                <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider font-mono">Total Pending Receivables</span>
+                                <h4 className="text-xl font-black text-slate-800">AED {totalAgingAmount.toLocaleString()}</h4>
+                            </div>
+                        </div>
+
+                        {/* Interactive Aging Cards Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                            {Object.entries(agingBuckets).map(([key, bucket]) => {
+                                const selected = selectedAgingBucket === key;
+                                const pctOfTotal = totalAgingAmount > 0 ? (bucket.amount / totalAgingAmount) * 100 : 0;
+                                return (
                                     <button
-                                        onClick={() => downloadZohoInvoicePDF(item, comp, client)}
-                                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-450 hover:text-blue-600 transition-colors shrink-0"
-                                        title="Download Zoho PDF Invoice"
+                                        key={key}
+                                        onClick={() => setSelectedAgingBucket(key)}
+                                        className={cn(
+                                            "flex flex-col text-left p-4 rounded-3xl border-2 transition-all cursor-pointer relative overflow-hidden",
+                                            selected 
+                                                ? "border-indigo-600 bg-indigo-50/20 shadow-md shadow-indigo-600/5 scale-[1.02]" 
+                                                : "border-slate-100 hover:border-slate-300 bg-white"
+                                        )}
                                     >
-                                        <Download className="w-4 h-4 text-blue-600" />
+                                        <div className="flex justify-between items-start mb-4">
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 font-mono">
+                                                {bucket.label}
+                                            </span>
+                                            {bucket.count > 0 && (
+                                                <span className={cn(
+                                                    "px-1.5 py-0.5 rounded-lg text-[9px] font-black text-white shrink-0 font-mono",
+                                                    bucket.color
+                                                )}>
+                                                    {bucket.count}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <p className="text-[16px] font-black text-slate-900 leading-none">AED {bucket.amount.toLocaleString()}</p>
+                                        <p className="text-[10px] text-slate-400 font-bold mt-1.5 font-mono">{pctOfTotal.toFixed(1)}% of total</p>
+                                        
+                                        {/* Colored Progress Bar Segment */}
+                                        <div className="w-full bg-slate-100 h-1.5 rounded-full mt-4 overflow-hidden">
+                                            <div 
+                                                className={cn("h-full rounded-full", bucket.color)} 
+                                                style={{ width: `${pctOfTotal}%` }} 
+                                            />
+                                        </div>
                                     </button>
-                                    <button
-                                        onClick={() => setPreviewInvoiceItem({ item, comp, client })}
-                                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-450 hover:text-emerald-600 transition-colors shrink-0"
-                                        title="View Invoice Live Preview"
-                                    >
-                                        <Eye className="w-4 h-4 text-emerald-600" />
-                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Selected Aging Bucket Details */}
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={selectedAgingBucket || 'none'}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="bg-slate-50/80 border border-slate-100 rounded-3xl p-5 md:p-6"
+                            >
+                                <div className="flex justify-between items-center border-b border-slate-200/50 pb-4 mb-4">
+                                    <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                                        <span className="inline-block w-2.5 h-2.5 bg-indigo-600 rounded-full animate-pulse" />
+                                        <span>Details for Group:</span>
+                                        <strong className="text-indigo-600">{activeAgingLabel}</strong>
+                                    </h4>
+                                    <span className="text-[10px] text-slate-400 font-bold font-mono">
+                                        {activeAgingList.length} outstanding invoices in this bucket
+                                    </span>
                                 </div>
-                            );
-                        }
-                    },
-                    { 
-                        key: 'status', 
-                        label: 'Status',
-                        render: (item) => (
-                            <span className={cn(
-                                "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
-                                item.status === 'Received' ? "bg-emerald-100 text-emerald-600" :
-                                item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
-                                "bg-blue-100 text-blue-600"
-                            )}>
-                                {item.status}
-                            </span>
-                        )
-                    },
-                ]}
-                onAdd={onAdd}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                searchFields={['invoiceNumber', 'description']}
-                exportFileName="Accounts_Receivable"
-                user={user}
-            />
+
+                                {activeAgingList.length === 0 ? (
+                                    <div className="py-8 text-center text-slate-400">
+                                        <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+                                        <p className="font-extrabold text-slate-700 text-sm">Perfect Balance!</p>
+                                        <p className="text-[11px] text-slate-400 font-medium">No client accounts are overdue in this aging category.</p>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">
+                                                    <th className="py-3 px-2">Invoice #</th>
+                                                    <th className="py-3 px-2">Client name / Project</th>
+                                                    <th className="py-3 px-2">Bill Date</th>
+                                                    <th className="py-3 px-2">Due Date</th>
+                                                    <th className="py-3 px-2">Overdue By</th>
+                                                    <th className="py-3 px-2 text-right">Outstanding Amount</th>
+                                                    <th className="py-3 px-2 text-center">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-150">
+                                                {activeAgingList.map((item: any) => {
+                                                    const today = new Date();
+                                                    today.setHours(0,0,0,0);
+                                                    const refDate = new Date(item.dueDate || item.date);
+                                                    const diffDays = Math.floor((today.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
+                                                    const client = getEntityObject(item.entityId, item.entityType);
+                                                    const comp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
+
+                                                    return (
+                                                        <tr key={item.id} className="text-xs hover:bg-slate-100/50 transition-colors">
+                                                            <td className="py-3.5 px-2 font-black text-slate-900 font-mono">{item.invoiceNumber}</td>
+                                                            <td className="py-3.5 px-2">
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-bold text-slate-800">{getEntityName(item.entityId, item.entityType)}</span>
+                                                                    <span className="text-[10px] text-slate-400 font-mono uppercase shrink-0">
+                                                                        {item.entityType === 'Vendor' ? 'Client' : item.entityType}
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-3.5 px-2 font-medium text-slate-505 font-mono">{item.date}</td>
+                                                            <td className="py-3.5 px-2 font-semibold text-slate-600 font-mono">{item.dueDate || 'N/A'}</td>
+                                                            <td className="py-3.5 px-2 font-bold">
+                                                                {diffDays <= 0 ? (
+                                                                    <span className="text-emerald-600 font-mono text-[10px] bg-emerald-50 px-2 py-0.5 rounded-full font-bold">Not overdue</span>
+                                                                ) : (
+                                                                    <span className="text-rose-600 font-mono text-[10px] bg-rose-50 px-2 py-0.5 rounded-full font-bold">{diffDays} days past due</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="py-3.5 px-2 text-right font-black text-slate-900 font-mono">
+                                                                AED {(item.totalAmount || item.amount).toLocaleString()}
+                                                            </td>
+                                                            <td className="py-3.5 px-2 text-center">
+                                                                <button
+                                                                    onClick={() => setPreviewInvoiceItem({ item, comp, client })}
+                                                                    className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-xl transition cursor-pointer"
+                                                                >
+                                                                    <Eye className="w-3.5 h-3.5" /> Preview
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
+
+                    {/* Monthly Trends Dashboard */}
+                    <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-5">
+                        <div>
+                            <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                <Calendar className="w-5 h-5 text-emerald-600" />
+                                <span>Monthly Invoicing & Collections Ledger</span>
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium">Chronological summary of client invoices issued, money collected, and pending receipts.</p>
+                        </div>
+
+                        {monthlyTrends.length === 0 ? (
+                            <div className="py-12 text-center text-slate-400 border border-dashed border-slate-200 rounded-3xl">
+                                <p className="font-bold">No monthly ledger data available yet</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Left: Monthly Trends Ledger Table */}
+                                <div className="border border-slate-100 rounded-3xl overflow-hidden shadow-xs">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-slate-50 border-b border-slate-150 text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">
+                                                <th className="py-3.5 px-4 font-extrabold text-slate-500">Billing Month</th>
+                                                <th className="py-3.5 px-4 text-right">Invoiced (AED)</th>
+                                                <th className="py-3.5 px-4 text-right">Collected (AED)</th>
+                                                <th className="py-3.5 px-4 text-right">Outstanding (AED)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 text-xs">
+                                            {monthlyTrends.map((trend: any) => {
+                                                const collPct = trend.bBilled > 0 ? (trend.cCollected / trend.bBilled) * 100 : 0;
+                                                return (
+                                                    <tr key={trend.key} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="py-3.5 px-4 font-extrabold text-slate-800">{trend.label}</td>
+                                                        <td className="py-3.5 px-4 text-right font-bold text-slate-500">{trend.bBilled.toLocaleString()}</td>
+                                                        <td className="py-3.5 px-4 text-right font-extrabold text-emerald-600">
+                                                            {trend.cCollected.toLocaleString()}
+                                                            <span className="block text-[9px] font-bold font-mono text-emerald-500 mt-0.5">{collPct.toFixed(0)}% Settle rate</span>
+                                                        </td>
+                                                        <td className="py-3.5 px-4 text-right font-black text-rose-600">{trend.pPending.toLocaleString()}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Right: Visual Progress Chart representation of Month-on-Month billing */}
+                                <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 md:p-6 flex flex-col justify-between">
+                                    <div className="space-y-4">
+                                        <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider font-mono">Month-on-Month billing and liquidation</h4>
+                                        <div className="space-y-4 max-h-[260px] overflow-y-auto pr-1">
+                                            {monthlyTrends.map((trend: any) => {
+                                                const collPct = trend.bBilled > 0 ? (trend.cCollected / trend.bBilled) * 100 : 0;
+                                                return (
+                                                    <div key={trend.key} className="space-y-1">
+                                                        <div className="flex justify-between items-center text-[11px] font-semibold text-slate-700">
+                                                            <span className="font-extrabold">{trend.label}</span>
+                                                            <span className="font-mono text-slate-500">AED {trend.bBilled.toLocaleString()}</span>
+                                                        </div>
+                                                        <div className="relative w-full h-3 bg-slate-200/50 rounded-full overflow-hidden flex">
+                                                            {/* Color for collected */}
+                                                            <div 
+                                                                className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-full rounded-l-full relative group transition-all" 
+                                                                style={{ width: `${collPct}%` }}
+                                                                title={`Collected: AED ${trend.cCollected.toLocaleString()}`}
+                                                            />
+                                                            {/* Color for uncollected */}
+                                                            <div 
+                                                                className="bg-gradient-to-r from-orange-400 to-rose-500 h-full rounded-r-full transition-all" 
+                                                                style={{ width: `${100 - collPct}%` }}
+                                                                title={`Pending: AED ${trend.pPending.toLocaleString()}`}
+                                                            />
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-[9px] font-mono text-slate-400">
+                                                            <span>Liquidation: {collPct.toFixed(1)}%</span>
+                                                            <span>Pending: {(100 - collPct).toFixed(1)}%</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 pt-4 border-t border-slate-200/50 flex justify-around text-[10px] font-bold font-mono">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                                            <span className="text-slate-505">Collected (Revenue)</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
+                                            <span className="text-slate-505">Pending (Overdue Debt)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Zoho Books Live Invoice Preview Lightbox */}
             {previewInvoiceItem && (() => {
