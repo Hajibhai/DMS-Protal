@@ -3766,6 +3766,7 @@ export default function App() {
           onEdit={(ap: AccountsPayable) => setShowAPModal(ap)}
           onDelete={handleDeleteAP}
           user={systemUser}
+          companies={companies}
         />
       )}
       {activeTab === 'accounts-receivable' && (
@@ -3974,6 +3975,7 @@ export default function App() {
             vendors={vendors}
             suppliers={suppliers}
             projects={projects}
+            companies={companies}
             onSave={handleSaveAP}
             onCancel={() => setShowAPModal(false)}
           />

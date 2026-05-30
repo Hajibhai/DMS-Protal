@@ -499,7 +499,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
     />
 );
 
-export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, user }: any) => {
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, user, companies }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
 
@@ -520,6 +520,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [soaStartDate, setSoaStartDate] = useState('');
     const [soaEndDate, setSoaEndDate] = useState('');
     const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending'>('All');
+    const [soaCompanyId, setSoaCompanyId] = useState('All');
 
     const apPartnerOptions = useMemo(() => {
         const supplierGroups: { [name: string]: any[] } = {};
@@ -793,6 +794,9 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                 }
             }
             
+            // Must match selected seller company
+            if (soaCompanyId !== 'All' && item.companyId !== soaCompanyId) return false;
+
             // Must match selected project
             if (soaProjectId !== 'All' && item.projectId !== soaProjectId) return false;
 
@@ -806,7 +810,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
             return true;
         });
-    }, [data, soaVendorId, soaProjectId, soaStartDate, soaEndDate, soaScope, suppliers, vendors]);
+    }, [data, soaVendorId, soaProjectId, soaStartDate, soaEndDate, soaScope, soaCompanyId, suppliers, vendors]);
 
     // Executing EXCEL Download for specific month
     const executeDownloadMonthExcel = (mKey: string) => {
@@ -1001,6 +1005,8 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         });
         const balance = totalBilled - totalPaid;
 
+        const selectedCompanyObj = (companies || []).find((c: any) => c.id === soaCompanyId) || (companies && companies.length > 0 ? companies[0] : null);
+
         generatePdfSOA({
             title: "SUPPLIER STATEMENT OF ACCOUNT (SOA)",
             partnerName: pName,
@@ -1012,7 +1018,12 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             totalBilled,
             totalPaid,
             balance,
-            isReceivable: false
+            isReceivable: false,
+            companyName: selectedCompanyObj?.name,
+            companyLogo: selectedCompanyObj?.logo,
+            companyAddress: selectedCompanyObj?.address,
+            companyEmail: selectedCompanyObj?.email,
+            companyPhone: selectedCompanyObj?.phone
         });
     };
 
@@ -1611,6 +1622,23 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 </select>
                             </div>
 
+                            {/* Select Company Origin/Seller */}
+                            <div className="space-y-1.5">
+                                <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider text-brand-600">Select Company Issuer</label>
+                                <select 
+                                    value={soaCompanyId} 
+                                    onChange={e => setSoaCompanyId(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-800 outline-hidden font-extrabold cursor-pointer text-brand-600 hover:border-brand-300 transition-colors"
+                                >
+                                    <option value="All">All Companies (Default Pioneer Header)</option>
+                                    {(companies || []).map((c: any) => (
+                                        <option key={c.id} value={c.id}>
+                                            💼 {c.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
                             {/* Project Filter */}
                             <div className="space-y-1.5">
                                 <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Associated Project / Contract</label>
@@ -2033,6 +2061,11 @@ interface PdfSOAParams {
     totalPaid: number;
     balance: number;
     isReceivable: boolean;
+    companyName?: string;
+    companyLogo?: string;
+    companyAddress?: string;
+    companyEmail?: string;
+    companyPhone?: string;
 }
 
 export const generatePdfSOA = ({
@@ -2046,10 +2079,15 @@ export const generatePdfSOA = ({
     totalBilled,
     totalPaid,
     balance,
-    isReceivable
+    isReceivable,
+    companyName,
+    companyLogo,
+    companyAddress,
+    companyEmail,
+    companyPhone
 }: PdfSOAParams) => {
     const doc = new jsPDF({
-        orientation: 'portrait',
+        orientation: 'landscape',
         unit: 'mm',
         format: 'a4'
     });
@@ -2059,22 +2097,39 @@ export const generatePdfSOA = ({
     const lightText = [100, 116, 139]; 
     const borderSlate = [226, 232, 240];
 
+    const cName = companyName || "PIONEER DMS GROUP LTD";
+    const cAddress = companyAddress || "United Arab Emirates";
+    const cEmail = companyEmail || "accounts@pioneer.ae";
+    const cPhone = companyPhone || "+971 4 000 0000";
+
     doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
-    doc.rect(0, 0, 210, 6, 'F');
+    doc.rect(0, 0, 297, 6, 'F');
+
+    let headerOffset = 18;
+    let textX = 15;
+    if (companyLogo && companyLogo.startsWith('data:image')) {
+        try {
+            doc.addImage(companyLogo, 'PNG', 15, 10, 20, 20);
+            textX = 40;
+            headerOffset = 16;
+        } catch (e) {
+            console.error("Error drawing logo on pdf:", e);
+        }
+    }
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(14);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("PIONEER DMS GROUP LTD", 15, 18);
+    doc.text(cName, textX, headerOffset);
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
     doc.text([
-        "Address: United Arab Emirates",
-        "Email: accounts@pioneer.ae | Phone: +971 4 000 0000",
+        `Address: ${cAddress}`,
+        `Email: ${cEmail} | Phone: ${cPhone}`,
         "Official Statement of Account Generated electronically on " + new Date().toLocaleDateString()
-    ], 15, 23);
+    ], textX, headerOffset + 5);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(15);
@@ -2088,7 +2143,7 @@ export const generatePdfSOA = ({
 
     doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
     doc.setLineWidth(0.3);
-    doc.line(15, 52, 195, 52);
+    doc.line(15, 52, 282, 52);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(9);
@@ -2101,22 +2156,22 @@ export const generatePdfSOA = ({
     doc.text(`TRN number: ${partnerTrn}`, 15, 73);
 
     doc.setFont("Helvetica", "bold");
-    doc.text("OPERATIONAL BOUNDS", 120, 58);
+    doc.text("OPERATIONAL BOUNDS", 150, 58);
     
     doc.setFont("Helvetica", "normal");
-    doc.text(`Contracted projects: ${projectName}`, 120, 63);
-    doc.text(`Matched entries: ${items.length} records`, 120, 68);
-    doc.text(`System source: Ledger Sync`, 120, 73);
+    doc.text(`Contracted projects: ${projectName}`, 150, 63);
+    doc.text(`Matched entries: ${items.length} records`, 150, 68);
+    doc.text(`System source: Ledger Sync`, 150, 73);
 
-    doc.line(15, 78, 195, 78);
+    doc.line(15, 78, 282, 78);
 
     const cardY = 84;
     doc.setFillColor(248, 250, 252);
-    doc.rect(15, cardY, 180, 18, 'F');
-    doc.rect(15, cardY, 180, 18, 'D');
+    doc.rect(15, cardY, 267, 18, 'F');
+    doc.rect(15, cardY, 267, 18, 'D');
 
-    doc.line(75, cardY, 75, cardY + 18);
-    doc.line(135, cardY, 135, cardY + 18);
+    doc.line(104, cardY, 104, cardY + 18);
+    doc.line(193, cardY, 193, cardY + 18);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(8);
@@ -2124,92 +2179,142 @@ export const generatePdfSOA = ({
     doc.text(isReceivable ? "TOTAL BILLED" : "TOTAL INVOICES", 20, cardY + 5);
     doc.setFontSize(11);
     doc.setTextColor(15, 23, 42);
-    doc.text(`AED ${totalBilled.toLocaleString()}`, 20, cardY + 12);
+    doc.text(`AED ${totalBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 20, cardY + 12);
 
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    doc.text(isReceivable ? "COLLECTED FUNDS" : "SETTLED AMOUNT", 80, cardY + 5);
+    doc.text(isReceivable ? "COLLECTED FUNDS" : "SETTLED AMOUNT", 109, cardY + 5);
     doc.setFontSize(11);
     doc.setTextColor(16, 124, 65);
-    doc.text(`AED ${totalPaid.toLocaleString()}`, 80, cardY + 12);
+    doc.text(`AED ${totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 109, cardY + 12);
 
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    doc.text(isReceivable ? "DEBT BAL. DUE" : "PENDING LIABILITY", 140, cardY + 5);
+    doc.text(isReceivable ? "DEBT BAL. DUE" : "PENDING LIABILITY", 198, cardY + 5);
     doc.setFontSize(11);
     doc.setTextColor(220, 38, 38);
-    doc.text(`AED ${balance.toLocaleString()}`, 140, cardY + 12);
+    doc.text(`AED ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 198, cardY + 12);
 
     const tableHeaderY = 110;
     doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
-    doc.rect(15, tableHeaderY, 180, 8, 'F');
+    doc.rect(15, tableHeaderY, 267, 8, 'F');
 
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setTextColor(255, 255, 255);
-    doc.text("DATE", 18, tableHeaderY + 5.5);
-    doc.text("INVOICE #", 38, tableHeaderY + 5.5);
-    doc.text("DESCRIPTION / OPERATIONS", 65, tableHeaderY + 5.5);
-    doc.text("STATUS", 145, tableHeaderY + 5.5);
-    doc.text("TOTAL (AED)", 192, tableHeaderY + 5.5, { align: 'right' });
+    doc.text("SI NO", 16, tableHeaderY + 5.5);
+    doc.text("INV. DATE", 26, tableHeaderY + 5.5);
+    doc.text("INVOICE #", 45, tableHeaderY + 5.5);
+    doc.text("MON", 71, tableHeaderY + 5.5);
+    doc.text("YR", 85, tableHeaderY + 5.5);
+    doc.text("ACT. AMT (AED)", 121, tableHeaderY + 5.5, { align: 'right' });
+    doc.text("VAT AMT (AED)", 141, tableHeaderY + 5.5, { align: 'right' });
+    doc.text("TOTAL (AED)", 166, tableHeaderY + 5.5, { align: 'right' });
+    doc.text("BALANCE (AED)", 191, tableHeaderY + 5.5, { align: 'right' });
+    doc.text("STATUS", 195, tableHeaderY + 5.5);
+    doc.text("CHEQUE SETTLEMENT DETAILS (IF APPLICABLE)", 216, tableHeaderY + 5.5);
 
     let currentY = tableHeaderY + 8;
     items.forEach((itm: any, idx: number) => {
-        if (currentY > 270) {
+        if (currentY > 185) {
             doc.addPage();
             doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
-            doc.rect(0, 0, 210, 6, 'F');
+            doc.rect(0, 0, 297, 6, 'F');
             currentY = 15;
         }
 
         if (idx % 2 === 1) {
             doc.setFillColor(248, 250, 252);
-            doc.rect(15, currentY, 180, 8, 'F');
+            doc.rect(15, currentY, 267, 8, 'F');
         }
 
         doc.setFont("Helvetica", "normal");
         doc.setFontSize(7.5);
         doc.setTextColor(30, 41, 59);
 
-        doc.text(itm.date || '', 18, currentY + 5.5);
-        doc.setFont("Helvetica", "bold");
-        doc.text(itm.invoiceNumber || '-', 38, currentY + 5.5);
-        
-        doc.setFont("Helvetica", "normal");
-        const descText = itm.description || 'Ledger General entry';
-        doc.text(descText.length > 40 ? descText.substring(0, 38) + '..' : descText, 65, currentY + 5.5);
+        // SI No
+        doc.text(String(idx + 1), 16, currentY + 5.5);
 
-        const isCleared = itm.status === 'Paid' || itm.status === 'Received';
-        if (isCleared) {
+        // Date
+        doc.text(itm.date || '-', 26, currentY + 5.5);
+
+        // Invoice No
+        doc.setFont("Helvetica", "bold");
+        doc.text(itm.invoiceNumber || '-', 45, currentY + 5.5);
+        doc.setFont("Helvetica", "normal");
+
+        // Parse month and year
+        let yrStr = '-';
+        let mnStr = '-';
+        if (itm.date) {
+            const parts = itm.date.split('-');
+            if (parts.length >= 2) {
+                yrStr = parts[0];
+                const mnVal = parseInt(parts[1]);
+                if (!isNaN(mnVal) && mnVal >= 1 && mnVal <= 12) {
+                    mnStr = new Date(parseInt(parts[0]), mnVal - 1, 1).toLocaleDateString('default', { month: 'short' });
+                }
+            }
+        }
+        doc.text(mnStr, 71, currentY + 5.5);
+        doc.text(yrStr, 85, currentY + 5.5);
+
+        // Amounts
+        const actualAmt = itm.amount || 0;
+        const vatAmt = itm.vatAmount || 0;
+        const totalAmt = itm.totalAmount || itm.amount || 0;
+        
+        const isPaid = itm.status === 'Paid' || itm.status === 'Received';
+        const balanceAmt = isPaid ? 0 : totalAmt;
+
+        doc.text(actualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 121, currentY + 5.5, { align: 'right' });
+        doc.text(vatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 141, currentY + 5.5, { align: 'right' });
+        doc.text(totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 166, currentY + 5.5, { align: 'right' });
+        
+        doc.setFont("Helvetica", "bold");
+        doc.text(balanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 191, currentY + 5.5, { align: 'right' });
+        doc.setFont("Helvetica", "normal");
+
+        // Status
+        if (isPaid) {
             doc.setTextColor(16, 124, 65);
         } else {
             doc.setTextColor(220, 95, 0);
         }
         doc.setFont("Helvetica", "bold");
-        doc.text(itm.status || 'Pending', 145, currentY + 5.5);
-
+        doc.text(itm.status || 'Pending', 195, currentY + 5.5);
         doc.setFont("Helvetica", "normal");
         doc.setTextColor(30, 41, 59);
-        const grossVal = itm.totalAmount || itm.amount || 0;
-        doc.setFont("Helvetica", "bold");
-        doc.text(grossVal.toLocaleString(), 192, currentY + 5.5, { align: 'right' });
+
+        // Cheque details
+        let chqStr = "-";
+        if (itm.chequeNo || itm.chequeDate || itm.chequeAmount) {
+            const chqParts = [];
+            if (itm.chequeNo) chqParts.push(`Chq: #${itm.chequeNo}`);
+            if (itm.chequeDate) chqParts.push(`Date: ${itm.chequeDate}`);
+            if (itm.chequeAmount) chqParts.push(`Amt: ${Number(itm.chequeAmount).toLocaleString()}`);
+            chqStr = chqParts.join(" | ");
+        }
+        doc.setFontSize(7);
+        doc.text(chqStr.length > 40 ? chqStr.substring(0, 38) + '..' : chqStr, 216, currentY + 5.5);
+        doc.setFontSize(7.5);
 
         currentY += 8;
     });
 
     doc.setFillColor(241, 245, 249);
-    doc.rect(15, currentY + 2, 180, 9, 'F');
+    doc.rect(15, currentY + 2, 267, 9, 'F');
     doc.setFont("Helvetica", "bold");
     doc.text("STATEMENT OUTSTANDING BALANCE", 18, currentY + 8);
-    doc.text(`AED ${balance.toLocaleString()}`, 192, currentY + 8, { align: 'right' });
+    doc.text(`AED ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 280, currentY + 8, { align: 'right' });
 
     doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.rect(0, 289, 210, 8, 'F');
+    doc.rect(0, 201, 297, 9, 'F');
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(255, 255, 255);
-    doc.text("Pioneer DMS statement of ledger account. Certified to be true and correct.", 105, 294, { align: "center" });
+    doc.text("Official electronic statement from corporate workspace ledger environment.", 148, 206, { align: "center" });
 
     doc.save(`${isReceivable ? 'Receivable' : 'Payable'}_SOA_${partnerName.replace(/\s+/g, '_')}.pdf`);
 };
@@ -2221,18 +2326,42 @@ export const downloadSOAExcel = (
     items: any[], 
     isReceivable: boolean
 ) => {
-    const reportRows = items.map((itm: any) => ({
-        "Date": itm.date || '',
-        "Invoice Number": itm.invoiceNumber || '-',
-        "Partner/Client Name": partnerName,
-        "Entity Type": partnerType,
-        "Transaction Type": isReceivable ? 'Receivable Invoice' : 'Payable Outflow',
-        "Status": itm.status || 'Pending',
-        "Exclude VAT (AED)": itm.amount || 0,
-        "VAT (5%) (AED)": itm.vatAmount || 0,
-        "Total Invoiced (AED)": itm.totalAmount || itm.amount || 0,
-        "Due Date": itm.dueDate || '-'
-    }));
+    const reportRows = items.map((itm: any, idx: number) => {
+        let yr = '-';
+        let mnLabel = '-';
+        if (itm.date) {
+            const dateParts = itm.date.split('-');
+            if (dateParts && dateParts.length >= 2) {
+                yr = dateParts[0];
+                const mn = parseInt(dateParts[1]);
+                if (!isNaN(mn) && mn >= 1 && mn <= 12) {
+                    mnLabel = new Date(parseInt(yr), mn - 1, 1).toLocaleDateString('default', { month: 'long' });
+                }
+            }
+        }
+        
+        const actualAmt = itm.amount || 0;
+        const vatAmt = itm.vatAmount || 0;
+        const totalAmt = itm.totalAmount || itm.amount || 0;
+        const isPaid = itm.status === 'Paid' || itm.status === 'Received';
+        const balanceAmt = isPaid ? 0 : totalAmt;
+
+        return {
+            "SI No": idx + 1,
+            "Invoice Date": itm.date || '',
+            "Invoice No": itm.invoiceNumber || '-',
+            "Invoice Month": mnLabel,
+            "Invoice Year": yr,
+            "Actual Amount": actualAmt,
+            "VAT Amount": vatAmt,
+            "Total Amount": totalAmt,
+            "Balance Amount": balanceAmt,
+            "Payment Status": itm.status || 'Pending',
+            "Cheque Date": itm.chequeDate || '-',
+            "Cheque Number": itm.chequeNo || '-',
+            "Cheque Amount": itm.chequeAmount || '-'
+        };
+    });
 
     const ws = XLSX.utils.json_to_sheet(reportRows);
     const wb = XLSX.utils.book_new();
@@ -2605,6 +2734,8 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         });
         const balance = totalBilled - totalPaid;
 
+        const selectedCompanyObj = (companies || []).find((c: any) => c.id === soaCompanyId) || (companies && companies.length > 0 ? companies[0] : null);
+
         generatePdfSOA({
             title: "CLIENT STATEMENT OF ACCOUNT (SOA)",
             partnerName: pName,
@@ -2616,7 +2747,12 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             totalBilled,
             totalPaid,
             balance,
-            isReceivable: true
+            isReceivable: true,
+            companyName: selectedCompanyObj?.name,
+            companyLogo: selectedCompanyObj?.logo,
+            companyAddress: selectedCompanyObj?.address,
+            companyEmail: selectedCompanyObj?.email,
+            companyPhone: selectedCompanyObj?.phone
         });
     };
 
@@ -5348,7 +5484,7 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
     );
 };
 
-export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave, onCancel }: any) => {
+export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave, onCancel, companies }: any) => {
     const [formData, setFormData] = useState(ap || { 
         id: Math.random().toString(36).substr(2, 9),
         date: new Date().toISOString().split('T')[0],
@@ -5360,7 +5496,8 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         vatAmount: 0,
         totalAmount: 0,
         description: '',
-        status: 'Pending'
+        status: 'Pending',
+        companyId: companies && companies.length > 0 ? companies[0].id : ''
     });
 
     const handleAmountChange = (val: number) => {
@@ -5449,6 +5586,24 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             ))}
                         </select>
                     </div>
+                    
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Buying Corporate Identity (Company)</label>
+                        <select 
+                            value={formData.companyId || ''}
+                            onChange={e => setFormData({ ...formData, companyId: e.target.value })}
+                            className="w-full px-4 py-3 bg-brand-50 border border-brand-100/55 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-brand-700 cursor-pointer"
+                            required
+                        >
+                            {(!companies || companies.length === 0) && (
+                                <option value="">No corporate company accounts registered</option>
+                            )}
+                            {(companies || []).map((c: any) => (
+                                <option key={c.id} value={c.id}>🏢 {c.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Taxable Amount (AED)</label>
@@ -5493,6 +5648,44 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[100px]"
                         />
+                    </div>
+                    
+                    <div className="border border-slate-200/60 p-4 rounded-2xl bg-amber-50/20 space-y-3">
+                        <div className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-brand-600 rounded-full inline-block" />
+                            <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider">Cheque Settlement (Optional)</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="space-y-1">
+                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque No</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="e.g. 10482"
+                                    value={formData.chequeNo || ''}
+                                    onChange={e => setFormData({ ...formData, chequeNo: e.target.value })}
+                                    className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs font-bold outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Date</label>
+                                <input 
+                                    type="date" 
+                                    value={formData.chequeDate || ''}
+                                    onChange={e => setFormData({ ...formData, chequeDate: e.target.value })}
+                                    className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs font-bold outline-none"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Amt</label>
+                                <input 
+                                    type="number" 
+                                    placeholder="AED"
+                                    value={formData.chequeAmount || ''}
+                                    onChange={e => setFormData({ ...formData, chequeAmount: e.target.value ? Number(e.target.value) : '' })}
+                                    className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs font-bold outline-none"
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -5869,15 +6062,55 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
 
                     {/* Section 5: TOTALS CALCULATIONS BLOCK */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                        {/* Overall General Description */}
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">General Notes / Footnotes</label>
-                            <textarea 
-                                value={formData.description}
-                                onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                placeholder="Additional notes to display on the Zoho Invoice footer..."
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all min-h-[100px]"
-                            />
+                        {/* Overall General Description & Cheque details */}
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">General Notes / Footnotes</label>
+                                <textarea 
+                                    value={formData.description}
+                                    onChange={e => setFormData({ ...formData, description: e.target.value })}
+                                    placeholder="Additional notes to display on the Zoho Invoice footer..."
+                                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all min-h-[100px]"
+                                />
+                            </div>
+
+                            <div className="border border-slate-200/60 p-4 rounded-2xl bg-amber-50/20 space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-blue-600 rounded-full inline-block" />
+                                    <span className="text-[10px] font-black uppercase text-blue-600 tracking-wider">Cheque Settlement (Optional)</span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="space-y-1">
+                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque No</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="e.g. 5032"
+                                            value={formData.chequeNo || ''}
+                                            onChange={e => setFormData({ ...formData, chequeNo: e.target.value })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Date</label>
+                                        <input 
+                                            type="date" 
+                                            value={formData.chequeDate || ''}
+                                            onChange={e => setFormData({ ...formData, chequeDate: e.target.value })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Amt</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="AED"
+                                            value={formData.chequeAmount || ''}
+                                            onChange={e => setFormData({ ...formData, chequeAmount: e.target.value ? Number(e.target.value) : '' })}
+                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Calculation Panel */}
