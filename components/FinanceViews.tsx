@@ -522,8 +522,12 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending'>('All');
 
     const getVendorName = (id: string, type: string) => {
-        if (type === 'Supplier') return suppliers.find((s: any) => s.id === id)?.name || 'Unknown';
-        return vendors.find((v: any) => v.id === id)?.name || 'Unknown';
+        if (type === 'Supplier') {
+            const s = suppliers.find((s: any) => s.id === id);
+            return s ? (s.code ? `${s.name} (${s.code})` : s.name) : 'Unknown';
+        }
+        const v = vendors.find((v: any) => v.id === id);
+        return v ? (v.code ? `${v.name} (${v.code})` : v.name) : 'Unknown';
     };
 
     const getProjectName = (id?: string) => {
@@ -1135,8 +1139,8 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer"
                                         >
                                             <option value="All">All Suppliers</option>
-                                            {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                            {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                            {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''}</option>)}
+                                            {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>)}
                                         </select>
                                         <select 
                                             value={filterProject} 
@@ -1517,8 +1521,8 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-800 outline-hidden font-extrabold cursor-pointer"
                                 >
                                     <option value="All">All Registered Partners Combined</option>
-                                    {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name} (Supplier)</option>)}
-                                    {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name} (Client/Vendor)</option>)}
+                                    {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''} (Supplier)</option>)}
+                                    {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''} (Client/Vendor)</option>)}
                                 </select>
                             </div>
 
@@ -2178,8 +2182,14 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
     const getEntityName = (id: string, type: string) => {
         if (type === 'Project') return projects.find((p: any) => p.id === id)?.name || 'Unknown Project';
-        if (type === 'Supplier') return suppliers.find((s: any) => s.id === id)?.name || 'Unknown Supplier';
-        if (type === 'Vendor') return vendors.find((v: any) => v.id === id)?.name || 'Unknown Client';
+        if (type === 'Supplier') {
+            const s = suppliers.find((s: any) => s.id === id);
+            return s ? (s.code ? `${s.name} (${s.code})` : s.name) : 'Unknown Supplier';
+        }
+        if (type === 'Vendor') {
+            const v = vendors.find((v: any) => v.id === id);
+            return v ? (v.code ? `${v.name} (${v.code})` : v.name) : 'Unknown Client';
+        }
         return 'Unknown';
     };
 
@@ -2804,7 +2814,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer font-sans"
                                         >
                                             <option value="All">All Clients</option>
-                                            {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                            {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>)}
                                         </select>
                                         <select 
                                             value={filterProject} 
@@ -3240,7 +3250,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                     className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-850 outline-hidden font-extrabold cursor-pointer text-xs"
                                 >
                                     <option value="All">All Registered Clients Combined</option>
-                                    {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name} (Client)</option>)}
+                                    {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''} (Client)</option>)}
                                 </select>
                             </div>
 
@@ -5275,7 +5285,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             >
                                 <option value="">Select...</option>
                                 {(formData.vendorType === 'Supplier' ? suppliers : vendors).map((v: any) => (
-                                    <option key={v.id} value={v.id}>{v.name}</option>
+                                    <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>
                                 ))}
                             </select>
                         </div>
@@ -5590,10 +5600,10 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                     <option key={p.id} value={p.id}>{p.name}</option>
                                 ))}
                                 {formData.entityType === 'Supplier' && suppliers.map((s: any) => (
-                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                    <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''}</option>
                                 ))}
                                 {formData.entityType === 'Vendor' && vendors.map((v: any) => (
-                                    <option key={v.id} value={v.id}>{v.name}</option>
+                                    <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>
                                 ))}
                             </select>
                             {targetEntity?.trn ? (

@@ -9789,8 +9789,14 @@ const ReportsView = ({
                 date: ap.date, 
                 ref: ap.invoiceNumber, 
                 entity: ap.vendorType === 'Supplier' 
-                    ? (suppliers.find((s: any) => s.id === ap.vendorId)?.name || 'Unknown Supplier')
-                    : (vendors.find((v: any) => v.id === ap.vendorId)?.name || 'Unknown Client'), 
+                    ? (() => {
+                        const s = suppliers.find((s: any) => s.id === ap.vendorId);
+                        return s ? (s.code ? `${s.name} (${s.code})` : s.name) : 'Unknown Supplier';
+                      })()
+                    : (() => {
+                        const v = vendors.find((v: any) => v.id === ap.vendorId);
+                        return v ? (v.code ? `${v.name} (${v.code})` : v.name) : 'Unknown Client';
+                      })(), 
                 amount: ap.amount, 
                 status: ap.status, 
                 color: 'rose' 
@@ -9800,8 +9806,14 @@ const ReportsView = ({
                 const id = ar.entityId || ar.projectId;
                 let entityName = 'Unknown';
                 if (type === 'Project') entityName = projects.find((p: any) => p.id === id)?.clientName || 'Unknown Client';
-                else if (type === 'Supplier') entityName = suppliers.find((s: any) => s.id === id)?.name || 'Unknown Supplier';
-                else if (type === 'Vendor') entityName = vendors.find((v: any) => v.id === id)?.name || 'Unknown Client';
+                else if (type === 'Supplier') entityName = (() => {
+                    const s = suppliers.find((s: any) => s.id === id);
+                    return s ? (s.code ? `${s.name} (${s.code})` : s.name) : 'Unknown Supplier';
+                })();
+                else if (type === 'Vendor') entityName = (() => {
+                    const v = vendors.find((v: any) => v.id === id);
+                    return v ? (v.code ? `${v.name} (${v.code})` : v.name) : 'Unknown Client';
+                })();
 
                 return { 
                     type: 'Receivable', 
@@ -9929,8 +9941,14 @@ const ReportsView = ({
                         Date: ap.date, 
                         Ref: ap.invoiceNumber, 
                         Entity: ap.vendorType === 'Supplier' 
-                            ? (suppliers.find((s: any) => s.id === ap.vendorId)?.name || 'Unknown Supplier')
-                            : (vendors.find((v: any) => v.id === ap.vendorId)?.name || 'Unknown Client'), 
+                            ? (() => {
+                                const s = suppliers.find((s: any) => s.id === ap.vendorId);
+                                return s ? (s.code ? `${s.name} (${s.code})` : s.name) : 'Unknown Supplier';
+                              })()
+                            : (() => {
+                                const v = vendors.find((v: any) => v.id === ap.vendorId);
+                                return v ? (v.code ? `${v.name} (${v.code})` : v.name) : 'Unknown Client';
+                              })(), 
                         Amount: ap.amount, 
                         Status: ap.status 
                     })),
@@ -9939,8 +9957,14 @@ const ReportsView = ({
                         const id = ar.entityId || ar.projectId;
                         let entityName = 'Unknown';
                         if (type === 'Project') entityName = projects.find((p: any) => p.id === id)?.clientName || 'Unknown Client';
-                        else if (type === 'Supplier') entityName = suppliers.find((s: any) => s.id === id)?.name || 'Unknown Supplier';
-                        else if (type === 'Vendor') entityName = vendors.find((v: any) => v.id === id)?.name || 'Unknown Client';
+                        else if (type === 'Supplier') entityName = (() => {
+                            const s = suppliers.find((s: any) => s.id === id);
+                            return s ? (s.code ? `${s.name} (${s.code})` : s.name) : 'Unknown Supplier';
+                        })();
+                        else if (type === 'Vendor') entityName = (() => {
+                            const v = vendors.find((v: any) => v.id === id);
+                            return v ? (v.code ? `${v.name} (${v.code})` : v.name) : 'Unknown Client';
+                        })();
 
                         return { 
                             Type: 'Receivable', 
