@@ -33,7 +33,7 @@ service cloud.firestore {
     // Finance & Vendor Rules
     match /vendors/{vendorId} {
       allow read: if isAuthenticated();
-      allow write: if hasPermission('canManageProjects');
+      allow write: if isAuthenticated();
     }
 
     match /accounts_payable/{apId} {
