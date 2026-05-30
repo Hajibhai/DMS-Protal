@@ -521,6 +521,58 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [soaEndDate, setSoaEndDate] = useState('');
     const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending'>('All');
 
+    const apPartnerOptions = useMemo(() => {
+        const supplierGroups: { [name: string]: any[] } = {};
+        (suppliers || []).forEach((s: any) => {
+            const nameKey = (s.name || '').trim();
+            if (!supplierGroups[nameKey]) supplierGroups[nameKey] = [];
+            supplierGroups[nameKey].push(s);
+        });
+
+        const vendorGroups: { [name: string]: any[] } = {};
+        (vendors || []).forEach((v: any) => {
+            const nameKey = (v.name || '').trim();
+            if (!vendorGroups[nameKey]) vendorGroups[nameKey] = [];
+            vendorGroups[nameKey].push(v);
+        });
+
+        const options: { value: string; label: string }[] = [];
+
+        // Add unified group options for suppliers
+        Object.entries(supplierGroups).forEach(([name]) => {
+            options.push({
+                value: `BY_NAME:${name}`,
+                label: `🌟 ${name} (All Consolidated Projects) (Supplier)`
+            });
+        });
+
+        // Add unified group options for vendors
+        Object.entries(vendorGroups).forEach(([name]) => {
+            options.push({
+                value: `BY_NAME:${name}`,
+                label: `🌟 ${name} (All Consolidated Projects) (Client)`
+            });
+        });
+
+        // Add individual supplier options
+        (suppliers || []).forEach((s: any) => {
+            options.push({
+                value: s.id,
+                label: `📄 ${s.name} (Code: ${s.code || 'N/A'}) (Supplier)`
+            });
+        });
+
+        // Add individual vendor options
+        (vendors || []).forEach((v: any) => {
+            options.push({
+                value: v.id,
+                label: `📄 ${v.name} (Code: ${v.code || 'N/A'}) (Client)`
+            });
+        });
+
+        return options;
+    }, [suppliers, vendors]);
+
     const getVendorName = (id: string, type: string) => {
         if (type === 'Supplier') {
             const s = suppliers.find((s: any) => s.id === id);
@@ -729,7 +781,17 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const soaFilteredItems = useMemo(() => {
         return (data || []).filter((item: any) => {
             // Must match selected vendor
-            if (soaVendorId !== 'All' && item.vendorId !== soaVendorId) return false;
+            if (soaVendorId !== 'All') {
+                if (soaVendorId.startsWith('BY_NAME:')) {
+                    const targetName = soaVendorId.replace('BY_NAME:', '').toLowerCase().trim();
+                    const actualVendorObj = item.vendorType === 'Supplier'
+                        ? suppliers.find((s: any) => s.id === item.vendorId)
+                        : vendors.find((v: any) => v.id === item.vendorId);
+                    if (!actualVendorObj || actualVendorObj.name.toLowerCase().trim() !== targetName) return false;
+                } else {
+                    if (item.vendorId !== soaVendorId) return false;
+                }
+            }
             
             // Must match selected project
             if (soaProjectId !== 'All' && item.projectId !== soaProjectId) return false;
@@ -744,7 +806,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
             return true;
         });
-    }, [data, soaVendorId, soaProjectId, soaStartDate, soaEndDate, Math.random, soaScope]);
+    }, [data, soaVendorId, soaProjectId, soaStartDate, soaEndDate, soaScope, suppliers, vendors]);
 
     // Executing EXCEL Download for specific month
     const executeDownloadMonthExcel = (mKey: string) => {
@@ -900,8 +962,19 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         let pType = 'Supplier Network';
 
         if (soaVendorId !== 'All') {
-            const foundSup = suppliers.find((s: any) => s.id === soaVendorId);
-            const foundVen = vendors.find((v: any) => v.id === soaVendorId);
+            let foundSup: any = null;
+            let foundVen: any = null;
+            if (soaVendorId.startsWith('BY_NAME:')) {
+                const targetName = soaVendorId.replace('BY_NAME:', '').toLowerCase().trim();
+                foundSup = suppliers.find((s: any) => s.name.toLowerCase().trim() === targetName);
+                foundVen = vendors.find((v: any) => v.name.toLowerCase().trim() === targetName);
+                if (!foundSup && !foundVen) {
+                    foundSup = { name: soaVendorId.replace('BY_NAME:', ''), trn: 'Multiple / N/A' };
+                }
+            } else {
+                foundSup = suppliers.find((s: any) => s.id === soaVendorId);
+                foundVen = vendors.find((v: any) => v.id === soaVendorId);
+            }
             pName = foundSup?.name || foundVen?.name || 'Selected Supplier';
             pTrn = foundSup?.trn || foundVen?.trn || 'Not Registered';
             pType = foundSup ? 'Contracted Supplier' : 'Vendor Service';
@@ -948,10 +1021,19 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         let pType = 'Supplier Network';
 
         if (soaVendorId !== 'All') {
-            const foundSup = suppliers.find((s: any) => s.id === soaVendorId);
-            const foundVen = vendors.find((v: any) => v.id === soaVendorId);
-            pName = foundSup?.name || foundVen?.name || 'Selected Supplier';
-            pType = foundSup ? 'Supplier' : 'Client';
+            if (soaVendorId.startsWith('BY_NAME:')) {
+                const targetName = soaVendorId.replace('BY_NAME:', '').toLowerCase().trim();
+                const foundSup = suppliers.find((s: any) => s.name.toLowerCase().trim() === targetName);
+                const foundVen = vendors.find((v: any) => v.name.toLowerCase().trim() === targetName);
+                pName = foundSup?.name || foundVen?.name || soaVendorId.replace('BY_NAME:', '');
+                pType = foundSup ? 'Supplier' : 'Client';
+            } else {
+                const foundSup = suppliers.find((s: any) => s.id === Math.random); // wait, foundSup is suppliers.find(s => s.id === soaVendorId)
+                const foundVen = vendors.find((v: any) => v.id === soaVendorId);
+                const foundSupReal = suppliers.find((s: any) => s.id === soaVendorId);
+                pName = foundSupReal?.name || foundVen?.name || 'Selected Supplier';
+                pType = foundSupReal ? 'Supplier' : 'Client';
+            }
         }
 
         downloadSOAExcel(soaVendorId, pName, pType, soaFilteredItems, false);
@@ -1521,8 +1603,11 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-800 outline-hidden font-extrabold cursor-pointer"
                                 >
                                     <option value="All">All Registered Partners Combined</option>
-                                    {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''} (Supplier)</option>)}
-                                    {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''} (Client/Vendor)</option>)}
+                                    {apPartnerOptions.map((opt: any) => (
+                                        <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -2180,6 +2265,35 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const [soaEndDate, setSoaEndDate] = useState('');
     const [soaScope, setSoaScope] = useState<'All' | 'Received' | 'Pending'>('All');
 
+    const arClientOptions = useMemo(() => {
+        const groups: { [name: string]: any[] } = {};
+        (vendors || []).forEach((v: any) => {
+            const nameKey = (v.name || '').trim();
+            if (!groups[nameKey]) groups[nameKey] = [];
+            groups[nameKey].push(v);
+        });
+
+        const options: { value: string; label: string }[] = [];
+        
+        // Add "All Consolidated Projects" options for groups
+        Object.entries(groups).forEach(([name]) => {
+            options.push({
+                value: `BY_NAME:${name}`,
+                label: `🌟 ${name} (All Consolidated Projects)`
+            });
+        });
+
+        // Add standard individual project options
+        (vendors || []).forEach((v: any) => {
+            options.push({
+                value: v.id,
+                label: `📄 ${v.name} (Code: ${v.code || 'N/A'})`
+            });
+        });
+
+        return options;
+    }, [vendors]);
+
     const getEntityName = (id: string, type: string) => {
         if (type === 'Project') return projects.find((p: any) => p.id === id)?.name || 'Unknown Project';
         if (type === 'Supplier') {
@@ -2274,7 +2388,15 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const soaFilteredItems = useMemo(() => {
         return (data || []).filter((item: any) => {
             // Must match selected client entity
-            if (soaEntityId !== 'All' && item.entityId !== soaEntityId) return false;
+            if (soaEntityId !== 'All') {
+                if (soaEntityId.startsWith('BY_NAME:')) {
+                    const targetName = soaEntityId.replace('BY_NAME:', '').toLowerCase().trim();
+                    const actualClientObj = getEntityObject(item.entityId, item.entityType || 'Vendor');
+                    if (!actualClientObj || actualClientObj.name.toLowerCase().trim() !== targetName) return false;
+                } else {
+                    if (item.entityId !== soaEntityId) return false;
+                }
+            }
             
             // Must match selected project
             if (soaProjectId !== 'All' && (item.entityId || item.projectId) !== soaProjectId) return false;
@@ -2292,7 +2414,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
             return true;
         });
-    }, [data, soaEntityId, soaProjectId, soaCompanyId, soaStartDate, soaEndDate, soaScope]);
+    }, [data, soaEntityId, soaProjectId, soaCompanyId, soaStartDate, soaEndDate, soaScope, vendors, suppliers, projects]);
 
     // Executing EXCEL Download for specific month
     const executeDownloadMonthExcel = (mKey: string) => {
@@ -2446,7 +2568,17 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         let pType = 'Corporate Debtors';
 
         if (soaEntityId !== 'All') {
-            const clientObj = getEntityObject(soaEntityId, 'Vendor') || getEntityObject(soaEntityId, 'Supplier') || getEntityObject(soaEntityId, 'Project');
+            let clientObj: any = null;
+            if (soaEntityId.startsWith('BY_NAME:')) {
+                const targetName = soaEntityId.replace('BY_NAME:', '').toLowerCase().trim();
+                clientObj = vendors.find((v: any) => v.name.toLowerCase().trim() === targetName) 
+                         || suppliers.find((s: any) => s.name.toLowerCase().trim() === targetName);
+                if (!clientObj) {
+                    clientObj = { name: soaEntityId.replace('BY_NAME:', ''), trn: 'Multiple / N/A' };
+                }
+            } else {
+                clientObj = getEntityObject(soaEntityId, 'Vendor') || getEntityObject(soaEntityId, 'Supplier') || getEntityObject(soaEntityId, 'Project');
+            }
             pName = clientObj?.name || 'Selected Client';
             pTrn = clientObj?.trn || 'Not Registered';
             pType = 'Client Account';
@@ -2493,7 +2625,17 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         let pType = 'Client Debtor';
 
         if (soaEntityId !== 'All') {
-            const clientObj = getEntityObject(soaEntityId, 'Vendor') || getEntityObject(soaEntityId, 'Supplier') || getEntityObject(soaEntityId, 'Project');
+            let clientObj: any = null;
+            if (soaEntityId.startsWith('BY_NAME:')) {
+                const targetName = soaEntityId.replace('BY_NAME:', '').toLowerCase().trim();
+                clientObj = vendors.find((v: any) => v.name.toLowerCase().trim() === targetName) 
+                         || suppliers.find((s: any) => s.name.toLowerCase().trim() === targetName);
+                if (!clientObj) {
+                    clientObj = { name: soaEntityId.replace('BY_NAME:', '') };
+                }
+            } else {
+                clientObj = getEntityObject(soaEntityId, 'Vendor') || getEntityObject(soaEntityId, 'Supplier') || getEntityObject(soaEntityId, 'Project');
+            }
             pName = clientObj?.name || 'Selected Client';
             pType = 'Client';
         }
@@ -3250,7 +3392,11 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                     className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-850 outline-hidden font-extrabold cursor-pointer text-xs"
                                 >
                                     <option value="All">All Registered Clients Combined</option>
-                                    {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''} (Client)</option>)}
+                                    {arClientOptions.map((opt: any) => (
+                                        <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
 
