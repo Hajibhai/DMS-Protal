@@ -500,8 +500,26 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
 );
 
 export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, user }: any) => {
-    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights'>('ledger');
+    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
+
+    // Advanced Filter State variables
+    const [isAdvFilterOpen, setIsAdvFilterOpen] = useState(false);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [minAmount, setMinAmount] = useState('');
+    const [maxAmount, setMaxAmount] = useState('');
+    const [filterStatus, setFilterStatus] = useState('All');
+    const [filterVendor, setFilterVendor] = useState('All');
+    const [filterProject, setFilterProject] = useState('All');
+    const [filterMonth, setFilterMonth] = useState('All');
+
+    // SOA Tool state variables
+    const [soaVendorId, setSoaVendorId] = useState('All');
+    const [soaProjectId, setSoaProjectId] = useState('All');
+    const [soaStartDate, setSoaStartDate] = useState('');
+    const [soaEndDate, setSoaEndDate] = useState('');
+    const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending'>('All');
 
     const getVendorName = (id: string, type: string) => {
         if (type === 'Supplier') return suppliers.find((s: any) => s.id === id)?.name || 'Unknown';
@@ -513,14 +531,75 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         return projects.find((p: any) => p.id === id)?.name || 'N/A';
     };
 
-    // Calculate dynamic high-level metrics
+    // Calculate unique available months in dataset for entries
+    const availableMonths = useMemo(() => {
+        const monthsSet = new Set<string>();
+        (data || []).forEach((item: any) => {
+            if (item.date) {
+                monthsSet.add(item.date.substring(0, 7)); // YYYY-MM
+            }
+        });
+        return Array.from(monthsSet).sort().reverse();
+    }, [data]);
+
+    // Apply Advanced Filters to dataset
+    const filteredData = useMemo(() => {
+        return (data || []).filter((item: any) => {
+            if (startDate && item.date < startDate) return false;
+            if (endDate && item.date > endDate) return false;
+
+            const amount = item.totalAmount || item.amount || 0;
+            if (minAmount !== '' && amount < Number(minAmount)) return false;
+            if (maxAmount !== '' && amount > Number(maxAmount)) return false;
+
+            if (filterStatus !== 'All' && item.status !== filterStatus) return false;
+            if (filterProject !== 'All' && item.projectId !== filterProject) return false;
+            
+            if (filterVendor !== 'All') {
+                if (item.vendorId !== filterVendor) return false;
+            }
+
+            if (filterMonth !== 'All') {
+                const m = item.date.substring(0, 7);
+                if (m !== filterMonth) return false;
+            }
+
+            return true;
+        });
+    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth]);
+
+    const activeFiltersCount = useMemo(() => {
+        let count = 0;
+        if (startDate) count++;
+        if (endDate) count++;
+        if (minAmount !== '') count++;
+        if (maxAmount !== '') count++;
+        if (filterStatus !== 'All') count++;
+        if (filterVendor !== 'All') count++;
+        if (filterProject !== 'All') count++;
+        if (filterMonth !== 'All') count++;
+        return count;
+    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth]);
+
+    const handleClearAdvFilters = () => {
+        setStartDate('');
+        setEndDate('');
+        setMinAmount('');
+        setMaxAmount('');
+        setFilterStatus('All');
+        setFilterVendor('All');
+        setFilterProject('All');
+        setFilterMonth('All');
+    };
+
+    // Calculate dynamic high-level metrics based on filtered data to stay in sync
     const metrics = useMemo(() => {
         let totalBills = 0;
         let totalPaid = 0;
         let totalPending = 0;
         let totalVat = 0;
 
-        (data || []).forEach((item: any) => {
+        (filteredData || []).forEach((item: any) => {
             const amount = item.totalAmount || item.amount || 0;
             const vat = item.vatAmount || 0;
             totalBills += amount;
@@ -538,11 +617,11 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             totalPaid,
             totalPending,
             totalVat,
-            count: data?.length || 0,
-            pendingCount: (data || []).filter((item: any) => item.status !== 'Paid').length,
-            paidCount: (data || []).filter((item: any) => item.status === 'Paid').length
+            count: filteredData?.length || 0,
+            pendingCount: (filteredData || []).filter((item: any) => item.status !== 'Paid').length,
+            paidCount: (filteredData || []).filter((item: any) => item.status === 'Paid').length
         };
-    }, [data]);
+    }, [filteredData]);
 
     // Aging Buckets Calculation
     const agingBuckets = useMemo(() => {
@@ -557,7 +636,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         const today = new Date();
         today.setHours(0,0,0,0);
 
-        (data || []).forEach((item: any) => {
+        (filteredData || []).forEach((item: any) => {
             // Only non-Paid items belong to aging
             if (item.status === 'Paid') return;
 
@@ -595,13 +674,17 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         });
 
         return buckets;
-    }, [data]);
+    }, [filteredData]);
+
+    const totalAgingAmount = Object.values(agingBuckets).reduce((acc, curr) => acc + curr.amount, 0);
+    const activeAgingList = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.items || [] : [];
+    const activeAgingLabel = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.label : '';
 
     // Monthly Trends Calculation
     const monthlyTrends = useMemo(() => {
         const trends: { [key: string]: { label: string; bBilled: number; pPaid: number; pPending: number; itemsCount: number } } = {};
 
-        (data || []).forEach((item: any) => {
+        (filteredData || []).forEach((item: any) => {
             const dateStr = item.date;
             if (!dateStr) return;
 
@@ -636,12 +719,239 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                 key,
                 ...trends[key]
             }));
-    }, [data]);
+    }, [filteredData]);
 
-    const totalAgingAmount = Object.values(agingBuckets).reduce((acc, curr) => acc + curr.amount, 0);
+    // Statement of Account Items filter logic
+    const soaFilteredItems = useMemo(() => {
+        return (data || []).filter((item: any) => {
+            // Must match selected vendor
+            if (soaVendorId !== 'All' && item.vendorId !== soaVendorId) return false;
+            
+            // Must match selected project
+            if (soaProjectId !== 'All' && item.projectId !== soaProjectId) return false;
 
-    const activeAgingList = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.items || [] : [];
-    const activeAgingLabel = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.label : '';
+            // Date limits
+            if (soaStartDate && item.date < soaStartDate) return false;
+            if (soaEndDate && item.date > soaEndDate) return false;
+
+            // Settlement scope
+            if (soaScope === 'Paid' && item.status !== 'Paid') return false;
+            if (soaScope === 'Pending' && item.status === 'Paid') return false;
+
+            return true;
+        });
+    }, [data, soaVendorId, soaProjectId, soaStartDate, soaEndDate, Math.random, soaScope]);
+
+    // Executing EXCEL Download for specific month
+    const executeDownloadMonthExcel = (mKey: string) => {
+        const monthItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
+        const reportRows = monthItems.map((item: any) => ({
+            "Bill Date": item.date,
+            "Invoice #": item.invoiceNumber || '-',
+            "Supplier / Client": getVendorName(item.vendorId, item.vendorType),
+            "Supplier ID": item.vendorId || '-',
+            "Partner Category": item.vendorType || 'Vendor',
+            "Project": getProjectName(item.projectId),
+            "Excl. Amount (AED)": item.amount || 0,
+            "VAT Amount (5%)": item.vatAmount || 0,
+            "Total Invoiced (AED)": item.totalAmount || item.amount || 0,
+            "Payment Status": item.status,
+            "Payment Due Date": item.dueDate || '-'
+        }));
+        const ws = XLSX.utils.json_to_sheet(reportRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `AP_Ledger_${mKey}`);
+        XLSX.writeFile(wb, `Accounts_Payable_Register_${mKey}.xlsx`);
+    };
+
+    // Executing PDF Download for specific month
+    const executeDownloadMonthPDF = (mKey: string) => {
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const monthItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
+        const [yr, mn] = mKey.split('-');
+        const mLabel = new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
+
+        doc.setFillColor(190, 24, 74); // Crimson header stripe 
+        doc.rect(0, 0, 210, 6, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(14);
+        doc.setTextColor(30, 41, 59);
+        doc.text(`ACCOUNTS PAYABLE JOURNAL REGISTER - ${mLabel.toUpperCase()}`, 15, 18);
+        
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Category: Accounts Payable Ledger Outflows | Generated: ${new Date().toLocaleDateString()}`, 15, 23);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.line(15, 27, 195, 27);
+
+        // Build Table header
+        const tableHeaderY = 32;
+        doc.setFillColor(190, 24, 74);
+        doc.rect(15, tableHeaderY, 180, 8, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(255, 255, 255);
+        doc.text("BILL DATE", 18, tableHeaderY + 5.5);
+        doc.text("INVOICE #", 38, tableHeaderY + 5.5);
+        doc.text("SUPPLIER PARTNER", 65, tableHeaderY + 5.5);
+        doc.text("PROJECT", 115, tableHeaderY + 5.5);
+        doc.text("STATUS", 150, tableHeaderY + 5.5);
+        doc.text("TOTAL (AED)", 192, tableHeaderY + 5.5, { align: 'right' });
+
+        let currentY = tableHeaderY + 8;
+        monthItems.forEach((itm: any, idx: number) => {
+            if (currentY > 270) {
+                doc.addPage();
+                doc.setFillColor(190, 24, 74);
+                doc.rect(0, 0, 210, 6, 'F');
+                currentY = 15;
+            }
+
+            if (idx % 2 === 1) {
+                doc.setFillColor(248, 250, 252);
+                doc.rect(15, currentY, 180, 8, 'F');
+            }
+
+            doc.setFont("Helvetica", "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(30, 41, 59);
+
+            doc.text(itm.date || '', 18, currentY + 5.5);
+            doc.setFont("Helvetica", "bold");
+            doc.text(itm.invoiceNumber || '-', 38, currentY + 5.5);
+            
+            doc.setFont("Helvetica", "normal");
+            const nameText = getVendorName(itm.vendorId, itm.vendorType);
+            doc.text(nameText.length > 25 ? nameText.substring(0, 23) + '..' : nameText, 65, currentY + 5.5);
+            
+            const projText = getProjectName(itm.projectId);
+            doc.text(projText.length > 20 ? projText.substring(0, 18) + '..' : projText, 115, currentY + 5.5);
+
+            const isP = itm.status === 'Paid';
+            if (isP) {
+                doc.setTextColor(16, 124, 65);
+            } else {
+                doc.setTextColor(220, 95, 0);
+            }
+            doc.setFont("Helvetica", "bold");
+            doc.text(itm.status || 'Pending', 150, currentY + 5.5);
+            
+            doc.setFont("Helvetica", "normal");
+            doc.setTextColor(30, 41, 59);
+            const tot = itm.totalAmount || itm.amount || 0;
+            doc.setFont("Helvetica", "bold");
+            doc.text(tot.toLocaleString(), 192, currentY + 5.5, { align: 'right' });
+
+            currentY += 8;
+        });
+
+        const sumTotal = monthItems.reduce((acc: number, curr: any) => acc + (curr.totalAmount || curr.amount || 0), 0);
+        doc.setFillColor(241, 245, 249);
+        doc.rect(15, currentY + 2, 180, 9, 'F');
+        doc.setFont("Helvetica", "bold");
+        doc.text("SUMMARY TOTAL", 18, currentY + 8);
+        doc.text(`AED ${sumTotal.toLocaleString()}`, 192, currentY + 8, { align: 'right' });
+
+        doc.save(`Accounts_Payable_Journal_${mKey}.pdf`);
+    };
+
+    // Bulk Multi-Sheet Excel download
+    const handleDownloadAllMonthsConsolidated = () => {
+        const wb = XLSX.utils.book_new();
+        availableMonths.forEach((mKey) => {
+            const mItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
+            const rows = mItems.map((item: any) => ({
+                "Bill Date": item.date,
+                "Invoice Number": item.invoiceNumber || '-',
+                "Supplier Partner": getVendorName(item.vendorId, item.vendorType),
+                "Project": getProjectName(item.projectId),
+                "Amount (AED)": item.amount || 0,
+                "VAT (5%)": item.vatAmount || 0,
+                "Total Amount (AED)": item.totalAmount || item.amount || 0,
+                "Status": item.status,
+                "Due Date": item.dueDate || '-'
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const [yr, mn] = mKey.split('-');
+            const mLabel = new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'short', year: 'numeric' });
+            XLSX.utils.book_append_sheet(wb, ws, mLabel.substring(0, 31));
+        });
+        XLSX.writeFile(wb, "Accounts_Payable_Consolidated_Monthly_Workbook.xlsx");
+    };
+
+    // SOA Generation Handlers
+    const handleGenerateSOAPDF = () => {
+        let pName = 'All Combined Suppliers';
+        let pTrn = 'Multiple / N/A';
+        let pType = 'Supplier Network';
+
+        if (soaVendorId !== 'All') {
+            const foundSup = suppliers.find((s: any) => s.id === soaVendorId);
+            const foundVen = vendors.find((v: any) => v.id === soaVendorId);
+            pName = foundSup?.name || foundVen?.name || 'Selected Supplier';
+            pTrn = foundSup?.trn || foundVen?.trn || 'Not Registered';
+            pType = foundSup ? 'Contracted Supplier' : 'Vendor Service';
+        }
+
+        let projName = 'All Combined Projects';
+        if (soaProjectId !== 'All') {
+            projName = getProjectName(soaProjectId);
+        }
+
+        const periodStr = (soaStartDate || soaEndDate) 
+            ? `${soaStartDate || 'Origin'} to ${soaEndDate || 'Present'}`
+            : 'Complete Recorded Operations History';
+
+        // Summary Calculations
+        let totalBilled = 0;
+        let totalPaid = 0;
+        soaFilteredItems.forEach((itm: any) => {
+            const amt = itm.totalAmount || itm.amount || 0;
+            totalBilled += amt;
+            if (itm.status === 'Paid') {
+                totalPaid += amt;
+            }
+        });
+        const balance = totalBilled - totalPaid;
+
+        generatePdfSOA({
+            title: "SUPPLIER STATEMENT OF ACCOUNT (SOA)",
+            partnerName: pName,
+            partnerType: pType,
+            partnerTrn: pTrn,
+            projectName: projName,
+            periodStr,
+            items: soaFilteredItems,
+            totalBilled,
+            totalPaid,
+            balance,
+            isReceivable: false
+        });
+    };
+
+    const handleGenerateSOAExcel = () => {
+        let pName = 'All Combined Suppliers';
+        let pType = 'Supplier Network';
+
+        if (soaVendorId !== 'All') {
+            const foundSup = suppliers.find((s: any) => s.id === soaVendorId);
+            const foundVen = vendors.find((v: any) => v.id === soaVendorId);
+            pName = foundSup?.name || foundVen?.name || 'Selected Supplier';
+            pType = foundSup ? 'Supplier' : 'Client';
+        }
+
+        downloadSOAExcel(soaVendorId, pName, pType, soaFilteredItems, false);
+    };
 
     return (
         <div className="relative space-y-6">
@@ -676,6 +986,15 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         )}
                     >
                         📊 Aging & Monthly Reports
+                    </button>
+                    <button 
+                        onClick={() => setActiveTabMode('soa')}
+                        className={cn(
+                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                            activeTabMode === 'soa' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                        )}
+                    >
+                        📄 Statement of Account (SOA)
                     </button>
                 </div>
             </div>
@@ -733,75 +1052,204 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
             {/* Main Dynamic Panel */}
             {activeTabMode === 'ledger' ? (
-                <DataTable<AccountsPayable>
-                    title="Accounts Payable Ledger"
-                    description="Standard general ledger list of supplier billings and payments."
-                    icon={TrendingDown}
-                    data={data}
-                    columns={[
-                        { key: 'date', label: 'Date', sortable: true },
-                        { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
-                        { 
-                            key: 'vendorId', 
-                            label: 'Client/Supplier',
-                            render: (item) => (
-                                <div className="flex flex-col">
-                                    <span className="font-bold text-slate-900">{getVendorName(item.vendorId, item.vendorType)}</span>
-                                    <span className="text-[10px] text-slate-400 uppercase tracking-wider">{item.vendorType === 'Vendor' ? 'Client' : item.vendorType}</span>
+                <div className="space-y-4">
+                    {/* Advanced Filter Controller */}
+                    <div className="bg-white border border-slate-100 p-5 rounded-3xl shadow-sm">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <Filter className="w-4 h-4 text-rose-600" />
+                                <span className="font-extrabold text-sm text-slate-800">Advanced Filter Controls</span>
+                                {activeFiltersCount > 0 && (
+                                    <span className="bg-rose-100 text-rose-700 font-mono font-bold text-[10px] px-2 py-0.5 rounded-full">
+                                        {activeFiltersCount} Filters applied
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {activeFiltersCount > 0 && (
+                                    <button 
+                                        onClick={handleClearAdvFilters}
+                                        className="text-[11px] font-bold text-slate-450 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded-xl transition-all cursor-pointer"
+                                    >
+                                        Reset All
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setIsAdvFilterOpen(!isAdvFilterOpen)}
+                                    className="text-white bg-slate-800 hover:bg-slate-900 font-bold text-xs px-4 py-1.5 rounded-xl transition-all cursor-pointer shadow-xs"
+                                >
+                                    {isAdvFilterOpen ? "Hide Filter Dashboard" : "Show Advanced Filters"}
+                                </button>
+                            </div>
+                        </div>
+
+                        {isAdvFilterOpen && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100 text-xs animate-fadeIn">
+                                {/* Date Start & End */}
+                                <div className="space-y-1">
+                                    <label className="block text-slate-405 font-mono font-bold uppercase text-[9px]">Date Period</label>
+                                    <div className="flex gap-1.5">
+                                        <input 
+                                            type="date" 
+                                            value={startDate} 
+                                            onChange={e => setStartDate(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-700 outline-hidden font-medium"
+                                        />
+                                        <input 
+                                            type="date" 
+                                            value={endDate} 
+                                            onChange={e => setEndDate(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-700 outline-hidden font-medium"
+                                        />
+                                    </div>
                                 </div>
-                            )
-                        },
-                        { 
-                            key: 'projectId', 
-                            label: 'Project',
-                            render: (item) => getProjectName(item.projectId)
-                        },
-                        { 
-                            key: 'amount', 
-                            label: 'Amount',
-                            sortable: true,
-                            render: (item) => (
-                                <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
-                            )
-                        },
-                        { 
-                            key: 'vatAmount', 
-                            label: 'VAT (5%)',
-                            render: (item) => (
-                                <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
-                            )
-                        },
-                        { 
-                            key: 'totalAmount', 
-                            label: 'Total',
-                            sortable: true,
-                            render: (item) => (
-                                <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
-                            )
-                        },
-                        { 
-                            key: 'status', 
-                            label: 'Status',
-                            render: (item) => (
-                                <span className={cn(
-                                    "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
-                                    item.status === 'Paid' ? "bg-emerald-100 text-emerald-600" :
-                                    item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
-                                    "bg-blue-100 text-blue-600"
-                                )}>
-                                    {item.status}
-                                </span>
-                            )
-                        },
-                    ]}
-                    onAdd={onAdd}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                    searchFields={['invoiceNumber', 'description']}
-                    exportFileName="Accounts_Payable"
-                    user={user}
-                />
-            ) : (
+
+                                {/* Amount Range Threshold */}
+                                <div className="space-y-1">
+                                    <label className="block text-slate-405 font-mono font-bold uppercase text-[9px]">Amount Range (AED)</label>
+                                    <div className="flex gap-1.5">
+                                        <input 
+                                            type="number" 
+                                            placeholder="Min Amount" 
+                                            value={minAmount} 
+                                            onChange={e => setMinAmount(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-750 outline-hidden font-medium"
+                                        />
+                                        <input 
+                                            type="number" 
+                                            placeholder="Max Amount" 
+                                            value={maxAmount} 
+                                            onChange={e => setMaxAmount(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-750 outline-hidden font-medium"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Partner & Project Selectors */}
+                                <div className="space-y-1">
+                                    <label className="block text-slate-405 font-mono font-bold uppercase text-[9px]">Supplier Entity & project</label>
+                                    <div className="flex gap-1.5">
+                                        <select 
+                                            value={filterVendor} 
+                                            onChange={e => setFilterVendor(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer"
+                                        >
+                                            <option value="All">All Suppliers</option>
+                                            {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                            {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                        </select>
+                                        <select 
+                                            value={filterProject} 
+                                            onChange={e => setFilterProject(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer"
+                                        >
+                                            <option value="All">All Projects</option>
+                                            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Status & Quick Month dropdowns */}
+                                <div className="space-y-1">
+                                    <label className="block text-slate-405 font-mono font-bold uppercase text-[9px]">Status & Billing Month</label>
+                                    <div className="flex gap-1.5">
+                                        <select 
+                                            value={filterStatus} 
+                                            onChange={e => setFilterStatus(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer"
+                                        >
+                                            <option value="All">All Statuses</option>
+                                            <option value="Paid">Paid</option>
+                                            <option value="Pending">Pending</option>
+                                        </select>
+                                        <select 
+                                            value={filterMonth} 
+                                            onChange={e => setFilterMonth(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer"
+                                        >
+                                            <option value="All">All Months</option>
+                                            {availableMonths.map((m: string) => {
+                                                const [yr, mn] = m.split('-');
+                                                const dLabel = new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'short', year: 'numeric' });
+                                                return <option key={m} value={m}>{dLabel}</option>;
+                                            })}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <DataTable<AccountsPayable>
+                        title="Accounts Payable Ledger"
+                        description="Filtered list of supplier billings and payments matching specified constraints."
+                        icon={TrendingDown}
+                        data={filteredData}
+                        columns={[
+                            { key: 'date', label: 'Date', sortable: true },
+                            { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
+                            { 
+                                key: 'vendorId', 
+                                label: 'Client/Supplier',
+                                render: (item) => (
+                                    <div className="flex flex-col">
+                                        <span className="font-bold text-slate-900">{getVendorName(item.vendorId, item.vendorType)}</span>
+                                        <span className="text-[10px] text-slate-400 uppercase tracking-wider">{item.vendorType === 'Vendor' ? 'Client' : item.vendorType}</span>
+                                    </div>
+                                )
+                            },
+                            { 
+                                key: 'projectId', 
+                                label: 'Project',
+                                render: (item) => getProjectName(item.projectId)
+                            },
+                            { 
+                                key: 'amount', 
+                                label: 'Amount',
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
+                                )
+                            },
+                            { 
+                                key: 'vatAmount', 
+                                label: 'VAT (5%)',
+                                render: (item) => (
+                                    <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
+                                )
+                            },
+                            { 
+                                key: 'totalAmount', 
+                                label: 'Total',
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
+                                )
+                            },
+                            { 
+                                key: 'status', 
+                                label: 'Status',
+                                render: (item) => (
+                                    <span className={cn(
+                                        "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                                        item.status === 'Paid' ? "bg-emerald-100 text-emerald-600" :
+                                        item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
+                                        "bg-blue-100 text-blue-600"
+                                    )}>
+                                        {item.status}
+                                    </span>
+                                )
+                            },
+                        ]}
+                        onAdd={onAdd}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        searchFields={['invoiceNumber', 'description']}
+                        exportFileName="Accounts_Payable"
+                        user={user}
+                    />
+                </div>
+            ) : activeTabMode === 'insights' ? (
                 <div className="space-y-6">
                     {/* Interactive Aging Wheel & Progress metrics */}
                     <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
@@ -1039,6 +1487,204 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                /* activeTabMode === 'soa' */
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
+                    
+                    {/* Left: SOA Custom Builder (5 columns wide) */}
+                    <div className="lg:col-span-5 bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+                        <div>
+                            <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-emerald-600" />
+                                <span>Compile Partner Statement of Account (SOA)</span>
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium">
+                                Produce corporate-grade ledger statements of transactions, credits, and settlements over custom spans.
+                            </p>
+                        </div>
+
+                        <div className="space-y-4 text-xs font-semibold">
+                            {/* Supplier Entity Select */}
+                            <div className="space-y-1.5">
+                                <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Select Supplier Counterparty</label>
+                                <select 
+                                    value={soaVendorId} 
+                                    onChange={e => setSoaVendorId(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-800 outline-hidden font-extrabold cursor-pointer"
+                                >
+                                    <option value="All">All Registered Partners Combined</option>
+                                    {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name} (Supplier)</option>)}
+                                    {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name} (Client/Vendor)</option>)}
+                                </select>
+                            </div>
+
+                            {/* Project Filter */}
+                            <div className="space-y-1.5">
+                                <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Associated Project / Contract</label>
+                                <select 
+                                    value={soaProjectId} 
+                                    onChange={e => setSoaProjectId(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-800 outline-hidden font-extrabold cursor-pointer"
+                                >
+                                    <option value="All">All Operations & Projects Combined</option>
+                                    {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Date Span */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Start Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={soaStartDate} 
+                                        onChange={e => setSoaStartDate(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-slate-850 outline-hidden"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">End Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={soaEndDate} 
+                                        onChange={e => setSoaEndDate(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 text-slate-850 outline-hidden"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Settlement Scope */}
+                            <div className="space-y-1.5">
+                                <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Settlement Scope</label>
+                                <div className="grid grid-cols-3 bg-slate-50 p-1 border border-slate-200 rounded-2xl gap-1">
+                                    {(['All', 'Paid', 'Pending'] as const).map((sc) => (
+                                        <button
+                                            key={sc}
+                                            onClick={() => setSoaScope(sc)}
+                                            className={cn(
+                                                "py-1.5 font-bold rounded-xl transition-all text-center cursor-pointer",
+                                                soaScope === sc ? "bg-white text-emerald-600 shadow-xs" : "text-slate-500 hover:text-slate-850"
+                                            )}
+                                        >
+                                            {sc === 'All' ? 'All Rows' : sc === 'Paid' ? 'Cleared' : 'Outstanding'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Output Preview Card */}
+                            <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-3xl space-y-2 mt-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 font-mono">Matched Record Summary</p>
+                                <div className="grid grid-cols-2 gap-3 font-mono text-[11px]">
+                                    <div>
+                                        <span className="text-slate-450 block">Matched:</span>
+                                        <strong className="text-slate-800 text-xs font-black">{soaFilteredItems.length} invoices</strong>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-450 block">Net Liability:</span>
+                                        <strong className="text-rose-600 text-xs font-black">
+                                            AED {soaFilteredItems.reduce((acc, c) => acc + (c.status !== 'Paid' ? (c.totalAmount || c.amount || 0) : 0), 0).toLocaleString()}
+                                        </strong>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* CTAs */}
+                            <div className="grid grid-cols-2 gap-3 pt-2">
+                                <button
+                                    onClick={handleGenerateSOAPDF}
+                                    disabled={soaFilteredItems.length === 0}
+                                    className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold p-3 rounded-2xl transition-all shadow-xs cursor-pointer text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <FileText className="w-4 h-4" />
+                                    <span>Download PDF SOA</span>
+                                </button>
+                                <button
+                                    onClick={handleGenerateSOAExcel}
+                                    disabled={soaFilteredItems.length === 0}
+                                    className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold p-3 rounded-2xl transition-all shadow-xs cursor-pointer text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <FileSpreadsheet className="w-4 h-4" />
+                                    <span>Download Excel SOA</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right: Month-by-month Accounts Ledger Pack (7 columns wide) */}
+                    <div className="lg:col-span-7 bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 pb-4 gap-3">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                    <Calendar className="w-5 h-5 text-indigo-600" />
+                                    <span>Month-by-Month Accounts Ledger Pack</span>
+                                </h3>
+                                <p className="text-xs text-slate-400 font-medium">
+                                    Instantly compile and package whole months into structured Excel and PDF registers.
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleDownloadAllMonthsConsolidated}
+                                className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black px-4 py-2 rounded-2xl shadow-xs transition-colors cursor-pointer shrink-0"
+                            >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Master Workbook</span>
+                            </button>
+                        </div>
+
+                        {availableMonths.length === 0 ? (
+                            <div className="py-20 text-center text-slate-400 font-medium border border-dashed border-slate-150 rounded-3xl">
+                                No billing records found in the ledger to segment by month.
+                            </div>
+                        ) : (
+                            <div className="space-y-3.5 max-h-[360px] overflow-y-auto pr-1">
+                                {availableMonths.map((mKey) => {
+                                    const mItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
+                                    const mTotal = mItems.reduce((sum, item) => sum + (item.totalAmount || item.amount || 0), 0);
+                                    const mPaid = mItems.reduce((sum, item) => sum + (item.status === 'Paid' ? (item.totalAmount || item.amount || 0) : 0), 0);
+                                    const mPending = mTotal - mPaid;
+
+                                    const [yr, mn] = mKey.split('-');
+                                    const mLabel = new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
+
+                                    return (
+                                        <div 
+                                            key={mKey}
+                                            className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-50 hover:bg-slate-100/60 border border-slate-100 hover:border-slate-200 p-4 rounded-3xl transition-all gap-4"
+                                        >
+                                            <div className="space-y-1">
+                                                <h4 className="font-extrabold text-sm text-slate-800">{mLabel}</h4>
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400 font-mono">
+                                                    <span>Entries: <strong className="text-slate-700">{mItems.length} bills</strong></span>
+                                                    <span>Billed: <strong className="text-slate-700">AED {mTotal.toLocaleString()}</strong></span>
+                                                    <span>Paid: <strong className="text-emerald-600">AED {mPaid.toLocaleString()}</strong></span>
+                                                    <span>Due: <strong className="text-rose-600 font-bold">AED {mPending.toLocaleString()}</strong></span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex gap-2 w-full sm:w-auto shrink-0 justify-end">
+                                                <button
+                                                    onClick={() => executeDownloadMonthExcel(mKey)}
+                                                    className="flex items-center gap-1 bg-white border border-slate-200 hover:border-emerald-300 text-emerald-700 hover:bg-emerald-500 hover:text-white px-3.5 py-1.5 rounded-xl font-extrabold text-[11px] transition-all cursor-pointer shadow-2xs"
+                                                >
+                                                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                                                    <span>Excel</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => executeDownloadMonthPDF(mKey)}
+                                                    className="flex items-center gap-1 bg-white border border-slate-200 hover:border-rose-300 text-rose-700 hover:bg-rose-500 hover:text-white px-3.5 py-1.5 rounded-xl font-extrabold text-[11px] transition-all cursor-pointer shadow-2xs"
+                                                >
+                                                    <FileText className="w-3.5 h-3.5" />
+                                                    <span>PDF Journal</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -1286,10 +1932,249 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
     doc.save(`Invoice_${item.invoiceNumber || 'INV'}.pdf`);
 };
 
+interface PdfSOAParams {
+    title: string;
+    partnerName: string;
+    partnerType: string;
+    partnerTrn: string;
+    projectName: string;
+    periodStr: string;
+    items: any[];
+    totalBilled: number;
+    totalPaid: number;
+    balance: number;
+    isReceivable: boolean;
+}
+
+export const generatePdfSOA = ({
+    title,
+    partnerName,
+    partnerType,
+    partnerTrn,
+    projectName,
+    periodStr,
+    items,
+    totalBilled,
+    totalPaid,
+    balance,
+    isReceivable
+}: PdfSOAParams) => {
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    const themeColor = isReceivable ? [37, 99, 235] : [190, 24, 74];
+    const primaryColor = [15, 23, 42];
+    const lightText = [100, 116, 139]; 
+    const borderSlate = [226, 232, 240];
+
+    doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.rect(0, 0, 210, 6, 'F');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("PIONEER DMS GROUP LTD", 15, 18);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+    doc.text([
+        "Address: United Arab Emirates",
+        "Email: accounts@pioneer.ae | Phone: +971 4 000 0000",
+        "Official Statement of Account Generated electronically on " + new Date().toLocaleDateString()
+    ], 15, 23);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.text(title.toUpperCase(), 15, 42);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+    doc.text("Statement Period: " + periodStr, 15, 47);
+
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.setLineWidth(0.3);
+    doc.line(15, 52, 195, 52);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("COUNTERPARTY INFORMATION", 15, 58);
+    
+    doc.setFont("Helvetica", "normal");
+    doc.text(`Partner name: ${partnerName}`, 15, 63);
+    doc.text(`Type / Category: ${partnerType}`, 15, 68);
+    doc.text(`TRN number: ${partnerTrn}`, 15, 73);
+
+    doc.setFont("Helvetica", "bold");
+    doc.text("OPERATIONAL BOUNDS", 120, 58);
+    
+    doc.setFont("Helvetica", "normal");
+    doc.text(`Contracted projects: ${projectName}`, 120, 63);
+    doc.text(`Matched entries: ${items.length} records`, 120, 68);
+    doc.text(`System source: Ledger Sync`, 120, 73);
+
+    doc.line(15, 78, 195, 78);
+
+    const cardY = 84;
+    doc.setFillColor(248, 250, 252);
+    doc.rect(15, cardY, 180, 18, 'F');
+    doc.rect(15, cardY, 180, 18, 'D');
+
+    doc.line(75, cardY, 75, cardY + 18);
+    doc.line(135, cardY, 135, cardY + 18);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(isReceivable ? "TOTAL BILLED" : "TOTAL INVOICES", 20, cardY + 5);
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`AED ${totalBilled.toLocaleString()}`, 20, cardY + 12);
+
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(isReceivable ? "COLLECTED FUNDS" : "SETTLED AMOUNT", 80, cardY + 5);
+    doc.setFontSize(11);
+    doc.setTextColor(16, 124, 65);
+    doc.text(`AED ${totalPaid.toLocaleString()}`, 80, cardY + 12);
+
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(isReceivable ? "DEBT BAL. DUE" : "PENDING LIABILITY", 140, cardY + 5);
+    doc.setFontSize(11);
+    doc.setTextColor(220, 38, 38);
+    doc.text(`AED ${balance.toLocaleString()}`, 140, cardY + 12);
+
+    const tableHeaderY = 110;
+    doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+    doc.rect(15, tableHeaderY, 180, 8, 'F');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text("DATE", 18, tableHeaderY + 5.5);
+    doc.text("INVOICE #", 38, tableHeaderY + 5.5);
+    doc.text("DESCRIPTION / OPERATIONS", 65, tableHeaderY + 5.5);
+    doc.text("STATUS", 145, tableHeaderY + 5.5);
+    doc.text("TOTAL (AED)", 192, tableHeaderY + 5.5, { align: 'right' });
+
+    let currentY = tableHeaderY + 8;
+    items.forEach((itm: any, idx: number) => {
+        if (currentY > 270) {
+            doc.addPage();
+            doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+            doc.rect(0, 0, 210, 6, 'F');
+            currentY = 15;
+        }
+
+        if (idx % 2 === 1) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(15, currentY, 180, 8, 'F');
+        }
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(30, 41, 59);
+
+        doc.text(itm.date || '', 18, currentY + 5.5);
+        doc.setFont("Helvetica", "bold");
+        doc.text(itm.invoiceNumber || '-', 38, currentY + 5.5);
+        
+        doc.setFont("Helvetica", "normal");
+        const descText = itm.description || 'Ledger General entry';
+        doc.text(descText.length > 40 ? descText.substring(0, 38) + '..' : descText, 65, currentY + 5.5);
+
+        const isCleared = itm.status === 'Paid' || itm.status === 'Received';
+        if (isCleared) {
+            doc.setTextColor(16, 124, 65);
+        } else {
+            doc.setTextColor(220, 95, 0);
+        }
+        doc.setFont("Helvetica", "bold");
+        doc.text(itm.status || 'Pending', 145, currentY + 5.5);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setTextColor(30, 41, 59);
+        const grossVal = itm.totalAmount || itm.amount || 0;
+        doc.setFont("Helvetica", "bold");
+        doc.text(grossVal.toLocaleString(), 192, currentY + 5.5, { align: 'right' });
+
+        currentY += 8;
+    });
+
+    doc.setFillColor(241, 245, 249);
+    doc.rect(15, currentY + 2, 180, 9, 'F');
+    doc.setFont("Helvetica", "bold");
+    doc.text("STATEMENT OUTSTANDING BALANCE", 18, currentY + 8);
+    doc.text(`AED ${balance.toLocaleString()}`, 192, currentY + 8, { align: 'right' });
+
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 289, 210, 8, 'F');
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Pioneer DMS statement of ledger account. Certified to be true and correct.", 105, 294, { align: "center" });
+
+    doc.save(`${isReceivable ? 'Receivable' : 'Payable'}_SOA_${partnerName.replace(/\s+/g, '_')}.pdf`);
+};
+
+export const downloadSOAExcel = (
+    partnerId: string, 
+    partnerName: string, 
+    partnerType: string, 
+    items: any[], 
+    isReceivable: boolean
+) => {
+    const reportRows = items.map((itm: any) => ({
+        "Date": itm.date || '',
+        "Invoice Number": itm.invoiceNumber || '-',
+        "Partner/Client Name": partnerName,
+        "Entity Type": partnerType,
+        "Transaction Type": isReceivable ? 'Receivable Invoice' : 'Payable Outflow',
+        "Status": itm.status || 'Pending',
+        "Exclude VAT (AED)": itm.amount || 0,
+        "VAT (5%) (AED)": itm.vatAmount || 0,
+        "Total Invoiced (AED)": itm.totalAmount || itm.amount || 0,
+        "Due Date": itm.dueDate || '-'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(reportRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `SOA_${partnerId.substring(0, 8)}`);
+    XLSX.writeFile(wb, `${isReceivable ? 'Receivable' : 'Payable'}_SOA_${partnerName.replace(/\s+/g, '_')}.xlsx`);
+};
+
 export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, user, companies }: any) => {
     const [previewInvoiceItem, setPreviewInvoiceItem] = useState<{ item: any; comp: any; client: any } | null>(null);
-    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights'>('ledger');
+    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
+
+    // Advanced Filter State variables
+    const [isAdvFilterOpen, setIsAdvFilterOpen] = useState(false);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [minAmount, setMinAmount] = useState('');
+    const [maxAmount, setMaxAmount] = useState('');
+    const [filterStatus, setFilterStatus] = useState('All');
+    const [filterEntity, setFilterEntity] = useState('All');
+    const [filterProject, setFilterProject] = useState('All');
+    const [filterCompany, setFilterCompany] = useState('All');
+    const [filterMonth, setFilterMonth] = useState('All');
+
+    // SOA Tool state variables
+    const [soaEntityId, setSoaEntityId] = useState('All');
+    const [soaProjectId, setSoaProjectId] = useState('All');
+    const [soaCompanyId, setSoaCompanyId] = useState('All');
+    const [soaStartDate, setSoaStartDate] = useState('');
+    const [soaEndDate, setSoaEndDate] = useState('');
+    const [soaScope, setSoaScope] = useState<'All' | 'Received' | 'Pending'>('All');
 
     const getEntityName = (id: string, type: string) => {
         if (type === 'Project') return projects.find((p: any) => p.id === id)?.name || 'Unknown Project';
@@ -1305,6 +2190,307 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         return null;
     };
 
+    // Calculate unique available months in dataset for entries
+    const availableMonths = useMemo(() => {
+        const monthsSet = new Set<string>();
+        (data || []).forEach((item: any) => {
+            if (item.date) {
+                monthsSet.add(item.date.substring(0, 7)); // YYYY-MM
+            }
+        });
+        return Array.from(monthsSet).sort().reverse();
+    }, [data]);
+
+    // Apply Advanced Filters to dataset
+    const filteredData = useMemo(() => {
+        return (data || []).filter((item: any) => {
+            if (startDate && item.date < startDate) return false;
+            if (endDate && item.date > endDate) return false;
+
+            const amount = item.totalAmount || item.amount || 0;
+            if (minAmount !== '' && amount < Number(minAmount)) return false;
+            if (maxAmount !== '' && amount > Number(maxAmount)) return false;
+
+            if (filterStatus !== 'All' && item.status !== filterStatus) return false;
+            
+            if (filterEntity !== 'All') {
+                if (item.entityId !== filterEntity) return false;
+            }
+
+            if (filterProject !== 'All') {
+                if ((item.entityId || item.projectId) !== filterProject) return false;
+            }
+
+            if (filterCompany !== 'All') {
+                if (item.companyId !== filterCompany) return false;
+            }
+
+            if (filterMonth !== 'All') {
+                const m = item.date.substring(0, 7);
+                if (m !== filterMonth) return false;
+            }
+
+            return true;
+        });
+    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth]);
+
+    const activeFiltersCount = useMemo(() => {
+        let count = 0;
+        if (startDate) count++;
+        if (endDate) count++;
+        if (minAmount !== '') count++;
+        if (maxAmount !== '') count++;
+        if (filterStatus !== 'All') count++;
+        if (filterEntity !== 'All') count++;
+        if (filterProject !== 'All') count++;
+        if (filterCompany !== 'All') count++;
+        if (filterMonth !== 'All') count++;
+        return count;
+    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth]);
+
+    const handleClearAdvFilters = () => {
+        setStartDate('');
+        setEndDate('');
+        setMinAmount('');
+        setMaxAmount('');
+        setFilterStatus('All');
+        setFilterEntity('All');
+        setFilterProject('All');
+        setFilterCompany('All');
+        setFilterMonth('All');
+    };
+
+    // Statement of Account Items filter logic
+    const soaFilteredItems = useMemo(() => {
+        return (data || []).filter((item: any) => {
+            // Must match selected client entity
+            if (soaEntityId !== 'All' && item.entityId !== soaEntityId) return false;
+            
+            // Must match selected project
+            if (soaProjectId !== 'All' && (item.entityId || item.projectId) !== soaProjectId) return false;
+
+            // Must match selected seller company
+            if (soaCompanyId !== 'All' && item.companyId !== soaCompanyId) return false;
+
+            // Date limits
+            if (soaStartDate && item.date < soaStartDate) return false;
+            if (soaEndDate && item.date > soaEndDate) return false;
+
+            // Settlement scope
+            if (soaScope === 'Received' && item.status !== 'Received') return false;
+            if (soaScope === 'Pending' && item.status === 'Received') return false;
+
+            return true;
+        });
+    }, [data, soaEntityId, soaProjectId, soaCompanyId, soaStartDate, soaEndDate, soaScope]);
+
+    // Executing EXCEL Download for specific month
+    const executeDownloadMonthExcel = (mKey: string) => {
+        const monthItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
+        const reportRows = monthItems.map((item: any) => ({
+            "Invoice Date": item.date,
+            "Invoice #": item.invoiceNumber || '-',
+            "Client / Partner": getEntityName(item.entityId, item.entityType || 'Vendor'),
+            "Partner Category": (item.entityType || 'Vendor') === 'Vendor' ? 'Client' : (item.entityType || 'Vendor'),
+            "Seller Company": (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName)?.name || item.companyName || 'Unassigned',
+            "Excl. Amount (AED)": item.amount || 0,
+            "VAT Amount (5%)": item.vatAmount || 0,
+            "Total Invoiced (AED)": item.totalAmount || item.amount || 0,
+            "Receipt Status": item.status,
+            "Expected Due Date": item.dueDate || '-'
+        }));
+        const ws = XLSX.utils.json_to_sheet(reportRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, `AR_Ledger_${mKey}`);
+        XLSX.writeFile(wb, `Accounts_Receivable_Register_${mKey}.xlsx`);
+    };
+
+    // Executing PDF Download for specific month
+    const executeDownloadMonthPDF = (mKey: string) => {
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const monthItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
+        const [yr, mn] = mKey.split('-');
+        const mLabel = new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
+
+        doc.setFillColor(37, 99, 235); // Royal Blue header stripe 
+        doc.rect(0, 0, 210, 6, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(14);
+        doc.setTextColor(30, 41, 59);
+        doc.text(`ACCOUNTS RECEIVABLE REGISTER - ${mLabel.toUpperCase()}`, 15, 18);
+        
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Category: Accounts Receivable Ledger Inflows | Generated: ${new Date().toLocaleDateString()}`, 15, 23);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.line(15, 27, 195, 27);
+
+        // Build Table header
+        const tableHeaderY = 32;
+        doc.setFillColor(37, 99, 235);
+        doc.rect(15, tableHeaderY, 180, 8, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(255, 255, 255);
+        doc.text("INVOICE DATE", 18, tableHeaderY + 5.5);
+        doc.text("INVOICE #", 38, tableHeaderY + 5.5);
+        doc.text("CLIENT / PROJECT ENTITY", 65, tableHeaderY + 5.5);
+        doc.text("SELLER", 115, tableHeaderY + 5.5);
+        doc.text("STATUS", 150, tableHeaderY + 5.5);
+        doc.text("TOTAL (AED)", 192, tableHeaderY + 5.5, { align: 'right' });
+
+        let currentY = tableHeaderY + 8;
+        monthItems.forEach((itm: any, idx: number) => {
+            if (currentY > 270) {
+                doc.addPage();
+                doc.setFillColor(37, 99, 235);
+                doc.rect(0, 0, 210, 6, 'F');
+                currentY = 15;
+            }
+
+            if (idx % 2 === 1) {
+                doc.setFillColor(248, 250, 252);
+                doc.rect(15, currentY, 180, 8, 'F');
+            }
+
+            doc.setFont("Helvetica", "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(30, 41, 59);
+
+            doc.text(itm.date || '', 18, currentY + 5.5);
+            doc.setFont("Helvetica", "bold");
+            doc.text(itm.invoiceNumber || '-', 38, currentY + 5.5);
+            
+            doc.setFont("Helvetica", "normal");
+            const entityLabel = getEntityName(itm.entityId || itm.projectId, itm.entityType || 'Project');
+            doc.text(entityLabel.length > 25 ? entityLabel.substring(0, 23) + '..' : entityLabel, 65, currentY + 5.5);
+            
+            const compLabel = (companies || []).find((c: any) => c.id === itm.companyId || c.name === itm.companyName)?.name || itm.companyName || '-';
+            doc.text(compLabel.length > 18 ? compLabel.substring(0, 16) + '..' : compLabel, 115, currentY + 5.5);
+
+            const isC = itm.status === 'Received' || itm.status === 'Paid';
+            if (isC) {
+                doc.setTextColor(16, 124, 65);
+            } else {
+                doc.setTextColor(220, 95, 0);
+            }
+            doc.setFont("Helvetica", "bold");
+            doc.text(itm.status || 'Pending', 150, currentY + 5.5);
+            
+            doc.setFont("Helvetica", "normal");
+            doc.setTextColor(30, 41, 59);
+            const tot = itm.totalAmount || itm.amount || 0;
+            doc.setFont("Helvetica", "bold");
+            doc.text(tot.toLocaleString(), 192, currentY + 5.5, { align: 'right' });
+
+            currentY += 8;
+        });
+
+        const sumTotal = monthItems.reduce((acc: number, curr: any) => acc + (curr.totalAmount || curr.amount || 0), 0);
+        doc.setFillColor(241, 245, 249);
+        doc.rect(15, currentY + 2, 180, 9, 'F');
+        doc.setFont("Helvetica", "bold");
+        doc.text("VOLUME SUMMARY TOTAL", 18, currentY + 8);
+        doc.text(`AED ${sumTotal.toLocaleString()}`, 192, currentY + 8, { align: 'right' });
+
+        doc.save(`Accounts_Receivable_Journal_${mKey}.pdf`);
+    };
+
+    // Bulk Multi-Sheet Excel download
+    const handleDownloadAllMonthsConsolidated = () => {
+        const wb = XLSX.utils.book_new();
+        availableMonths.forEach((mKey) => {
+            const mItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
+            const rows = mItems.map((item: any) => ({
+                "Invoice Date": item.date,
+                "Invoice Number": item.invoiceNumber || '-',
+                "Client Counterparty": getEntityName(item.entityId, item.entityType || 'Vendor'),
+                "Seller Company": (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName)?.name || item.companyName || '-',
+                "Amount (AED)": item.amount || 0,
+                "VAT Amount (5%) (AED)": item.vatAmount || 0,
+                "Total Amount Gross (AED)": item.totalAmount || item.amount || 0,
+                "Payment Status": item.status,
+                "Expected Due Date": item.dueDate || '-'
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const [yr, mn] = mKey.split('-');
+            const mLabel = new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'short', year: 'numeric' });
+            XLSX.utils.book_append_sheet(wb, ws, mLabel.substring(0, 31));
+        });
+        XLSX.writeFile(wb, "Accounts_Receivable_Consolidated_Monthly_Workbook.xlsx");
+    };
+
+    const handleGenerateSOAPDF = () => {
+        let pName = 'All Combined Clients';
+        let pTrn = 'Multiple / N/A';
+        let pType = 'Corporate Debtors';
+
+        if (soaEntityId !== 'All') {
+            const clientObj = getEntityObject(soaEntityId, 'Vendor') || getEntityObject(soaEntityId, 'Supplier') || getEntityObject(soaEntityId, 'Project');
+            pName = clientObj?.name || 'Selected Client';
+            pTrn = clientObj?.trn || 'Not Registered';
+            pType = 'Client Account';
+        }
+
+        let projName = 'All Combined Operations';
+        if (soaProjectId !== 'All') {
+            projName = getEntityName(soaProjectId, 'Project');
+        }
+
+        const periodStr = (soaStartDate || soaEndDate) 
+            ? `${soaStartDate || 'Origin'} to ${soaEndDate || 'Present'}`
+            : 'Complete Recorded Operations History';
+
+        // Summary Calculations
+        let totalBilled = 0;
+        let totalPaid = 0;
+        soaFilteredItems.forEach((itm: any) => {
+            const amt = itm.totalAmount || itm.amount || 0;
+            totalBilled += amt;
+            if (itm.status === 'Received') {
+                totalPaid += amt;
+            }
+        });
+        const balance = totalBilled - totalPaid;
+
+        generatePdfSOA({
+            title: "CLIENT STATEMENT OF ACCOUNT (SOA)",
+            partnerName: pName,
+            partnerType: pType,
+            partnerTrn: pTrn,
+            projectName: projName,
+            periodStr,
+            items: soaFilteredItems,
+            totalBilled,
+            totalPaid,
+            balance,
+            isReceivable: true
+        });
+    };
+
+    const handleGenerateSOAExcel = () => {
+        let pName = 'All Combined Clients';
+        let pType = 'Client Debtor';
+
+        if (soaEntityId !== 'All') {
+            const clientObj = getEntityObject(soaEntityId, 'Vendor') || getEntityObject(soaEntityId, 'Supplier') || getEntityObject(soaEntityId, 'Project');
+            pName = clientObj?.name || 'Selected Client';
+            pType = 'Client';
+        }
+
+        downloadSOAExcel(soaEntityId, pName, pType, soaFilteredItems, true);
+    };
+
     // Calculate dynamic high-level metrics
     const metrics = useMemo(() => {
         let totalBilled = 0;
@@ -1312,7 +2498,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         let totalPending = 0;
         let totalVat = 0;
         
-        (data || []).forEach((item: any) => {
+        (filteredData || []).forEach((item: any) => {
             const amount = item.totalAmount || item.amount || 0;
             const vat = item.vatAmount || 0;
             totalBilled += amount;
@@ -1330,11 +2516,11 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             totalCollected,
             totalPending,
             totalVat,
-            count: data?.length || 0,
-            pendingCount: (data || []).filter((item: any) => item.status !== 'Received').length,
-            collectedCount: (data || []).filter((item: any) => item.status === 'Received').length
+            count: filteredData?.length || 0,
+            pendingCount: (filteredData || []).filter((item: any) => item.status !== 'Received').length,
+            collectedCount: (filteredData || []).filter((item: any) => item.status === 'Received').length
         };
-    }, [data]);
+    }, [filteredData]);
 
     // Aging Buckets Calculation
     const agingBuckets = useMemo(() => {
@@ -1349,7 +2535,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         const today = new Date();
         today.setHours(0,0,0,0);
 
-        (data || []).forEach((item: any) => {
+        (filteredData || []).forEach((item: any) => {
             // Only non-Received items belong to aging
             if (item.status === 'Received') return;
 
@@ -1387,13 +2573,13 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         });
 
         return buckets;
-    }, [data]);
+    }, [filteredData]);
 
     // Monthly Trends Calculation
     const monthlyTrends = useMemo(() => {
         const trends: { [key: string]: { label: string; bBilled: number; cCollected: number; pPending: number; itemsCount: number } } = {};
 
-        (data || []).forEach((item: any) => {
+        (filteredData || []).forEach((item: any) => {
             const dateStr = item.date;
             if (!dateStr) return;
 
@@ -1428,7 +2614,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                 key,
                 ...trends[key]
             }));
-    }, [data]);
+    }, [filteredData]);
 
     // Outstanding items helper for list below aging selectors
     const totalAgingAmount = Object.values(agingBuckets).reduce((acc, curr) => acc + curr.amount, 0);
@@ -1469,6 +2655,15 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                         )}
                     >
                         📊 Aging & Monthly Reports
+                    </button>
+                    <button 
+                        onClick={() => setActiveTabMode('soa')}
+                        className={cn(
+                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                            activeTabMode === 'soa' ? "bg-white text-blue-600 shadow-sm" : "text-slate-505 hover:text-slate-800"
+                        )}
+                    >
+                        📄 SOA & Monthly Packs
                     </button>
                 </div>
             </div>
@@ -1526,12 +2721,139 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
             {/* Main Dynamic Panel */}
             {activeTabMode === 'ledger' ? (
-                <DataTable<AccountsReceivable>
-                    title="Accounts Receivable Ledger"
-                    description="Standard general ledger list of client billings and collections."
-                    icon={TrendingUp}
-                    data={data}
-                    columns={[
+                <div className="space-y-4">
+                    {/* Advanced Filter Controller */}
+                    <div className="bg-white border border-slate-100 p-5 rounded-3xl shadow-sm">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <Filter className="w-4 h-4 text-blue-600" />
+                                <span className="font-extrabold text-sm text-slate-800">Advanced Filter Controls</span>
+                                {activeFiltersCount > 0 && (
+                                    <span className="bg-blue-100 text-blue-700 font-mono font-bold text-[10px] px-2 py-0.5 rounded-full">
+                                        {activeFiltersCount} Filters applied
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {activeFiltersCount > 0 && (
+                                    <button 
+                                        onClick={handleClearAdvFilters}
+                                        className="text-[11px] font-bold text-slate-450 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded-xl transition-all cursor-pointer"
+                                    >
+                                        Reset All
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setIsAdvFilterOpen(!isAdvFilterOpen)}
+                                    className="text-white bg-slate-800 hover:bg-slate-900 font-bold text-xs px-4 py-1.5 rounded-xl transition-all cursor-pointer shadow-xs"
+                                >
+                                    {isAdvFilterOpen ? "Hide Filter Dashboard" : "Show Advanced Filters"}
+                                </button>
+                            </div>
+                        </div>
+
+                        {isAdvFilterOpen && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100 text-xs">
+                                {/* Date Start & End */}
+                                <div className="space-y-1">
+                                    <label className="block text-slate-500 font-mono font-bold uppercase text-[9px]">Date Period</label>
+                                    <div className="flex gap-1.5">
+                                        <input 
+                                            type="date" 
+                                            value={startDate} 
+                                            onChange={e => setStartDate(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-700 outline-hidden font-medium font-sans"
+                                        />
+                                        <input 
+                                            type="date" 
+                                            value={endDate} 
+                                            onChange={e => setEndDate(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-700 outline-hidden font-medium font-sans"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Amount Range Threshold */}
+                                <div className="space-y-1">
+                                    <label className="block text-slate-500 font-mono font-bold uppercase text-[9px]">Amount Range (AED)</label>
+                                    <div className="flex gap-1.5">
+                                        <input 
+                                            type="number" 
+                                            placeholder="Min Amount" 
+                                            value={minAmount} 
+                                            onChange={e => setMinAmount(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-750 outline-hidden font-medium font-sans"
+                                        />
+                                        <input 
+                                            type="number" 
+                                            placeholder="Max Amount" 
+                                            value={maxAmount} 
+                                            onChange={e => setMaxAmount(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-slate-755 outline-hidden font-medium font-sans"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Partner & Project Selectors */}
+                                <div className="space-y-1">
+                                    <label className="block text-slate-500 font-mono font-bold uppercase text-[9px]">Client & project</label>
+                                    <div className="flex gap-1.5">
+                                        <select 
+                                            value={filterEntity} 
+                                            onChange={e => setFilterEntity(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer font-sans"
+                                        >
+                                            <option value="All">All Clients</option>
+                                            {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                        </select>
+                                        <select 
+                                            value={filterProject} 
+                                            onChange={e => setFilterProject(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer font-sans"
+                                        >
+                                            <option value="All">All Projects</option>
+                                            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Status & Quick Month dropdowns */}
+                                <div className="space-y-1">
+                                    <label className="block text-slate-500 font-mono font-bold uppercase text-[9px]">Status & Billing Month</label>
+                                    <div className="flex gap-1.5">
+                                        <select 
+                                            value={filterStatus} 
+                                            onChange={e => setFilterStatus(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer font-sans"
+                                        >
+                                            <option value="All">All Statuses</option>
+                                            <option value="Received">Received / Paid</option>
+                                            <option value="Pending">Pending / Overdue</option>
+                                        </select>
+                                        <select 
+                                            value={filterMonth} 
+                                            onChange={e => setFilterMonth(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer font-mono"
+                                        >
+                                            <option value="All">All Months</option>
+                                            {availableMonths.map((m: string) => {
+                                                const [yr, mn] = m.split('-');
+                                                const label = new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'short', year: 'numeric' });
+                                                return <option key={m} value={m}>{label}</option>;
+                                            })}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <DataTable<AccountsReceivable>
+                        title="Accounts Receivable Ledger"
+                        description="Standard general ledger list of client billings and collections."
+                        icon={TrendingUp}
+                        data={filteredData}
+                        columns={[
                         { key: 'date', label: 'Date', sortable: true },
                         { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
                         { 
@@ -1640,7 +2962,8 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     exportFileName="Accounts_Receivable"
                     user={user}
                 />
-            ) : (
+                </div>
+            ) : activeTabMode === 'insights' ? (
                 <div className="space-y-6">
                     {/* Interactive Aging Wheel & Progress metrics */}
                     <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
@@ -1887,6 +3210,194 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                /* activeTabMode === 'soa' */
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
+                    
+                    {/* Left: SOA Custom Builder (5 columns wide) */}
+                    <div className="lg:col-span-5 bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+                        <div>
+                            <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-blue-600" />
+                                <span>Compile Partner Statement of Account (SOA)</span>
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium">
+                                Produce corporate-grade ledger statements of transactions, revenue, and client receipts over custom spans.
+                            </p>
+                        </div>
+
+                        <div className="space-y-4 text-xs font-semibold font-sans">
+                            {/* Client Entity Select */}
+                            <div className="space-y-1.5">
+                                <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Select Client Counterparty</label>
+                                <select 
+                                    value={soaEntityId} 
+                                    onChange={e => setSoaEntityId(e.target.value)}
+                                    className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-850 outline-hidden font-extrabold cursor-pointer text-xs"
+                                >
+                                    <option value="All">All Registered Clients Combined</option>
+                                    {vendors.map((v: any) => <option key={v.id} value={v.id}>{v.name} (Client)</option>)}
+                                </select>
+                            </div>
+
+                            {/* Project Filter */}
+                            <div className="space-y-1.5">
+                                <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Associated Project / contract</label>
+                                <select 
+                                    value={soaProjectId} 
+                                    onChange={e => setSoaProjectId(e.target.value)}
+                                    className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-850 outline-hidden font-extrabold cursor-pointer text-xs"
+                                >
+                                    <option value="All">All Projects Combined</option>
+                                    {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Date Span */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Start Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={soaStartDate} 
+                                        onChange={e => setSoaStartDate(e.target.value)}
+                                        className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3 py-2 text-slate-850 outline-hidden font-bold text-xs"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">End Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={soaEndDate} 
+                                        onChange={e => setSoaEndDate(e.target.value)}
+                                        className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3 py-2 text-slate-850 outline-hidden font-bold text-xs"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Statement Scope Category */}
+                            <div className="space-y-1.5">
+                                <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Scope category filter</label>
+                                <select 
+                                    value={soaScope} 
+                                    onChange={e => setSoaScope(e.target.value as any)}
+                                    className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-850 outline-hidden font-extrabold cursor-pointer text-xs"
+                                >
+                                    <option value="All">Include Combined Transactions (All)</option>
+                                    <option value="Pending">Outstanding / Pending Demands Only</option>
+                                    <option value="Received">Settled / Closed Invoices Only</option>
+                                </select>
+                            </div>
+
+                            {/* Preview Badge Info */}
+                            <div className="bg-blue-50/50 border border-blue-100/30 p-4 rounded-3xl space-y-1.5">
+                                <h4 className="text-[11px] uppercase tracking-wider font-extrabold text-blue-700 font-mono">Statement Target Cohort</h4>
+                                <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                                    <span>Matching Records:</span>
+                                    <span className="font-mono text-slate-800 font-bold">{soaFilteredItems.length} invoices</span>
+                                </div>
+                                <div className="flex justify-between items-center text-slate-555 text-[11px]">
+                                    <span>Cumulative Billed:</span>
+                                    <span className="font-mono text-slate-900 font-black">AED {soaFilteredItems.reduce((sum, item) => sum + (item.totalAmount || item.amount || 0), 0).toLocaleString()}</span>
+                                </div>
+                            </div>
+
+                            {/* Generating Actions */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+                                <button
+                                    onClick={handleGenerateSOAPDF}
+                                    disabled={soaFilteredItems.length === 0}
+                                    className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold p-3 rounded-2xl transition-all shadow-xs cursor-pointer text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    <span>Download PDF SOA</span>
+                                </button>
+                                <button
+                                    onClick={handleGenerateSOAExcel}
+                                    disabled={soaFilteredItems.length === 0}
+                                    className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold p-3 rounded-2xl transition-all shadow-xs cursor-pointer text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <FileSpreadsheet className="w-4 h-4" />
+                                    <span>Download Excel SOA</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right: Month-by-month Accounts Ledger Pack (7 columns wide) */}
+                    <div className="lg:col-span-7 bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 pb-4 gap-3">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                    <Calendar className="w-5 h-5 text-blue-600" />
+                                    <span>Month-by-Month Accounts Ledger Pack</span>
+                                </h3>
+                                <p className="text-xs text-slate-400 font-medium">
+                                    Instantly compile and package whole months into structured Excel and PDF registers.
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleDownloadAllMonthsConsolidated}
+                                className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black px-4 py-2 rounded-2xl shadow-xs transition-colors cursor-pointer shrink-0"
+                            >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Master Workbook</span>
+                            </button>
+                        </div>
+
+                        {availableMonths.length === 0 ? (
+                            <div className="py-20 text-center text-slate-400 font-medium border border-dashed border-slate-150 rounded-3xl">
+                                No billing records found in the ledger to segment by month.
+                            </div>
+                        ) : (
+                            <div className="space-y-3.5 max-h-[360px] overflow-y-auto pr-1">
+                                {availableMonths.map((mKey) => {
+                                    const mItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
+                                    const mTotal = mItems.reduce((sum, item) => sum + (item.totalAmount || item.amount || 0), 0);
+                                    const mPaid = mItems.reduce((sum, item) => sum + (item.status === 'Received' ? (item.totalAmount || item.amount || 0) : 0), 0);
+                                    const mPending = mTotal - mPaid;
+
+                                    const [yr, mn] = mKey.split('-');
+                                    const mLabel = new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
+
+                                    return (
+                                        <div 
+                                            key={mKey}
+                                            className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-50 hover:bg-slate-100/60 border border-slate-100 hover:border-slate-200 p-4 rounded-3xl transition-all gap-4 animate-fadeIn"
+                                        >
+                                            <div className="space-y-1">
+                                                <h4 className="font-extrabold text-sm text-slate-800 font-sans">{mLabel}</h4>
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400 font-mono">
+                                                    <span>Invoices: <strong className="text-slate-700">{mItems.length} records</strong></span>
+                                                    <span>Billed: <strong className="text-slate-700">AED {mTotal.toLocaleString()}</strong></span>
+                                                    <span>Collected: <strong className="text-emerald-600">AED {mPaid.toLocaleString()}</strong></span>
+                                                    <span>Outstanding: <strong className="text-rose-600 font-bold">AED {mPending.toLocaleString()}</strong></span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex gap-2 w-full sm:w-auto shrink-0 justify-end font-sans">
+                                                <button
+                                                    onClick={() => executeDownloadMonthExcel(mKey)}
+                                                    className="flex items-center gap-1 bg-white border border-slate-200 hover:border-emerald-300 text-emerald-700 hover:bg-emerald-500 hover:text-white px-3.5 py-1.5 rounded-xl font-extrabold text-[11px] transition-all cursor-pointer shadow-2xs"
+                                                >
+                                                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                                                    <span>Excel</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => executeDownloadMonthPDF(mKey)}
+                                                    className="flex items-center gap-1 bg-white border border-slate-200 hover:border-rose-300 text-rose-700 hover:bg-rose-500 hover:text-white px-3.5 py-1.5 rounded-xl font-extrabold text-[11px] transition-all cursor-pointer shadow-2xs"
+                                                >
+                                                    <Download className="w-3.5 h-3.5" />
+                                                    <span>PDF pack</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
