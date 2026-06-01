@@ -81,15 +81,80 @@ export const adminUpdateUser = async (oldEmail: string, oldPass: string, newEmai
     } catch (err: any) {
       if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
         console.log("Old credentials not found in Auth or password mismatch, trying to create new user credentials directly...");
-        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newEmail, newPass);
-        user = userCredential.user;
+        try {
+          const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newEmail, newPass);
+          user = userCredential.user;
+        } catch (createErr: any) {
+          if (createErr.code === 'auth/email-already-in-use') {
+            console.log(`New email ${newEmail} already exists in Auth. Checking if it is an orphan to clean up...`);
+            // Attempt to login to target email with both newPass and oldPass to delete it
+            let orphanCredential = null;
+            try {
+              orphanCredential = await signInWithEmailAndPassword(secondaryAuth, newEmail, newPass);
+            } catch (p1) {
+              try {
+                orphanCredential = await signInWithEmailAndPassword(secondaryAuth, newEmail, oldPass);
+              } catch (p2) {}
+            }
+
+            if (orphanCredential) {
+              console.log(`Found orphan user ${newEmail} in Auth. Deleting to clean up...`);
+              await deleteUser(orphanCredential.user);
+              // Now create the user credentials again
+              const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newEmail, newPass);
+              user = userCredential.user;
+            } else {
+              throw createErr;
+            }
+          } else {
+            throw createErr;
+          }
+        }
       } else {
         throw err;
       }
     }
 
     if (newEmail !== oldEmail) {
-      await updateEmail(user, newEmail);
+      try {
+        await updateEmail(user, newEmail);
+      } catch (updateEmailErr: any) {
+        if (updateEmailErr.code === 'auth/email-already-in-use') {
+          console.log(`Target email ${newEmail} already exists in Auth. Checking if it is an orphan to clean up...`);
+          const orphanAppName = `OrphanCleanApp_${Date.now()}`;
+          const orphanApp = initializeApp(firebaseConfig, orphanAppName);
+          const orphanAuth = getAuth(orphanApp);
+          try {
+            let orphanCredential = null;
+            try {
+              orphanCredential = await signInWithEmailAndPassword(orphanAuth, newEmail, newPass);
+            } catch (p1) {
+              try {
+                orphanCredential = await signInWithEmailAndPassword(orphanAuth, newEmail, oldPass);
+              } catch (p2) {}
+            }
+
+            if (orphanCredential) {
+              console.log(`Found orphan user ${newEmail}. Deleting it to complete email update...`);
+              await deleteUser(orphanCredential.user);
+              await signOut(orphanAuth);
+              await deleteApp(orphanApp);
+              
+              // Retry the update email
+              await updateEmail(user, newEmail);
+            } else {
+              await signOut(orphanAuth);
+              await deleteApp(orphanApp);
+              throw updateEmailErr;
+            }
+          } catch (cleanupErr) {
+            try { await deleteApp(orphanApp); } catch (e) {}
+            throw updateEmailErr;
+          }
+        } else {
+          throw updateEmailErr;
+        }
+      }
     }
     if (newPass !== oldPass) {
       await updatePassword(user, newPass);

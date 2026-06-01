@@ -1522,7 +1522,18 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                 permissions: newUser.permissions
             };
             console.log("Saving user to Firestore...");
-            await saveSystemUser(userToSave);
+            try {
+                await saveSystemUser(userToSave);
+            } catch (firestoreErr: any) {
+                console.error("Firestore save failed after creating Auth user, cleaning up Auth. Error:", firestoreErr);
+                try {
+                    await adminDeleteUser(userEmail, newUser.password);
+                    console.log("Successfully cleaned up Auth user after Firestore failure");
+                } catch (deleteErr) {
+                    console.error("Failed to clean up Auth user:", deleteErr);
+                }
+                throw firestoreErr;
+            }
             onLog('User Created', `New system user ${userToSave.name} (${userToSave.email}) was created with role ${userToSave.role}.`, 'create');
             console.log("User saved to Firestore successfully.");
             setShowAdd(false);
