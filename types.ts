@@ -146,6 +146,7 @@ export interface DeductionRecord {
     note?: string;
     attachment?: string;
     attachmentName?: string;
+    googleDriveLink?: string;
 }
 
 export interface Company {

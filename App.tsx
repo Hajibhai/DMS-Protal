@@ -27,7 +27,7 @@ import {
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle, LayoutDashboard,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator,
-  Paperclip, Upload, FileDown
+  Paperclip, Upload, FileDown, ExternalLink
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -8210,6 +8210,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
 
 const DeductionsView = ({ employees, deductions, openConfirm, user, companies }: any) => {
     const [newItem, setNewItem] = useState<Partial<DeductionRecord>>({ type: 'Salary Advance', date: new Date().toISOString().split('T')[0] });
+    const [editingItem, setEditingItem] = useState<Partial<DeductionRecord> | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [previewAttachment, setPreviewAttachment] = useState<{ data: string; name: string } | null>(null);
     const canManagePayroll = user?.permissions?.canManagePayroll;
@@ -8603,6 +8604,17 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                             </td>
                                             <td className="p-5">
                                                 <div className="flex justify-end items-center gap-3">
+                                                    {d.googleDriveLink && (
+                                                        <a 
+                                                            href={d.googleDriveLink}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="p-2 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-55 rounded-xl transition-all"
+                                                            title="Open Signed Google Drive Link"
+                                                        >
+                                                            <ExternalLink className="w-4 h-4" />
+                                                        </a>
+                                                    )}
                                                     {d.attachment && (
                                                         <button 
                                                             onClick={() => setPreviewAttachment({ data: d.attachment!, name: d.attachmentName || 'Attachment' })}
@@ -8618,6 +8630,13 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                                         title="Download Record PDF"
                                                     >
                                                         <FileDown className="w-4 h-4" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setEditingItem(d)}
+                                                        className="p-2 text-slate-400 hover:text-brand-600 hover:bg-slate-50 rounded-xl transition-all"
+                                                        title="Edit Deduction Details & Link"
+                                                    >
+                                                        <Edit className="w-4 h-4" />
                                                     </button>
                                                     <button 
                                                         onClick={() => openConfirm("Delete Deduction", "Are you sure you want to remove this record?", async () => {
@@ -8702,6 +8721,193 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                     </div>
                 </div>
             )}
+
+            {/* Edit Deduction Modal */}
+            <AnimatePresence>
+                {editingItem && (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setEditingItem(null)}>
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                            transition={{ duration: 0.2, ease: 'easeOut' }}
+                            className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden border border-slate-100 flex flex-col relative"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-brand-50 text-brand-600 rounded-xl">
+                                        <Edit className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-slate-900 text-base">Edit Deduction Record</h3>
+                                        <p className="text-xs text-slate-400 font-semibold">Update employee advance/deduction details & signed Google Drive link</p>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => setEditingItem(null)}
+                                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Staff Member</label>
+                                    <select 
+                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all font-semibold" 
+                                        value={editingItem.employeeId || ''} 
+                                        onChange={e => setEditingItem({...editingItem, employeeId: e.target.value})}
+                                    >
+                                        <option value="">Select Employee</option>
+                                        {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Date</label>
+                                        <input 
+                                            type="date" 
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all font-semibold" 
+                                            value={editingItem.date || ''} 
+                                            onChange={e => setEditingItem({...editingItem, date: e.target.value})} 
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Category</label>
+                                        <select 
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all font-semibold" 
+                                            value={editingItem.type} 
+                                            onChange={e => setEditingItem({...editingItem, type: e.target.value as any})}
+                                        >
+                                            <option value="Salary Advance">Salary Advance</option>
+                                            <option value="Fine Amount">Fine Amount</option>
+                                            <option value="Damage Material/Asset">Damage Material/Asset</option>
+                                            <option value="Loan Amount">Loan Amount</option>
+                                            <option value="Other">Other</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Amount (AED)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">AED</span>
+                                            <input 
+                                                type="number" 
+                                                className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all font-black text-slate-900" 
+                                                placeholder="0.00" 
+                                                value={editingItem.amount || ''} 
+                                                onChange={e => setEditingItem({...editingItem, amount: Number(e.target.value)})} 
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-1">
+                                        <Globe className="w-3.5 h-3.5 text-brand-600" />
+                                        Google Drive Signed Document Link
+                                    </label>
+                                    <div className="relative">
+                                        <input 
+                                            type="url" 
+                                            placeholder="https://drive.google.com/..." 
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all font-semibold placeholder:text-slate-400 text-brand-600" 
+                                            value={editingItem.googleDriveLink || ''} 
+                                            onChange={e => setEditingItem({...editingItem, googleDriveLink: e.target.value})} 
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-semibold ml-1">Paste the link of the signed and scanned document from Google Drive.</p>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Notes / Reason</label>
+                                    <textarea 
+                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all placeholder:text-slate-400 min-h-[60px]" 
+                                        placeholder="Reason / details..." 
+                                        value={editingItem.note || ''} 
+                                        onChange={e => setEditingItem({...editingItem, note: e.target.value})} 
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-1.5">
+                                        <Paperclip className="w-3.5 h-3.5 text-slate-400" />
+                                        Update Local Receipt/Bill Attachment (Optional)
+                                    </label>
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative flex-1">
+                                            <input 
+                                                type="file" 
+                                                id="deduction-receipt-edit-upload"
+                                                accept="image/*,application/pdf"
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) {
+                                                        const reader = new FileReader();
+                                                        reader.onloadend = () => {
+                                                            setEditingItem({
+                                                                ...editingItem,
+                                                                attachment: reader.result as string,
+                                                                attachmentName: file.name
+                                                            });
+                                                        };
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }}
+                                            />
+                                            <label 
+                                                htmlFor="deduction-receipt-edit-upload"
+                                                className="flex items-center gap-3 w-full p-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100/50 hover:border-slate-300 cursor-pointer transition-all"
+                                            >
+                                                <Upload className="w-4 h-4 text-slate-400" />
+                                                <span className="truncate">{editingItem.attachmentName ? editingItem.attachmentName : "Upload Signed PDF or image receipt"}</span>
+                                            </label>
+                                        </div>
+                                        {editingItem.attachment && (
+                                            <button 
+                                                type="button"
+                                                onClick={() => setEditingItem({...editingItem, attachment: undefined, attachmentName: undefined})}
+                                                className="px-4 py-3 text-xs bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 rounded-xl font-bold transition-all shrink-0 cursor-pointer"
+                                            >
+                                                Clear
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingItem(null)}
+                                    className="px-4 py-2 border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        if (editingItem.employeeId && editingItem.amount && editingItem.date) {
+                                            await saveDeduction(editingItem);
+                                            setEditingItem(null);
+                                        }
+                                    }}
+                                    disabled={!editingItem.employeeId || !editingItem.amount}
+                                    className="px-5 py-2 hover:bg-brand-700 bg-brand-600 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-brand-200 disabled:opacity-50 cursor-pointer"
+                                >
+                                    Save Changes
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

@@ -312,13 +312,13 @@ export const updateLeaveRequest = async (request: LeaveRequest) => {
 };
 
 // --- Deductions ---
-export const saveDeduction = async (deduction: Omit<DeductionRecord, 'id'>) => {
-  const id = Math.random().toString(36).substr(2, 9);
-  const newRecord: DeductionRecord = { ...deduction, id };
+export const saveDeduction = async (deduction: any) => {
+  const id = deduction.id || Math.random().toString(36).substr(2, 9);
+  const newRecord = { ...deduction, id };
   try {
     await setDoc(doc(db, 'deductions', id), cleanData(newRecord));
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `deductions/${id}`);
+    handleFirestoreError(error, OperationType.WRITE, `deductions/${id}`);
   }
 };
 
