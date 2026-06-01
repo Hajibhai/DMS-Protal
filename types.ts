@@ -309,6 +309,7 @@ export interface EverydayExpense {
     updatedByUid?: string;
     uploadedDate?: string;
     attachment?: string;
+    employeeId?: string; // Associated employee for petty cash tallying
 }
 
 export interface DashboardStats {

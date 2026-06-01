@@ -3830,6 +3830,8 @@ export default function App() {
           onEdit={(ee: EverydayExpense) => setShowEverydayExpenseModal(ee)}
           onDelete={handleDeleteEverydayExpense}
           user={systemUser}
+          employees={employees}
+          pettyCash={pettyCash}
         />
       )}
       {activeTab === 'reports' && (
@@ -4029,6 +4031,7 @@ export default function App() {
             onCancel={() => setShowEverydayExpenseModal(false)}
             user={systemUser}
             everydayExpenses={everydayExpenses}
+            employees={employees}
           />
         )}
         {showAuditModal && (

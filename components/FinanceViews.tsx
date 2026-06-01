@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
   FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle,
-  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent
+  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent, Scale
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -7206,6 +7206,171 @@ export const formatDisplayDate = (dateStr?: string) => {
     return dateStr;
 };
 
+export const generateEmployeeTallyPdf = (tally: any) => {
+    const doc = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    const empName = tally.employee.name;
+    const empCode = tally.employee.code || 'N/A';
+    const dept = tally.employee.department || tally.employee.designation || 'Staff';
+
+    // Top Header Banner
+    doc.setFillColor(37, 99, 235); // Blue
+    doc.rect(0, 0, 210, 6, 'F');
+
+    // Corporate Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(20);
+    doc.setTextColor(15, 23, 42);
+    doc.text("PIONEER DMS GROUP LTD", 15, 20);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Workforce Expense & Petty Cash Tally Statement", 15, 25);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 15, 29);
+
+    // Divider Line
+    doc.setDrawColor(226, 232, 240);
+    doc.line(15, 33, 195, 33);
+
+    // Employee Meta Info
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text("STAFF ACCOUNT DETAILS", 15, 41);
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Employee Name: ${empName}`, 15, 47);
+    doc.text(`Employee Code: ${empCode}`, 15, 52);
+    doc.text(`Designation/Dept: ${dept}`, 15, 57);
+
+    doc.text(`Total Advanced: AED ${tally.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 115, 47);
+    doc.text(`Total Expended: AED ${tally.totalSpending.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 115, 52);
+    
+    // Balance Status
+    const statusText = tally.netBalance >= 0 
+        ? `REMAINING BALANCE: AED ${tally.netBalance.toLocaleString(undefined, {minimumFractionDigits: 2})} (BALANCED)`
+        : `OVERSPENT DEFICIT: AED ${Math.abs(tally.netBalance).toLocaleString(undefined, {minimumFractionDigits: 2})} (UNBALANCED)`;
+    
+    doc.setFont("helvetica", "bold");
+    if (tally.netBalance >= 0) {
+        doc.setTextColor(16, 185, 129); // Green
+    } else {
+        doc.setTextColor(239, 68, 68); // Red
+    }
+    doc.text(statusText, 115, 57);
+
+    // Tally Certified Stamp
+    doc.setDrawColor(tally.netBalance >= 0 ? 16 : 239, tally.netBalance >= 0 ? 185 : 68, tally.netBalance >= 0 ? 129 : 68);
+    doc.rect(145, 12, 50, 15);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(tally.netBalance >= 0 ? 16 : 239, tally.netBalance >= 0 ? 185 : 68, tally.netBalance >= 0 ? 129 : 68);
+    doc.text(tally.netBalance >= 0 ? "TALLY SYSTEM: OK" : "TALLY: OVERSPENT", 152, 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("OFFICIALLY AUDITED", 157, 22);
+
+    // Divider Line
+    doc.setDrawColor(226, 232, 240);
+    doc.line(15, 63, 195, 63);
+
+    // Ledger Title
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text("ITEMIZED TRANSACTION HISTORY LEDGER", 15, 71);
+
+    // Table Headers
+    doc.setFillColor(248, 250, 252);
+    doc.rect(15, 76, 180, 8, 'F');
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(71, 85, 105);
+    doc.text("DATE", 18, 81);
+    doc.text("TYPE & REFERENCE", 40, 81);
+    doc.text("DESCRIPTION / SHOP / SUPPLIER", 85, 81);
+    doc.text("CREDIT (IN)", 150, 81);
+    doc.text("DEBIT (OUT)", 175, 81);
+
+    // Let's merge both Petty Cash items and Everyday Expenses sorted chronologically
+    const ledgerEntries: any[] = [];
+    tally.pettyCashItems.forEach((p: any) => {
+        ledgerEntries.push({
+            date: p.date,
+            ref: p.type === 'Income' ? 'Petty Cash Advance' : `Petty Spent (${p.category})`,
+            desc: p.description,
+            credit: p.type === 'Income' ? Number(p.amount) : 0,
+            debit: p.type === 'Expense' ? Number(p.amount) : 0
+        });
+    });
+
+    tally.everydayItems.forEach((ee: any) => {
+        ledgerEntries.push({
+            date: ee.date,
+            ref: `Everyday Expense #${ee.invoiceNo || 'N/A'}`,
+            desc: `${ee.description || ''} at ${ee.shopName || ee.supplierName || 'General'}`,
+            credit: 0,
+            debit: Number(ee.totalAmount) || Number(ee.billAmount) || 0
+        });
+    });
+
+    // Sort entries by date ascending
+    ledgerEntries.sort((a, b) => a.date.localeCompare(b.date));
+
+    let y = 88;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+
+    ledgerEntries.forEach((entry, idx) => {
+        // Alternating row background
+        if (idx % 2 === 1) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(15, y - 4, 180, 6, 'F');
+        }
+
+        doc.text(entry.date, 18, y);
+        
+        // Truncate ref and desc to fit paper
+        const refText = entry.ref.length > 25 ? entry.ref.substring(0, 22) + '...' : entry.ref;
+        doc.text(refText, 40, y);
+
+        const descText = entry.desc.length > 38 ? entry.desc.substring(0, 35) + '...' : entry.desc;
+        doc.text(descText, 85, y);
+
+        doc.text(entry.credit > 0 ? `AED ${entry.credit.toLocaleString()}` : "-", 150, y);
+        doc.text(entry.debit > 0 ? `AED ${entry.debit.toLocaleString()}` : "-", 175, y);
+
+        y += 6;
+        if (y > 275) {
+            doc.addPage();
+            // Reprint Header
+            doc.setFillColor(37, 99, 235);
+            doc.rect(0, 0, 210, 6, 'F');
+            y = 20;
+        }
+    });
+
+    // Draw End Line
+    doc.setDrawColor(226, 232, 240);
+    doc.line(15, y, 195, y);
+
+    // Grand Totals Row
+    y += 6;
+    doc.setFont("helvetica", "bold");
+    doc.text("GRAND RECONCILIATION TOTALS:", 18, y);
+    doc.text(`AED ${tally.totalAdvanced.toLocaleString()}`, 150, y);
+    doc.text(`AED ${tally.totalSpending.toLocaleString()}`, 175, y);
+
+    doc.save(`Reconciliation_Tally_${empName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
 export const EverydayExpenseView: React.FC<{
     data: EverydayExpense[];
     projects: Project[];
@@ -7213,9 +7378,15 @@ export const EverydayExpenseView: React.FC<{
     onEdit: (item: EverydayExpense) => void;
     onDelete: (item: EverydayExpense) => void;
     user: SystemUser;
-}> = ({ data, projects, onAdd, onEdit, onDelete, user }) => {
+    employees?: any[];
+    pettyCash?: any[];
+}> = ({ data, projects, onAdd, onEdit, onDelete, user, employees = [], pettyCash = [] }) => {
     const [viewingBill, setViewingBill] = useState<string | null>(null);
+    const [activeViewTab, setActiveViewTab] = useState<'ledger' | 'tally'>('ledger');
+    const [tallySearch, setTallySearch] = useState('');
+    const [reconciliationDetail, setReconciliationDetail] = useState<any | null>(null);
 
+    // Standard columns for everyday expenses ledger
     const columns = [
         { key: 'siNo', label: 'SI No', sortable: true },
         { key: 'date', label: 'Date', sortable: true },
@@ -7266,24 +7437,445 @@ export const EverydayExpenseView: React.FC<{
         }
     ];
 
+    // Compute tallies for ALL employees
+    const tallies = useMemo(() => {
+        return (employees || []).map(emp => {
+            const employeePettyCash = (pettyCash || []).filter(item => 
+                item.employeeId === emp.id || 
+                (item.requestedBy && emp.name && item.requestedBy.toLowerCase().trim() === emp.name.toLowerCase().trim())
+            );
+
+            const totalAdvanced = employeePettyCash
+                .filter(item => item.type === 'Income')
+                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+            const totalDirectSpent = employeePettyCash
+                .filter(item => item.type === 'Expense')
+                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+            const employeeEverydayExpenses = (data || []).filter(item => 
+                item.employeeId === emp.id || 
+                item.uploadedByUid === emp.userId || 
+                item.uploadedByUid === emp.id || 
+                (item.uploadedBy && emp.name && item.uploadedBy.toLowerCase().trim() === emp.name.toLowerCase().trim())
+            );
+
+            const totalEverydaySpent = employeeEverydayExpenses.reduce((sum, item) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
+
+            const totalSpending = totalDirectSpent + totalEverydaySpent;
+            const netBalance = totalAdvanced - totalSpending;
+
+            return {
+                employee: emp,
+                pettyCashItems: employeePettyCash,
+                everydayItems: employeeEverydayExpenses,
+                totalAdvanced,
+                totalDirectSpent,
+                totalEverydaySpent,
+                totalSpending,
+                netBalance
+            };
+        });
+    }, [employees, pettyCash, data]);
+
+    // Active stats
+    const staffWithTallyCount = useMemo(() => tallies.filter(t => t.totalAdvanced > 0 || t.totalSpending > 0).length, [tallies]);
+    const overallAdvanced = useMemo(() => tallies.reduce((sum, t) => sum + t.totalAdvanced, 0), [tallies]);
+    const overallExpended = useMemo(() => tallies.reduce((sum, t) => sum + t.totalSpending, 0), [tallies]);
+    const overallRemaining = useMemo(() => overallAdvanced - overallExpended, [overallAdvanced, overallExpended]);
+
+    // Filter tallies by search term
+    const filteredTallies = useMemo(() => {
+        if (!tallySearch.trim()) return tallies.filter(t => t.totalAdvanced > 0 || t.totalSpending > 0);
+        const query = tallySearch.toLowerCase();
+        return tallies.filter(t => 
+            t.employee.name.toLowerCase().includes(query) ||
+            (t.employee.code || '').toLowerCase().includes(query) ||
+            (t.employee.designation || '').toLowerCase().includes(query)
+        );
+    }, [tallies, tallySearch]);
+
+    const isEmployeeUser = user?.role === 'Employee' || user?.role?.toLowerCase() === 'employee';
+    const currentEmployeeTally = useMemo(() => {
+        if (!isEmployeeUser) return null;
+        return tallies.find(t => 
+            t.employee.userId === user?.uid || 
+            t.employee.id === user?.uid || 
+            (t.employee.name && user?.name && t.employee.name.toLowerCase() === user.name.toLowerCase())
+        );
+    }, [tallies, isEmployeeUser, user]);
+
     return (
         <>
-            <DataTable 
-                title="Everyday Expenses"
-                description="Track daily operational expenses and billings."
-                icon={Wallet}
-                data={data}
-                columns={columns}
-                onAdd={onAdd}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onViewBill={(item) => setViewingBill(item.attachment || null)}
-                searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description']}
-                exportFileName="Everyday_Expenses"
-                user={user}
-                filterOptions={filterOptions}
-            />
+            {/* Top View Toggle Tab Strip */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 mb-2 no-print">
+                <div className="bg-slate-100/80 backdrop-blur-sm p-1.5 rounded-2xl inline-flex gap-2 border border-slate-200/50">
+                    <button 
+                        onClick={() => setActiveViewTab('ledger')}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${activeViewTab === 'ledger' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                        <Wallet className="w-4 h-4 text-brand-600" />
+                        <span>Everyday Expenses Ledger</span>
+                    </button>
+                    <button 
+                        onClick={() => setActiveViewTab('tally')}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${activeViewTab === 'tally' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    >
+                        <Scale className="w-4 h-4 text-[#ef4444]" />
+                        <span>Petty Cash Reconciliation Sheet</span>
+                        <span className="bg-brand-100 text-[#2563eb] text-[10px] px-2 py-0.5 rounded-full font-black">
+                            {staffWithTallyCount} active
+                        </span>
+                    </button>
+                </div>
+            </div>
 
+            {activeViewTab === 'ledger' ? (
+                <DataTable 
+                    title="Everyday Expenses"
+                    description="Track daily operational expenses and billings."
+                    icon={Wallet}
+                    data={data}
+                    columns={columns}
+                    onAdd={onAdd}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onViewBill={(item) => setViewingBill(item.attachment || null)}
+                    searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description']}
+                    exportFileName="Everyday_Expenses"
+                    user={user}
+                    filterOptions={filterOptions}
+                />
+            ) : (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+                    {/* Reconciler Header */}
+                    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-6 sm:p-8 shadow-sm space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                            <div>
+                                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+                                    <Scale className="w-7 h-7 text-brand-600 animate-pulse" />
+                                    <span>Petty Cash Account & Everyday Expenses Tally</span>
+                                </h1>
+                                <p className="text-slate-400 text-xs font-semibold mt-1">
+                                    Reconcile cash advances issued as petty cash against physical invoice receipts uploaded.
+                                </p>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 self-center">Tally Engine Status:</span>
+                                <span className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-xs font-black px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                                    Synchronized
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Summary Metrics */}
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="p-4 bg-slate-50/60 rounded-2xl border border-slate-100">
+                                <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Total Accountable Handlers</p>
+                                <p className="text-2xl font-black text-slate-905 mt-1">{staffWithTallyCount} Employees</p>
+                            </div>
+                            <div className="p-4 bg-sky-50/40 rounded-2xl border border-sky-150">
+                                <p className="text-[10px] font-extrabold uppercase tracking-widest text-sky-600">Total Petty Cash Allocated</p>
+                                <p className="text-2xl font-black text-slate-905 mt-1">AED {overallAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                            </div>
+                            <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-150">
+                                <p className="text-[10px] font-extrabold uppercase tracking-widest text-[#ef4444]">Total Spendings Tally</p>
+                                <p className="text-2xl font-black text-slate-905 mt-1">AED {overallExpended.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                            </div>
+                            <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-150">
+                                <p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600">Net Leftover Balance</p>
+                                <p className={`text-2xl font-black mt-1 ${overallRemaining >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                    AED {overallRemaining.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Single employee view if they are logged in as standard staff */}
+                    {isEmployeeUser && currentEmployeeTally ? (
+                        <div className="bg-gradient-to-br from-indigo-50/50 to-[#2563eb]/5 border border-indigo-100 rounded-[2.5rem] p-6 sm:p-8 shadow-sm space-y-6">
+                            <div className="flex items-center justify-between border-b border-indigo-100/50 pb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-lg">
+                                        {currentEmployeeTally.employee.name[0]}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg font-black text-slate-900">Your Current Petty Cash Statement</h3>
+                                        <p className="text-xs text-slate-500 font-bold">{currentEmployeeTally.employee.name} — {currentEmployeeTally.employee.designation}</p>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => setReconciliationDetail(currentEmployeeTally)}
+                                    className="px-4 py-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-700 hover:text-white rounded-xl text-xs font-black transition-all"
+                                >
+                                    Open Your Ledger Details
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2">
+                                <div className="p-4 bg-white rounded-xl border border-slate-200/50">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Funds Received</span>
+                                    <span className="text-base font-black text-slate-800">AED {currentEmployeeTally.totalAdvanced.toLocaleString()}</span>
+                                </div>
+                                <div className="p-4 bg-white rounded-xl border border-slate-200/50">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Direct Cash Spent</span>
+                                    <span className="text-base font-black text-slate-800">AED {currentEmployeeTally.totalDirectSpent.toLocaleString()}</span>
+                                </div>
+                                <div className="p-4 bg-white rounded-xl border border-slate-200/50">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Everyday Bills Spent</span>
+                                    <span className="text-base font-black text-slate-800">AED {currentEmployeeTally.totalEverydaySpent.toLocaleString()}</span>
+                                </div>
+                                <div className="p-4 bg-white rounded-xl border border-slate-200/50">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Remaining Cash In Hand</span>
+                                    <span className={`text-base font-black ${currentEmployeeTally.netBalance >= 0 ? "text-emerald-600" : "text-rose-500"}`}>
+                                        AED {currentEmployeeTally.netBalance.toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {/* Master Tally List of Employees */}
+                    <div className="bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden shadow-sm">
+                        <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 tracking-tight">Personnel Tally Roll</h3>
+                                <p className="text-xs text-slate-400 font-semibold">Consolidated tally sheets for each operational staff.</p>
+                            </div>
+                            <div className="relative max-w-xs w-full">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Search staff profile..."
+                                    value={tallySearch}
+                                    onChange={e => setTallySearch(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-800"
+                                />
+                            </div>
+                        </div>
+
+                        {filteredTallies.length === 0 ? (
+                            <div className="p-12 text-center text-slate-400 font-semibold text-xs">
+                                No active employee petty cash or expenses found matching search filters.
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            <th className="py-4 px-6">Staff Member</th>
+                                            <th className="py-4 px-4 text-center">Cash Allocations (In)</th>
+                                            <th className="py-4 px-4 text-center">Petty Cash Spent</th>
+                                            <th className="py-4 px-4 text-center">Everyday Bills Spent</th>
+                                            <th className="py-4 px-4 text-center">Total Spend (Out)</th>
+                                            <th className="py-4 px-4 text-center">Tally Balance</th>
+                                            <th className="py-4 px-4 text-center">Mismatches / Status</th>
+                                            <th className="py-4 px-6 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
+                                        {filteredTallies.map((item: any) => {
+                                            const isBalanced = item.netBalance >= 0;
+                                            return (
+                                                <tr key={item.employee.id} className="hover:bg-slate-50/50 transition-colors">
+                                                    <td className="py-4 px-6">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-black text-slate-600">
+                                                                {item.employee.name[0]}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-extrabold text-slate-900">{item.employee.name}</p>
+                                                                <p className="text-[10px] text-slate-400">{item.employee.designation || 'Staff'} • {item.employee.code || 'No Code'}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center font-bold text-sky-700">AED {item.totalAdvanced.toLocaleString()}</td>
+                                                    <td className="py-4 px-4 text-center text-slate-500">AED {item.totalDirectSpent.toLocaleString()}</td>
+                                                    <td className="py-4 px-4 text-center text-slate-500">AED {item.totalEverydaySpent.toLocaleString()}</td>
+                                                    <td className="py-4 px-4 text-center font-bold text-slate-800">AED {item.totalSpending.toLocaleString()}</td>
+                                                    <td className={`py-4 px-4 text-center font-black ${isBalanced ? "text-emerald-600" : "text-rose-500"}`}>
+                                                        AED {item.netBalance.toLocaleString()}
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center">
+                                                        {isBalanced ? (
+                                                            <span className="bg-emerald-50 text-emerald-700 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-emerald-100 inline-block">
+                                                                ✓ Balanced
+                                                            </span>
+                                                        ) : (
+                                                            <span className="bg-rose-50 text-rose-700 text-[10px] font-extrabold px-2.5 py-1 rounded-full border border-rose-100 inline-block">
+                                                                ⚠ Overspent
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-4 px-6 text-right">
+                                                        <div className="flex justify-end gap-2">
+                                                            <button 
+                                                                onClick={() => setReconciliationDetail(item)}
+                                                                className="px-3 py-1.5 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 text-[11px] font-bold transition-all cursor-pointer"
+                                                            >
+                                                                Review Ledger
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => generateEmployeeTallyPdf(item)}
+                                                                className="p-1.5 hover:bg-slate-100 text-[#2563eb] rounded-lg border border-[#2563eb]/20 text-[11px] font-bold transition-all cursor-pointer"
+                                                                title="Download Tally PDF Statement"
+                                                            >
+                                                                📥 PDF
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Detailed Reconciliation Ledger Voucher (Side-by-Side Dual Column) */}
+            {reconciliationDetail && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl relative flex flex-col max-h-[92vh]"
+                    >
+                        <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div>
+                                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                                    Ledger Reconciliation Statement
+                                </h3>
+                                <p className="text-slate-500 text-xs font-semibold">
+                                    Detailed credits vs spendings ledger accounting for <span className="text-brand-600 font-extrabold">{reconciliationDetail.employee.name}</span>.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => generateEmployeeTallyPdf(reconciliationDetail)}
+                                    className="px-4 py-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-xl text-xs font-black shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+                                >
+                                    📥 Download PDF Statement
+                                </button>
+                                <button 
+                                    onClick={() => setReconciliationDetail(null)}
+                                    className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm cursor-pointer"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Summary Block */}
+                        <div className="p-6 bg-slate-50 border-b border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                            <div className="bg-white p-3.5 rounded-2xl border border-slate-200/50 shadow-xs">
+                                <span className="text-slate-400 block font-bold text-[10px] uppercase">Allocated Cash (Credits)</span>
+                                <span className="text-sm font-black text-sky-700 mt-1 block">AED {reconciliationDetail.totalAdvanced.toLocaleString()}</span>
+                            </div>
+                            <div className="bg-white p-3.5 rounded-2xl border border-slate-200/50 shadow-xs">
+                                <span className="text-slate-400 block font-bold text-[10px] uppercase">Vouchers Cash-out (Debits)</span>
+                                <span className="text-sm font-black text-slate-500 mt-1 block">AED {reconciliationDetail.totalDirectSpent.toLocaleString()}</span>
+                            </div>
+                            <div className="bg-white p-3.5 rounded-2xl border border-slate-200/50 shadow-xs">
+                                <span className="text-slate-400 block font-bold text-[10px] uppercase">Bills Submitted (Debits)</span>
+                                <span className="text-sm font-black text-slate-500 mt-1 block">AED {reconciliationDetail.totalEverydaySpent.toLocaleString()}</span>
+                            </div>
+                            <div className={`p-3.5 rounded-2xl border shadow-xs ${reconciliationDetail.netBalance >= 0 ? "bg-emerald-50/50 border-emerald-150" : "bg-rose-50/50 border-rose-150"}`}>
+                                <span className="text-slate-400 block font-bold text-[10px] uppercase">Net Statement Tally</span>
+                                <span className={`text-sm font-black mt-1 block ${reconciliationDetail.netBalance >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                    AED {reconciliationDetail.netBalance.toLocaleString()} {reconciliationDetail.netBalance >= 0 ? "(Balanced)" : "(Deficit)"}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Dual Column Ledger Content */}
+                        <div className="p-6 overflow-y-auto flex-1 bg-slate-100/30 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[50vh]">
+                            {/* LEFT SIDE: CASH CREDITS */}
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-black text-sky-850 uppercase tracking-wider flex items-center justify-between bg-sky-50 px-3 py-2 rounded-xl border border-sky-100">
+                                    <span>Credits (Cash Received)</span>
+                                    <span className="text-sky-700">AED {reconciliationDetail.totalAdvanced.toLocaleString()}</span>
+                                </h4>
+                                {reconciliationDetail.pettyCashItems.filter((i: any) => i.type === 'Income').length === 0 ? (
+                                    <p className="text-center p-8 bg-white border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-semibold">
+                                        No documented cash advances received.
+                                    </p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {reconciliationDetail.pettyCashItems.filter((i: any) => i.type === 'Income').map((item: any) => (
+                                            <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-slate-250/50 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-all text-xs">
+                                                <div>
+                                                    <p className="font-extrabold text-slate-900">{item.description || 'Petty cash advance'}</p>
+                                                    <span className="text-[10px] text-slate-400 font-bold">{item.date} • Mode: {item.mode || 'Cash'}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-black text-sky-700">AED {item.amount.toLocaleString()}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* RIGHT SIDE: SPENDINGS / DEBITS */}
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-black text-rose-850 uppercase tracking-wider flex items-center justify-between bg-rose-50 px-3 py-2 rounded-xl border border-rose-100">
+                                    <span>Debits (Expenses Reported)</span>
+                                    <span className="text-rose-700">AED {reconciliationDetail.totalSpending.toLocaleString()}</span>
+                                </h4>
+                                {reconciliationDetail.pettyCashItems.filter((i: any) => i.type === 'Expense').length === 0 && reconciliationDetail.everydayItems.length === 0 ? (
+                                    <p className="text-center p-8 bg-white border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-semibold">
+                                        No expense receipts logged.
+                                    </p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {/* Petty Cash Spending Vouchers */}
+                                        {reconciliationDetail.pettyCashItems.filter((i: any) => i.type === 'Expense').map((item: any) => (
+                                            <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-slate-250/50 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-all text-xs">
+                                                <div>
+                                                    <p className="font-extrabold text-slate-900">{item.description || 'Petty cash disbursement'}</p>
+                                                    <span className="text-[10px] text-slate-400 font-bold">{item.date} • Petty Cash Book ({item.category})</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-black text-slate-800">AED {item.amount.toLocaleString()}</p>
+                                                    <span className="text-[9px] text-[#ef4444] font-bold">Voucher</span>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {/* Everyday Expense Receipts */}
+                                        {reconciliationDetail.everydayItems.map((item: any) => (
+                                            <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-slate-250/50 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-all text-xs">
+                                                <div>
+                                                    <p className="font-extrabold text-slate-900">{item.description || 'Everyday purchase'}</p>
+                                                    <span className="text-[10px] text-slate-400 font-bold">{item.date} • Inv #{item.invoiceNo || 'N/A'} at {item.shopName || item.supplierName}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-black text-slate-800">AED {item.totalAmount.toLocaleString()}</p>
+                                                    <span className="text-[9px] text-brand-600 font-bold">Invoice</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 flex justify-end bg-slate-50">
+                            <button 
+                                onClick={() => setReconciliationDetail(null)}
+                                className="px-6 py-3 bg-white hover:bg-slate-50 border border-slate-250 rounded-2xl text-xs font-black text-slate-700 transition-all cursor-pointer"
+                            >
+                                Close Statement
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+
+            {/* Viewing Attachment Lightbox (inherited) */}
             {viewingBill && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print">
                     <motion.div 
@@ -7342,7 +7934,8 @@ export const EverydayExpenseModal: React.FC<{
     onCancel: () => void;
     user: any;
     everydayExpenses?: EverydayExpense[];
-}> = ({ expense, projects, onSave, onCancel, user, everydayExpenses = [] }) => {
+    employees?: any[];
+}> = ({ expense, projects, onSave, onCancel, user, everydayExpenses = [], employees = [] }) => {
     const calculateNextSiNo = (uid: string, name: string) => {
         const userExpenses = everydayExpenses.filter(ee => 
             (ee.uploadedByUid && uid && ee.uploadedByUid === uid) || 
@@ -7367,7 +7960,8 @@ export const EverydayExpenseModal: React.FC<{
         projectId: '',
         uploadedBy: user?.name || '',
         uploadedByUid: user?.uid || '',
-        uploadedDate: new Date().toISOString().split('T')[0]
+        uploadedDate: new Date().toISOString().split('T')[0],
+        employeeId: ''
     });
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -7851,6 +8445,31 @@ export const EverydayExpenseModal: React.FC<{
                             onChange={e => setFormData({ ...formData, uploadedBy: e.target.value, updatedBy: e.target.value })}
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                         />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-[#2563eb] ml-1">Assign to Employee Account (for Petty Cash Tally)</label>
+                        <select 
+                            value={formData.employeeId || ''}
+                            onChange={e => {
+                                const empId = e.target.value;
+                                const selectedEmp = employees.find(emp => emp.id === empId);
+                                setFormData({ 
+                                    ...formData, 
+                                    employeeId: empId,
+                                    uploadedBy: selectedEmp ? selectedEmp.name : (formData.uploadedBy || formData.updatedBy || ''),
+                                    uploadedByUid: selectedEmp ? selectedEmp.userId || selectedEmp.id : formData.uploadedByUid
+                                });
+                            }}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-[#2563eb] transition-all"
+                        >
+                            <option value="">-- Auto-detect by Name, or Select Employee --</option>
+                            {employees.map((emp: any) => (
+                                <option key={emp.id} value={emp.id}>
+                                    👤 {emp.name} ({emp.designation || 'Staff'})
+                                </option>
+                            ))}
+                        </select>
                     </div>
 
                     <div className="grid grid-cols-3 gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100">
