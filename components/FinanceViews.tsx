@@ -16,6 +16,7 @@ import { Vendor, AccountsPayable, AccountsReceivable, PettyCash,
   Supplier, Project, SystemUser, UserRole, ProjectedExpense, EverydayExpense 
 } from '../types';
 import { PrintModal, PrintOptions } from './PrintModal';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 
 /**
  * Downscale and compress an image file to prevent "Request Entity Too Large" errors
@@ -4079,7 +4080,7 @@ export const downloadPettyCashPDF = (item: any, emp?: any) => {
     doc.save(`PettyCash_Disbursement_${emp?.name ? emp.name.replace(/\s+/g, '_') : 'Employee'}_${item.date}.pdf`);
 };
 
-export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete, user, employees }: any) => {
+export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete, user, employees, everydayExpenses }: any) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedBook, setSelectedBook] = useState('All Books');
     const [selectedMode, setSelectedMode] = useState('All');
@@ -4475,6 +4476,23 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete,
                             else bookBal -= item.amount;
                         });
 
+                        // Deduct everyday expenses uploaded by this account name to reconcile automatically!
+                        let totalEESpent = 0;
+                        if (everydayExpenses) {
+                            const matchingEE = (everydayExpenses || []).filter((ee: any) => {
+                                if (book === 'All Books') {
+                                    const cleanUploader = (ee.uploadedBy || '').toLowerCase().trim().split('(')[0].trim();
+                                    return books.some(b => b !== 'All Books' && (cleanUploader === b.toLowerCase().trim() || (ee.uploadedBy || '').toLowerCase().trim().includes(b.toLowerCase().trim()) || (cleanUploader === 'jamel' && b.toLowerCase().trim() === 'jamil') || (cleanUploader === 'jamil' && b.toLowerCase().trim() === 'jamel')));
+                                }
+                                const cleanUploader = (ee.uploadedBy || '').toLowerCase().trim().split('(')[0].trim();
+                                const targetBook = book.toLowerCase().trim();
+                                return cleanUploader === targetBook || (ee.uploadedBy || '').toLowerCase().trim().includes(targetBook) || (cleanUploader === 'jamel' && targetBook === 'jamil') || (cleanUploader === 'jamil' && targetBook === 'jamel');
+                            });
+                            totalEESpent = matchingEE.reduce((sum: number, ee: any) => sum + (Number(ee.totalAmount) || Number(ee.billAmount) || 0), 0);
+                        }
+
+                        const reconciledBal = bookBal - totalEESpent;
+
                         return (
                             <button
                                 key={book}
@@ -4488,16 +4506,23 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete,
                             >
                                 <div className={cn(
                                     "w-2.5 h-2.5 rounded-full",
-                                    bookBal >= 0 ? "bg-emerald-500" : "bg-red-500"
+                                    reconciledBal >= 0 ? "bg-emerald-500" : "bg-red-500"
                                 )} />
-                                <span>{book === 'All Books' ? '📁 All Accounts' : `👤 ${book}`}</span>
+                                <div className="text-left flex flex-col">
+                                    <span className="font-bold">{book === 'All Books' ? '📁 All Accounts' : `👤 ${book}`}</span>
+                                    {totalEESpent > 0 && (
+                                        <span className="text-[9px] text-amber-500 font-extrabold tracking-tight">
+                                            Reconciled: -{totalEESpent.toLocaleString()}
+                                        </span>
+                                    )}
+                                </div>
                                 <span className={cn(
                                     "px-2 py-0.5 rounded-lg text-[10px] font-black",
                                     isSelected 
                                         ? "bg-white/10 text-white" 
-                                        : bookBal >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                                        : reconciledBal >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
                                 )}>
-                                    AED {bookBal.toLocaleString()}
+                                    AED {reconciledBal.toLocaleString()}
                                 </span>
                             </button>
                         );
@@ -8803,3 +8828,348 @@ export const EverydayExpenseModal: React.FC<{
         </div>
     );
 };
+
+export const FinancialDashboardView: React.FC<{
+    accountsPayable: any[];
+    accountsReceivable: any[];
+    pettyCash: any[];
+    everydayExpenses: any[];
+    projects: any[];
+    employees: any[];
+    setActiveTab: (tab: string) => void;
+    user: any;
+}> = ({
+    accountsPayable,
+    accountsReceivable,
+    pettyCash,
+    everydayExpenses,
+    projects,
+    employees,
+    setActiveTab,
+    user
+}) => {
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Accounts Payable calculations
+    const totalAP = useMemo(() => (accountsPayable || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [accountsPayable]);
+    const pendingAP = useMemo(() => (accountsPayable || []).filter((x: any) => x.status !== 'Paid' && x.status !== 'Settled').reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [accountsPayable]);
+
+    // Accounts Receivable calculations
+    const totalAR = useMemo(() => (accountsReceivable || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [accountsReceivable]);
+    const pendingAR = useMemo(() => (accountsReceivable || []).filter((x: any) => x.status !== 'Paid' && x.status !== 'Settled').reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [accountsReceivable]);
+
+    // Everyday Expenses
+    const totalEE = useMemo(() => (everydayExpenses || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || Number(x.billAmount) || 0), 0), [everydayExpenses]);
+
+    // Extract categories/books representing accounts in Petty Cash
+    const books = useMemo(() => {
+        const cats = new Set<string>();
+        (pettyCash || []).forEach((item: any) => {
+            if (item.category) cats.add(item.category);
+        });
+        return Array.from(cats).sort();
+    }, [pettyCash]);
+
+    // Reconciliation Calculation per Account/Book
+    const reconciliations = useMemo(() => {
+        return books.map(book => {
+            const bookPcs = (pettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
+            const advances = bookPcs.filter((item: any) => item.type === 'Income').reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0);
+            const directSpent = bookPcs.filter((item: any) => item.type === 'Expense').reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0);
+
+            // Match everyday expenses where uploader matches book name
+            const matchingEE = (everydayExpenses || []).filter((item: any) => {
+                const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
+                const cleanUploader = uploaderRaw.split('(')[0].trim();
+                const targetBook = book.toLowerCase().trim();
+
+                return cleanUploader === targetBook || 
+                       uploaderRaw.includes(targetBook) || 
+                       targetBook.includes(cleanUploader) ||
+                       (cleanUploader === 'jamel' && targetBook === 'jamil') ||
+                       (cleanUploader === 'jamil' && targetBook === 'jamel');
+            });
+
+            const everydaySpent = matchingEE.reduce((sum: number, item: any) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
+            const reconciledBalance = advances - directSpent - everydaySpent;
+
+            return {
+                accountName: book,
+                advances,
+                directSpent,
+                everydaySpent,
+                reconciledBalance,
+                matchingCount: matchingEE.length
+            };
+        });
+    }, [books, pettyCash, everydayExpenses]);
+
+    // Filtered accounts for display
+    const filteredReconciliations = useMemo(() => {
+        if (!searchQuery.trim()) return reconciliations;
+        const query = searchQuery.toLowerCase().trim();
+        return reconciliations.filter(r => r.accountName.toLowerCase().includes(query));
+    }, [reconciliations, searchQuery]);
+
+    // Consolidated Net Petty Cash Hand Balance across all books!
+    const totalPCReconciledBalance = useMemo(() => {
+        return reconciliations.reduce((sum, r) => sum + r.reconciledBalance, 0);
+    }, [reconciliations]);
+
+    // Financial Footprint Chart data definition
+    const chartData = useMemo(() => [
+        { name: 'Receivables', amount: totalAR, color: '#10b981' },
+        { name: 'Payables', amount: totalAP, color: '#ef4444' },
+        { name: 'Everyday Costs', amount: totalEE, color: '#f59e0b' },
+        { name: 'Petty Cash In Hand', amount: totalPCReconciledBalance >= 0 ? totalPCReconciledBalance : 0, color: '#2563eb' },
+    ], [totalAR, totalAP, totalEE, totalPCReconciledBalance]);
+
+    return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
+            {/* Header section */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                        <div className="p-3 bg-brand-50 rounded-2xl text-brand-600 shadow-sm shadow-brand-100">
+                            <Wallet className="w-6 h-6" />
+                        </div>
+                        <span>Corporate Financial Dashboard</span>
+                    </h1>
+                    <p className="text-slate-500 text-sm mt-1 sm:mt-1.5 font-medium ml-1">
+                        Consolidated accounts, petty cash ledgers, everyday expenses, and real-time automated reconciliations.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total System Liquidity:</span>
+                    <span className="bg-emerald-50 border border-emerald-100/60 text-emerald-700 text-xs px-3.5 py-1.5 rounded-full font-black shadow-sm flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        AED {(totalAR + totalPCReconciledBalance - totalAP).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </span>
+                </div>
+            </div>
+
+            {/* Top KPIs Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* 1. Accounts Receivable card */}
+                <div 
+                    onClick={() => setActiveTab('accounts-receivable')}
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-emerald-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                >
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Accounts Receivable</span>
+                            <span className="text-2xl font-black text-slate-900 tracking-tight block">
+                                AED {totalAR.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                            </span>
+                        </div>
+                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                            <TrendingUp className="w-5 h-5" />
+                        </div>
+                    </div>
+                    <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
+                        <span>Pending Collection:</span>
+                        <span className="text-emerald-600">AED {pendingAR.toLocaleString()}</span>
+                    </div>
+                </div>
+
+                {/* 2. Accounts Payable card */}
+                <div 
+                    onClick={() => setActiveTab('accounts-payable')}
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-red-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                >
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Accounts Payable</span>
+                            <span className="text-2xl font-black text-slate-900 tracking-tight block">
+                                AED {totalAP.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                            </span>
+                        </div>
+                        <div className="p-3 bg-red-50 text-red-600 rounded-2xl">
+                            <TrendingDown className="w-5 h-5" />
+                        </div>
+                    </div>
+                    <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
+                        <span>Pending Outflow:</span>
+                        <span className="text-red-600">AED {pendingAP.toLocaleString()}</span>
+                    </div>
+                </div>
+
+                {/* 3. Everyday Expenses card */}
+                <div 
+                    onClick={() => setActiveTab('everyday-expenses')}
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-amber-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                >
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Everyday Expenses</span>
+                            <span className="text-2xl font-black text-slate-900 tracking-tight block">
+                                AED {totalEE.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                            </span>
+                        </div>
+                        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+                            <Wallet className="w-5 h-5" />
+                        </div>
+                    </div>
+                    <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
+                        <span>Total Everyday Spend:</span>
+                        <span className="text-amber-600 font-extrabold">{everydayExpenses.length} Receipts</span>
+                    </div>
+                </div>
+
+                {/* 4. Petty Cash In Hand card */}
+                <div 
+                    onClick={() => setActiveTab('petty-cash')}
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-brand-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                >
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Petty Cash In Hand</span>
+                            <span className={`text-2xl font-black tracking-tight block ${totalPCReconciledBalance >= 0 ? "text-slate-900" : "text-rose-600"}`}>
+                                AED {totalPCReconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                            </span>
+                        </div>
+                        <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl">
+                            <Scale className="w-5 h-5" />
+                        </div>
+                    </div>
+                    <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
+                        <span>Fully Reconciled Balance:</span>
+                        <span className={totalPCReconciledBalance >= 0 ? "text-brand-605" : "text-rose-600"}>
+                            {totalPCReconciledBalance >= 0 ? "Surplus ✔" : "Deficit ✘"}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Center Grid: Footprint Chart & Details */}
+            <div className="grid grid-cols-1 gap-8">
+                {/* Visual Chart - Financial Footprint */}
+                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col min-h-[420px]">
+                    <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-emerald-50 rounded-2xl text-emerald-600">
+                                <BarChart3 className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Consolidated Financial Footprint</h3>
+                                <p className="text-xs text-slate-500 font-semibold">Consolidated accounts receivable, payable, everyday and cash expenses.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 w-full min-h-[290px]">
+                        <ResponsiveContainer width="100%" height={290}>
+                            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
+                                <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickFormatter={(val) => `AED ${val.toLocaleString()}`} tickLine={false} />
+                                <RechartsTooltip
+                                    formatter={(value: any) => [`AED ${Number(value).toLocaleString()}`, 'Consolidated Value']}
+                                    contentStyle={{ background: '#ffffff', borderRadius: '1.25rem', borderColor: '#e2e8f0', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }}
+                                />
+                                <Bar dataKey="amount" radius={[8, 8, 0, 0]}>
+                                    {chartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            </div>
+
+            {/* Petty Cash Automated Reconciliation Panel */}
+            <div className="bg-white rounded-[2.5rem] border border-slate-200/60 p-6 sm:p-8 shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-5">
+                    <div>
+                        <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+                            <Scale className="w-5 h-5 text-brand-600" />
+                            <span>Automated Petty Cash Book Accounts Reconciliation</span>
+                        </h3>
+                        <p className="text-xs text-slate-500 font-semibold mt-1">
+                            Everyday Expenses uploaded by name are automatically matched, tallied, and subtracted from the respective petty cash book advances.
+                        </p>
+                    </div>
+                    
+                    {/* Search bar specifically for reconciliations */}
+                    <div className="relative max-w-sm w-full">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                            <Search className="w-4 h-4 text-slate-400" />
+                        </span>
+                        <input
+                            type="text"
+                            placeholder="Search Cash Accounts..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10 pr-4 py-2.5 w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs font-bold text-slate-800 placeholder-slate-400 border border-slate-200/60 rounded-xl focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all cursor-text"
+                        />
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-2xl border border-slate-250/20">
+                    <table className="min-w-full divide-y divide-slate-100">
+                        <thead className="bg-slate-50">
+                            <tr>
+                                <th scope="col" className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Account (Cash Book)</th>
+                                <th scope="col" className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Advances Received</th>
+                                <th scope="col" className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Direct Petty Spent</th>
+                                <th scope="col" className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Auto-Matched Everyday Cost</th>
+                                <th scope="col" className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Reconciled Safe Cash</th>
+                                <th scope="col" className="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Status / Health</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-slate-100 text-xs">
+                            {filteredReconciliations.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400 font-bold">
+                                        No matching petty cash accounts found.
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredReconciliations.map((recon) => {
+                                    const isSurplus = recon.reconciledBalance >= 0;
+                                    return (
+                                        <tr key={recon.accountName} className="hover:bg-slate-50/50 transition-all">
+                                            <td className="px-6 py-4.5 font-bold text-slate-800 flex items-center gap-2">
+                                                <div className="w-2.5 h-2.5 rounded-full bg-brand-500 shrink-0"></div>
+                                                <span className="capitalize">{recon.accountName}</span>
+                                            </td>
+                                            <td className="px-6 py-4.5 text-right font-semibold text-slate-600">
+                                                AED {recon.advances.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            </td>
+                                            <td className="px-6 py-4.5 text-right font-semibold text-slate-600">
+                                                AED {recon.directSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            </td>
+                                            <td className="px-6 py-4.5 text-right font-bold text-amber-600">
+                                                AED {recon.everydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                                {recon.matchingCount > 0 && (
+                                                    <span className="block text-[9px] font-normal text-slate-400 mt-0.5">
+                                                        {recon.matchingCount} verified bills
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className={`px-6 py-4.5 text-right font-black ${isSurplus ? "text-emerald-700" : "text-rose-600"}`}>
+                                                AED {recon.reconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            </td>
+                                            <td className="px-6 py-4.5 text-center">
+                                                <span className={cn(
+                                                    "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-block shadow-sm",
+                                                    isSurplus 
+                                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-100" 
+                                                        : "bg-rose-50 text-rose-700 border border-rose-100"
+                                                )}>
+                                                    {isSurplus ? "Balanced ✔" : "Deficit ✘"}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+

@@ -354,6 +354,11 @@ export const Layout: React.FC<LayoutProps> = ({
                         onMouseLeave={() => setOpenDropdown(null)}
                       >
                         <button
+                          onClick={() => {
+                            if (item.id === 'finance') {
+                              setActiveTab('finance');
+                            }
+                          }}
                           className={cn(
                             "px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 flex items-center gap-1.5 relative group",
                             isActive 

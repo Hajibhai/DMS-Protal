@@ -24,7 +24,7 @@ import {
   Settings, Search, Bell, LogOut as SignOut, UserCog,
   Briefcase, HardHat, ShieldCheck, Download, Printer,
   MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, GripVertical,
-  Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle,
+  Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle, LayoutDashboard,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator,
   Paperclip, Upload, FileDown
@@ -91,7 +91,8 @@ import { Layout } from './components/Layout';
 import { GoogleDriveManager } from './components/GoogleDriveManager';
 import { 
   VendorView, AccountsPayableView, AccountsReceivableView, PettyCashView, ProjectedExpenseView, EverydayExpenseView,
-  VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal, ProjectedExpenseModal, EverydayExpenseModal
+  VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal, ProjectedExpenseModal, EverydayExpenseModal,
+  FinancialDashboardView
 } from './components/FinanceViews';
 import { HolidayManagementModal } from './components/HolidayManagementModal';
 import { SafetyView } from './components/SafetyView';
@@ -3436,6 +3437,7 @@ export default function App() {
         icon: Wallet, 
         permission: 'canManageFinance', 
         subItems: [
+          { id: 'finance', label: 'Financial Dashboard', icon: LayoutDashboard, permission: 'canManageFinance' },
           { id: 'accounts-payable', label: 'Accounts Payable', icon: TrendingDown, permission: 'canManageFinance' },
           { id: 'accounts-receivable', label: 'Invoices (Accounts Receivable)', icon: TrendingUp, permission: 'canManageFinance' },
           { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManageFinance' },
@@ -3944,11 +3946,24 @@ export default function App() {
           user={systemUser}
         />
       )}
+      {activeTab === 'finance' && (
+        <FinancialDashboardView 
+          accountsPayable={accountsPayable}
+          accountsReceivable={accountsReceivable}
+          pettyCash={pettyCash}
+          everydayExpenses={everydayExpenses}
+          projects={projects}
+          employees={employees}
+          setActiveTab={setActiveTab}
+          user={systemUser}
+        />
+      )}
       {activeTab === 'petty-cash' && (
         <PettyCashView 
           data={pettyCash}
           projects={projects}
           employees={employees}
+          everydayExpenses={everydayExpenses}
           onAdd={() => setShowPettyCashModal(true)}
           onEdit={(pc: PettyCash) => setShowPettyCashModal(pc)}
           onSave={handleSavePettyCash}
@@ -4419,39 +4434,7 @@ const DashboardView = ({
                     className="lg:col-span-2"
                 />
 
-                {/* Financial Health & Runways (6 columns) */}
-                <div className="md:col-span-2 lg:col-span-6 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col min-h-[400px]">
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-emerald-50 rounded-2xl text-emerald-600 animate-pulse">
-                                <Wallet className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Financial Footprint</h3>
-                                <p className="text-xs text-slate-500 font-semibold">Consolidated accounts receivable, payable, everyday and cash expenses.</p>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div className="flex-1 w-full min-h-[260px]">
-                        <ResponsiveContainer width="100%" height={260}>
-                            <BarChart data={financialData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                                <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
-                                <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickFormatter={(val) => `AED ${val.toLocaleString()}`} tickLine={false} />
-                                <Tooltip
-                                    formatter={(value: any) => [`AED ${Number(value).toLocaleString()}`, 'Total Amount']}
-                                    contentStyle={{ background: '#ffffff', borderRadius: '1.25rem', borderColor: '#e2e8f0', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }}
-                                />
-                                <Bar dataKey="amount" radius={[8, 8, 0, 0]}>
-                                    {financialData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                </div>
 
                 {/* Personnel Allocation (4 columns) */}
                 <div className="md:col-span-2 lg:col-span-4 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col min-h-[400px]">
