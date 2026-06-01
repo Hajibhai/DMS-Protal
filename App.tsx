@@ -47,6 +47,7 @@ import {
   limit,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   deleteDoc
 } from 'firebase/firestore';
@@ -2983,34 +2984,61 @@ export default function App() {
           }
           setSystemUser(data);
         } else {
-          // Create default profile for new user
-          const isDefaultAdmin = firebaseUser.email === "abdulkaderp3010@gmail.com";
-          const newProfile: SystemUser = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            username: firebaseUser.email?.split('@')[0] || firebaseUser.uid,
-            name: firebaseUser.displayName || 'New User',
-            role: isDefaultAdmin ? UserRole.CREATOR : UserRole.HR,
-            active: true,
-            permissions: {
-              canViewDashboard: true,
-              canViewCompanyDashboard: true,
-              canManageEmployees: true,
-              canViewDirectory: true,
-              canManageAttendance: true,
-              canViewTimesheet: true,
-              canManageLeaves: true,
-              canViewPayroll: true,
-              canManagePayroll: isDefaultAdmin,
-              canViewReports: true,
-              canManageUsers: isDefaultAdmin,
-              canManageSettings: isDefaultAdmin,
-              canManageSuppliers: isDefaultAdmin,
-              canManageProjects: isDefaultAdmin
+          // Check if there's any user in Firestore matching this email (created by Admin)
+          let foundByEmail = false;
+          if (firebaseUser.email) {
+            try {
+              const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
+              const querySnap = await getDocs(q);
+              if (!querySnap.empty) {
+                const matchedDoc = querySnap.docs[0];
+                const matchedData = matchedDoc.data() as SystemUser;
+                
+                // We found the Admin-created profile! Let's save it under the correct auth UID
+                const linkedProfile: SystemUser = {
+                  ...matchedData,
+                  uid: firebaseUser.uid, // ensure correct UID is set
+                };
+                await saveSystemUser(linkedProfile);
+                setSystemUser(linkedProfile);
+                foundByEmail = true;
+                console.log("Found existing admin-created profile by email:", linkedProfile.name);
+              }
+            } catch (queryErr) {
+              console.error("Error querying user by email in onAuthStateChanged:", queryErr);
             }
-          };
-          await saveSystemUser(newProfile);
-          setSystemUser(newProfile);
+          }
+
+          if (!foundByEmail) {
+            // Create default profile for new user
+            const isDefaultAdmin = firebaseUser.email === "abdulkaderp3010@gmail.com";
+            const newProfile: SystemUser = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              username: firebaseUser.email?.split('@')[0] || firebaseUser.uid,
+              name: firebaseUser.displayName || 'New User',
+              role: isDefaultAdmin ? UserRole.CREATOR : UserRole.HR,
+              active: true,
+              permissions: {
+                canViewDashboard: true,
+                canViewCompanyDashboard: true,
+                canManageEmployees: true,
+                canViewDirectory: true,
+                canManageAttendance: true,
+                canViewTimesheet: true,
+                canManageLeaves: true,
+                canViewPayroll: true,
+                canManagePayroll: isDefaultAdmin,
+                canViewReports: true,
+                canManageUsers: isDefaultAdmin,
+                canManageSettings: isDefaultAdmin,
+                canManageSuppliers: isDefaultAdmin,
+                canManageProjects: isDefaultAdmin
+              }
+            };
+            await saveSystemUser(newProfile);
+            setSystemUser(newProfile);
+          }
         }
       } else {
         setSystemUser(null);

@@ -9,7 +9,11 @@ service cloud.firestore {
       return isAuthenticated() &&
         ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin' ||
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Creator')) ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Creator' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'CREATOR' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'creator')) ||
          (request.auth.token.email == "abdulkaderp3010@gmail.com"));
     }
 
@@ -77,7 +81,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isAuthenticated() && (isOwner(userId) || isCreator() || isAdmin() || hasPermission('canManageUsers'));
     }
 
     match /employees/{employeeId} {
