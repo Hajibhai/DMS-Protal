@@ -475,4 +475,45 @@ export interface JobOffer {
   additionalDetails?: string;
 }
 
+export interface DocumentItem {
+  id: string;
+  name: string;
+  description?: string;
+  quantity: number;
+  rate: number;
+  total: number;
+}
+
+export interface DocumentPayment {
+  id: string;
+  date: string;
+  amount: number;
+  mode: 'Cash' | 'Bank Transfer' | 'Cheque' | 'Deposit' | 'Other';
+  reference?: string;
+  notes?: string;
+}
+
+export interface EngineerDocument {
+  id: string;
+  type: 'Quotation' | 'LPO';
+  docNumber: string;
+  date: string;
+  companyId?: string; // Link to a Company if type is Quotation
+  companyName: string; // Client/Supplier name
+  supplierId?: string; // Link to a Supplier if type is LPO
+  subject: string;
+  items: DocumentItem[];
+  subTotal: number;
+  vatAmount: number;
+  totalAmount: number;
+  preparedBy: string; // Engineer user name
+  preparedById?: string; // Engineer uid
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Issued' | 'Cancelled';
+  payments: DocumentPayment[];
+  amountPaid: number;
+  balanceDue: number;
+  notes?: string;
+  terms?: string;
+}
+
 

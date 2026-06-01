@@ -35,7 +35,8 @@ import {
   ProjectedExpense,
   EverydayExpense,
   AuditLog,
-  UserRole
+  UserRole,
+  EngineerDocument
 } from "../types";
 
 // Helper for error handling as per spec
@@ -689,6 +690,23 @@ export const deleteHoliday = async (id: string, date: string, employees: Employe
     }
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `holidays/${id}`);
+  }
+};
+
+// --- Engineer Documents ---
+export const saveEngineerDocument = async (data: EngineerDocument) => {
+  try {
+    await setDoc(doc(db, 'engineer_documents', data.id), cleanData(data));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `engineer_documents/${data.id}`);
+  }
+};
+
+export const deleteEngineerDocument = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'engineer_documents', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `engineer_documents/${id}`);
   }
 };
 

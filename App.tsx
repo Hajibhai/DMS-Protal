@@ -64,7 +64,8 @@ import {
   CICPARecord,
   SafetyRecord,
   UserPermissions,
-  PublicHoliday
+  PublicHoliday,
+  EngineerDocument
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -82,7 +83,7 @@ import {
   saveProjectedExpense, deleteProjectedExpense,
   saveEverydayExpense, deleteEverydayExpense,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType,
-  saveHoliday, deleteHoliday
+  saveHoliday, deleteHoliday, saveEngineerDocument, deleteEngineerDocument
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
 import SmartCommand from './components/SmartCommand';
@@ -95,6 +96,7 @@ import {
 import { HolidayManagementModal } from './components/HolidayManagementModal';
 import { SafetyView } from './components/SafetyView';
 import { JobOfferView } from './components/JobOfferView';
+import { EngineerView } from './components/EngineerView';
 
 // --- Constants & Helpers ---
 const INITIAL_PERMISSIONS: UserPermissions = {
@@ -2913,6 +2915,7 @@ export default function App() {
   const [pettyCash, setPettyCash] = useState<PettyCash[]>([]);
   const [projectedExpenses, setProjectedExpenses] = useState<ProjectedExpense[]>([]);
   const [everydayExpenses, setEverydayExpenses] = useState<EverydayExpense[]>([]);
+  const [engineerDocuments, setEngineerDocuments] = useState<EngineerDocument[]>([]);
   const [cicpaRecords, setCicpaRecords] = useState<CICPARecord[]>([]);
   const [showCICPAModal, setShowCICPAModal] = useState<CICPARecord | boolean>(false);
   const [safetyRecords, setSafetyRecords] = useState<SafetyRecord[]>([]);
@@ -3168,6 +3171,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
     });
 
+    const unsubEngineerDocs = onSnapshot(collection(db, 'engineer_documents'), (snap) => {
+      setEngineerDocuments(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EngineerDocument));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'engineer_documents');
+    });
+
     const unsubCICPA = onSnapshot(collection(db, 'cicpa_records'), (snap) => {
       setCicpaRecords(snap.docs.map(d => ({ ...d.data(), id: d.id }) as CICPARecord));
     }, (error) => {
@@ -3206,6 +3215,7 @@ export default function App() {
       unsubPettyCash();
       unsubProjectedExpenses();
       unsubEverydayExpenses();
+      unsubEngineerDocs();
       unsubCICPA();
       unsubSafety();
       unsubHolidays();
@@ -3310,6 +3320,23 @@ export default function App() {
     });
   };
 
+  const handleSaveEngineerDocument = async (docData: EngineerDocument) => {
+    await saveEngineerDocument(docData);
+    const isUpdate = engineerDocuments.some(d => d.id === docData.id);
+    handleLogAction(
+      isUpdate ? 'Engineer Document Updated' : 'Engineer Document Added', 
+      `${docData.type} document ${docData.docNumber} was ${isUpdate ? 'updated' : 'added'}.`, 
+      isUpdate ? 'update' : 'create'
+    );
+  };
+
+  const handleDeleteEngineerDocument = async (id: string) => {
+    const docItem = engineerDocuments.find(d => d.id === id);
+    if (!docItem) return;
+    await deleteEngineerDocument(id);
+    handleLogAction('Engineer Document Deleted', `${docItem.type} document ${docItem.docNumber} was deleted.`, 'delete');
+  };
+
   // Handlers
   const navItems = useMemo(() => {
     const baseItems = [
@@ -3358,8 +3385,10 @@ export default function App() {
           { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManagePayroll' },
           { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManagePayroll' },
           { id: 'projected-expenses', label: 'Projected Expenses', icon: TrendingDown, permission: 'canManagePayroll' },
+          { id: 'engineer-hub', label: 'Engineer Documents', icon: HardHat, permission: 'canManagePayroll' },
         ]
       },
+      { id: 'engineer-hub', label: 'Engineer', icon: HardHat, roleCheck: ['engineer', 'accountant', 'admin', 'creator'] },
       { id: 'reports', label: 'Reports', icon: BarChart3, permission: 'canViewReports' },
       { id: 'about', label: 'About', icon: AlertCircle, creatorOnly: true },
     ];
@@ -3379,6 +3408,10 @@ export default function App() {
     const filterItem = (item: any) => {
         if (item.creatorOnly && !isCreator) return false;
         if (isAdmin) return true;
+        if (item.roleCheck) {
+            const matches = item.roleCheck.some((r: string) => r.toLowerCase() === systemUserRoleLower);
+            if (!matches) return false;
+        }
         if (item.permission && !(systemUser.permissions as any)[item.permission]) return false;
         return true;
     };
@@ -3879,6 +3912,19 @@ export default function App() {
           user={systemUser}
           employees={employees}
           pettyCash={pettyCash}
+        />
+      )}
+      {activeTab === 'engineer-hub' && (
+        <EngineerView
+          user={systemUser}
+          companies={companies}
+          suppliers={suppliers}
+          projects={projects}
+          vendors={vendors}
+          engineerDocuments={engineerDocuments}
+          onSaveDocument={handleSaveEngineerDocument}
+          onDeleteDocument={handleDeleteEngineerDocument}
+          openConfirm={openConfirm}
         />
       )}
       {activeTab === 'reports' && (

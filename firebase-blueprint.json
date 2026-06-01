@@ -373,9 +373,41 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "employeeName", "emiratesIdNumber", "certificateName", "safetyCertificateNumber"]
+    },
+    "EngineerDocument": {
+      "title": "Engineer Document",
+      "description": "Engineer quotation or LPO tracking document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["Quotation", "LPO"] },
+        "docNumber": { "type": "string" },
+        "date": { "type": "string" },
+        "companyId": { "type": "string" },
+        "companyName": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "subject": { "type": "string" },
+        "items": { "type": "array" },
+        "subTotal": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "preparedBy": { "type": "string" },
+        "preparedById": { "type": "string" },
+        "status": { "type": "string" },
+        "payments": { "type": "array" },
+        "amountPaid": { "type": "number" },
+        "balanceDue": { "type": "number" },
+        "notes": { "type": "string" },
+        "terms": { "type": "string" }
+      },
+      "required": ["id", "type", "docNumber", "date", "companyName", "preparedBy"]
     }
   },
   "firestore": {
+    "/engineer_documents/{docId}": {
+      "schema": "EngineerDocument",
+      "description": "Quotations and LPOs prepared by engineers"
+    },
     "/holidays/{holidayId}": {
       "schema": "Holiday",
       "description": "Calendar corporate holidays"

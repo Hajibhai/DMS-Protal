@@ -158,5 +158,9 @@ service cloud.firestore {
     match /job_offers/{docId} {
       allow read, write: if hasPermission('canManageEmployees');
     }
+
+    match /engineer_documents/{docId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }
