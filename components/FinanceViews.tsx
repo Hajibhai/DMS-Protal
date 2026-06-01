@@ -8849,6 +8849,8 @@ export const FinancialDashboardView: React.FC<{
     user
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+    const [viewingBill, setViewingBill] = useState<string | null>(null);
 
     // Accounts Payable calculations
     const totalAP = useMemo(() => (accountsPayable || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [accountsPayable]);
@@ -8923,6 +8925,73 @@ export const FinancialDashboardView: React.FC<{
         { name: 'Everyday Costs', amount: totalEE, color: '#f59e0b' },
         { name: 'Petty Cash In Hand', amount: totalPCReconciledBalance >= 0 ? totalPCReconciledBalance : 0, color: '#2563eb' },
     ], [totalAR, totalAP, totalEE, totalPCReconciledBalance]);
+
+    // Chronological detail ledger for the selected account card click
+    const selectedAccountLedger = useMemo(() => {
+        if (!selectedAccount) return [];
+
+        const book = selectedAccount;
+        const bookPcs = (pettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
+
+        const pcsMapped = bookPcs.map(item => ({
+            id: item.id,
+            date: item.date || '',
+            description: item.description || 'Petty cash transaction',
+            amount: Number(item.amount) || 0,
+            changeType: item.type === 'Income' ? 'in' : 'out', // 'Income' is cash-in (Advance Receipt), 'Expense' is cash-out
+            sourceType: 'Petty Cash Book',
+            reference: item.type === 'Income' ? 'Cash Advance Received' : `Direct Petty Outflow (${item.mode || 'Cash'})`,
+            attachment: item.attachment || item.signedAttachment,
+            originalItem: item
+        }));
+
+        const matchingEE = (everydayExpenses || []).filter((item: any) => {
+            const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
+            const cleanUploader = uploaderRaw.split('(')[0].trim();
+            const targetBook = book.toLowerCase().trim();
+
+            return cleanUploader === targetBook || 
+                   uploaderRaw.includes(targetBook) || 
+                   targetBook.includes(cleanUploader) ||
+                   (cleanUploader === 'jamel' && targetBook === 'jamil') ||
+                   (cleanUploader === 'jamil' && targetBook === 'jamel');
+        });
+
+        const eeMapped = matchingEE.map(item => ({
+            id: item.id,
+            date: item.date || '',
+            description: item.description || `Everyday Bill: ${item.supplierName || item.shopName || 'Receipt'}`,
+            amount: Number(item.totalAmount) || Number(item.billAmount) || 0,
+            changeType: 'out', // Everyday Expense is always cash spent (outflow)
+            sourceType: 'Everyday Expense',
+            reference: `Everyday Bill Receipt (Inv: ${item.invoiceNo || 'N/A'})`,
+            attachment: item.attachment,
+            originalItem: item
+        }));
+
+        // Sort chronologically (oldest first) to accurately build progressive run balances
+        const combined = [...pcsMapped, ...eeMapped].sort((a, b) => {
+            const valA = a.date ? new Date(a.date).getTime() : 0;
+            const valB = b.date ? new Date(b.date).getTime() : 0;
+            if (valA !== valB) return valA - valB;
+            return a.id.localeCompare(b.id);
+        });
+
+        let currentBal = 0;
+        return combined.map(tx => {
+            const previousBalance = currentBal;
+            if (tx.changeType === 'in') {
+                currentBal += tx.amount;
+            } else {
+                currentBal -= tx.amount;
+            }
+            return {
+                ...tx,
+                previousBalance,
+                balanceAfter: currentBal
+            };
+        });
+    }, [selectedAccount, pettyCash, everydayExpenses]);
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
@@ -9116,12 +9185,13 @@ export const FinancialDashboardView: React.FC<{
                                 <th scope="col" className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Auto-Matched Everyday Cost</th>
                                 <th scope="col" className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Reconciled Safe Cash</th>
                                 <th scope="col" className="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Status / Health</th>
+                                <th scope="col" className="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest w-[140px]">Statement Detail</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-100 text-xs">
                             {filteredReconciliations.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-10 text-center text-slate-400 font-bold">
+                                    <td colSpan={7} className="px-6 py-10 text-center text-slate-400 font-bold">
                                         No matching petty cash accounts found.
                                     </td>
                                 </tr>
@@ -9129,7 +9199,12 @@ export const FinancialDashboardView: React.FC<{
                                 filteredReconciliations.map((recon) => {
                                     const isSurplus = recon.reconciledBalance >= 0;
                                     return (
-                                        <tr key={recon.accountName} className="hover:bg-slate-50/50 transition-all">
+                                        <tr 
+                                            key={recon.accountName} 
+                                            onClick={() => setSelectedAccount(recon.accountName)}
+                                            className="hover:bg-slate-50/80 transition-all cursor-pointer group active:bg-slate-100"
+                                            title={`Click to view transaction-wise ledger statement for ${recon.accountName}`}
+                                        >
                                             <td className="px-6 py-4.5 font-bold text-slate-800 flex items-center gap-2">
                                                 <div className="w-2.5 h-2.5 rounded-full bg-brand-500 shrink-0"></div>
                                                 <span className="capitalize">{recon.accountName}</span>
@@ -9161,6 +9236,18 @@ export const FinancialDashboardView: React.FC<{
                                                     {isSurplus ? "Balanced ✔" : "Deficit ✘"}
                                                 </span>
                                             </td>
+                                            <td className="px-6 py-4.5 text-center">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedAccount(recon.accountName);
+                                                    }}
+                                                    className="px-3.5 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-xl text-xs font-black uppercase tracking-wider inline-flex items-center gap-1.5 transition-all shadow-sm transform group-hover:scale-105"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                    <span>Ledger</span>
+                                                </button>
+                                            </td>
                                         </tr>
                                     );
                                 })
@@ -9169,6 +9256,240 @@ export const FinancialDashboardView: React.FC<{
                     </table>
                 </div>
             </div>
+
+            {/* Detailed Ledger Modal Panel */}
+            <AnimatePresence>
+                {selectedAccount && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                            transition={{ duration: 0.25, ease: 'easeOut' }}
+                            className="bg-white rounded-[2.5rem] w-full max-w-5xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh] border border-slate-200/80"
+                        >
+                            {/* Modal Header */}
+                            <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl shadow-sm">
+                                        <Scale className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                            <span className="capitalize">{selectedAccount}</span>
+                                            <span className="text-slate-400 font-extrabold text-base">• Statement Ledger</span>
+                                        </h3>
+                                        <p className="text-slate-500 text-xs font-semibold mt-0.5">
+                                            Review chronologically matched advances and expenditures in continuous real-time running format.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedAccount(null)}
+                                    className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm cursor-pointer"
+                                >
+                                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                                </button>
+                            </div>
+
+                            {/* Ledger Summary Cards banner */}
+                            <div className="px-6 sm:px-8 py-5 bg-slate-150/10 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider">Total Cash Advances</span>
+                                        <span className="text-lg font-black text-emerald-700 block mt-0.5">
+                                            AED {(selectedAccountLedger.filter(tx => tx.changeType === 'in').reduce((sum, tx) => sum + tx.amount, 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </span>
+                                    </div>
+                                    <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                                        <TrendingUp className="w-4 h-4" />
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider">Total Spendings Tally</span>
+                                        <span className="text-lg font-black text-rose-600 block mt-0.5">
+                                            AED {(selectedAccountLedger.filter(tx => tx.changeType === 'out').reduce((sum, tx) => sum + tx.amount, 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </span>
+                                    </div>
+                                    <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+                                        <TrendingDown className="w-4 h-4" />
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider font-extrabold text-brand-600">Reconciled Safe Cash Balance</span>
+                                        <span className={`text-lg font-black block mt-0.5 ${
+                                            (selectedAccountLedger[selectedAccountLedger.length - 1]?.balanceAfter ?? 0) >= 0 
+                                                ? 'text-brand-600' 
+                                                : 'text-rose-600'
+                                        }`}>
+                                            AED {(selectedAccountLedger[selectedAccountLedger.length - 1]?.balanceAfter ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </span>
+                                    </div>
+                                    <div className="p-2 bg-brand-50 text-brand-600 rounded-xl">
+                                        <Wallet className="w-4 h-4" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Chronological Table List */}
+                            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-slate-50/20 max-h-[50vh]">
+                                <div className="overflow-x-auto rounded-2xl border border-slate-200/65 bg-white">
+                                    <table className="min-w-full divide-y divide-slate-100">
+                                        <thead className="bg-slate-50">
+                                            <tr>
+                                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-[110px]">Date</th>
+                                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Transaction Details</th>
+                                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-[160px]">Source Ledger</th>
+                                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Opening Balance</th>
+                                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Bill/Tx Amount</th>
+                                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Closing Balance</th>
+                                                <th scope="col" className="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest w-[80px]">Bill Doc</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-slate-100 text-xs">
+                                            {selectedAccountLedger.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-bold">
+                                                        No transactions recorded for this account.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                selectedAccountLedger.map((tx, idx) => {
+                                                    const isIncome = tx.changeType === 'in';
+                                                    return (
+                                                        <tr key={tx.id || idx} className="hover:bg-slate-50/50 transition-all">
+                                                            {/* Date */}
+                                                            <td className="px-5 py-4 font-semibold text-slate-500 whitespace-nowrap">
+                                                                {tx.date || 'N/A'}
+                                                            </td>
+                                                            {/* Transaction Details */}
+                                                            <td className="px-5 py-4">
+                                                                <div className="font-extrabold text-slate-800 break-words max-w-[280px]">
+                                                                    {tx.description}
+                                                                </div>
+                                                                <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                                                    {tx.reference}
+                                                                </div>
+                                                            </td>
+                                                            {/* Source Ledger */}
+                                                            <td className="px-5 py-4">
+                                                                <span className={cn(
+                                                                    "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider",
+                                                                    tx.sourceType === 'Everyday Expense' 
+                                                                        ? 'bg-amber-50 text-amber-700 border border-amber-100' 
+                                                                        : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                                                )}>
+                                                                    {tx.sourceType}
+                                                                </span>
+                                                            </td>
+                                                            {/* Opening/Previous Balance */}
+                                                            <td className="px-5 py-4 text-right font-medium text-slate-500 whitespace-nowrap">
+                                                                AED {tx.previousBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                                            </td>
+                                                            {/* Bill Amount with Debit/Credit color indicator */}
+                                                            <td className={`px-5 py-4 text-right font-black whitespace-nowrap ${
+                                                                isIncome ? "text-emerald-600" : "text-rose-500"
+                                                            }`}>
+                                                                {isIncome ? "+" : "-"} AED {tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                                            </td>
+                                                            {/* Closing / Balance after each transaction */}
+                                                            <td className={`px-5 py-4 text-right font-extrabold whitespace-nowrap ${
+                                                                tx.balanceAfter >= 0 ? "text-emerald-700" : "text-rose-600"
+                                                            }`}>
+                                                                AED {tx.balanceAfter.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                                            </td>
+                                                            {/* Attachment Column */}
+                                                            <td className="px-5 py-4 text-center whitespace-nowrap">
+                                                                {tx.attachment ? (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setViewingBill(tx.attachment || null);
+                                                                        }}
+                                                                        className="p-1.5 hover:bg-white rounded-lg text-brand-600 hover:text-brand-700 hover:scale-110 active:scale-95 cursor-pointer transition-all border border-slate-200/40 shadow-xs"
+                                                                        title="View Attachment Receipt / Bill"
+                                                                    >
+                                                                        <Eye className="w-4 h-4" />
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="text-[10px] text-slate-300 font-bold uppercase select-none">—</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 rounded-b-[2.5rem]">
+                                <button
+                                    onClick={() => setSelectedAccount(null)}
+                                    className="px-5 py-2.5 bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm cursor-pointer"
+                                >
+                                    Close Ledger
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Lightbox / Attachment viewer modal */}
+            {viewingBill && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="bg-white rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]"
+                    >
+                        <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div>
+                                <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">View Attached Bill</h3>
+                                <p className="text-slate-500 text-xs font-semibold">Attached document for matched petty cash / everyday expense.</p>
+                            </div>
+                            <button 
+                                onClick={() => setViewingBill(null)}
+                                className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm cursor-pointer"
+                            >
+                                <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                            </button>
+                        </div>
+                        <div className="p-6 sm:p-8 overflow-y-auto flex items-center justify-center bg-slate-100/50 flex-1 min-h-[300px]">
+                            {viewingBill.startsWith('data:image') || viewingBill.startsWith('http') ? (
+                                <img 
+                                    src={viewingBill} 
+                                    alt="Bill Receipt" 
+                                    className="max-w-full max-h-[55vh] object-contain rounded-2xl shadow-md border border-slate-200"
+                                    referrerPolicy="no-referrer"
+                                />
+                            ) : (
+                                <div className="p-8 bg-white rounded-2xl border border-slate-200 text-center max-w-sm shadow-sm">
+                                    <FileText className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                                    <p className="text-sm font-bold text-slate-700 mb-2">Attached File Doc</p>
+                                    <p className="text-xs text-slate-500 font-semibold mb-4">The attached bill cannot be previewed directly as an image.</p>
+                                    <a 
+                                        href={viewingBill} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold uppercase rounded-xl shadow-md cursor-pointer transition-colors"
+                                    >
+                                        <ExternalLink className="w-4 h-4" />
+                                        <span>Download Document</span>
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 };
