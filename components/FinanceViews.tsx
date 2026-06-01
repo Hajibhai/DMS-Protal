@@ -11,7 +11,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
-import { cn } from '../utils';
+import { cn, getPioneerPDFAssets } from '../utils';
 import { Vendor, AccountsPayable, AccountsReceivable, PettyCash, 
   Supplier, Project, SystemUser, UserRole, ProjectedExpense, EverydayExpense 
 } from '../types';
@@ -841,6 +841,12 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             unit: 'mm',
             format: 'a4'
         });
+
+        // Add Watermark Logo
+        const assets = getPioneerPDFAssets();
+        if (assets.watermark) {
+            doc.addImage(assets.watermark, 'PNG', 32, 75, 145, 145, undefined, 'FAST');
+        }
 
         const monthItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
         const [yr, mn] = mKey.split('-');
@@ -1825,6 +1831,12 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
         format: 'a4'
     });
 
+    // Add Watermark Logo
+    const assets = getPioneerPDFAssets();
+    if (assets.watermark) {
+        doc.addImage(assets.watermark, 'PNG', 32, 75, 145, 145, undefined, 'FAST');
+    }
+
     const primaryColor = [10, 25, 47]; // Deep Navy
     const accentColor = [59, 130, 246]; // Modern blue/azure
     const darkTextColor = [33, 37, 41];
@@ -2098,6 +2110,12 @@ export const generatePdfSOA = ({
         unit: 'mm',
         format: 'a4'
     });
+
+    // Add Watermark Logo (Landscape)
+    const assets = getPioneerPDFAssets();
+    if (assets.watermark) {
+        doc.addImage(assets.watermark, 'PNG', (297 - 145) / 2, (210 - 145) / 2, 145, 145, undefined, 'FAST');
+    }
 
     const themeColor = isReceivable ? [37, 99, 235] : [190, 24, 74];
     const primaryColor = [15, 23, 42];
@@ -2580,6 +2598,12 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             unit: 'mm',
             format: 'a4'
         });
+
+        // Add Watermark Logo
+        const assets = getPioneerPDFAssets();
+        if (assets.watermark) {
+            doc.addImage(assets.watermark, 'PNG', 32, 75, 145, 145, undefined, 'FAST');
+        }
 
         const monthItems = (data || []).filter((item: any) => item.date && item.date.substring(0, 7) === mKey);
         const [yr, mn] = mKey.split('-');
@@ -3907,6 +3931,12 @@ export const downloadPettyCashPDF = (item: any, emp?: any) => {
         unit: 'mm',
         format: 'a4'
     });
+
+    // Add Watermark Logo
+    const assets = getPioneerPDFAssets();
+    if (assets.watermark) {
+        doc.addImage(assets.watermark, 'PNG', 32, 75, 145, 145, undefined, 'FAST');
+    }
 
     // Color Palette
     const primaryColor = [15, 23, 42]; // Slate-900
@@ -7212,6 +7242,12 @@ export const generateEmployeeTallyPdf = (tally: any) => {
         unit: 'mm',
         format: 'a4'
     });
+
+    // Add Watermark Logo
+    const assets = getPioneerPDFAssets();
+    if (assets.watermark) {
+        doc.addImage(assets.watermark, 'PNG', 32, 75, 145, 145, undefined, 'FAST');
+    }
 
     const empName = tally.employee.name;
     const empCode = tally.employee.code || 'N/A';

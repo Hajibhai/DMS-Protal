@@ -5,6 +5,7 @@ import {
 import { db } from '../firebase';
 import { JobApplicant, JobOffer, UserRole } from '../types';
 import { jsPDF } from 'jspdf';
+import { getPioneerPDFAssets, applyPioneerLetterheadDoc } from '../utils';
 import { 
   Users, Mail, Phone, Shield, FileText, Download, Plus, Search, 
   Trash2, Edit, CheckCircle, XCircle, Calendar, DollarSign,
@@ -316,120 +317,257 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
   // PDF Generator for Offer Letter (Formal UAE Corporate style)
   const generateOfferLetterPDF = (offer: JobOffer) => {
     try {
-      const doc = new jsPDF();
-      
-      // Decorative border and header
-      doc.setFillColor(15, 23, 42); // slate 900
-      doc.rect(0, 0, 210, 15, 'F');
-      
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // PAGE 1: Letter Intro and Table of Employment Terms
+      const rx = offer.employeeName.split(' ').map(n => n[0]).join('').toUpperCase() + offer.id.slice(0, 4).toUpperCase();
+      const refNo = `PGC/HR/AP-${rx}`;
+      const offerDateFormatted = offer.offerDate ? offer.offerDate.split('-').reverse().join('/') : new Date().toLocaleDateString('en-GB');
+
+      // Meta Data (Positioning below the header at y = 52)
       doc.setFont("Helvetica", "bold");
-      doc.setFontSize(16);
-      doc.setTextColor(255, 255, 255);
-      doc.text("PIONEER DMS PORTAL - HR SECTOR", 105, 10, { align: 'center' });
+      doc.setFontSize(10.5);
+      doc.setTextColor(30, 41, 59); // Slate-800
+      doc.text(`Ref No: ${refNo}`, 20, 52);
       
-      // Letters body
-      doc.setTextColor(15, 23, 42);
-      doc.setFontSize(22);
-      doc.text("OFFER OF EMPLOYMENT", 105, 30, { align: 'center' });
-      
-      doc.setDrawColor(226, 232, 240); // slate 200
-      doc.line(20, 35, 190, 35);
-      
-      // Date and Salutation
-      doc.setFontSize(10);
+      const dateText = `Date: ${offerDateFormatted}`;
+      doc.text(dateText, 190 - doc.getTextWidth(dateText), 52);
+
+      // Recipient Address Block
+      doc.setFontSize(11);
+      doc.text(`To: Mr. ${offer.employeeName},`, 20, 64);
       doc.setFont("Helvetica", "normal");
-      doc.text(`Reference: PNE_HR_OFFER_${offer.id.slice(0, 6).toUpperCase()}`, 20, 43);
-      doc.text(`Date of Issue: ${offer.offerDate}`, 20, 48);
+      doc.text(`Passport Number – ${offer.passportNumber || 'N/A'}`, 20, 70);
+
+      // Subject
+      doc.setFont("Helvetica", "bold");
+      doc.text(`Subject: Employment Offer for the Position of ${offer.position}`, 20, 81);
+
+      // Salutation & Opening Paragraph
+      doc.text(`Dear Mr. ${offer.employeeName},`, 20, 93);
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(10);
       
-      // Candidate info block
-      doc.setFillColor(248, 250, 252); // slate 50
-      doc.rect(20, 54, 170, 32, 'F');
-      
+      const p1 = `We are pleased to extend this formal offer of employment to you for the position of ${offer.position} with Pioneer General Contracting LLC, based in Abu Dhabi, United Arab Emirates. We are confident that your experience and professional background will be valuable to our team and projects.`;
+      const splitP1 = doc.splitTextToSize(p1, 170);
+      doc.text(splitP1, 20, 99);
+
+      // Employment Terms Table
+      let tableY = 118;
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(11);
-      doc.text("Candidate Details & Contact Info:", 23, 60);
-      doc.setFont("Helvetica", "normal");
-      doc.setFontSize(10);
-      doc.text(`Name: ${offer.employeeName}`, 23, 66);
-      doc.text(`Position Offered: ${offer.position}`, 23, 71);
-      doc.text(`Passport Number: ${offer.passportNumber}`, 23, 76);
-      doc.text(`Mobile Number: ${offer.mobileNumber}`, 23, 81);
-      
-      // Offer opening paragraph
-      doc.setFontSize(10);
-      doc.text(`Dear ${offer.employeeName},`, 20, 93);
-      doc.text(`We are pleased to offer you employment with Pioneer on the terms and conditions outlined below.`, 20, 99);
-      doc.text(`Please review the compensation breakdown, key benefits, and responsibilities associated with this role:`, 20, 104);
-      
-      // Salary table headers
-      doc.setFillColor(241, 245, 249); // slate 100
-      doc.rect(20, 110, 170, 7, 'F');
-      doc.setFont("Helvetica", "bold");
-      doc.text("Compensation Item", 24, 115);
-      doc.text("Amount (per Month)", 140, 115);
-      
-      // Salary breakdown rows
-      const basic = offer.salary || 0;
-      const housing = offer.housingAllowance || 0;
-      const transport = offer.transportAllowance || 0;
-      const other = offer.otherAllowance || 0;
-      const total = basic + housing + transport + other;
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Basic Allowance", 24, 122);
-      doc.text(`${formatAED(basic)}`, 140, 122);
-      
-      doc.text("Housing Allowance", 24, 128);
-      doc.text(`${formatAED(housing)}`, 140, 128);
-      
-      doc.text("Transport Allowance", 24, 134);
-      doc.text(`${formatAED(transport)}`, 140, 134);
-      
-      doc.text("Other Allowances / Food / Utilities", 24, 140);
-      doc.text(`${formatAED(other)}`, 140, 140);
-      
-      doc.line(20, 143, 190, 143);
-      
-      doc.setFillColor(239, 246, 255); // blue 50
-      doc.rect(20, 145, 170, 8, 'F');
-      doc.setFont("Helvetica", "bold");
-      doc.text("Total Gross Salary", 24, 150);
-      doc.text(`${formatAED(total)}`, 140, 150);
-      
-      // Standard Terms and Conditions
+      doc.setTextColor(29, 59, 132); // Deep Blue Theme color
+      doc.text("Employment Terms", 20, tableY - 3);
+
+      const termsData = [
+        ["Position", offer.position],
+        ["Reporting To", "As assigned by the management"],
+        ["Work Location", "UAE"],
+        ["Basic Salary", formatAED(offer.salary || 0)],
+        ["Mobile Allowance", offer.otherAllowance > 0 ? "Provided/Covered" : "As per company policy"],
+        ["Allowances", formatAED((offer.housingAllowance || 0) + (offer.transportAllowance || 0) + (offer.otherAllowance || 0))],
+        ["Total Monthly Salary", formatAED((offer.salary || 0) + (offer.housingAllowance || 0) + (offer.transportAllowance || 0) + (offer.otherAllowance || 0))],
+        ["Probation Period", "6 months from the date of joining"],
+        ["Working Hours", "As per UAE Labor Law and company policy"],
+        ["Annual Leave", "As per UAE Labor Law and company policy"],
+        ["Medical Insurance", "Provided as per company policy and applicable law"]
+      ];
+
+      doc.setDrawColor(203, 213, 225); // Slate 300
+      doc.setLineWidth(0.2);
+
+      termsData.forEach(([label, value]) => {
+        // Left Column background (light corporate blue #ECF5FC)
+        doc.setFillColor(236, 245, 252);
+        doc.rect(20, tableY, 65, 6.5, 'F');
+        doc.rect(20, tableY, 65, 6.5, 'D');
+
+        // Right Column background (White)
+        doc.setFillColor(255, 255, 255);
+        doc.rect(85, tableY, 105, 6.5, 'F');
+        doc.rect(85, tableY, 105, 6.5, 'D');
+
+        // Draw left label
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9.5);
+        doc.setTextColor(15, 23, 42); // slate 900
+        doc.text(label, 23, tableY + 4.5);
+
+        // Draw right value
+        doc.setFont("Helvetica", "normal");
+        doc.setTextColor(51, 65, 85); // slate 700
+        doc.text(value, 88, tableY + 4.5);
+
+        tableY += 6.5;
+      });
+
+      // Terms and Conditions Note Header
+      let clauseY = tableY + 8;
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(11);
-      doc.text("Key Terms & Conditions:", 20, 161);
+      doc.setTextColor(29, 59, 132);
+      doc.text("Terms and Conditions", 20, clauseY);
+      
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(30, 41, 59);
+      const noteTxt = `Note: The following terms and conditions are to be read together with the offer letter and the applicable laws and regulations of the United Arab Emirates. In case of any conflict, the applicable law and the company's official employment policy will prevail.`;
+      const splitNote = doc.splitTextToSize(noteTxt, 170);
+      doc.text(splitNote, 20, clauseY + 5);
+
+      // Clause 1
+      let currentY = clauseY + 16;
+      doc.setFont("Helvetica", "bold");
+      doc.text("1. Probation Period", 20, currentY);
+      doc.setFont("Helvetica", "normal");
+      const c1Text = `You will be on probation for a period of six (6) months from your date of joining. The probation period may be extended at the sole discretion of the Company, subject to applicable law and performance review.`;
+      const splitC1 = doc.splitTextToSize(c1Text, 170);
+      doc.text(splitC1, 20, currentY + 4.5);
+
+      // Clause 2
+      currentY = currentY + 16;
+      doc.setFont("Helvetica", "bold");
+      doc.text("2. Benefits During Probation", 20, currentY);
+      doc.setFont("Helvetica", "normal");
+      const c2Text = `You will not be entitled to additional allowances, leave benefits, or other employment benefits during the probation period, except for those expressly stated in the offer letter or required under applicable law.`;
+      const splitC2 = doc.splitTextToSize(c2Text, 170);
+      doc.text(splitC2, 20, currentY + 4.5);
+
+
+      // ----------------- PAGE 2 -----------------
+      doc.addPage();
+      currentY = 52;
+
+      const itemsPage2 = [
+        {
+          title: "3. Continuation of Employment",
+          text: "Your performance will be reviewed periodically during the probation period. The Company may confirm, extend, or discontinue your employment based on performance, conduct, and business requirements."
+        },
+        {
+          title: "4. Medical Fitness / Fitness for Work",
+          text: "If, at any time during probation or thereafter, the Company’s appointed medical officer or Human Resources Department finds you unfit for employment, your services may be terminated in accordance with company policy and applicable law."
+        },
+        {
+          title: "5. Employment Contract",
+          text: "The employment contract shall be valid for two (2) years from the date of visa stamping and may be renewed by mutual agreement."
+        },
+        {
+          title: "6. Work Location and Transfer",
+          text: "You may be assigned to any project site, branch, or office of the Company within the United Arab Emirates as per operational requirements and management discretion."
+        },
+        {
+          title: "7. Confidentiality",
+          text: "You shall treat all company information, business data, client information, project details, drawings, methods, costs, and trade secrets as strictly confidential during and after your employment. Such information shall be used only for the purpose of performing your duties."
+        },
+        {
+          title: "8. Restriction on Outside Work",
+          text: "You shall not engage directly or indirectly in any other business, employment, consultancy, or professional activity without prior written consent from the Company."
+        },
+        {
+          title: "9. Document Submission for Visa Processing",
+          text: "You are required to submit all documents necessary for visa and employment processing, including but not limited to: signed acceptance of this offer letter, emirates id copy, passport copy, attested educational certificates, updated CV, and passport-size photographs, along with any other documents requested by the Company."
+        }
+      ];
+
+      itemsPage2.forEach(item => {
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9);
+        doc.text(item.title, 20, currentY);
+        doc.setFont("Helvetica", "normal");
+        const splitText = doc.splitTextToSize(item.text, 170);
+        doc.text(splitText, 20, currentY + 4);
+        currentY += (splitText.length * 4) + 8;
+      });
+
+
+      // ----------------- PAGE 3 -----------------
+      doc.addPage();
+      currentY = 52;
+
+      const itemsPage3 = [
+        {
+          title: "10. Leave Entitlement",
+          text: "You will be eligible for annual leave after completion of eleven (11) months of service, in accordance with company policy and applicable law. Air ticket entitlement, if any, shall be provided as per company policy."
+        },
+        {
+          title: "11. Performance and Conduct",
+          text: "The Company reserves the right to terminate your employment in accordance with UAE Labor Law if your performance is found to be unsatisfactory, if you fail to fulfill the duties and responsibilities of your position, or if you engage in any conduct that may harm the Company’s reputation or interests."
+        },
+        {
+          title: "12. Early Resignation / Cost Recovery",
+          text: "Your employment visa and contract will be valid for a period of two (2) years. In the event that you resign before completion of this period, any applicable visa and employment-related costs may be recovered in accordance with UAE Labor Law and Company policy."
+        },
+        {
+          title: "13. Residence Requirement",
+          text: "You may be required to reside at or near the project location or any other place assigned by the Company, unless specifically exempted in writing by management."
+        },
+        {
+          title: "14. Compliance",
+          text: "You shall comply with the Company’s policies, safety rules, site instructions, confidentiality obligations, and all other lawful directions issued by management."
+        },
+        {
+          title: "15. False Information",
+          text: "If any information or document provided by you is found to be false, misleading, incomplete, or forged, the Company reserves the right to withdraw the offer or terminate employment without prejudice to any legal rights available to the Company."
+        }
+      ];
+
+      itemsPage3.forEach(item => {
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9);
+        doc.text(item.title, 20, currentY);
+        doc.setFont("Helvetica", "normal");
+        const splitText = doc.splitTextToSize(item.text, 170);
+        doc.text(splitText, 20, currentY + 4);
+        currentY += (splitText.length * 4) + 7;
+      });
+
+      // Acceptance Segment
+      currentY += 2;
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(29, 59, 132);
+      doc.text("Acceptance", 20, currentY);
+
       doc.setFont("Helvetica", "normal");
       doc.setFontSize(9.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text("I have read, understood, and agree to abide by the above terms and conditions of employment.", 20, currentY + 5.5);
+
+      // Signature Matrix Table (Double Box)
+      const sigY = currentY + 11;
+      doc.setDrawColor(15, 23, 42); // slate 900 border
+      doc.setLineWidth(0.3);
       
-      let currentY = 167;
-      const clauses = [
-        `1. Joining Date: You are requested to join services on or before ${offer.joiningDate}.`,
-        `2. Working Location & Hours: Standard shift schedules in correspondence with the assigned site.`,
-        `3. Probation Period: Subject to six (6) months probation as per UAE Labour law requirements.`,
-        `4. UAE Legalities: Residence Visa, Medical, Emirates ID, and Labour Permit expenses are covered.`,
-        `5. Additional Details: ${offer.additionalDetails}`,
-        `6. This offer is valid until ${offer.expiryDate || 'N/A'} after which if not signed, it is Null & Void.`
-      ];
-      
-      clauses.forEach(clause => {
-        const splitText = doc.splitTextToSize(clause, 170);
-        doc.text(splitText, 20, currentY);
-        currentY += splitText.length * 5;
-      });
-      
-      // Signature Blocks
-      doc.setFontSize(10);
-      doc.setDrawColor(203, 213, 225); // slate 300
-      doc.line(20, 240, 90, 240);
-      doc.line(120, 240, 190, 240);
-      
+      // For Pioneer Signatory Box
+      doc.setFillColor(255, 255, 255);
+      doc.rect(20, sigY, 82, 35, 'F');
+      doc.rect(20, sigY, 82, 35, 'D');
       doc.setFont("Helvetica", "bold");
-      doc.text("For Pioneer (Authorized HR Officer)", 20, 246);
-      doc.text("Candidate Signature (I Accept)", 120, 246);
-      
-      // Save PDF
+      doc.setFontSize(9.5);
+      doc.text("For Pioneer General Contracting LLC", 24, sigY + 6);
+      doc.line(26, sigY + 24, 76, sigY + 24);
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.text("Authorized Signatory", 36, sigY + 29);
+
+      // Accepted by Employee Signatory Box
+      doc.rect(108, sigY, 82, 35, 'F');
+      doc.rect(108, sigY, 82, 35, 'D');
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.text("Accepted by Employee", 112, sigY + 6);
+      doc.line(114, sigY + 24, 164, sigY + 24);
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.text("Employee Signature", 126, sigY + 29);
+
+      // Apply Pioneer high-res dynamic Letterheads, Watermarks, and Footers across the 3 A4 pages
+      applyPioneerLetterheadDoc(doc, 3);
+
       doc.save(`Offer_Letter_${offer.employeeName.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
       console.error("PDF generation failed:", err);
@@ -440,53 +578,80 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
   // PDF Generator for Acceptance Letter (Aknowledgement Statement)
   const generateAcceptanceLetterPDF = (offer: JobOffer) => {
     try {
-      const doc = new jsPDF();
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
       
-      doc.setFillColor(15, 23, 42); // slate 900
-      doc.rect(0, 0, 210, 15, 'F');
-      
+      const rx = offer.employeeName.split(' ').map(n => n[0]).join('').toUpperCase() + offer.id.slice(0, 4).toUpperCase();
+      const code = `PNE_HR_OFFER_${offer.id.slice(0, 6).toUpperCase()}`;
+
+      // Document Title
       doc.setFont("Helvetica", "bold");
-      doc.setFontSize(16);
-      doc.setTextColor(255, 255, 255);
-      doc.text("PIONEER DMS PORTAL - EMPLOYEE HUB", 105, 10, { align: 'center' });
-      
-      doc.setTextColor(15, 23, 42);
-      doc.setFontSize(22);
-      doc.text("LETTER OF ACCEPTANCE", 105, 30, { align: 'center' });
+      doc.setFontSize(18);
+      doc.setTextColor(29, 59, 132); // Deep blue theme
+      doc.text("LETTER OF ACCEPTANCE", 105, 54, { align: 'center' });
       
       doc.setDrawColor(226, 232, 240);
-      doc.line(20, 35, 190, 35);
+      doc.setLineWidth(0.5);
+      doc.line(20, 58, 190, 58);
       
-      doc.setFontSize(10);
+      // Meta row
+      doc.setFontSize(9.5);
       doc.setFont("Helvetica", "normal");
-      doc.text(`Reference Offer: PNE_HR_OFFER_${offer.id.slice(0, 6).toUpperCase()}`, 20, 43);
-      doc.text(`Date of Acceptance: ${new Date().toISOString().split('T')[0]}`, 20, 48);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Reference Offer: ${offer.id ? code : 'PNE_HR_OFFER_SAMPLE'}`, 20, 64);
+      doc.text(`Date of Acceptance: ${new Date().toLocaleDateString('en-GB')}`, 190 - doc.getTextWidth(`Date of Acceptance: ${new Date().toLocaleDateString('en-GB')}`), 64);
       
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(11);
-      doc.text("To: The HR Management Team, Pioneer Group", 20, 60);
+      doc.setTextColor(30, 41, 59);
+      doc.text("To: The HR Management Team, Pioneer General Contracting LLC", 20, 75);
       
       doc.setFont("Helvetica", "normal");
       doc.setFontSize(10);
-      doc.text("Dear Sir/Madam,", 20, 70);
+      doc.text("Dear Sir/Madam,", 20, 83);
       
-      const p1 = `I, the undersigned, hereby formally confirm my acceptance of your offer of employment dated ${offer.offerDate} for the position of ${offer.position} on the salary and structure outlined below.`;
+      const p1 = `I, the undersigned, hereby formally confirm my acceptance of your offer of employment dated ${offer.offerDate ? offer.offerDate.split('-').reverse().join('/') : 'N/A'} for the position of ${offer.position} on the salary and structure outlined below.`;
       const splitP1 = doc.splitTextToSize(p1, 170);
-      doc.text(splitP1, 20, 78);
+      doc.text(splitP1, 20, 90);
       
-      let nextY = 78 + (splitP1.length * 6);
+      let nextY = 90 + (splitP1.length * 5.5) + 6;
       
-      // Details Confirmation Box
-      doc.setFillColor(248, 250, 252);
-      doc.rect(20, nextY, 170, 75, 'F');
+      // Confirmed Details Container
+      doc.setFillColor(248, 250, 252); // slate 50 background
+      doc.rect(20, nextY, 170, 72, 'F');
+      doc.setDrawColor(203, 213, 225); // slate 300 border
+      doc.rect(20, nextY, 170, 72, 'D');
       
       doc.setFont("Helvetica", "bold");
-      doc.text("Confirmed Terms & Personal Details:", 24, nextY + 8);
+      doc.setFontSize(10.5);
+      doc.setTextColor(29, 59, 132);
+      doc.text("Confirmed Terms & Personal Details:", 25, nextY + 7);
+      
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      
       doc.setFont("Helvetica", "normal");
-      doc.text(`Full Name: ${offer.employeeName}`, 24, nextY + 16);
-      doc.text(`Passport Number: ${offer.passportNumber}`, 24, nextY + 22);
-      doc.text(`Mobile Contact: ${offer.mobileNumber}`, 24, nextY + 28);
-      doc.text(`Designation: ${offer.position}`, 24, nextY + 34);
+      doc.text("Full Name:", 25, nextY + 15);
+      doc.setFont("Helvetica", "bold");
+      doc.text(`${offer.employeeName}`, 60, nextY + 15);
+      
+      doc.setFont("Helvetica", "normal");
+      doc.text("Passport Number:", 25, nextY + 21);
+      doc.setFont("Helvetica", "bold");
+      doc.text(`${offer.passportNumber || 'N/A'}`, 60, nextY + 21);
+      
+      doc.setFont("Helvetica", "normal");
+      doc.text("Mobile Contact:", 25, nextY + 27);
+      doc.setFont("Helvetica", "bold");
+      doc.text(`${offer.mobileNumber || 'N/A'}`, 60, nextY + 27);
+      
+      doc.setFont("Helvetica", "normal");
+      doc.text("Designation:", 25, nextY + 33);
+      doc.setFont("Helvetica", "bold");
+      doc.text(`${offer.position}`, 60, nextY + 33);
       
       const basic = offer.salary || 0;
       const lodging = offer.housingAllowance || 0;
@@ -494,27 +659,63 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       const utilities = offer.otherAllowance || 0;
       const total = basic + lodging + transport + utilities;
       
-      doc.text(`Basic Monthly Salary: ${formatAED(basic)}`, 24, nextY + 42);
-      doc.text(`Total Gross Monthly Salary: ${formatAED(total)}`, 24, nextY + 48);
-      doc.text(`Proposed Joining date: ${offer.joiningDate}`, 24, nextY + 54);
-      doc.text(`Associated Offer Code: PNE_HR_OFFER_${offer.id.slice(0, 6).toUpperCase()}`, 24, nextY + 60);
-      doc.text(`Current UAE Mobile Contact: ${offer.mobileNumber}`, 24, nextY + 66);
+      doc.setFont("Helvetica", "normal");
+      doc.text("Basic Monthly Salary:", 25, nextY + 41);
+      doc.setFont("Helvetica", "bold");
+      doc.text(`${formatAED(basic)}`, 74, nextY + 41);
       
-      nextY += 85;
+      doc.setFont("Helvetica", "normal");
+      doc.text("Total Gross Monthly Salary:", 25, nextY + 47);
+      doc.setFont("Helvetica", "bold");
+      doc.text(`${formatAED(total)}`, 74, nextY + 47);
       
-      const p2 = `By signing this letter, I agree to abide by all internal rules, regulations, safety standards, policies, and code of conduct set forth by Pioneer and UAE Ministry of Human Resources & Emiratisation (MoHRE). I will supply all relevant background documents, passport copy, original degrees, cancellation paper or visa copy immediately to ensure timely processing of my UAE residence residency documents.`;
+      doc.setFont("Helvetica", "normal");
+      doc.text("Proposed Joining Date:", 25, nextY + 53);
+      doc.setFont("Helvetica", "bold");
+      doc.text(`${offer.joiningDate ? offer.joiningDate.split('-').reverse().join('/') : 'N/A'}`, 74, nextY + 53);
+      
+      doc.setFont("Helvetica", "normal");
+      doc.text("Associated Offer Code:", 25, nextY + 59);
+      doc.setFont("Helvetica", "bold");
+      doc.text(`${code}`, 74, nextY + 59);
+      
+      doc.setFont("Helvetica", "normal");
+      doc.text("Current Contact in UAE:", 25, nextY + 65);
+      doc.setFont("Helvetica", "bold");
+      doc.text(`${offer.mobileNumber || 'N/A'}`, 74, nextY + 65);
+      
+      nextY += 80;
+      
+      // Deceleration Paragraph
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(51, 65, 85);
+      const p2 = `By signing this letter, I agree to abide by all internal rules, regulations, safety standards, policies, and code of conduct set forth by Pioneer General Contracting LLC and UAE Ministry of Human Resources & Emiratisation (MoHRE). I will supply all relevant background documents, passport copy, original degrees, cancellation paper or visa copy immediately to ensure timely processing of my UAE residency and employment visas.`;
       const splitP2 = doc.splitTextToSize(p2, 170);
       doc.text(splitP2, 20, nextY);
       
-      nextY += (splitP2.length * 5.5) + 30;
+      nextY += (splitP2.length * 5.2) + 16;
       
-      // Signature Line
-      doc.line(110, nextY, 180, nextY);
+      // Signature lines
+      doc.setDrawColor(203, 213, 225); // Slate 300
+      doc.line(20, nextY, 90, nextY);
+      doc.line(110, nextY, 185, nextY);
+      
       doc.setFont("Helvetica", "bold");
-      doc.text("Employee Full Name & Signature", 110, nextY + 6);
-      doc.text("Signed On Date:", 20, nextY + 6);
+      doc.setFontSize(9.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text("Signed On Date:", 20, nextY + 5);
       doc.setFont("Helvetica", "normal");
-      doc.text(`${new Date().toISOString().split('T')[0]}`, 50, nextY + 6);
+      doc.text(`${new Date().toLocaleDateString('en-GB')}`, 48, nextY + 5);
+      
+      doc.setFont("Helvetica", "bold");
+      doc.text("Employee Full Name & Signature", 110, nextY + 5);
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(`Mr. ${offer.employeeName}`, 110, nextY + 11);
+
+      // Apply Pioneer letterhead, footer and watermark
+      applyPioneerLetterheadDoc(doc, 1);
       
       doc.save(`Acceptance_Letter_${offer.employeeName.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {

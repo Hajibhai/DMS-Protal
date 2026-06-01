@@ -5,7 +5,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { jsPDF } from 'jspdf';
 
-import { cn } from './utils';
+import { cn, getPioneerPDFAssets } from './utils';
 import { PrintModal, PrintOptions } from './components/PrintModal';
 
 const DirhamIcon = ({ className }: { className?: string }) => (
@@ -8130,6 +8130,12 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
             unit: 'mm',
             format: 'a4'
         });
+
+        // Add Watermark Logo
+        const assets = getPioneerPDFAssets();
+        if (assets.watermark) {
+            doc.addImage(assets.watermark, 'PNG', 32, 75, 145, 145, undefined, 'FAST');
+        }
 
         // Color Palette
         const primaryColor = [15, 23, 42]; // Slate-900
