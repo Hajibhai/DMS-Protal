@@ -8993,6 +8993,360 @@ export const FinancialDashboardView: React.FC<{
         });
     }, [selectedAccount, pettyCash, everydayExpenses]);
 
+    // Handle overall reconciliation directory Excel Excel export
+    const handleExportReconciliationExcel = () => {
+        const wsData = filteredReconciliations.map((recon) => ({
+            'Account (Cash Book)': recon.accountName,
+            'Advances Received (AED)': recon.advances,
+            'Direct Petty Spent (AED)': recon.directSpent,
+            'Auto-Matched Everyday Cost (AED)': recon.everydaySpent,
+            'Reconciled Safe Cash (AED)': recon.reconciledBalance,
+            'Health Status': recon.reconciledBalance >= 0 ? "BALANCED" : "DEFICIT",
+            'Matched Verified Bills Count': recon.matchingCount
+        }));
+        const ws = XLSX.utils.json_to_sheet(wsData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Reconciliations");
+        // Auto-sizing columns helper
+        const maxLen = Math.max(...wsData.map(r => r['Account (Cash Book)'].length), 15);
+        ws['!cols'] = [
+            { wch: maxLen + 4 },
+            { wch: 24 },
+            { wch: 24 },
+            { wch: 30 },
+            { wch: 24 },
+            { wch: 15 },
+            { wch: 28 }
+        ];
+        XLSX.writeFile(wb, "Automated_Petty_Cash_Reconciliation_Directory.xlsx");
+    };
+
+    // Handle overall reconciliation directory PDF export
+    const handleExportReconciliationPDF = () => {
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const assets = getPioneerPDFAssets();
+        if (assets.watermark) {
+            doc.addImage(assets.watermark, 'PNG', 32, 75, 145, 145, undefined, 'FAST');
+        }
+
+        doc.setFillColor(37, 99, 235); // Pioneer brand Royal Blue top banner
+        doc.rect(0, 0, 210, 6, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(15, 23, 42);
+        doc.text("AUTOMATED PETTY CASH RECONCILIATION SUMMARY", 15, 18);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Corporate Petty Cash Directory Reconciliations | Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 15, 23);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.35);
+        doc.line(15, 27, 195, 27);
+
+        // Header Table block
+        const tableHeaderY = 32;
+        doc.setFillColor(37, 99, 235); // Deep Blue background for table headers
+        doc.rect(15, tableHeaderY, 180, 8.5, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(255, 255, 255);
+        doc.text("ACCOUNT (CASH BOOK)", 18, tableHeaderY + 5.5);
+        doc.text("ADVANCES RECEIVED", 75, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("DIRECT PETTY SPENT", 110, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("EVERYDAY COST", 145, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("RECONCILED SAFE CASH", 182, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("STATUS", 188, tableHeaderY + 5.5, { align: 'left' });
+
+        let currentY = tableHeaderY + 8.5;
+        filteredReconciliations.forEach((recon: any, idx: number) => {
+            if (currentY > 270) {
+                doc.addPage();
+                doc.setFillColor(37, 99, 235);
+                doc.rect(0, 0, 210, 6, 'F');
+                currentY = 15;
+            }
+
+            // Zebra style lines background
+            if (idx % 2 === 0) {
+                doc.setFillColor(248, 250, 252);
+                doc.rect(15, currentY, 180, 8, 'F');
+            }
+
+            doc.setFont("Helvetica", "bold");
+            doc.setFontSize(8);
+            doc.setTextColor(51, 65, 85);
+            doc.text((recon.accountName || '').toUpperCase(), 18, currentY + 5.5);
+
+            doc.setFont("Helvetica", "normal");
+            doc.setFontSize(8);
+            doc.text(`AED ${recon.advances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 75, currentY + 5.5, { align: 'right' });
+            doc.text(`AED ${recon.directSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 110, currentY + 5.5, { align: 'right' });
+            doc.text(`AED ${recon.everydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 145, currentY + 5.5, { align: 'right' });
+
+            const isSurplus = recon.reconciledBalance >= 0;
+            doc.setFont("Helvetica", "bold");
+            if (isSurplus) {
+                doc.setTextColor(16, 124, 65); // Green
+            } else {
+                doc.setTextColor(190, 24, 74); // Red/Crimson
+            }
+            doc.text(`AED ${recon.reconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 182, currentY + 5.5, { align: 'right' });
+            
+            doc.setFontSize(7.5);
+            doc.text(isSurplus ? "BALANCED" : "DEFICIT", 188, currentY + 5.5, { align: 'left' });
+
+            currentY += 8;
+        });
+
+        // Add consolidated metrics line at bottom of the main table
+        if (currentY > 260) {
+            doc.addPage();
+            doc.setFillColor(37, 99, 235);
+            doc.rect(0, 0, 210, 6, 'F');
+            currentY = 15;
+        }
+
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(0.5);
+        doc.line(15, currentY + 2, 195, currentY + 2);
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(8.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text("TOTALS SUMMARY", 18, currentY + 7);
+
+        const totalAdvances = filteredReconciliations.reduce((sum, r) => sum + r.advances, 0);
+        const totalDirectSpent = filteredReconciliations.reduce((sum, r) => sum + r.directSpent, 0);
+        const totalEverydaySpent = filteredReconciliations.reduce((sum, r) => sum + r.everydaySpent, 0);
+        const totalReconciled = filteredReconciliations.reduce((sum, r) => sum + r.reconciledBalance, 0);
+
+        doc.setFontSize(8);
+        doc.text(`AED ${totalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 75, currentY + 7, { align: 'right' });
+        doc.text(`AED ${totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 110, currentY + 7, { align: 'right' });
+        doc.text(`AED ${totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 145, currentY + 7, { align: 'right' });
+        
+        if (totalReconciled >= 0) {
+            doc.setTextColor(16, 124, 65);
+        } else {
+            doc.setTextColor(190, 24, 74);
+        }
+        doc.text(`AED ${totalReconciled.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 182, currentY + 7, { align: 'right' });
+        doc.text(totalReconciled >= 0 ? "BALANCED" : "DEFICIT", 188, currentY + 7, { align: 'left' });
+
+        doc.save("Automated_Petty_Cash_Reconciliation_Directory.pdf");
+    };
+
+    // Excel export of the selected account statements ledger list details
+    const handleExportLedgerExcel = () => {
+        if (!selectedAccount) return;
+        const wsData = selectedAccountLedger.map((tx) => ({
+            'Date': tx.date,
+            'Description Details': tx.description,
+            'Reference & Bill Info': tx.reference,
+            'Source Ledger Category': tx.sourceType,
+            'Amount Flow Type': tx.changeType === 'in' ? 'CASH GL ADVANCE RECEIVED' : 'OUTFLOW EXPENDITURE SPENT',
+            'Opening Balance (AED)': tx.previousBalance,
+            'Transaction Bill Amt (AED)': tx.amount,
+            'Closing Balance Amt (AED)': tx.balanceAfter,
+            'Is Document Bill Photo Attached': tx.attachment ? "YES" : "NO"
+        }));
+        const ws = XLSX.utils.json_to_sheet(wsData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Ledger");
+        ws['!cols'] = [
+            { wch: 12 },
+            { wch: 34 },
+            { wch: 38 },
+            { wch: 22 },
+            { wch: 28 },
+            { wch: 22 },
+            { wch: 24 },
+            { wch: 24 },
+            { wch: 32 }
+        ];
+        XLSX.writeFile(wb, `${selectedAccount.toUpperCase().replace(/\s+/g, '_')}_Statement_Ledger.xlsx`);
+    };
+
+    // Beautiful corporate standard PDF statement ledger report export
+    const handleExportLedgerPDF = () => {
+        if (!selectedAccount) return;
+
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const assets = getPioneerPDFAssets();
+        if (assets.watermark) {
+            doc.addImage(assets.watermark, 'PNG', 32, 75, 145, 145, undefined, 'FAST');
+        }
+
+        doc.setFillColor(37, 99, 235); 
+        doc.rect(0, 0, 210, 6, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(13);
+        doc.setTextColor(15, 23, 42);
+        doc.text("RECONCILED PERSONAL STATEMENT LEDGER", 15, 18);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Account / Holder: ${selectedAccount.toUpperCase()} | Generated: ${new Date().toLocaleDateString()}`, 15, 23);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.35);
+        doc.line(15, 27, 195, 27);
+
+        // Summary Statistics box
+        const cardY = 32;
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, cardY, 180, 18, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.3);
+        doc.rect(15, cardY, 180, 18, 'D');
+
+        const totalAdvances = selectedAccountLedger.filter(tx => tx.changeType === 'in').reduce((sum, tx) => sum + tx.amount, 0);
+        const totalSpendings = selectedAccountLedger.filter(tx => tx.changeType === 'out').reduce((sum, tx) => sum + tx.amount, 0);
+        const finalBalance = selectedAccountLedger[selectedAccountLedger.length - 1]?.balanceAfter ?? 0;
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text("TOTAL CASH ADVANCES (IN)", 20, cardY + 5.5);
+        doc.text("TOTAL SPENDINGS TALLY (OUT)", 82, cardY + 5.5);
+        doc.text("NET RECONCILED SAFE CASH", 144, cardY + 5.5);
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(10.5);
+        doc.setTextColor(16, 124, 65); // Green for cash assets incoming
+        doc.text(`AED ${totalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 20, cardY + 12.5);
+
+        doc.setTextColor(190, 24, 74); // Red/Crimson for expenses/outflows
+        doc.text(`AED ${totalSpendings.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 82, cardY + 12.5);
+
+        if (finalBalance >= 0) {
+            doc.setTextColor(37, 99, 235); // Blue
+        } else {
+            doc.setTextColor(190, 24, 74); // Red deficit
+        }
+        doc.text(`AED ${finalBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 144, cardY + 12.5);
+
+        // Table headers starting point
+        const tableHeaderY = 56;
+        doc.setFillColor(37, 99, 235); // Pioneer portal blue brand headers
+        doc.rect(15, tableHeaderY, 180, 8.5, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text("DATE", 18, tableHeaderY + 5.5);
+        doc.text("TRANSACTION DETAILS & REFERENCE", 42, tableHeaderY + 5.5);
+        doc.text("SOURCE LEDGER", 112, tableHeaderY + 5.5);
+        doc.text("PREV. BALANCE", 145, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("TX AMOUNT", 168, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("RUN. BALANCE", 192, tableHeaderY + 5.5, { align: 'right' });
+
+        let currentY = tableHeaderY + 8.5;
+        selectedAccountLedger.forEach((tx, idx) => {
+            if (currentY > 268) {
+                doc.addPage();
+                doc.setFillColor(37, 99, 235);
+                doc.rect(0, 0, 210, 6, 'F');
+                
+                // Redraw table headers on new pages
+                doc.setFillColor(37, 99, 235);
+                doc.rect(15, 12, 180, 8.5, 'F');
+                doc.setFont("Helvetica", "bold");
+                doc.setFontSize(7.5);
+                doc.setTextColor(255, 255, 255);
+                doc.text("DATE", 18, 12 + 5.5);
+                doc.text("TRANSACTION DETAILS & REFERENCE", 42, 12 + 5.5);
+                doc.text("SOURCE LEDGER", 112, 12 + 5.5);
+                doc.text("PREV. BALANCE", 145, 12 + 5.5, { align: 'right' });
+                doc.text("TX AMOUNT", 168, 12 + 5.5, { align: 'right' });
+                doc.text("RUN. BALANCE", 192, 12 + 5.5, { align: 'right' });
+                
+                currentY = 20.5;
+            }
+
+            // Alternating zebra list item rows backgrounds
+            if (idx % 2 === 0) {
+                doc.setFillColor(248, 250, 252);
+                doc.rect(15, currentY, 180, 9.5, 'F');
+            }
+
+            doc.setFont("Helvetica", "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 116, 139);
+            doc.text(tx.date, 18, currentY + 6);
+
+            // Details and references mapping format
+            doc.setFont("Helvetica", "bold");
+            doc.setTextColor(30, 41, 59);
+            let dTxt = tx.description;
+            if (dTxt.length > 33) {
+                dTxt = dTxt.substring(0, 31) + "...";
+            }
+            doc.text(dTxt, 42, currentY + 4);
+            
+            doc.setFont("Helvetica", "normal");
+            doc.setFontSize(6.5);
+            doc.setTextColor(148, 163, 184);
+            let rTxt = tx.reference;
+            if (rTxt.length > 51) {
+                rTxt = rTxt.substring(0, 49) + "...";
+            }
+            doc.text(rTxt, 42, currentY + 7.5);
+
+            // Source types
+            doc.setFont("Helvetica", "bold");
+            doc.setFontSize(7);
+            if (tx.sourceType === 'Everyday Expense') {
+                doc.setTextColor(217, 119, 6); // Orange-ish Amber
+            } else {
+                doc.setTextColor(79, 70, 229); // Indigo
+            }
+            doc.text(tx.sourceType.toUpperCase(), 112, currentY + 5.5);
+
+            // Numeric Columns formatting
+            doc.setFont("Helvetica", "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 116, 139);
+            doc.text(tx.previousBalance.toLocaleString(undefined, {minimumFractionDigits: 2}), 145, currentY + 5.5, { align: 'right' });
+
+            const isIncome = tx.changeType === 'in';
+            doc.setFont("Helvetica", "bold");
+            if (isIncome) {
+                doc.setTextColor(16, 124, 65);
+            } else {
+                doc.setTextColor(190, 24, 74);
+            }
+            doc.text(`${isIncome ? "+" : "-"} ${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 168, currentY + 5.5, { align: 'right' });
+
+            if (tx.balanceAfter >= 0) {
+                doc.setTextColor(16, 124, 65);
+            } else {
+                doc.setTextColor(190, 24, 74);
+            }
+            doc.text(tx.balanceAfter.toLocaleString(undefined, {minimumFractionDigits: 2}), 192, currentY + 5.5, { align: 'right' });
+
+            currentY += 9.5;
+        });
+
+        doc.save(`${selectedAccount.toUpperCase().replace(/\s+/g, '_')}_Statement_Ledger.pdf`);
+    };
+
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
             {/* Header section */}
@@ -9149,7 +9503,7 @@ export const FinancialDashboardView: React.FC<{
 
             {/* Petty Cash Automated Reconciliation Panel */}
             <div className="bg-white rounded-[2.5rem] border border-slate-200/60 p-6 sm:p-8 shadow-sm space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-5">
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 border-b border-slate-100 pb-5">
                     <div>
                         <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
                             <Scale className="w-5 h-5 text-brand-600" />
@@ -9160,18 +9514,38 @@ export const FinancialDashboardView: React.FC<{
                         </p>
                     </div>
                     
-                    {/* Search bar specifically for reconciliations */}
-                    <div className="relative max-w-sm w-full">
-                        <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
-                            <Search className="w-4 h-4 text-slate-400" />
-                        </span>
-                        <input
-                            type="text"
-                            placeholder="Search Cash Accounts..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10 pr-4 py-2.5 w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs font-bold text-slate-800 placeholder-slate-400 border border-slate-200/60 rounded-xl focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all cursor-text"
-                        />
+                    {/* Search bar & export actions specifically for reconciliations */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
+                        <div className="relative w-full sm:w-64">
+                            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                                <Search className="w-4 h-4 text-slate-400" />
+                            </span>
+                            <input
+                                type="text"
+                                placeholder="Search Cash Accounts..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-10 pr-4 py-2.5 w-full bg-slate-50 hover:bg-slate-100/50 focus:bg-white text-xs font-bold text-slate-800 placeholder-slate-400 border border-slate-200/60 rounded-xl focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all cursor-text"
+                            />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleExportReconciliationExcel}
+                                className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-sm transition-all hover:scale-102 active:scale-98 cursor-pointer shrink-0"
+                                title="Download complete reconciliation data to Excel"
+                            >
+                                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                                <span>Excel</span>
+                            </button>
+                            <button
+                                onClick={handleExportReconciliationPDF}
+                                className="px-4 py-2.5 bg-brand-50 hover:bg-brand-100 border border-brand-100 text-brand-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-sm transition-all hover:scale-102 active:scale-98 cursor-pointer shrink-0"
+                                title="Download complete reconciliation report as PDF"
+                            >
+                                <Download className="w-4 h-4 text-brand-500" />
+                                <span>PDF Summary</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -9269,13 +9643,13 @@ export const FinancialDashboardView: React.FC<{
                             className="bg-white rounded-[2.5rem] w-full max-w-5xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh] border border-slate-200/80"
                         >
                             {/* Modal Header */}
-                            <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                            <div className="p-6 sm:p-8 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/50 animate-fade-in">
                                 <div className="flex items-center gap-3">
                                     <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl shadow-sm">
                                         <Scale className="w-6 h-6" />
                                     </div>
                                     <div>
-                                        <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                        <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-2">
                                             <span className="capitalize">{selectedAccount}</span>
                                             <span className="text-slate-400 font-extrabold text-base">• Statement Ledger</span>
                                         </h3>
@@ -9284,12 +9658,31 @@ export const FinancialDashboardView: React.FC<{
                                         </p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => setSelectedAccount(null)}
-                                    className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm cursor-pointer"
-                                >
-                                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
-                                </button>
+                                <div className="flex flex-wrap items-center gap-2 sm:gap-3 self-end lg:self-auto">
+                                    <button
+                                        onClick={handleExportLedgerExcel}
+                                        className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-sm transition-all hover:scale-102 active:scale-98 cursor-pointer shrink-0"
+                                        title="Download statement ledger to Excel"
+                                    >
+                                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                                        <span>Export Excel</span>
+                                    </button>
+                                    <button
+                                        onClick={handleExportLedgerPDF}
+                                        className="px-4 py-2 bg-brand-50 hover:bg-brand-100 border border-brand-100 text-brand-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-sm transition-all hover:scale-102 active:scale-98 cursor-pointer shrink-0"
+                                        title="Download statement ledger to PDF"
+                                    >
+                                        <Download className="w-4 h-4 text-brand-500" />
+                                        <span>Export PDF</span>
+                                    </button>
+                                    <div className="hidden sm:block w-[1px] h-6 bg-slate-200 mx-1" />
+                                    <button
+                                        onClick={() => setSelectedAccount(null)}
+                                        className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-405 hover:text-slate-600 shadow-sm cursor-pointer border border-slate-200/50 bg-white"
+                                    >
+                                        <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Ledger Summary Cards banner */}
