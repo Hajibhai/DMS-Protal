@@ -77,10 +77,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || hasPermission('canManageUsers');
-      allow create: if isAuthenticated() && (isOwner(userId) || hasPermission('canManageUsers'));
-      allow update: if isAuthenticated() && (isOwner(userId) || hasPermission('canManageUsers'));
-      allow delete: if hasPermission('canManageUsers');
+      allow read, write: if isAuthenticated();
     }
 
     match /employees/{employeeId} {
