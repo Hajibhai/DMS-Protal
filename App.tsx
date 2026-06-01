@@ -1387,8 +1387,8 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
         currentUser?.role === UserRole.CREATOR || 
         currentUser?.role?.toLowerCase() === 'admin' || 
         currentUser?.role?.toLowerCase() === 'creator' || 
-        currentUser?.email === 'abdulkaderp3010@gmail.com' ||
-        currentUser?.email === CREATOR_USER.username;
+        currentUser?.email?.toLowerCase() === 'abdulkaderp3010@gmail.com' ||
+        currentUser?.email?.toLowerCase() === CREATOR_USER.username.toLowerCase();
     const [showAdd, setShowAdd] = useState(false);
     const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
     const [showNewPassword, setShowNewPassword] = useState(false);
@@ -1499,8 +1499,8 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
             return;
         }
 
-        const userEmail = newUser.username.includes('@') ? newUser.username : `${newUser.username}@system.local`;
-        if (localUsers.some(u => u.email === userEmail)) {
+        const userEmail = (newUser.username.includes('@') ? newUser.username : `${newUser.username}@system.local`).toLowerCase();
+        if (localUsers.some(u => u.email?.toLowerCase() === userEmail)) {
             alert("A user with this email/username already exists in the system.");
             return;
         }
@@ -1563,7 +1563,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
             const oldPassword = originalUser?.password || '';
 
             const username = editingUser.username || editingUser.email || '';
-            const newEmail = username.includes('@') ? username : `${username}@system.local`;
+            const newEmail = (username.includes('@') ? username : `${username}@system.local`).toLowerCase();
             const newPassword = editingUser.password || '';
 
             if (oldEmail && oldPassword && (oldEmail !== newEmail || oldPassword !== newPassword)) {
@@ -2978,7 +2978,7 @@ export default function App() {
             }
           } as SystemUser;
           // Ensure creator role is correctly set for the default admin
-          if (firebaseUser.email === "abdulkaderp3010@gmail.com" && data.role !== UserRole.CREATOR) {
+          if (firebaseUser.email?.toLowerCase() === "abdulkaderp3010@gmail.com" && data.role !== UserRole.CREATOR) {
             data.role = UserRole.CREATOR;
             await saveSystemUser(data);
           }
@@ -2988,7 +2988,7 @@ export default function App() {
           let foundByEmail = false;
           if (firebaseUser.email) {
             try {
-              const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email));
+              const q = query(collection(db, 'users'), where('email', '==', firebaseUser.email.toLowerCase()));
               const querySnap = await getDocs(q);
               if (!querySnap.empty) {
                 const matchedDoc = querySnap.docs[0];
@@ -3011,10 +3011,10 @@ export default function App() {
 
           if (!foundByEmail) {
             // Create default profile for new user
-            const isDefaultAdmin = firebaseUser.email === "abdulkaderp3010@gmail.com";
+            const isDefaultAdmin = firebaseUser.email?.toLowerCase() === "abdulkaderp3010@gmail.com";
             const newProfile: SystemUser = {
               uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
+              email: (firebaseUser.email || '').toLowerCase(),
               username: firebaseUser.email?.split('@')[0] || firebaseUser.uid,
               name: firebaseUser.displayName || 'New User',
               role: isDefaultAdmin ? UserRole.CREATOR : UserRole.HR,

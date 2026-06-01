@@ -527,7 +527,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   <div className="text-right hidden sm:block">
                     <div className="text-xs font-bold text-slate-900 leading-none">{user.name}</div>
                     <div className="text-[9px] text-brand-600 font-black uppercase tracking-wider mt-0.5">
-                      {user.email === 'abdulkaderp3010@gmail.com' ? 'CREATOR' : user.role.toUpperCase()}
+                      {user.email?.toLowerCase() === 'abdulkaderp3010@gmail.com' ? 'CREATOR' : (user.role || '').toUpperCase()}
                     </div>
                   </div>
                   <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-brand-600/20 group-hover:scale-105 transition-transform overflow-hidden">
