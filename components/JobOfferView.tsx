@@ -679,7 +679,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                   className="bg-transparent text-xs font-bold text-slate-800 outline-none border-none py-0.5"
                 >
                   <option value="All">All Applied</option>
-                  {designationsList.map(item => (
+                  {Array.from(new Set([...designationsList, ...applicants.map(a => a.position).filter(Boolean)])).sort().map(item => (
                     <option key={item} value={item}>{item}</option>
                   ))}
                 </select>
@@ -1096,15 +1096,39 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                     Role Designation *
                   </label>
-                  <select
-                    value={applicantForm.position}
-                    onChange={(e) => setApplicantForm({ ...applicantForm, position: e.target.value })}
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
-                  >
-                    {designationsList.map(item => (
-                      <option key={item} value={item}>{item}</option>
-                    ))}
-                  </select>
+                  <div className="space-y-1.5">
+                    <input
+                      type="text"
+                      list="applicant-designations"
+                      required
+                      value={applicantForm.position}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, position: e.target.value })}
+                      placeholder="e.g. Cleaner or type custom"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
+                    />
+                    <datalist id="applicant-designations">
+                      {Array.from(new Set([...designationsList, ...applicants.map(a => a.position).filter(Boolean)])).sort().map(item => (
+                        <option key={item} value={item} />
+                      ))}
+                    </datalist>
+                    {/* Compact suggestions badges */}
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {['Cleaner', 'Helper', 'Supervisor', 'Admin', 'Driver'].map(item => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setApplicantForm({ ...applicantForm, position: item })}
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-colors ${
+                            applicantForm.position === item 
+                              ? 'bg-brand-50 border-brand-200 text-brand-700' 
+                              : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -1214,15 +1238,39 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                     Assign Position Designation *
                   </label>
-                  <select
-                    value={offerForm.position}
-                    onChange={(e) => setOfferForm({ ...offerForm, position: e.target.value })}
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
-                  >
-                    {designationsList.map(item => (
-                      <option key={item} value={item}>{item}</option>
-                    ))}
-                  </select>
+                  <div className="space-y-1.5">
+                    <input
+                      type="text"
+                      list="offer-designations"
+                      required
+                      value={offerForm.position}
+                      onChange={(e) => setOfferForm({ ...offerForm, position: e.target.value })}
+                      placeholder="e.g. Cleaner or type custom"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
+                    />
+                    <datalist id="offer-designations">
+                      {Array.from(new Set([...designationsList, ...applicants.map(a => a.position).filter(Boolean)])).sort().map(item => (
+                        <option key={item} value={item} />
+                      ))}
+                    </datalist>
+                    {/* Compact suggestions badges */}
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {['Cleaner', 'Helper', 'Supervisor', 'Admin', 'Driver'].map(item => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setOfferForm({ ...offerForm, position: item })}
+                          className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-colors ${
+                            offerForm.position === item 
+                              ? 'bg-slate-900 border-slate-900 text-white' 
+                              : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-600'
+                          }`}
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <div>
