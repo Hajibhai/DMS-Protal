@@ -150,5 +150,13 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if hasPermission('canManageSettings');
     }
+
+    match /job_applicants/{docId} {
+      allow read, write: if hasPermission('canManageEmployees');
+    }
+
+    match /job_offers/{docId} {
+      allow read, write: if hasPermission('canManageEmployees');
+    }
   }
 }

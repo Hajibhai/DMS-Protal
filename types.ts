@@ -443,3 +443,36 @@ export interface SafetyRecord {
     updatedAt: string;
 }
 
+export interface JobApplicant {
+  id: string;
+  name: string;
+  email: string;
+  mobileNumber: string;
+  position: string;
+  passportNumber: string;
+  status: 'Applied' | 'Interview Scheduled' | 'Interview Conducted' | 'Hired' | 'Rejected';
+  appliedDate: string;
+  interviewDate?: string;
+  notes?: string;
+  salaryExpectation?: number;
+}
+
+export interface JobOffer {
+  id: string;
+  applicantId?: string; // Opt linked applicant
+  employeeName: string;
+  position: string;
+  salary: number; // monthly basic salary
+  housingAllowance: number;
+  transportAllowance: number;
+  otherAllowance: number;
+  passportNumber: string;
+  mobileNumber: string;
+  joiningDate: string;
+  offerDate: string;
+  expiryDate?: string;
+  status: 'Offered' | 'Accepted' | 'Declined';
+  additionalDetails?: string;
+}
+
+

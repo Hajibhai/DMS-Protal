@@ -18,7 +18,7 @@ import {
   Users, Calendar, UserPlus, LogOut, ArrowRight,
   Building2, CheckCircle, XCircle, Trash2, 
   AlertCircle, Eye, EyeOff, Edit, CheckSquare, 
-  Copy, FileText, CreditCard,
+  Copy, FileText, CreditCard, FileSignature,
   BarChart3, UserMinus, Wallet, Plane, X, Save, Plus,
   ChevronLeft, ChevronRight,
   Settings, Search, Bell, LogOut as SignOut, UserCog,
@@ -94,6 +94,7 @@ import {
 } from './components/FinanceViews';
 import { HolidayManagementModal } from './components/HolidayManagementModal';
 import { SafetyView } from './components/SafetyView';
+import { JobOfferView } from './components/JobOfferView';
 
 // --- Constants & Helpers ---
 const INITIAL_PERMISSIONS: UserPermissions = {
@@ -3337,13 +3338,14 @@ export default function App() {
       },
       { 
         id: 'attendance-payroll', 
-        label: 'Attendance & Payroll', 
+        label: 'HR', 
         icon: CreditCard, 
         subItems: [
           { id: 'timesheet', label: 'Monthly Timesheet', icon: Calendar, permission: 'canViewTimesheet' },
           { id: 'deductions', label: 'Deductions', icon: Wallet, permission: 'canManagePayroll' },
           { id: 'leave', label: 'Leave Management', icon: FileText, permission: 'canManageLeaves' },
           { id: 'payroll', label: 'Payroll Register', icon: DirhamIcon, permission: 'canViewPayroll' },
+          { id: 'job-offer', label: 'Job Offer', icon: FileSignature, permission: 'canManageEmployees' },
         ]
       },
       { 
@@ -3798,6 +3800,12 @@ export default function App() {
       )}
       {activeTab === 'payroll' && (
         <PayrollRegisterView employees={employees.filter(e => e.active)} attendance={attendance} deductions={deductions} selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} user={systemUser} companies={companies} />
+      )}
+      {activeTab === 'job-offer' && (
+        <JobOfferView 
+          user={systemUser} 
+          openConfirm={openConfirm} 
+        />
       )}
       {activeTab === 'vendors' && (
         <VendorView 
