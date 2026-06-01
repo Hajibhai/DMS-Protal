@@ -515,6 +515,19 @@ export interface EngineerDocument {
   balanceDue: number;
   notes?: string;
   terms?: string;
+  attention?: string;
+  designation?: string;
+  email?: string;
+  contact?: string;
+  contactT?: string;
+  address?: string;
+  yourRef?: string;
+  ourRef?: string;
+  mobilizationValue?: number;
+  constructionValue?: number;
+  scopeOfWork?: string;
+  offerValidity?: string;
+  timeSchedule?: string;
 }
 
 
