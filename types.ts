@@ -362,6 +362,7 @@ export interface UserPermissions {
     canManageSettings: boolean; // Companies, Holidays
     canManageSuppliers: boolean;
     canManageProjects: boolean;
+    canManageFinance: boolean;
 }
 
 export interface SystemUser {

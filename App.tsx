@@ -113,7 +113,8 @@ const INITIAL_PERMISSIONS: UserPermissions = {
     canManageUsers: false,
     canManageSettings: false,
     canManageSuppliers: false,
-    canManageProjects: false
+    canManageProjects: false,
+    canManageFinance: false
 };
 
 const LEGEND: any = {
@@ -1415,7 +1416,8 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
             canManageUsers: false,
             canManageSettings: false,
             canManageSuppliers: false,
-            canManageProjects: false
+            canManageProjects: false,
+            canManageFinance: false
         }
     });
 
@@ -1428,43 +1430,43 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
             canViewDashboard: true, canViewCompanyDashboard: true, canManageEmployees: true, canViewDirectory: true,
             canManageAttendance: true, canViewTimesheet: true, canManageLeaves: true, canViewPayroll: true,
             canManagePayroll: true, canViewReports: true, canManageUsers: true, canManageSettings: true,
-            canManageSuppliers: true, canManageProjects: true
+            canManageSuppliers: true, canManageProjects: true, canManageFinance: true
         },
         [UserRole.ADMIN]: {
             canViewDashboard: true, canViewCompanyDashboard: true, canManageEmployees: true, canViewDirectory: true,
             canManageAttendance: true, canViewTimesheet: true, canManageLeaves: true, canViewPayroll: true,
             canManagePayroll: true, canViewReports: true, canManageUsers: true, canManageSettings: true,
-            canManageSuppliers: true, canManageProjects: true
+            canManageSuppliers: true, canManageProjects: true, canManageFinance: true
         },
         [UserRole.HR]: {
             canViewDashboard: true, canViewCompanyDashboard: true, canManageEmployees: true, canViewDirectory: true,
             canManageAttendance: true, canViewTimesheet: true, canManageLeaves: true, canViewPayroll: true,
             canManagePayroll: true, canViewReports: true, canManageUsers: false, canManageSettings: false,
-            canManageSuppliers: true, canManageProjects: false
+            canManageSuppliers: true, canManageProjects: false, canManageFinance: false
         },
         [UserRole.SUPERVISOR]: {
             canViewDashboard: true, canViewCompanyDashboard: false, canManageEmployees: false, canViewDirectory: true,
             canManageAttendance: false, canViewTimesheet: true, canManageLeaves: false, canViewPayroll: false,
             canManagePayroll: false, canViewReports: true, canManageUsers: false, canManageSettings: false,
-            canManageSuppliers: false, canManageProjects: false
+            canManageSuppliers: false, canManageProjects: false, canManageFinance: false
         },
         [UserRole.ENGINEER]: {
             canViewDashboard: true, canViewCompanyDashboard: false, canManageEmployees: false, canViewDirectory: true,
             canManageAttendance: false, canViewTimesheet: true, canManageLeaves: false, canViewPayroll: false,
             canManagePayroll: false, canViewReports: true, canManageUsers: false, canManageSettings: false,
-            canManageSuppliers: false, canManageProjects: true
+            canManageSuppliers: false, canManageProjects: true, canManageFinance: false
         },
         [UserRole.ACCOUNTANT]: {
             canViewDashboard: true, canViewCompanyDashboard: true, canManageEmployees: false, canViewDirectory: true,
             canManageAttendance: false, canViewTimesheet: false, canManageLeaves: false, canViewPayroll: true,
             canManagePayroll: true, canViewReports: true, canManageUsers: false, canManageSettings: false,
-            canManageSuppliers: true, canManageProjects: true
+            canManageSuppliers: true, canManageProjects: true, canManageFinance: true
         },
         [UserRole.EMPLOYEE]: {
             canViewDashboard: false, canViewCompanyDashboard: false, canManageEmployees: false, canViewDirectory: false,
             canManageAttendance: false, canViewTimesheet: false, canManageLeaves: false, canViewPayroll: false,
             canManagePayroll: false, canViewReports: false, canManageUsers: false, canManageSettings: false,
-            canManageSuppliers: false, canManageProjects: false
+            canManageSuppliers: false, canManageProjects: false, canManageFinance: false
         }
     };
 
@@ -1673,13 +1675,39 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                     </div>
                                 </div>
                                 <div className="space-y-1 col-span-2">
-                                    <label className="text-[10px] font-bold text-indigo-600 uppercase">Role (Custom type or select suggestion below)</label>
-                                    <input 
-                                        className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900 focus:ring-1 focus:ring-indigo-500" 
-                                        placeholder="Type customized role or click a suggestion below..." 
-                                        value={newUser.role} 
-                                        onChange={e=>setNewUser({...newUser, role: e.target.value})} 
-                                    />
+                                    <label className="text-[10px] font-bold text-indigo-600 uppercase">Role Selection (Custom Select)</label>
+                                    <select
+                                        className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900 focus:ring-1 focus:ring-indigo-500 mb-2"
+                                        value={Object.values(UserRole).includes(newUser.role as any) ? newUser.role : (newUser.role ? "Custom" : "")}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (val === "Custom") {
+                                                setNewUser({ ...newUser, role: "" });
+                                            } else {
+                                                applySuggestedRole(val);
+                                            }
+                                        }}
+                                    >
+                                        <option value="" disabled>-- Select a Preset User Role --</option>
+                                        {Object.values(UserRole).filter((srv: string) => srv !== UserRole.CREATOR).map((srv: string) => (
+                                            <option key={srv} value={srv}>{srv}</option>
+                                        ))}
+                                        <option value="Custom">Custom Role (Type Customized Value)...</option>
+                                    </select>
+
+                                    {(!Object.values(UserRole).includes(newUser.role as any) || newUser.role === "Custom") && (
+                                        <div className="mb-2">
+                                            <label className="text-[9px] font-bold text-gray-500 uppercase">Type Customized Role Name</label>
+                                            <input 
+                                                className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900 focus:ring-1 focus:ring-indigo-500" 
+                                                placeholder="Type customized role name here..." 
+                                                value={newUser.role === "Custom" ? "" : newUser.role} 
+                                                onChange={e=>setNewUser({...newUser, role: e.target.value})} 
+                                            />
+                                        </div>
+                                    )}
+
+                                    <label className="text-[10px] font-bold text-indigo-600 uppercase block pt-1">Role Suggestions (Click to Apply Defaults)</label>
                                     <div className="flex flex-wrap gap-1.5 pt-1">
                                         {Object.values(UserRole).filter((srv: string) => srv !== UserRole.CREATOR).map((srv: string) => (
                                             <button
@@ -1688,7 +1716,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                                 onClick={() => applySuggestedRole(srv)}
                                                 className={cn(
                                                     "px-2.5 py-1 text-[11px] rounded-lg font-bold transition-all border shadow-xs flex items-center gap-1",
-                                                    newUser.role === srv 
+                                                    newUser.role?.toLowerCase() === srv.toLowerCase()
                                                         ? "bg-indigo-600 text-white border-transparent" 
                                                         : "bg-white text-indigo-600 border-indigo-200/60 hover:bg-indigo-55/40"
                                                 )}
@@ -1759,13 +1787,39 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                     </div>
                                 </div>
                                 <div className="space-y-1 col-span-2">
-                                    <label className="text-[10px] font-bold text-orange-600 uppercase">Role (Custom type or select suggestion below)</label>
-                                    <input 
-                                        className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900 focus:ring-1 focus:ring-orange-500" 
-                                        placeholder="Type customized role or click a suggestion below..." 
-                                        value={editingUser.role} 
-                                        onChange={e=>setEditingUser({...editingUser, role: e.target.value as any})} 
-                                    />
+                                    <label className="text-[10px] font-bold text-orange-600 uppercase">Role Selection (Custom Select)</label>
+                                    <select
+                                        className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900 focus:ring-1 focus:ring-orange-500 mb-2"
+                                        value={Object.values(UserRole).includes(editingUser.role as any) ? editingUser.role : (editingUser.role ? "Custom" : "")}
+                                        onChange={e => {
+                                            const val = e.target.value;
+                                            if (val === "Custom") {
+                                                setEditingUser({ ...editingUser, role: "" as any });
+                                            } else {
+                                                applySuggestedRoleToEditing(val);
+                                            }
+                                        }}
+                                    >
+                                        <option value="" disabled>-- Select a Preset User Role --</option>
+                                        {Object.values(UserRole).filter((srv: string) => srv !== UserRole.CREATOR).map((srv: string) => (
+                                            <option key={srv} value={srv}>{srv}</option>
+                                        ))}
+                                        <option value="Custom">Custom Role (Type Customized Value)...</option>
+                                    </select>
+
+                                    {(!Object.values(UserRole).includes(editingUser.role as any) || (editingUser.role as any) === "Custom") && (
+                                        <div className="mb-2">
+                                            <label className="text-[9px] font-bold text-gray-500 uppercase">Type Customized Role Name</label>
+                                            <input 
+                                                className="w-full p-2 border rounded-lg text-sm bg-white text-gray-900 focus:ring-1 focus:ring-orange-500" 
+                                                placeholder="Type customized role name here..." 
+                                                value={(editingUser.role as any) === "Custom" ? "" : editingUser.role} 
+                                                onChange={e=>setEditingUser({...editingUser, role: e.target.value as any})} 
+                                            />
+                                        </div>
+                                    )}
+
+                                    <label className="text-[10px] font-bold text-orange-600 uppercase block pt-1">Role Suggestions (Click to Apply Defaults)</label>
                                     <div className="flex flex-wrap gap-1.5 pt-1">
                                         {Object.values(UserRole).filter((srv: string) => srv !== UserRole.CREATOR).map((srv: string) => (
                                             <button
@@ -1774,7 +1828,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                                 onClick={() => applySuggestedRoleToEditing(srv)}
                                                 className={cn(
                                                     "px-2.5 py-1 text-[11px] rounded-lg font-bold transition-all border shadow-xs flex items-center gap-1",
-                                                    editingUser.role === srv 
+                                                    editingUser.role?.toLowerCase() === srv.toLowerCase()
                                                         ? "bg-orange-600 text-white border-transparent" 
                                                         : "bg-white text-orange-600 border-orange-200/60 hover:bg-orange-55/40"
                                                 )}
@@ -3037,7 +3091,8 @@ export default function App() {
                 canManageUsers: isDefaultAdmin,
                 canManageSettings: isDefaultAdmin,
                 canManageSuppliers: isDefaultAdmin,
-                canManageProjects: isDefaultAdmin
+                canManageProjects: isDefaultAdmin,
+                canManageFinance: isDefaultAdmin
               }
             };
             await saveSystemUser(newProfile);
@@ -3379,13 +3434,14 @@ export default function App() {
         id: 'finance', 
         label: 'Finance', 
         icon: Wallet, 
+        permission: 'canManageFinance', 
         subItems: [
-          { id: 'accounts-payable', label: 'Accounts Payable', icon: TrendingDown, permission: 'canManagePayroll' },
-          { id: 'accounts-receivable', label: 'Invoices (Accounts Receivable)', icon: TrendingUp, permission: 'canManagePayroll' },
-          { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManagePayroll' },
-          { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManagePayroll' },
-          { id: 'projected-expenses', label: 'Projected Expenses', icon: TrendingDown, permission: 'canManagePayroll' },
-          { id: 'engineer-hub', label: 'Engineer Documents', icon: HardHat, permission: 'canManagePayroll' },
+          { id: 'accounts-payable', label: 'Accounts Payable', icon: TrendingDown, permission: 'canManageFinance' },
+          { id: 'accounts-receivable', label: 'Invoices (Accounts Receivable)', icon: TrendingUp, permission: 'canManageFinance' },
+          { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManageFinance' },
+          { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManageFinance' },
+          { id: 'projected-expenses', label: 'Projected Expenses', icon: TrendingDown, permission: 'canManageFinance' },
+          { id: 'engineer-hub', label: 'Engineer Documents', icon: HardHat, permission: 'canManageFinance' },
         ]
       },
       { id: 'engineer-hub', label: 'Engineer', icon: HardHat, roleCheck: ['engineer', 'accountant', 'admin', 'creator'] },
@@ -3417,6 +3473,7 @@ export default function App() {
     };
 
     return baseItems.map(item => {
+        if (!filterItem(item)) return null;
         if (item.subItems) {
             const filteredSubItems = item.subItems.filter(filterItem);
             if (filteredSubItems.length === 0) return null;
@@ -3431,7 +3488,18 @@ export default function App() {
       const systemUserRoleLower = systemUser.role?.toLowerCase() || '';
       const isCreator = systemUserRoleLower === 'creator' || systemUser.email === 'abdulkaderp3010@gmail.com';
       const isAdmin = systemUserRoleLower === 'admin' || isCreator;
-      const currentTabItem = navItems.find(item => item.id === activeTab);
+      let currentTabItem = navItems.find(item => item.id === activeTab);
+      if (!currentTabItem) {
+        for (const item of navItems) {
+          if (item.subItems) {
+            const foundInput = item.subItems.find((sub: any) => sub.id === activeTab);
+            if (foundInput) {
+              currentTabItem = foundInput;
+              break;
+            }
+          }
+        }
+      }
       if (currentTabItem && currentTabItem.permission && !isAdmin && !(systemUser.permissions as any)[currentTabItem.permission]) {
         setActiveTab('dashboard');
       }

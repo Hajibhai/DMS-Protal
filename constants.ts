@@ -30,7 +30,8 @@ export const DEFAULT_ADMIN: SystemUser = {
         canManageUsers: true,
         canManageSettings: true,
         canManageSuppliers: true,
-        canManageProjects: true
+        canManageProjects: true,
+        canManageFinance: true
     }
 };
 
@@ -56,7 +57,8 @@ export const CREATOR_USER: SystemUser = {
         canManageUsers: true,
         canManageSettings: true,
         canManageSuppliers: true,
-        canManageProjects: true
+        canManageProjects: true,
+        canManageFinance: true
     }
 };
 
