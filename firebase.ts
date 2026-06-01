@@ -7,7 +7,9 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   deleteUser,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  updateEmail,
+  updatePassword
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json';
@@ -61,6 +63,43 @@ export const adminDeleteUser = async (email: string, pass: string) => {
       console.log("User not found in Auth or invalid credentials, proceeding...");
       return; 
     }
+    throw error;
+  }
+};
+
+// Function to update user credentials/password in Auth
+export const adminUpdateUser = async (oldEmail: string, oldPass: string, newEmail: string, newPass: string) => {
+  const secondaryAppName = `UpdateUserApp_${Date.now()}`;
+  const secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
+  const secondaryAuth = getAuth(secondaryApp);
+  try {
+    console.log(`Attempting to update Auth user from ${oldEmail} to ${newEmail}`);
+    let user;
+    try {
+      const userCredential = await signInWithEmailAndPassword(secondaryAuth, oldEmail, oldPass);
+      user = userCredential.user;
+    } catch (err: any) {
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+        console.log("Old credentials not found in Auth or password mismatch, trying to create new user credentials directly...");
+        const userCredential = await createUserWithEmailAndPassword(secondaryAuth, newEmail, newPass);
+        user = userCredential.user;
+      } else {
+        throw err;
+      }
+    }
+
+    if (newEmail !== oldEmail) {
+      await updateEmail(user, newEmail);
+    }
+    if (newPass !== oldPass) {
+      await updatePassword(user, newPass);
+    }
+    
+    await signOut(secondaryAuth);
+    await deleteApp(secondaryApp);
+    return user;
+  } catch (error) {
+    try { await deleteApp(secondaryApp); } catch (e) {}
     throw error;
   }
 };

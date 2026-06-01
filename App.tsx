@@ -50,7 +50,7 @@ import {
   setDoc,
   deleteDoc
 } from 'firebase/firestore';
-import { auth, db, loginWithGoogle, loginWithEmail, registerWithEmail, logout, resetPassword, adminCreateUser, adminDeleteUser } from './firebase';
+import { auth, db, loginWithGoogle, loginWithEmail, registerWithEmail, logout, resetPassword, adminCreateUser, adminDeleteUser, adminUpdateUser } from './firebase';
 import { Login } from './components/Login';
 import { 
   Employee, AttendanceRecord, AttendanceStatus, StaffType, 
@@ -1546,17 +1546,30 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
     const handleEdit = async () => {
         if (!editingUser) return;
         try {
+            const originalUser = localUsers.find(u => u.uid === editingUser.uid);
+            const oldEmail = originalUser?.email || '';
+            const oldPassword = originalUser?.password || '';
+
             const username = editingUser.username || editingUser.email || '';
+            const newEmail = username.includes('@') ? username : `${username}@system.local`;
+            const newPassword = editingUser.password || '';
+
+            if (oldEmail && oldPassword && (oldEmail !== newEmail || oldPassword !== newPassword)) {
+                console.log(`Syncing credentials update to Firebase Auth: ${oldEmail} -> ${newEmail}`);
+                await adminUpdateUser(oldEmail, oldPassword, newEmail, newPassword);
+            }
+
             const updatedUser = {
                 ...editingUser,
                 username,
-                email: username.includes('@') ? username : `${username}@system.local`
+                email: newEmail,
+                password: newPassword
             };
             await saveSystemUser(updatedUser);
             onLog('User Updated', `System user ${updatedUser.name} (${updatedUser.email}) details were updated.`, 'update');
             setEditingUser(null);
         } catch (e: any) {
-            alert(e.message);
+            alert("Error updating user: " + e.message);
         }
     };
 
