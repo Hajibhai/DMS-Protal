@@ -2446,33 +2446,72 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
     ];
 
     yPos += 10;
-    doc.setFont("Helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
 
     lineItems.forEach((li: any, idx: number) => {
-        doc.line(15, yPos + 12, 195, yPos + 12);
-        
-        doc.setFont("Helvetica", "normal");
-        doc.text(String(idx + 1), 18, yPos + 6);
-        
+        // Calculate wrapped lines using splitTextToSize to match actual available column width (approx 70mm)
         doc.setFont("Helvetica", "bold");
-        doc.text(li.name || 'Contract Item', 30, yPos + 5);
-        
+        doc.setFontSize(9);
+        const nameLines = doc.splitTextToSize(li.name || 'Contract Item', 70);
+
         doc.setFont("Helvetica", "normal");
         doc.setFontSize(7.5);
-        doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-        doc.text(li.description || 'Standard service charges as per agreement', 30, yPos + 9);
+        const descLines = doc.splitTextToSize(li.description || 'Standard service charges as per agreement', 70);
+
+        const nameHeight = nameLines.length * 4.0;
+        const descHeight = descLines.length > 0 ? (descLines.length * 3.4) : 0;
+        const totalTextHeight = nameHeight + (descLines.length > 0 ? descHeight + 1.0 : 0);
         
+        // rowHeight includes 5.0mm top padding and 3.0mm bottom padding
+        const rowHeight = totalTextHeight + 8.0;
+
+        // Auto-pagebreak if current row extends past safe printable height (275mm)
+        if (yPos + rowHeight > 275) {
+            doc.addPage();
+            yPos = 20;
+        }
+
+        // 1. Draw top-aligned S.No column
+        doc.setFont("Helvetica", "normal");
         doc.setFontSize(9);
         doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
-        doc.text(String(li.quantity || 1), 115, yPos + 6, { align: 'right' });
-        doc.text(Number(li.rate || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), 145, yPos + 6, { align: 'right' });
+        doc.text(String(idx + 1), 18, yPos + 5.0);
+
+        // 2. Draw top-aligned Quantity, Rate, Amount columns
+        doc.text(String(li.quantity || 1), 115, yPos + 5.0, { align: 'right' });
+        doc.text(Number(li.rate || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), 145, yPos + 5.0, { align: 'right' });
         
         doc.setFont("Helvetica", "bold");
-        doc.text(Number(li.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), 190, yPos + 6, { align: 'right' });
+        doc.text(Number(li.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), 190, yPos + 5.0, { align: 'right' });
 
-        yPos += 12;
+        // 3. Draw wrapped item names
+        let textY = yPos + 5.0;
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+        nameLines.forEach((line: string) => {
+            doc.text(line, 30, textY);
+            textY += 4.0;
+        });
+
+        // 4. Draw wrapped item descriptions
+        if (descLines.length > 0) {
+            textY += 1.0;
+            doc.setFont("Helvetica", "normal");
+            doc.setFontSize(7.5);
+            doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+            descLines.forEach((line: string) => {
+                doc.text(line, 30, textY);
+                textY += 3.4;
+            });
+        }
+
+        // Draw solid bottom gridline
+        doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+        doc.setLineWidth(0.3);
+        doc.line(15, yPos + rowHeight, 195, yPos + rowHeight);
+
+        // Advance visual cursor to bottom of row
+        yPos += rowHeight;
     });
 
     yPos += 8;
