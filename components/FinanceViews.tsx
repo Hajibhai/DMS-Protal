@@ -1371,6 +1371,29 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     <span>Supplier Aging Analysis Tracker</span>
                                 </h3>
                                 <p className="text-xs text-slate-400 font-medium">Click on any age group to view detailed outstanding supplier bills.</p>
+                                <div className="flex flex-wrap items-center gap-2 mt-3">
+                                    <button
+                                        onClick={() => downloadAgingAndMonthlyExcel(false, agingBuckets, monthlyTrends, getVendorName, getProjectName)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all cursor-pointer shadow-2xs"
+                                    >
+                                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                                        <span>Export Excel</span>
+                                    </button>
+                                    <button
+                                        onClick={() => downloadAgingAndMonthlyPDF(false, agingBuckets, monthlyTrends, totalAgingAmount, getVendorName, getProjectName)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer shadow-2xs"
+                                    >
+                                        <FileText className="w-3.5 h-3.5" />
+                                        <span>Download PDF</span>
+                                    </button>
+                                    <button
+                                        onClick={() => printAgingAndMonthlyReport(false, agingBuckets, monthlyTrends, totalAgingAmount, getVendorName, getProjectName)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer shadow-2xs"
+                                    >
+                                        <Printer className="w-3.5 h-3.5" />
+                                        <span>Print Report</span>
+                                    </button>
+                                </div>
                             </div>
                             <div className="text-left md:text-right bg-slate-50 border border-slate-100 rounded-2xl p-3 shrink-0">
                                 <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider font-mono">Total Unpaid Outflows</span>
@@ -1825,6 +1848,446 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     );
 };
 
+
+export const downloadAgingAndMonthlyExcel = (
+    isReceivable: boolean,
+    agingBuckets: any,
+    monthlyTrends: any[],
+    getVendorName?: (id: string, type: string) => string,
+    getProjectName?: (id: string) => string
+) => {
+    const wb = XLSX.utils.book_new();
+
+    // 1. Aging summary sheet
+    const summaryRows = Object.entries(agingBuckets).map(([key, bucket]: any) => {
+        const totalAmount = Object.values(agingBuckets).reduce((sum: number, b: any) => sum + b.amount, 0) as number;
+        const pct = totalAmount > 0 ? (bucket.amount / totalAmount) * 100 : 0;
+        return {
+            'Aging Group': bucket.label,
+            'Outstanding Amount (AED)': bucket.amount,
+            'Invoices Count': bucket.count,
+            'Description': bucket.desc,
+            '% of Total Outstanding': `${pct.toFixed(1)}%`
+        };
+    });
+    const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Aging_Summary");
+
+    // 2. Monthly trends sheet
+    const trendRows = monthlyTrends.map((trend: any) => {
+        return {
+            'Billing Month': trend.label,
+            'Invoiced Amount (AED)': trend.bBilled,
+            'Paid Out/Collected (AED)': trend.pPaid,
+            'Pending Balance (AED)': trend.pPending
+        };
+    });
+    const wsTrends = XLSX.utils.json_to_sheet(trendRows);
+    XLSX.utils.book_append_sheet(wb, wsTrends, "Monthly_Trends");
+
+    // 3. Outstanding invoice list
+    const invoicesRows: any[] = [];
+    Object.entries(agingBuckets).forEach(([groupKey, bucket]: any) => {
+        const items = bucket.items || [];
+        items.forEach((item: any) => {
+            let partnerName = 'N/A';
+            if (getVendorName) {
+                partnerName = getVendorName(item.vendorId, item.vendorType);
+            } else if (item.clientName) {
+                partnerName = item.clientName;
+            }
+            
+            invoicesRows.push({
+                'Invoice #': item.invoiceNumber || 'N/A',
+                'Partner/Recipient Name': partnerName,
+                'Project': getProjectName ? getProjectName(item.projectId) : (item.projectName || 'N/A'),
+                'Invoice Date': item.date || 'N/A',
+                'Due Date': item.dueDate || 'N/A',
+                'Aging Group': bucket.label,
+                'Outstanding Balance (AED)': item.totalAmount || item.amount || 0,
+                'Status': item.status || 'Pending'
+            });
+        });
+    });
+    if (invoicesRows.length > 0) {
+        const wsInvoices = XLSX.utils.json_to_sheet(invoicesRows);
+        XLSX.utils.book_append_sheet(wb, wsInvoices, "Outstanding_Invoices_Ledger");
+    }
+
+    const fileName = isReceivable 
+        ? "Accounts_Receivable_Aging_And_Monthly_Reports.xlsx" 
+        : "Accounts_Payable_Aging_And_Monthly_Reports.xlsx";
+
+    XLSX.writeFile(wb, fileName);
+};
+
+export const downloadAgingAndMonthlyPDF = (
+    isReceivable: boolean,
+    agingBuckets: any,
+    monthlyTrends: any[],
+    totalAgingAmount: number,
+    getVendorName?: (id: string, type: string) => string,
+    getProjectName?: (id: string) => string
+) => {
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    const reportTitle = isReceivable 
+        ? 'DMS CLIENT ACCOUNTS RECEIVABLE AGING & MONTHS' 
+        : 'DMS SUPPLIER ACCOUNTS PAYABLE AGING & MONTHS';
+
+    const assets = getPioneerPDFAssets();
+    if (assets.header) {
+        doc.addImage(assets.header, 'PNG', 15, 12, 45, 15);
+    }
+    
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(30, 41, 59);
+    doc.text(reportTitle, 15, 36);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 15, 41);
+    doc.text(`Scope: Unpaid liabilities, group ageing analysis and recurring monthly ledger trends`, 15, 45);
+
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(15, 52, 180, 16, 2, 2, 'F');
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(148, 163, 184);
+    doc.text(isReceivable ? "TOTAL OUTSTANDING RECEIVABLES BALANCE" : "TOTAL OUTSTANDING AP OUTFLOW LIABILITY", 18, 58);
+    
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(225, 29, 72);
+    doc.text(`AED ${totalAgingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 18, 64);
+
+    let currentY = 78;
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text("1. AGING POSITION OUTSTANDING SUMMARY", 15, currentY);
+
+    currentY += 4;
+    doc.setFillColor(15, 23, 42);
+    doc.rect(15, currentY, 180, 7, 'F');
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Aging Category group", 18, currentY + 4.5);
+    doc.text("Outstanding (AED)", 80, currentY + 4.5);
+    doc.text("Bill Count", 140, currentY + 4.5);
+    doc.text("% Share", 175, currentY + 4.5);
+
+    currentY += 7;
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(51, 65, 85);
+    Object.entries(agingBuckets).forEach(([key, bucket]: any) => {
+        const pct = totalAgingAmount > 0 ? (bucket.amount / totalAgingAmount) * 100 : 0;
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, currentY, 180, 6.5, 'S');
+        doc.setFont("Helvetica", "bold");
+        doc.text(bucket.label, 18, currentY + 4.5);
+        doc.setFont("Helvetica", "normal");
+        doc.text(`AED ${bucket.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 80, currentY + 4.5);
+        doc.text(String(bucket.count), 140, currentY + 4.5);
+        doc.text(`${pct.toFixed(1)}%`, 175, currentY + 4.5);
+        currentY += 6.5;
+    });
+
+    currentY += 10;
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text("2. MONTHLY BOOKING & DISBURSEMENT HISTORY", 15, currentY);
+
+    currentY += 4;
+    doc.setFillColor(15, 23, 42);
+    doc.rect(15, currentY, 180, 7, 'F');
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Calendar Month", 18, currentY + 4.5);
+    doc.text("Invoiced Total (AED)", 70, currentY + 4.5);
+    doc.text(isReceivable ? "Collected (AED)" : "Released Paid (AED)", 120, currentY + 4.5);
+    doc.text("Pending Balance (AED)", 160, currentY + 4.5);
+
+    currentY += 7;
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(51, 65, 85);
+    monthlyTrends.forEach((trend: any) => {
+        if (currentY > 275) {
+            doc.addPage();
+            currentY = 20;
+        }
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, currentY, 180, 6.5, 'S');
+        doc.setFont("Helvetica", "bold");
+        doc.text(trend.label, 18, currentY + 4.5);
+        doc.setFont("Helvetica", "normal");
+        doc.text(`AED ${trend.bBilled.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 70, currentY + 4.5);
+        doc.text(`AED ${trend.pPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 120, currentY + 4.5);
+        doc.setFont("Helvetica", "bold");
+        doc.text(`AED ${trend.pPending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 160, currentY + 4.5);
+        doc.setTextColor(51, 65, 85);
+        currentY += 6.5;
+    });
+
+    currentY += 10;
+    if (currentY > 210) {
+        doc.addPage();
+        currentY = 20;
+    }
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text("3. OUTSTANDING INDIVIDUAL INVOICES SCHEDULE", 15, currentY);
+
+    currentY += 4;
+    doc.setFillColor(15, 23, 42);
+    doc.rect(15, currentY, 180, 7, 'F');
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.text("Invoice Code", 18, currentY + 4.5);
+    doc.text("Name of Partner", 55, currentY + 4.5);
+    doc.text("Date", 115, currentY + 4.5);
+    doc.text("Aging Basket", 140, currentY + 4.5);
+    doc.text("Balance", 175, currentY + 4.5);
+
+    currentY += 7;
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(51, 65, 85);
+    
+    let hasItems = false;
+    Object.entries(agingBuckets).forEach(([groupKey, bucket]: any) => {
+        const items = bucket.items || [];
+        items.forEach((item: any) => {
+            hasItems = true;
+            if (currentY > 275) {
+                doc.addPage();
+                currentY = 20;
+
+                doc.setFillColor(15, 23, 42);
+                doc.rect(15, currentY, 180, 7, 'F');
+                doc.setFont("Helvetica", "bold");
+                doc.setFontSize(8);
+                doc.setTextColor(255, 255, 255);
+                doc.text("Invoice Code", 18, currentY + 4.5);
+                doc.text("Name of Partner", 55, currentY + 4.5);
+                doc.text("Date", 115, currentY + 4.5);
+                doc.text("Aging Basket", 140, currentY + 4.5);
+                doc.text("Balance", 175, currentY + 4.5);
+                currentY += 7;
+                doc.setFont("Helvetica", "normal");
+                doc.setTextColor(51, 65, 85);
+            }
+
+            let partnerName = 'N/A';
+            if (getVendorName) {
+                partnerName = getVendorName(item.vendorId, item.vendorType);
+            } else if (item.clientName) {
+                partnerName = item.clientName;
+            }
+
+            doc.setFillColor(248, 250, 252);
+            doc.rect(15, currentY, 180, 7.5, 'S');
+            doc.setFont("Helvetica", "bold");
+            doc.text(String(item.invoiceNumber || 'N/A'), 18, currentY + 5);
+            doc.setFont("Helvetica", "normal");
+            doc.text(String(partnerName).substring(0, 30), 55, currentY + 5);
+            doc.text(String(item.date || 'N/A'), 115, currentY + 5);
+            doc.text(String(bucket.label).replace(" Days Overdue", "d+").replace(" Days Due", "d"), 140, currentY + 5);
+            doc.text(`AED ${(item.totalAmount || item.amount || 0).toLocaleString()}`, 175, currentY + 5);
+
+            currentY += 7.5;
+        });
+    });
+
+    if (!hasItems) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, currentY, 180, 10, 'S');
+        doc.text("No outstanding invoices registered in system.", 18, currentY + 6.5);
+    }
+
+    const docName = isReceivable 
+        ? "Accounts_Receivable_Aging_And_Monthly_Reports.pdf" 
+        : "Accounts_Payable_Aging_And_Monthly_Reports.pdf";
+
+    doc.save(docName);
+};
+
+export const printAgingAndMonthlyReport = (
+    isReceivable: boolean,
+    agingBuckets: any,
+    monthlyTrends: any[],
+    totalAgingAmount: number,
+    getVendorName?: (id: string, type: string) => string,
+    getProjectName?: (id: string) => string
+) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const reportTitle = isReceivable 
+        ? 'DMS Client Accounts Receivable Aging & Monthly Report' 
+        : 'DMS Supplier Accounts Payable Aging & Monthly Report';
+
+    const agingRowsHtml = Object.entries(agingBuckets).map(([key, bucket]: any) => {
+        const pct = totalAgingAmount > 0 ? (bucket.amount / totalAgingAmount) * 100 : 0;
+        return `
+            <tr>
+                <td style="font-weight: bold; border: 1px solid #ddd; padding: 10px;">${bucket.label}</td>
+                <td style="border: 1px solid #ddd; padding: 10px;">AED ${bucket.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${bucket.count}</td>
+                <td style="border: 1px solid #ddd; padding: 10px; text-align: right;">${pct.toFixed(1)}%</td>
+            </tr>
+        `;
+    }).join('');
+
+    const trendRowsHtml = monthlyTrends.map((trend: any) => `
+        <tr>
+            <td style="font-weight: bold; border: 1px solid #ddd; padding: 10px;">${trend.label}</td>
+            <td style="border: 1px solid #ddd; padding: 10px;">AED ${trend.bBilled.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td style="border: 1px solid #ddd; padding: 10px;">AED ${trend.pPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td style="border: 1px solid #ddd; padding: 10px; text-align: right; font-weight: bold; color: #be184a;">AED ${trend.pPending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        </tr>
+    `).join('');
+
+    const invoiceItems: any[] = [];
+    Object.entries(agingBuckets).forEach(([groupKey, bucket]: any) => {
+        const items = bucket.items || [];
+        items.forEach((item: any) => {
+            let partnerName = 'N/A';
+            if (getVendorName) {
+                partnerName = getVendorName(item.vendorId, item.vendorType);
+            } else if (item.clientName) {
+                partnerName = item.clientName;
+            }
+            invoiceItems.push({
+                invoiceNumber: item.invoiceNumber || 'N/A',
+                partner: partnerName,
+                date: item.date || 'N/A',
+                bucket: bucket.label,
+                balance: item.totalAmount || item.amount || 0
+            });
+        });
+    });
+
+    const invoiceRowsHtml = invoiceItems.map((item: any) => `
+        <tr>
+            <td style="font-weight: bold; border: 1px solid #ddd; padding: 10px;">${item.invoiceNumber}</td>
+            <td style="border: 1px solid #ddd; padding: 10px;">${item.partner}</td>
+            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${item.date}</td>
+            <td style="border: 1px solid #ddd; padding: 10px; text-align: center;">${item.bucket}</td>
+            <td style="border: 1px solid #ddd; padding: 10px; text-align: right; font-weight: bold;">AED ${item.balance.toLocaleString()}</td>
+        </tr>
+    `).join('');
+
+    const html = `
+        <html>
+            <head>
+                <title>${reportTitle}</title>
+                <style>
+                    body { 
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+                        color: #334155; 
+                        margin: 20px; 
+                    }
+                    h1 { color: #0f172a; font-size: 20px; text-align: center; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+                    .subheader { text-align: center; font-size: 11px; color: #64748b; margin-bottom: 25px; line-height: 1.5; }
+                    .stats-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 30px; }
+                    .stats-title { font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+                    .stats-value { font-size: 22px; font-weight: 900; color: #e11d48; margin-top: 5px; }
+                    h2 { font-size: 13px; color: #0f172a; margin-top: 25px; border-bottom: 2px solid #0f172a; padding-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 25px; }
+                    th { background-color: #0f172a; color: #ffffff; padding: 10px; font-size: 10px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; text-align: left; }
+                    td { font-size: 11px; }
+                    @media print {
+                        body { margin: 15mm; }
+                        button { display: none; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div style="display: flex; justify-content: space-between; align-items: center; flag-row: row; margin-bottom: 10px;">
+                    <div style="font-size: 16px; font-weight: 900; letter-spacing: -0.5px; color: #0f172a;">PIONEER DMS PORTAL</div>
+                    <button onclick="window.print()" style="background-color: #0f172a; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 11px;">Print Report</button>
+                </div>
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-bottom: 20px;" />
+                <h1>${reportTitle}</h1>
+                <div class="subheader">
+                    Generated: ${new Date().toLocaleString()} | Scope: Outstanding Balance Tracker and Rolling Billings Summary
+                </div>
+
+                <div class="stats-card">
+                    <div class="stats-title">${isReceivable ? "Total Pending Receivables" : "Total AP Outstanding Balance"}</div>
+                    <div class="stats-value">AED ${totalAgingAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                </div>
+
+                <h2>1. Aging Position Summary</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Aging Category</th>
+                            <th style="text-align: left;">Liability Balance (AED)</th>
+                            <th style="text-align: center;">Invoices Count</th>
+                            <th style="text-align: right;">% Share</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${agingRowsHtml}
+                    </tbody>
+                </table>
+
+                <h2>2. Monthly Billings Summary</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Calendar Month</th>
+                            <th>Invoiced Work (AED)</th>
+                            <th>${isReceivable ? "Collected (AED)" : "Released Paid (AED)"}</th>
+                            <th style="padding: 10px; text-align: right;">Outstanding Balance (AED)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${trendRowsHtml}
+                    </tbody>
+                </table>
+
+                <h2>3. Unpaid Invoices Schedule</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Invoice #</th>
+                            <th>Partner Name / Recipient</th>
+                            <th style="text-align: center;">Date</th>
+                            <th style="text-align: center;">Aging Bucket</th>
+                            <th style="text-align: right;">Balance Amount (AED)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${invoiceRowsHtml.length > 0 ? invoiceRowsHtml : '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #94a3b8;">No outstanding schedule items.</td></tr>'}
+                    </tbody>
+                </table>
+
+                <script>
+                    setTimeout(() => {
+                        window.print();
+                    }, 500);
+                </script>
+            </body>
+        </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+};
+
 export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) => {
     const doc = new jsPDF({
         orientation: 'portrait',
@@ -1893,36 +2356,31 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
     doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
     doc.text("TAX INVOICE", 195, 24, { align: 'right' });
 
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(16, 124, 65);
-    doc.text("UAE FTA VAT Compliant", 195, 28, { align: 'right' });
-
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
     
-    doc.text(`Invoice No:`, 140, 34);
+    doc.text(`Invoice No:`, 140, 32);
     doc.setFont("Helvetica", "bold");
-    doc.text(`${item.invoiceNumber || 'INV-NA'}`, 195, 34, { align: 'right' });
+    doc.text(`${item.invoiceNumber || 'INV-NA'}`, 195, 32, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.text(`Date:`, 140, 40);
-    doc.text(`${item.date}`, 195, 40, { align: 'right' });
+    doc.text(`Date:`, 140, 38);
+    doc.text(`${item.date}`, 195, 38, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.text(`Due Date:`, 140, 46);
-    doc.text(`${item.dueDate || item.date}`, 195, 46, { align: 'right' });
+    doc.text(`Due Date:`, 140, 44);
+    doc.text(`${item.dueDate || item.date}`, 195, 44, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.text(`Status:`, 140, 52);
+    doc.text(`Status:`, 140, 50);
     doc.setFont("Helvetica", "bold");
     if (item.status === 'Received') {
         doc.setTextColor(16, 124, 65);
     } else {
         doc.setTextColor(220, 95, 0);
     }
-    doc.text(`${item.status || 'Pending'}`.toUpperCase(), 195, 52, { align: 'right' });
+    doc.text(`${item.status || 'Pending'}`.toUpperCase(), 195, 50, { align: 'right' });
 
     doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
     doc.setLineWidth(0.4);
@@ -3310,6 +3768,29 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                     <span>Client Aging Analysis Tracker</span>
                                 </h3>
                                 <p className="text-xs text-slate-400 font-medium">Click on any age group to view detailed outstanding client invoices.</p>
+                                <div className="flex flex-wrap items-center gap-2 mt-3">
+                                    <button
+                                        onClick={() => downloadAgingAndMonthlyExcel(true, agingBuckets, monthlyTrends, (id, type) => getEntityName(id, type || 'Project'))}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all cursor-pointer shadow-2xs"
+                                    >
+                                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                                        <span>Export Excel</span>
+                                    </button>
+                                    <button
+                                        onClick={() => downloadAgingAndMonthlyPDF(true, agingBuckets, monthlyTrends, totalAgingAmount, (id, type) => getEntityName(id, type || 'Project'))}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-xl text-xs font-bold hover:bg-rose-100 transition-all cursor-pointer shadow-2xs"
+                                    >
+                                        <FileText className="w-3.5 h-3.5" />
+                                        <span>Download PDF</span>
+                                    </button>
+                                    <button
+                                        onClick={() => printAgingAndMonthlyReport(true, agingBuckets, monthlyTrends, totalAgingAmount, (id, type) => getEntityName(id, type || 'Project'))}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer shadow-2xs"
+                                    >
+                                        <Printer className="w-3.5 h-3.5" />
+                                        <span>Print Report</span>
+                                    </button>
+                                </div>
                             </div>
                             <div className="text-left md:text-right bg-slate-50 border border-slate-100 rounded-2xl p-3 shrink-0">
                                 <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider font-mono">Total Pending Receivables</span>
