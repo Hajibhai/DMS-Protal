@@ -1893,7 +1893,9 @@ export const downloadAgingAndMonthlyExcel = (
         items.forEach((item: any) => {
             let partnerName = 'N/A';
             if (getVendorName) {
-                partnerName = getVendorName(item.vendorId, item.vendorType);
+                const partnerId = isReceivable ? (item.entityId || item.projectId) : item.vendorId;
+                const partnerType = isReceivable ? (item.entityType || 'Project') : item.vendorType;
+                partnerName = getVendorName(partnerId, partnerType);
             } else if (item.clientName) {
                 partnerName = item.clientName;
             }
@@ -2092,7 +2094,9 @@ export const downloadAgingAndMonthlyPDF = (
 
             let partnerName = 'N/A';
             if (getVendorName) {
-                partnerName = getVendorName(item.vendorId, item.vendorType);
+                const partnerId = isReceivable ? (item.entityId || item.projectId) : item.vendorId;
+                const partnerType = isReceivable ? (item.entityType || 'Project') : item.vendorType;
+                partnerName = getVendorName(partnerId, partnerType);
             } else if (item.clientName) {
                 partnerName = item.clientName;
             }
@@ -2169,7 +2173,9 @@ export const printAgingAndMonthlyReport = (
         items.forEach((item: any) => {
             let partnerName = 'N/A';
             if (getVendorName) {
-                partnerName = getVendorName(item.vendorId, item.vendorType);
+                const partnerId = isReceivable ? (item.entityId || item.projectId) : item.vendorId;
+                const partnerType = isReceivable ? (item.entityType || 'Project') : item.vendorType;
+                partnerName = getVendorName(partnerId, partnerType);
             } else if (item.clientName) {
                 partnerName = item.clientName;
             }
