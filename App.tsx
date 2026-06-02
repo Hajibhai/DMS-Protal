@@ -3149,11 +3149,41 @@ export default function App() {
     if (!isAuthReady || !user) return;
     const isCreator = systemUser?.role?.toLowerCase() === 'creator' || user?.email === "abdulkaderp3010@gmail.com" || user?.email === CREATOR_USER.username;
 
-    const unsubEmployees = (systemUser?.permissions?.canViewDirectory || systemUser?.permissions?.canManageEmployees || isCreator) ? onSnapshot(collection(db, 'employees'), (snap) => {
-      setEmployees(snap.docs.map(d => d.data() as Employee));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'employees');
-    }) : () => {};
+    let unsubEmployees = () => {};
+    if (systemUser?.permissions?.canViewDirectory || systemUser?.permissions?.canManageEmployees || isCreator) {
+      unsubEmployees = onSnapshot(collection(db, 'employees'), (snap) => {
+        setEmployees(snap.docs.map(d => d.data() as Employee));
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'employees');
+      });
+    } else if (systemUser) {
+      // Standard employee context. Listen to their own employee record matching userId.
+      const q = query(collection(db, 'employees'), where('userId', '==', systemUser.uid));
+      unsubEmployees = onSnapshot(q, (snap) => {
+        if (!snap.empty) {
+          setEmployees(snap.docs.map(d => d.data() as Employee));
+        } else {
+          // Fallback: search by id == systemUser.uid or name match
+          const docRef = doc(db, 'employees', systemUser.uid);
+          getDoc(docRef).then((dSnap) => {
+            if (dSnap.exists()) {
+              setEmployees([dSnap.data() as Employee]);
+            } else if (systemUser.name) {
+              const qName = query(collection(db, 'employees'), where('name', '==', systemUser.name));
+              getDocs(qName).then((nameSnap) => {
+                if (!nameSnap.empty) {
+                  setEmployees(nameSnap.docs.map(d => d.data() as Employee));
+                }
+              });
+            }
+          }).catch(err => {
+            console.error("Employee self load error:", err);
+          });
+        }
+      }, (error) => {
+        console.error("Employee query error:", error);
+      });
+    }
 
     const unsubAttendance = (systemUser?.permissions?.canViewTimesheet || systemUser?.permissions?.canManageAttendance || isCreator) ? onSnapshot(collection(db, 'attendance'), (snap) => {
       setAttendance(snap.docs.map(d => d.data() as AttendanceRecord));

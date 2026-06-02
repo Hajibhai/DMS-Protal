@@ -97,7 +97,16 @@ service cloud.firestore {
     }
 
     match /employees/{employeeId} {
-      allow read: if hasPermission('canViewDirectory') || hasPermission('canManageEmployees');
+      allow read: if hasPermission('canViewDirectory') || 
+                   hasPermission('canManageEmployees') || 
+                   (isAuthenticated() && (
+                     employeeId == request.auth.uid || 
+                     (resource != null && (
+                       resource.data.userId == request.auth.uid ||
+                       resource.data.id == request.auth.uid ||
+                       resource.data.name == request.auth.token.name
+                     ))
+                   ));
       allow write: if hasPermission('canManageEmployees');
     }
 

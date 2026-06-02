@@ -7539,24 +7539,9 @@ export const EverydayExpenseView: React.FC<{
         });
     }, [employees, pettyCash, data]);
 
-    // Active stats
-    const staffWithTallyCount = useMemo(() => tallies.filter(t => t.totalAdvanced > 0 || t.totalSpending > 0).length, [tallies]);
-    const overallAdvanced = useMemo(() => tallies.reduce((sum, t) => sum + t.totalAdvanced, 0), [tallies]);
-    const overallExpended = useMemo(() => tallies.reduce((sum, t) => sum + t.totalSpending, 0), [tallies]);
-    const overallRemaining = useMemo(() => overallAdvanced - overallExpended, [overallAdvanced, overallExpended]);
+    const isEmployeeUser = useMemo(() => user?.role === 'Employee' || user?.role?.toLowerCase() === 'employee', [user]);
 
-    // Filter tallies by search term
-    const filteredTallies = useMemo(() => {
-        if (!tallySearch.trim()) return tallies.filter(t => t.totalAdvanced > 0 || t.totalSpending > 0);
-        const query = tallySearch.toLowerCase();
-        return tallies.filter(t => 
-            t.employee.name.toLowerCase().includes(query) ||
-            (t.employee.code || '').toLowerCase().includes(query) ||
-            (t.employee.designation || '').toLowerCase().includes(query)
-        );
-    }, [tallies, tallySearch]);
-
-    const isEmployeeUser = user?.role === 'Employee' || user?.role?.toLowerCase() === 'employee';
+    // Find the logged-in employee tally
     const currentEmployeeTally = useMemo(() => {
         if (!isEmployeeUser) return null;
         return tallies.find(t => 
@@ -7565,6 +7550,49 @@ export const EverydayExpenseView: React.FC<{
             (t.employee.name && user?.name && t.employee.name.toLowerCase() === user.name.toLowerCase())
         );
     }, [tallies, isEmployeeUser, user]);
+
+    // Active stats
+    const staffWithTallyCount = useMemo(() => {
+        if (isEmployeeUser) {
+            return currentEmployeeTally ? 1 : 0;
+        }
+        return tallies.filter(t => t.totalAdvanced > 0 || t.totalSpending > 0).length;
+    }, [tallies, isEmployeeUser, currentEmployeeTally]);
+
+    const overallAdvanced = useMemo(() => {
+        if (isEmployeeUser) {
+            return currentEmployeeTally ? currentEmployeeTally.totalAdvanced : 0;
+        }
+        return tallies.reduce((sum, t) => sum + t.totalAdvanced, 0);
+    }, [tallies, isEmployeeUser, currentEmployeeTally]);
+
+    const overallExpended = useMemo(() => {
+        if (isEmployeeUser) {
+            return currentEmployeeTally ? currentEmployeeTally.totalSpending : 0;
+        }
+        return tallies.reduce((sum, t) => sum + t.totalSpending, 0);
+    }, [tallies, isEmployeeUser, currentEmployeeTally]);
+
+    const overallRemaining = useMemo(() => overallAdvanced - overallExpended, [overallAdvanced, overallExpended]);
+
+    // Filter tallies by search term
+    const filteredTallies = useMemo(() => {
+        const baseTallies = isEmployeeUser 
+            ? (currentEmployeeTally ? [currentEmployeeTally] : []) 
+            : tallies;
+
+        if (!tallySearch.trim()) {
+            return isEmployeeUser 
+                ? baseTallies 
+                : baseTallies.filter(t => t.totalAdvanced > 0 || t.totalSpending > 0);
+        }
+        const query = tallySearch.toLowerCase();
+        return baseTallies.filter(t => 
+            t.employee.name.toLowerCase().includes(query) ||
+            (t.employee.code || '').toLowerCase().includes(query) ||
+            (t.employee.designation || '').toLowerCase().includes(query)
+        );
+    }, [tallies, tallySearch, isEmployeeUser, currentEmployeeTally]);
 
     return (
         <>
