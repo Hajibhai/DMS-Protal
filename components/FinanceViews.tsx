@@ -1875,11 +1875,12 @@ export const downloadAgingAndMonthlyExcel = (
 
     // 2. Monthly trends sheet
     const trendRows = monthlyTrends.map((trend: any) => {
+        const paidAmount = trend.pPaid !== undefined ? trend.pPaid : (trend.cCollected !== undefined ? trend.cCollected : 0);
         return {
             'Billing Month': trend.label,
-            'Invoiced Amount (AED)': trend.bBilled,
-            'Paid Out/Collected (AED)': trend.pPaid,
-            'Pending Balance (AED)': trend.pPending
+            'Invoiced Amount (AED)': trend.bBilled || 0,
+            'Paid Out/Collected (AED)': paidAmount,
+            'Pending Balance (AED)': trend.pPending || 0
         };
     });
     const wsTrends = XLSX.utils.json_to_sheet(trendRows);
@@ -2024,15 +2025,16 @@ export const downloadAgingAndMonthlyPDF = (
             doc.addPage();
             currentY = 20;
         }
+        const paidAmount = trend.pPaid !== undefined ? trend.pPaid : (trend.cCollected !== undefined ? trend.cCollected : 0);
         doc.setFillColor(248, 250, 252);
         doc.rect(15, currentY, 180, 6.5, 'S');
         doc.setFont("Helvetica", "bold");
         doc.text(trend.label, 18, currentY + 4.5);
         doc.setFont("Helvetica", "normal");
-        doc.text(`AED ${trend.bBilled.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 70, currentY + 4.5);
-        doc.text(`AED ${trend.pPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 120, currentY + 4.5);
+        doc.text(`AED ${(trend.bBilled || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 70, currentY + 4.5);
+        doc.text(`AED ${(paidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 120, currentY + 4.5);
         doc.setFont("Helvetica", "bold");
-        doc.text(`AED ${trend.pPending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 160, currentY + 4.5);
+        doc.text(`AED ${(trend.pPending || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 160, currentY + 4.5);
         doc.setTextColor(51, 65, 85);
         currentY += 6.5;
     });
@@ -2149,14 +2151,17 @@ export const printAgingAndMonthlyReport = (
         `;
     }).join('');
 
-    const trendRowsHtml = monthlyTrends.map((trend: any) => `
-        <tr>
-            <td style="font-weight: bold; border: 1px solid #ddd; padding: 10px;">${trend.label}</td>
-            <td style="border: 1px solid #ddd; padding: 10px;">AED ${trend.bBilled.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td style="border: 1px solid #ddd; padding: 10px;">AED ${trend.pPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td style="border: 1px solid #ddd; padding: 10px; text-align: right; font-weight: bold; color: #be184a;">AED ${trend.pPending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        </tr>
-    `).join('');
+    const trendRowsHtml = monthlyTrends.map((trend: any) => {
+        const paidAmount = trend.pPaid !== undefined ? trend.pPaid : (trend.cCollected !== undefined ? trend.cCollected : 0);
+        return `
+            <tr>
+                <td style="font-weight: bold; border: 1px solid #ddd; padding: 10px;">${trend.label}</td>
+                <td style="border: 1px solid #ddd; padding: 10px;">AED ${(trend.bBilled || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #ddd; padding: 10px;">AED ${(paidAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="border: 1px solid #ddd; padding: 10px; text-align: right; font-weight: bold; color: #be184a;">AED ${(trend.pPending || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+        `;
+    }).join('');
 
     const invoiceItems: any[] = [];
     Object.entries(agingBuckets).forEach(([groupKey, bucket]: any) => {
