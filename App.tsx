@@ -27,7 +27,7 @@ import {
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle, LayoutDashboard,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator,
-  Paperclip, Upload, FileDown, ExternalLink
+  Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -300,6 +300,359 @@ const CopyAttendanceModal = ({ isOpen, onClose, onCopy, currentMonth }: any) => 
                             </>
                         )}
                     </button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+const ImportAttendanceModal = ({ isOpen, onClose, employees, user, onLogAttendance }: any) => {
+    const [file, setFile] = useState<File | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [importResult, setImportResult] = useState<{ success: number; fail: number; errors: string[] } | null>(null);
+
+    if (!isOpen) return null;
+
+    const downloadSampleFormat = () => {
+        const sampleData = employees.length > 0 
+            ? employees.map((emp: any) => ({
+                'Employee Code': emp.code || '',
+                'Employee Name': emp.name || '',
+                'Date': new Date().toISOString().split('T')[0],
+                'Status (P/A/W/PH/SL/AL/UL/EL)': 'P',
+                'Hours Worked': 8,
+                'Overtime Hours': 0,
+                'Note': 'Regular Attendance'
+              }))
+            : [
+                {
+                    'Employee Code': '10001',
+                    'Employee Name': 'TORA GURMU REGASA',
+                    'Date': '2026-06-01',
+                    'Status (P/A/W/PH/SL/AL/UL/EL)': 'P',
+                    'Hours Worked': 8,
+                    'Overtime Hours': 2,
+                    'Note': 'Regular Overtime Completed'
+                },
+                {
+                    'Employee Code': '10002',
+                    'Employee Name': 'SHASHI KUMAR PASWAN',
+                    'Date': '2026-06-01',
+                    'Status (P/A/W/PH/SL/AL/UL/EL)': 'A',
+                    'Hours Worked': 0,
+                    'Overtime Hours': 0,
+                    'Note': 'Absent'
+                }
+              ];
+
+        const ws = XLSX.utils.json_to_sheet(sampleData);
+        ws['!cols'] = [
+            { wch: 15 },
+            { wch: 30 },
+            { wch: 12 },
+            { wch: 32 },
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 25 }
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "TimesheetTemplate");
+        XLSX.writeFile(wb, "Attendance_Import_Template.xlsx");
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFile = e.target.files?.[0];
+        if (selectedFile) {
+            setFile(selectedFile);
+        }
+    };
+
+    const handleImportSubmit = () => {
+        if (!file) {
+            alert("Please select a file to import.");
+            return;
+        }
+
+        setIsSubmitting(true);
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const bstr = evt.target?.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const rows = XLSX.utils.sheet_to_json(ws);
+
+                if (!rows || rows.length === 0) {
+                    alert("No data rows found in the uploaded file.");
+                    setIsSubmitting(false);
+                    return;
+                }
+
+                let successCount = 0;
+                let failCount = 0;
+                const errors: string[] = [];
+
+                for (let i = 0; i < rows.length; i++) {
+                    const row: any = rows[i];
+                    const code = String(row['Employee Code'] || '').trim();
+                    const name = String(row['Employee Name'] || '').trim();
+                    let dateVal = row['Date'];
+
+                    if (typeof dateVal === 'number') {
+                        const utc_days = Math.floor(dateVal - 25569);
+                        const utc_value = utc_days * 86400;
+                        const date_info = new Date(utc_value * 1000);
+                        dateVal = date_info.toISOString().split('T')[0];
+                    } else if (dateVal) {
+                        dateVal = String(dateVal).trim();
+                        if (dateVal.includes('/') && dateVal.split('/')[2]?.length === 4) {
+                            const parts = dateVal.split('/');
+                            dateVal = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                        } else if (dateVal.includes('.') && dateVal.split('.')[2]?.length === 4) {
+                            const parts = dateVal.split('.');
+                            dateVal = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                        }
+                    }
+
+                    if (!dateVal) {
+                        failCount++;
+                        errors.push(`Row ${i + 2} (${name || 'Unknown'}): Missing or invalid date format.`);
+                        continue;
+                    }
+
+                    let targetEmp = null;
+                    if (code) {
+                        targetEmp = employees.find((e: any) => String(e.code || '').toLowerCase().trim() === code.toLowerCase());
+                    }
+                    if (!targetEmp && name) {
+                        targetEmp = employees.find((e: any) => String(e.name || '').toLowerCase().trim() === name.toLowerCase());
+                    }
+
+                    if (!targetEmp) {
+                        failCount++;
+                        errors.push(`Row ${i + 2}: Employee with Code "${code}" or Name "${name}" not found.`);
+                        continue;
+                    }
+
+                    const statusRaw = String(row['Status (P/A/W/PH/SL/AL/UL/EL)'] || row['Status'] || '').trim().toUpperCase();
+                    let mappedStatus = AttendanceStatus.PRESENT;
+
+                    if (statusRaw === 'P' || statusRaw === 'PRESENT') {
+                        mappedStatus = AttendanceStatus.PRESENT;
+                    } else if (statusRaw === 'A' || statusRaw === 'ABSENT') {
+                        mappedStatus = AttendanceStatus.ABSENT;
+                    } else if (statusRaw === 'W' || statusRaw === 'WO' || statusRaw === 'WEEK OFF' || statusRaw === 'WEEKOFF' || statusRaw === 'WEEK_OFF') {
+                        mappedStatus = AttendanceStatus.WEEK_OFF;
+                    } else if (statusRaw === 'PH' || statusRaw === 'PUBLIC' || statusRaw === 'PUBLIC HOLIDAY' || statusRaw === 'PUBLIC_HOLIDAY') {
+                        mappedStatus = AttendanceStatus.PUBLIC_HOLIDAY;
+                    } else if (statusRaw === 'SL' || statusRaw === 'SICK' || statusRaw === 'SICK LEAVE' || statusRaw === 'SICK_LEAVE') {
+                        mappedStatus = AttendanceStatus.SICK_LEAVE;
+                    } else if (statusRaw === 'AL' || statusRaw === 'ANNUAL' || statusRaw === 'ANNUAL LEAVE' || statusRaw === 'ANNUAL_LEAVE') {
+                        mappedStatus = AttendanceStatus.ANNUAL_LEAVE;
+                    } else if (statusRaw === 'UL' || statusRaw === 'UNPAID' || statusRaw === 'UNPAID LEAVE' || statusRaw === 'UNPAID_LEAVE') {
+                        mappedStatus = AttendanceStatus.UNPAID_LEAVE;
+                    } else if (statusRaw === 'EL' || statusRaw === 'EMERGENCY' || statusRaw === 'EMERGENCY LEAVE' || statusRaw === 'EMERGENCY_LEAVE') {
+                        mappedStatus = AttendanceStatus.EMERGENCY_LEAVE;
+                    }
+
+                    const hrsWorked = row['Hours Worked'] !== undefined ? Number(row['Hours Worked']) : (mappedStatus === AttendanceStatus.PRESENT ? 8 : 0);
+                    const otHrs = row['Overtime Hours'] !== undefined ? Number(row['Overtime Hours']) : 0;
+                    const note = row['Note'] ? String(row['Note']) : 'Excel Bulk Upload';
+
+                    try {
+                        await onLogAttendance(
+                            targetEmp.id,
+                            mappedStatus,
+                            dateVal,
+                            otHrs,
+                            undefined,
+                            user?.name || 'System',
+                            note,
+                            hrsWorked
+                        );
+                        successCount++;
+                    } catch (err: any) {
+                        console.error("Row import error:", err);
+                        failCount++;
+                        errors.push(`Row ${i + 2}: Error saving into timesheet (${err.message || err}).`);
+                    }
+                }
+
+                setImportResult({ success: successCount, fail: failCount, errors });
+            } catch (err: any) {
+                console.error(err);
+                alert(`Failed to parse file: ${err.message || err}`);
+            } finally {
+                setIsSubmitting(false);
+            }
+        };
+        reader.readAsBinaryString(file);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white"
+            >
+                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Import Attendance</h2>
+                        <p className="text-slate-500 text-sm font-medium mt-1">Upload an Excel sheet to bulk log attendance records</p>
+                    </div>
+                    <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm hover:shadow-md"><X className="w-5 h-5" /></button>
+                </div>
+
+                <div className="p-8 space-y-6 max-h-[calc(100vh-280px)] overflow-y-auto">
+                    <div className="bg-brand-50/40 border border-brand-100 p-6 rounded-2xl space-y-4">
+                        <div className="flex items-start gap-3">
+                            <FileSpreadsheet className="w-5 h-5 text-brand-600 mt-0.5 shrink-0" />
+                            <div>
+                                <h4 className="font-extrabold text-sm text-slate-900">Pre-populated Template</h4>
+                                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                                    Our system dynamically generates an Excel template pre-filled with your current list of employees and codes! It lists status shorthand guides to make data-entry quick and flawless.
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={downloadSampleFormat}
+                            className="w-full flex items-center justify-center gap-2 py-3 bg-white hover:bg-brand-50 text-brand-700 border border-brand-200 rounded-xl font-bold text-xs transition-colors shadow-2xs cursor-pointer"
+                        >
+                            <Download className="w-4 h-4 text-brand-600" />
+                            Download Pre-populated Excel Template
+                        </button>
+                    </div>
+
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 space-y-3">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Supported Status Shortcodes</div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                            <div className="flex justify-between border-b border-slate-100 pb-1">
+                                <span className="font-bold text-slate-700">P / Present</span>
+                                <span className="text-emerald-700 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded">Present</span>
+                            </div>
+                            <div className="flex justify-between border-b border-slate-100 pb-1">
+                                <span className="font-bold text-slate-700">A / Absent</span>
+                                <span className="text-red-700 font-extrabold bg-red-50 px-1.5 py-0.5 rounded">Absent</span>
+                            </div>
+                            <div className="flex justify-between border-b border-slate-100 pb-1">
+                                <span className="font-bold text-slate-700">W / Week Off</span>
+                                <span className="text-slate-700 font-extrabold bg-slate-100 px-1.5 py-0.5 rounded">Week Off</span>
+                            </div>
+                            <div className="flex justify-between border-b border-slate-100 pb-1">
+                                <span className="font-bold text-slate-700">PH / Public Holiday</span>
+                                <span className="text-violet-700 font-extrabold bg-violet-50 px-1.5 py-0.5 rounded">Holiday</span>
+                            </div>
+                            <div className="flex justify-between border-b border-slate-100 pb-1">
+                                <span className="font-bold text-slate-700">SL / Sick Leave</span>
+                                <span className="text-orange-700 font-extrabold bg-orange-50 px-1.5 py-0.5 rounded">Sick</span>
+                            </div>
+                            <div className="flex justify-between border-b border-slate-100 pb-1">
+                                <span className="font-bold text-slate-700">AL / Annual Leave</span>
+                                <span className="text-brand-700 font-extrabold bg-brand-50 px-1.5 py-0.5 rounded">Annual</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="font-bold text-slate-700">UL / Unpaid Leave</span>
+                                <span className="text-rose-700 font-extrabold bg-rose-50 px-1.5 py-0.5 rounded">Unpaid</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="font-bold text-slate-700">EL / Emergency</span>
+                                <span className="text-pink-700 font-extrabold bg-pink-50 px-1.5 py-0.5 rounded">Emergency</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {importResult ? (
+                        <div className="space-y-4 border border-slate-100 rounded-3xl p-6 bg-slate-50/30">
+                            <h4 className="font-extrabold text-sm text-slate-900">Import Summary Results</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-center">
+                                    <div className="text-2xl font-black text-emerald-700">{importResult.success}</div>
+                                    <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mt-1">Successfully Logged</div>
+                                </div>
+                                <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 text-center">
+                                    <div className="text-2xl font-black text-rose-700">{importResult.fail}</div>
+                                    <div className="text-[10px] font-bold text-rose-600 uppercase tracking-wider mt-1">Errors/Failed Rows</div>
+                                </div>
+                            </div>
+                            {importResult.errors.length > 0 && (
+                                <div className="space-y-1.5">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Issues Encountered</div>
+                                    <div className="max-h-36 overflow-y-auto bg-rose-50 text-rose-800 text-xs p-3.5 rounded-xl space-y-1 font-semibold border border-rose-100">
+                                        {importResult.errors.map((err, idx) => (
+                                            <div key={idx} className="flex gap-2">
+                                                <span>•</span><span>{err}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            <button
+                                onClick={() => {
+                                    setImportResult(null);
+                                    setFile(null);
+                                }}
+                                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors cursor-pointer"
+                            >
+                                Import Another File
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="border-2 border-dashed border-slate-200 hover:border-brand-300 rounded-3xl p-8 transition-all hover:bg-brand-50/5 relative flex flex-col items-center justify-center text-center">
+                                <input 
+                                    type="file" 
+                                    accept=".xlsx, .xls, .csv" 
+                                    onChange={handleFileUpload} 
+                                    className="absolute inset-0 opacity-0 cursor-pointer z-10" 
+                                />
+                                <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 mb-3">
+                                    <Upload className="w-6 h-6 text-slate-400" />
+                                </div>
+                                {file ? (
+                                    <div>
+                                        <p className="font-extrabold text-slate-900 text-sm truncate max-w-xs">{file.name}</p>
+                                        <p className="text-xs text-brand-600 font-extrabold mt-1">Ready to upload • click or drag different file to replace</p>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <p className="font-bold text-slate-800 text-sm">Click to upload spreadsheet or drag & drop</p>
+                                        <p className="text-xs text-slate-400 mt-1 font-medium">Accepts Microsoft Excel (.xlsx, .xls) and CSV format</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex justify-end gap-3">
+                    <button 
+                        onClick={onClose} 
+                        className="px-6 py-3 text-slate-500 font-bold text-sm hover:text-slate-700 transition-colors cursor-pointer"
+                    >
+                        {importResult ? "Close" : "Cancel"}
+                    </button>
+                    {!importResult && (
+                        <button 
+                            disabled={isSubmitting || !file}
+                            onClick={handleImportSubmit} 
+                            className="px-8 py-3 bg-brand-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-brand-600/20 hover:bg-brand-700 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                        >
+                            {isSubmitting ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Processing logs...
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle className="w-4 h-4" />
+                                    Import Selected File
+                                </>
+                            )}
+                        </button>
+                    )}
                 </div>
             </motion.div>
         </div>
@@ -7832,6 +8185,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
     const [searchTerm, setSearchTerm] = useState('');
     const [editingCell, setEditingCell] = useState<{empId: string, date: string} | null>(null);
     const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const canManageAttendance = user?.permissions?.canManageAttendance;
 
     const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
@@ -8012,6 +8366,13 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                 onCopy={handleCopyAttendance}
                 currentMonth={selectedMonth}
             />
+            <ImportAttendanceModal 
+                isOpen={isImportModalOpen}
+                onClose={() => setIsImportModalOpen(false)}
+                employees={employees}
+                user={user}
+                onLogAttendance={onLogAttendance}
+            />
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
@@ -8075,6 +8436,13 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                             >
                                 <Copy className="w-4 h-4" />
                                 <span className="hidden sm:inline">Copy Attendance</span>
+                            </button>
+                            <button 
+                                onClick={() => setIsImportModalOpen(true)}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-2xl text-sm font-black hover:bg-emerald-100 transition-all active:scale-95 shadow-lg shadow-emerald-600/10 cursor-pointer"
+                            >
+                                <Upload className="w-4 h-4" />
+                                <span className="hidden sm:inline">Import Excel</span>
                             </button>
                             <button 
                                 onClick={onOpenHolidayManagement}

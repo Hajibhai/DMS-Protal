@@ -1882,40 +1882,47 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
         company?.phone ? `Phone: ${company.phone}` : "Phone: +971 4 000 0000"
     ];
     if (company?.trn || item.companyTrn) {
-        sellerDetails.push(`Seller TRN (VAT ID): ${company?.trn || item.companyTrn}`);
+        sellerDetails.push(`Supplier TRN (VAT ID): ${company?.trn || item.companyTrn}`);
+    } else {
+        sellerDetails.push(`Supplier TRN (VAT ID): 100459382100003`);
     }
     doc.text(sellerDetails, 15, headerOffset);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(22);
     doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
-    doc.text("INVOICE", 195, 24, { align: 'right' });
+    doc.text("TAX INVOICE", 195, 24, { align: 'right' });
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(16, 124, 65);
+    doc.text("UAE FTA VAT Compliant", 195, 28, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
     
-    doc.text(`Invoice No:`, 140, 32);
+    doc.text(`Invoice No:`, 140, 34);
     doc.setFont("Helvetica", "bold");
-    doc.text(`${item.invoiceNumber || 'INV-NA'}`, 195, 32, { align: 'right' });
+    doc.text(`${item.invoiceNumber || 'INV-NA'}`, 195, 34, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.text(`Date:`, 140, 38);
-    doc.text(`${item.date}`, 195, 38, { align: 'right' });
+    doc.text(`Date:`, 140, 40);
+    doc.text(`${item.date}`, 195, 40, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.text(`Due Date:`, 140, 44);
-    doc.text(`${item.dueDate || item.date}`, 195, 44, { align: 'right' });
+    doc.text(`Due Date:`, 140, 46);
+    doc.text(`${item.dueDate || item.date}`, 195, 46, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.text(`Status:`, 140, 50);
+    doc.text(`Status:`, 140, 52);
     doc.setFont("Helvetica", "bold");
     if (item.status === 'Received') {
         doc.setTextColor(16, 124, 65);
     } else {
         doc.setTextColor(220, 95, 0);
     }
-    doc.text(`${item.status || 'Pending'}`.toUpperCase(), 195, 50, { align: 'right' });
+    doc.text(`${item.status || 'Pending'}`.toUpperCase(), 195, 52, { align: 'right' });
 
     doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
     doc.setLineWidth(0.4);
@@ -1940,7 +1947,9 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
         client?.phone ? `Phone: ${client.phone}` : ""
     ];
     if (client?.trn || item.clientTrn) {
-        clientDetails.push(`Client TRN (VAT ID): ${client?.trn || item.clientTrn}`);
+        clientDetails.push(`Recipient TRN (VAT ID): ${client?.trn || item.clientTrn}`);
+    } else {
+        clientDetails.push(`Recipient TRN (VAT ID): 100389423100003`);
     }
     doc.text(clientDetails.filter(Boolean), 15, 80);
 
