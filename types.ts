@@ -553,6 +553,7 @@ export interface Task {
   updatedAt: string;
   createdById: string;
   createdBy: string;
+  createdByRole?: string;
 }
 
 export interface Note {
@@ -565,6 +566,7 @@ export interface Note {
   updatedAt: string;
   createdById: string;
   createdBy: string;
+  createdByRole?: string;
 }
 
 

@@ -98,14 +98,45 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
     return unsub;
   }, []);
 
+  const canManageTask = (t: Task | undefined) => {
+    if (!t) return false;
+    if (!systemUser) return false;
+    
+    // Original creator of the task can always manage it
+    if (t.createdById === systemUser.uid) return true;
+
+    // Determine task creator's role
+    const creatorUser = systemUsers.find(u => u.uid === t.createdById);
+    const creatorRole = creatorUser?.role || t.createdByRole || '';
+    const isTaskCreatorAdmin = creatorRole.toLowerCase() === 'admin' || creatorRole.toLowerCase() === 'creator';
+
+    // If an Admin or Creator created the task:
+    // "other user not able to edit or delete the record. if admin created the task."
+    if (isTaskCreatorAdmin) {
+      const isCurrentUserAdmin = systemUser.role?.toLowerCase() === 'admin' || systemUser.role?.toLowerCase() === 'creator';
+      return isCurrentUserAdmin;
+    }
+
+    // Default permission: Users with manager roles can edit/delete other people's standard tasks.
+    const isCurrentUserManager = ['admin', 'creator', 'hr', 'supervisor'].includes(systemUser.role?.toLowerCase() || '');
+    if (isCurrentUserManager) return true;
+
+    return false;
+  };
+
   // Handlers for Tasks
   const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isEmployee) {
-      alert("Permission denied: Employees cannot create or edit tasks.");
-      return;
-    }
     if (!showTaskForm?.title) return;
+
+    if (showTaskForm.id) {
+      // Edit mode
+      const originalTask = tasks.find(t => t.id === showTaskForm.id);
+      if (originalTask && !canManageTask(originalTask)) {
+        alert("Permission denied: You do not have permission to edit this task.");
+        return;
+      }
+    }
 
     const assignedUser = systemUsers.find(u => u.uid === showTaskForm.assignedTo);
 
@@ -129,6 +160,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
         taskData.createdAt = new Date().toISOString();
         taskData.createdById = systemUser?.uid || 'unknown';
         taskData.createdBy = systemUser?.name || 'Unknown User';
+        taskData.createdByRole = systemUser?.role || 'User';
         await addDoc(collection(db, 'tasks'), taskData);
       }
       setShowTaskForm(null);
@@ -138,8 +170,9 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   };
 
   const handleDeleteTask = async (id: string) => {
-    if (isEmployee) {
-      alert("Permission denied: Employees cannot delete tasks.");
+    const targetTask = tasks.find(t => t.id === id);
+    if (targetTask && !canManageTask(targetTask)) {
+      alert("Permission denied: You do not have permission to delete this task.");
       return;
     }
     if (window.confirm("Are you sure you want to delete this task?")) {
@@ -343,14 +376,12 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
               </select>
             </div>
 
-            {!isEmployee && (
-              <button
-                onClick={() => setShowTaskForm({ status: 'Pending', priority: 'Medium' })}
-                className="px-6 py-2.5 bg-brand-600 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-brand-500/20 hover:bg-brand-700 transition-all flex items-center gap-2 self-stretch md:self-auto justify-center"
-              >
-                <Plus className="w-4 h-4 stroke-[3]" /> Add New Task
-              </button>
-            )}
+            <button
+              onClick={() => setShowTaskForm({ status: 'Pending', priority: 'Medium' })}
+              className="px-6 py-2.5 bg-brand-600 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-brand-500/20 hover:bg-brand-700 transition-all flex items-center gap-2 self-stretch md:self-auto justify-center"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" /> Add New Task
+            </button>
           </div>
 
           {/* Tasks List */}
@@ -381,7 +412,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                           {t.priority} Priority
                         </span>
 
-                        {!isEmployee && (
+                        {canManageTask(t) && (
                           <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
                             <button
                               onClick={() => setShowTaskForm(t)}
