@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, Plus, Eye, Edit, Trash2, Download, Shield, Briefcase, 
@@ -12,16 +12,23 @@ interface SafetyViewProps {
     onSave: (data: any) => Promise<void>;
     onDelete: (id: string) => Promise<void>;
     user: any;
+    initialSearchTerm?: string;
 }
 
-export const SafetyView = ({ records, onSave, onDelete, user }: SafetyViewProps) => {
-    const [searchTerm, setSearchTerm] = useState('');
+export const SafetyView = ({ records, onSave, onDelete, user, initialSearchTerm = '' }: SafetyViewProps) => {
+    const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
     const [showModal, setShowModal] = useState<any>(null);
     const [viewMode, setViewMode] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [isScanning, setIsScanning] = useState(false);
     const [scanError, setScanError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (initialSearchTerm) {
+            setSearchTerm(initialSearchTerm);
+        }
+    }, [initialSearchTerm]);
 
     const canManageEmployees = user?.permissions?.canManageEmployees || 
                                user?.role?.toLowerCase() === 'creator' || 

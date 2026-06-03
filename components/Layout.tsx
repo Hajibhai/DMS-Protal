@@ -29,6 +29,7 @@ interface LayoutProps {
   accountsPayable: any[];
   accountsReceivable: any[];
   pettyCash: any[];
+  onNotificationClick?: (doc: any) => void;
 }
 
 const SupportModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
@@ -137,7 +138,8 @@ export const Layout: React.FC<LayoutProps> = ({
   vendors,
   accountsPayable,
   accountsReceivable,
-  pettyCash
+  pettyCash,
+  onNotificationClick
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
@@ -493,26 +495,33 @@ export const Layout: React.FC<LayoutProps> = ({
                               <p className="text-xs font-bold text-slate-400">No active alerts</p>
                             </div>
                           ) : (
-                            expiringDocs.map((doc, idx) => (
-                              <div key={idx} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                                <div className="flex justify-between items-start">
-                                  <span className={cn(
-                                    "text-[10px] font-black px-2 py-0.5 rounded-full uppercase",
-                                    doc.status === 'Expired' ? "bg-red-100 text-red-600" : "bg-orange-100 text-orange-600"
-                                  )}>
-                                    {doc.status}
-                                  </span>
-                                  <span className="text-[10px] font-bold text-slate-400">{doc.date}</span>
-                                </div>
-                                <p className="text-xs font-bold text-slate-900">
-                                  {doc.type === 'company' ? `Company: ${doc.employeeName}` : 
-                                   doc.type === 'cicpa' ? `CICPA: ${doc.employeeName}` :
-                                   doc.type === 'safety' ? `Safety: ${doc.employeeName}` :
-                                   doc.employeeName}
-                                </p>
-                                <p className="text-[10px] font-medium text-slate-500">{doc.docName}</p>
-                              </div>
-                            ))
+                           expiringDocs.map((doc, idx) => (
+                             <button
+                               key={idx}
+                               onClick={() => {
+                                 onNotificationClick?.(doc);
+                                 setIsNotificationsOpen(false);
+                               }}
+                               className="w-full text-left p-3 hover:bg-slate-100 bg-slate-50 rounded-2xl border border-slate-100 space-y-1 block transition-all relative cursor-pointer active:scale-[0.98]"
+                             >
+                               <div className="flex justify-between items-start">
+                                 <span className={cn(
+                                   "text-[10px] font-black px-2 py-0.5 rounded-full uppercase",
+                                   doc.status === 'Expired' ? "bg-red-100 text-red-600" : "bg-orange-100 text-orange-600"
+                                 )}>
+                                   {doc.status}
+                                 </span>
+                                 <span className="text-[10px] font-bold text-slate-400">{doc.date}</span>
+                               </div>
+                               <p className="text-xs font-bold text-slate-900">
+                                 {doc.type === 'company' ? `Company: ${doc.employeeName}` : 
+                                  doc.type === 'cicpa' ? `CICPA: ${doc.employeeName}` :
+                                  doc.type === 'safety' ? `Safety: ${doc.employeeName}` :
+                                  doc.employeeName}
+                               </p>
+                               <p className="text-[10px] font-medium text-slate-500">{doc.docName}</p>
+                             </button>
+                           ))
                           )}
                         </div>
                       </motion.div>

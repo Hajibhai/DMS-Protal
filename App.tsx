@@ -3605,6 +3605,29 @@ export default function App() {
   const [showOffboardingDetails, setShowOffboardingDetails] = useState<Employee | null>(null);
   const [showRejoining, setShowRejoining] = useState<Employee | null>(null);
   const [showEdit, setShowEdit] = useState<(Employee & { readOnly?: boolean }) | null>(null);
+  const [companySearchTerm, setCompanySearchTerm] = useState('');
+  const [cicpaSearchTerm, setCicpaSearchTerm] = useState('');
+  const [safetySearchTerm, setSafetySearchTerm] = useState('');
+
+  const handleNotificationClick = (docItem: any) => {
+    if (docItem.type === 'employee') {
+      const foundEmp = employees.find(e => e.name === docItem.employeeName && e.active);
+      if (foundEmp) {
+        setSelectedEmployeeId(foundEmp.id);
+        setShowEdit(foundEmp);
+        setActiveTab('staff');
+      }
+    } else if (docItem.type === 'company') {
+      setCompanySearchTerm(docItem.employeeName);
+      setActiveTab('company');
+    } else if (docItem.type === 'cicpa') {
+      setCicpaSearchTerm(docItem.employeeName);
+      setActiveTab('cicpa');
+    } else if (docItem.type === 'safety') {
+      setSafetySearchTerm(docItem.employeeName);
+      setActiveTab('safety');
+    }
+  };
   const [showUserManagement, setShowUserManagement] = useState(false);
   const [showManageCompanies, setShowManageCompanies] = useState(false);
   const [showHolidayManagement, setShowHolidayManagement] = useState(false);
@@ -4444,6 +4467,7 @@ export default function App() {
       accountsPayable={accountsPayable}
       accountsReceivable={accountsReceivable}
       pettyCash={pettyCash}
+      onNotificationClick={handleNotificationClick}
     >
       {activeTab === 'dashboard' && (
         <DashboardView 
@@ -4475,6 +4499,7 @@ export default function App() {
           onUpdate={handleUpdateCompany}
           onAdd={handleCreateCompany}
           user={systemUser!}
+          initialSearchTerm={companySearchTerm}
         />
       )}
       {activeTab === 'suppliers' && (
@@ -4701,6 +4726,7 @@ export default function App() {
                 });
             }}
             user={systemUser}
+            initialSearchTerm={cicpaSearchTerm}
         />
       )}
       {activeTab === 'safety' && (
@@ -4721,6 +4747,7 @@ export default function App() {
                 });
             }}
             user={systemUser}
+            initialSearchTerm={safetySearchTerm}
         />
       )}
       {activeTab === 'profile' && systemUser && (
@@ -5048,6 +5075,7 @@ const DashboardView = ({
                     icon={Users} 
                     color="brand"
                     className="lg:col-span-2"
+                    onClick={() => setActiveTab && setActiveTab('staff')}
                 />
                 <BentoStatCard 
                     title="Clients" 
@@ -5057,6 +5085,7 @@ const DashboardView = ({
                     icon={Globe} 
                     color="brand"
                     className="lg:col-span-2"
+                    onClick={() => setActiveTab && setActiveTab('vendors')}
                 />
                 <BentoStatCard 
                     title="Suppliers" 
@@ -5066,6 +5095,7 @@ const DashboardView = ({
                     icon={Truck} 
                     color="indigo"
                     className="lg:col-span-2"
+                    onClick={() => setActiveTab && setActiveTab('suppliers')}
                 />
                 <BentoStatCard 
                     title="Active Projects" 
@@ -5075,6 +5105,7 @@ const DashboardView = ({
                     icon={Briefcase} 
                     color="orange"
                     className="lg:col-span-2"
+                    onClick={() => setActiveTab && setActiveTab('projects')}
                 />
                 <BentoStatCard 
                     title="Ex Employees" 
@@ -5084,6 +5115,7 @@ const DashboardView = ({
                     icon={UserMinus} 
                     color="emerald"
                     className="lg:col-span-2"
+                    onClick={() => setActiveTab && setActiveTab('ex-employees')}
                 />
 
 
@@ -5547,7 +5579,7 @@ const HelpCenterView = () => {
     );
 };
 
-const BentoStatCard = ({ title, value, trend, isUp, icon: Icon, color, className }: any) => {
+const BentoStatCard = ({ title, value, trend, isUp, icon: Icon, color, className, onClick }: any) => {
     const colors: any = {
         brand: "bg-brand-50 text-brand-600 border-brand-100 shadow-brand-500/5",
         emerald: "bg-emerald-50 text-emerald-600 border-emerald-100 shadow-emerald-500/5",
@@ -5558,8 +5590,10 @@ const BentoStatCard = ({ title, value, trend, isUp, icon: Icon, color, className
     return (
         <motion.div 
             whileHover={{ y: -5 }}
+            onClick={onClick}
             className={cn(
                 "bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[200px] transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 group",
+                onClick && "cursor-pointer select-none",
                 className
             )}
         >
@@ -7757,15 +7791,21 @@ const CompanyDocumentsModal = ({ company, onClose, onUpdate, openConfirm }: { co
     );
 };
 
-const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user }: { companies: Company[], openConfirm: any, onUpdate: (c: Company) => void, onAdd: (c: any) => Promise<void>, user: SystemUser }) => {
+const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSearchTerm = '' }: { companies: Company[], openConfirm: any, onUpdate: (c: Company) => void, onAdd: (c: any) => Promise<void>, user: SystemUser, initialSearchTerm?: string }) => {
     const [formData, setFormData] = useState({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '' });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isReordering, setIsReordering] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [viewingDocsCompany, setViewingDocsCompany] = useState<Company | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
     const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (initialSearchTerm) {
+            setSearchTerm(initialSearchTerm);
+        }
+    }, [initialSearchTerm]);
     const canManageSettings = user?.permissions?.canManageSettings || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
     const sortedCompanies = useMemo(() => {
@@ -12562,12 +12602,18 @@ const ReportsView = ({
 
         </div>
     );
-};const CICPAView = ({ records, employees, onSave, onDelete, user }: any) => {
-    const [searchTerm, setSearchTerm] = useState('');
+};const CICPAView = ({ records, employees, onSave, onDelete, user, initialSearchTerm = '' }: any) => {
+    const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
     const [showModal, setShowModal] = useState<any>(null);
     const [viewMode, setViewMode] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (initialSearchTerm) {
+            setSearchTerm(initialSearchTerm);
+        }
+    }, [initialSearchTerm]);
     const canManageEmployees = user?.permissions?.canManageEmployees || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
     const filtered = records.filter((r: any) => 
