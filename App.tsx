@@ -8582,6 +8582,10 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+    const handlePrint = () => {
+        window.print();
+    };
+
     useEffect(() => {
         // Automatically scroll to the current day of the month upon loading/mount
         const today = new Date();
@@ -8867,16 +8871,24 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                         </>
                     )}
                     <button 
+                        onClick={handlePrint}
+                        className="p-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
+                        title="Print Monthly Timesheet"
+                    >
+                        <Printer className="w-5 h-5" />
+                    </button>
+                    <button 
                         onClick={handleExport}
                         className="p-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
+                        title="Export to Excel"
                     >
                         <Download className="w-5 h-5" />
                     </button>
                 </div>
             </div>
 
-            <div className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-xl shadow-slate-200/50">
-                <div ref={scrollContainerRef} className="max-h-[calc(100vh-280px)] overflow-auto scrollbar-thin">
+            <div className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-xl shadow-slate-200/50 timesheet-print-wrapper">
+                <div ref={scrollContainerRef} id="timesheet-table-container" className="max-h-[calc(100vh-280px)] overflow-auto scrollbar-thin">
                     <table className="w-full text-center border-collapse text-[11px]">
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
@@ -8914,7 +8926,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                 >
                                     <td className="p-4 text-left border-r border-slate-100 sticky left-0 bg-white/90 backdrop-blur-sm z-10 group-hover:bg-brand-50/50 transition-colors">
                                         <div className="flex items-center gap-2">
-                                            <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 overflow-hidden">
+                                            <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 overflow-hidden timesheet-profile-pic">
                                                 {e.profileImage ? (
                                                     <img src={e.profileImage} alt={e.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                                 ) : (
@@ -8942,19 +8954,19 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                                     <button 
                                                         onClick={() => setEditingCell({ empId: e.id, date: dateStr })}
                                                         className={cn(
-                                                            "w-7 h-7 flex items-center justify-center rounded-lg mx-auto transition-transform hover:scale-105 active:scale-95 shadow-sm border",
+                                                            "w-7 h-7 flex items-center justify-center rounded-lg mx-auto transition-transform hover:scale-105 active:scale-95 shadow-sm border status-code-btn",
                                                             meta.code ? `${meta.color} border-transparent` : "bg-white border-slate-200/60"
                                                         )}
                                                     >
                                                         <span className={cn(
-                                                            "text-[11px] font-black leading-none",
+                                                            "text-[11px] font-black leading-none status-code-text",
                                                             meta.code ? "text-white" : (isSunday ? "text-red-400" : "text-slate-400")
                                                         )}>
                                                             {meta.code || (isSunday ? 'S' : '-')}
                                                         </span>
                                                     </button>
                                                     {record?.hoursWorked > 0 && record?.hoursWorked !== 8 && (
-                                                        <div className="bg-slate-900 border border-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded font-black shadow-xs leading-none select-none tracking-tight">
+                                                        <div className="bg-slate-900 border border-slate-800 text-white text-[9px] px-1.5 py-0.5 rounded font-black shadow-xs leading-none select-none tracking-tight hours-worked-badge">
                                                             {record.hoursWorked}h
                                                         </div>
                                                     )}
@@ -9730,6 +9742,99 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
     const [searchTerm, setSearchTerm] = useState('');
     const canManageLeaves = user?.permissions?.canManageLeaves || user?.role === 'Creator' || user?.role === 'Admin';
 
+    // Search and Base State
+    const filteredRequests = useMemo(() => {
+        return leaveRequests.filter((r: LeaveRequest) => {
+            const emp = employees.find((e: Employee) => e.id === r.employeeId);
+            const company = companies.find((c: Company) => c.name === emp?.company);
+            const search = searchTerm.toLowerCase();
+            return (
+                (emp?.name?.toLowerCase() || '').includes(search) ||
+                (emp?.code?.toLowerCase() || '').includes(search) ||
+                (company?.code?.toLowerCase() || '').includes(search) ||
+                (r.type?.toLowerCase() || '').includes(search) ||
+                (r.reason?.toLowerCase() || '').includes(search)
+            );
+        });
+    }, [leaveRequests, employees, searchTerm, companies]);
+
+    // Calendar view state and calculations
+    const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+    const [currentDate, setCurrentDate] = useState(() => new Date());
+    const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+
+    const firstDayOfMonth = new Date(year, month, 1);
+    const totalDaysInMonth = new Date(year, month + 1, 0).getDate();
+    const startDayOfWeek = firstDayOfMonth.getDay(); // 0 represents Sunday
+
+    const prevMonthDaysCount = startDayOfWeek;
+    const prevMonthYear = month === 0 ? year - 1 : year;
+    const prevMonth = month === 0 ? 11 : month - 1;
+    const totalDaysInPrevMonth = new Date(prevMonthYear, prevMonth + 1, 0).getDate();
+
+    const cells = useMemo(() => {
+        const tempCells = [];
+        // Add previous month's padding days
+        for (let i = prevMonthDaysCount - 1; i >= 0; i--) {
+            const d = totalDaysInPrevMonth - i;
+            const formattedDate = `${prevMonthYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            tempCells.push({
+                date: new Date(prevMonthYear, prevMonth, d),
+                dayNum: d,
+                isCurrentMonth: false,
+                dateKey: formattedDate
+            });
+        }
+
+        // Add current month's days
+        for (let i = 1; i <= totalDaysInMonth; i++) {
+            const formattedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+            tempCells.push({
+                date: new Date(year, month, i),
+                dayNum: i,
+                isCurrentMonth: true,
+                dateKey: formattedDate
+            });
+        }
+
+        // Pad remaining space at the end to make complete rows (multiples of 7)
+        const nextMonthYear = month === 11 ? year + 1 : year;
+        const nextMonth = month === 11 ? 0 : month + 1;
+        const remainingCells = 42 - tempCells.length;
+        for (let i = 1; i <= remainingCells; i++) {
+            const formattedDate = `${nextMonthYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+            tempCells.push({
+                date: new Date(nextMonthYear, nextMonth, i),
+                dayNum: i,
+                isCurrentMonth: false,
+                dateKey: formattedDate
+            });
+        }
+        return tempCells;
+    }, [year, month, prevMonthDaysCount, totalDaysInPrevMonth, prevMonthYear, prevMonth, totalDaysInMonth]);
+
+    const handlePrevMonth = () => {
+        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    };
+
+    const handleNextMonth = () => {
+        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    };
+
+    const handleToday = () => {
+        setCurrentDate(new Date());
+    };
+
+    const getApprovedLeavesForDate = useCallback((dateKey: string) => {
+        return filteredRequests.filter((r: LeaveRequest) => {
+            const isApproved = (r.status as any) === LeaveStatus.APPROVED || (r.status as any) === 'Approved';
+            return isApproved && dateKey >= r.startDate && dateKey <= r.endDate;
+        });
+    }, [filteredRequests]);
+
     const handleSave = async () => {
         if(newReq.employeeId && newReq.startDate && newReq.endDate) {
             await saveLeaveRequest(newReq as any, user.name);
@@ -9760,21 +9865,6 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
         await updateLeaveRequestStatus(id, status, user.name);
     };
 
-    const filteredRequests = useMemo(() => {
-        return leaveRequests.filter((r: LeaveRequest) => {
-            const emp = employees.find((e: Employee) => e.id === r.employeeId);
-            const company = companies.find((c: Company) => c.name === emp?.company);
-            const search = searchTerm.toLowerCase();
-            return (
-                (emp?.name?.toLowerCase() || '').includes(search) ||
-                (emp?.code?.toLowerCase() || '').includes(search) ||
-                (company?.code?.toLowerCase() || '').includes(search) ||
-                (r.type?.toLowerCase() || '').includes(search) ||
-                (r.reason?.toLowerCase() || '').includes(search)
-            );
-        });
-    }, [leaveRequests, employees, searchTerm, companies]);
-
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-center justify-between">
@@ -9792,6 +9882,33 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
                             onChange={e => setSearchTerm(e.target.value)}
                             className="pl-11 pr-6 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-64 shadow-sm"
                         />
+                    </div>
+                    {/* View Switcher Toggle */}
+                    <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/50 shadow-sm">
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer",
+                                viewMode === 'list' 
+                                    ? "bg-white text-slate-800 shadow-sm border border-slate-200/50" 
+                                    : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                            )}
+                        >
+                            <FileText className="w-4 h-4" />
+                            List
+                        </button>
+                        <button
+                            onClick={() => setViewMode('calendar')}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer",
+                                viewMode === 'calendar' 
+                                    ? "bg-white text-slate-800 shadow-sm border border-slate-200/50" 
+                                    : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+                            )}
+                        >
+                            <Calendar className="w-4 h-4" />
+                            Calendar
+                        </button>
                     </div>
                     {canManageLeaves && (
                         <button 
@@ -10012,139 +10129,364 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
                 )}
             </AnimatePresence>
 
-            <div className="glass-card rounded-3xl overflow-hidden border border-white shadow-xl shadow-slate-200/50">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-100">
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Employee</th>
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</th>
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Period</th>
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                            <AnimatePresence mode="popLayout">
-                                {filteredRequests.sort((a:any, b:any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((req: LeaveRequest) => {
-                                    const emp = employees.find((e:any) => e.id === req.employeeId);
-                                    return (
-                                        <motion.tr 
-                                            key={req.id}
-                                            layout
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            className="hover:bg-slate-50/50 transition-colors group"
-                                        >
-                                            <td className="p-5">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-[12px] font-bold text-slate-500 border border-slate-200 overflow-hidden">
-                                                        {emp?.profileImage ? (
-                                                            <img src={emp.profileImage} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                                        ) : (
-                                                            emp?.name?.charAt(0) || '?'
-                                                        )}
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-sm font-bold text-slate-900">{emp?.name || 'Unknown'}</div>
-                                                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{emp?.role || '-'}</div>
-                                                        {emp && emp.leaveBalance !== undefined && emp.leaveBalance <= 0 && (
-                                                            <div className="flex items-center gap-1 text-[9px] font-black text-rose-650 bg-rose-50 border border-rose-100 rounded-lg px-2 py-0.5 mt-1.5 w-fit uppercase tracking-wider">
-                                                                <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                                                                <span>Exhausted Balance</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="p-5">
-                                                <div className="text-sm font-bold text-slate-700">{req.type}</div>
-                                                <div className="text-[10px] text-slate-400 italic truncate max-w-[150px]">{req.reason || 'No reason provided'}</div>
-                                            </td>
-                                            <td className="p-5">
-                                                <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
-                                                    <span>{new Date(req.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
-                                                    <ArrowRight className="w-3 h-3 text-slate-300" />
-                                                    <span>{new Date(req.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
-                                                </div>
-                                                <div className="text-[10px] text-slate-400 font-bold">
-                                                    {Math.ceil((new Date(req.endDate).getTime() - new Date(req.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1} Days
-                                                </div>
-                                            </td>
-                                            <td className="p-5">
-                                                <span className={cn(
-                                                    "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                                                    req.status === LeaveStatus.APPROVED ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                                                    req.status === LeaveStatus.REJECTED ? 'bg-red-50 text-red-600 border-red-100' :
-                                                    'bg-orange-50 text-orange-600 border-orange-100'
-                                                )}>
-                                                    {req.status}
-                                                </span>
-                                            </td>
-                                            <td className="p-5">
-                                                <div className="flex justify-end gap-2">
-                                                    {req.status === LeaveStatus.PENDING && (
-                                                        <>
-                                                            <button 
-                                                                onClick={() => handleStatus(req.id!, LeaveStatus.APPROVED)}
-                                                                className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
-                                                                title="Approve"
-                                                            >
-                                                                <Check className="w-5 h-5" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => handleStatus(req.id!, LeaveStatus.REJECTED)}
-                                                                className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                                                title="Reject"
-                                                            >
-                                                                <X className="w-5 h-5" />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    {canManageLeaves && (
-                                                        <>
-                                                            <button 
-                                                                onClick={() => setEditingReq(req)}
-                                                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
-                                                                title="Edit Request"
-                                                            >
-                                                                <Edit className="w-5 h-5" />
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => handleDelete(req.id!)}
-                                                                className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                                                                title="Delete Request"
-                                                            >
-                                                                <Trash2 className="w-5 h-5" />
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    <button 
-                                                        className="p-2 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
-                                                        title="View Details"
-                                                    >
-                                                        <Eye className="w-5 h-5" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </motion.tr>
-                                    );
-                                })}
-                            </AnimatePresence>
-                        </tbody>
-                    </table>
-                </div>
-                {leaveRequests.length === 0 && (
-                    <div className="p-20 text-center">
-                        <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
-                            <Calendar className="w-8 h-8 text-slate-300" />
+            {viewMode === 'calendar' ? (
+                <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-200/30 p-6 space-y-6">
+                    {/* Calendar Control Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-150">
+                        <div className="flex items-center gap-3">
+                            <span className="text-xl font-black text-slate-900 tracking-tight">
+                                {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                            </span>
+                            <div className="flex items-center bg-slate-100 rounded-xl p-1 border border-slate-205">
+                                <button
+                                    onClick={handlePrevMonth}
+                                    className="p-1.5 hover:bg-white rounded-lg text-slate-605 hover:text-slate-900 transition-all cursor-pointer"
+                                    title="Previous Month"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={handleToday}
+                                    className="px-2.5 py-1 hover:bg-white rounded-lg text-[10px] font-bold uppercase text-slate-600 hover:text-slate-900 transition-all cursor-pointer"
+                                >
+                                    Today
+                                </button>
+                                <button
+                                    onClick={handleNextMonth}
+                                    className="p-1.5 hover:bg-white rounded-lg text-slate-605 hover:text-slate-900 transition-all cursor-pointer"
+                                    title="Next Month"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
-                        <h3 className="text-lg font-bold text-slate-900">No leave requests</h3>
-                        <p className="text-slate-500 max-w-xs mx-auto mt-1">All caught up! No pending leave requests to review.</p>
+
+                        {/* Leave Type Legend */}
+                        <div className="flex flex-wrap gap-2.5">
+                            <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border border-emerald-200/40">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                Annual Leave
+                            </div>
+                            <div className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border border-rose-200/40">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                Sick Leave
+                            </div>
+                            <div className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border border-amber-200/40">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                Emergency Leave
+                            </div>
+                            <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-705 px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border border-slate-205">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                                Unpaid Leave
+                            </div>
+                        </div>
                     </div>
-                )}
-            </div>
+
+                    {/* Calendar Grid */}
+                    <div className="space-y-1">
+                        {/* Weekdays Row */}
+                        <div className="grid grid-cols-7 gap-1 text-center font-black text-[9px] uppercase tracking-wider text-slate-400 pb-2">
+                            <div>Sun</div>
+                            <div>Mon</div>
+                            <div>Tue</div>
+                            <div>Wed</div>
+                            <div>Thu</div>
+                            <div>Fri</div>
+                            <div>Sat</div>
+                        </div>
+
+                        {/* Date Cells Grid */}
+                        <div className="grid grid-cols-7 gap-1 bg-slate-100 border border-slate-200 rounded-2xl overflow-hidden shadow-inner p-1">
+                            {cells.map((cell) => {
+                                const dateApprovals = getApprovedLeavesForDate(cell.dateKey);
+                                const isSelected = selectedDateKey === cell.dateKey;
+                                const isToday = new Date().toDateString() === cell.date.toDateString();
+
+                                return (
+                                    <div
+                                        key={cell.dateKey}
+                                        onClick={() => setSelectedDateKey(cell.dateKey)}
+                                        className={cn(
+                                            "min-h-[110px] p-2 flex flex-col justify-between rounded-xl transition-all duration-200 relative select-none cursor-pointer",
+                                            cell.isCurrentMonth ? "bg-white text-slate-800" : "bg-slate-50/70 text-slate-400",
+                                            isSelected ? "ring-2 ring-brand-500 bg-brand-50/10 z-10 scale-[1.01] shadow" : "hover:bg-slate-50/40 border border-transparent hover:border-slate-100",
+                                            isToday && "bg-brand-50/30 border border-brand-200"
+                                        )}
+                                    >
+                                        {/* Date and Status Badge */}
+                                        <div className="flex items-center justify-between mb-1">
+                                            {isToday ? (
+                                                <span className="text-[9px] font-black text-brand-700 bg-brand-50 border border-brand-200/50 px-1.5 py-0.5 rounded-md">
+                                                    Today
+                                                </span>
+                                            ) : <div />}
+                                            <span className={cn(
+                                                "text-xs font-black",
+                                                isToday ? "text-brand-600" : cell.isCurrentMonth ? "text-slate-800" : "text-slate-400"
+                                            )}>
+                                                {cell.dayNum}
+                                            </span>
+                                        </div>
+
+                                        {/* Leaves Events Stack */}
+                                        <div className="flex-1 flex flex-col gap-1 overflow-y-auto scrollbar-none py-1">
+                                            {dateApprovals.slice(0, 3).map((req) => {
+                                                const emp = employees.find((e: any) => e.id === req.employeeId);
+                                                const isAnnual = req.type === AttendanceStatus.ANNUAL_LEAVE || req.type === 'AL';
+                                                const isSick = req.type === AttendanceStatus.SICK_LEAVE || req.type === 'SL';
+                                                const isEmergency = req.type === AttendanceStatus.EMERGENCY_LEAVE || req.type === 'EL';
+
+                                                return (
+                                                    <div
+                                                        key={req.id}
+                                                        className={cn(
+                                                            "px-2 py-0.5 text-[9px] rounded-lg font-bold border transition-all truncate flex items-center gap-1",
+                                                            isAnnual ? 'bg-emerald-50 text-emerald-700 border-emerald-200/30 hover:bg-emerald-100/60' :
+                                                            isSick ? 'bg-rose-50 text-rose-700 border-rose-200/30 hover:bg-rose-100/60' :
+                                                            isEmergency ? 'bg-amber-50 text-amber-700 border-amber-200/30 hover:bg-amber-100/60' :
+                                                            'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200/60'
+                                                        )}
+                                                        title={`${emp?.name || 'Staff'}: ${req.type}`}
+                                                    >
+                                                        <div className="w-3.5 h-3.5 rounded-full bg-white flex items-center justify-center text-[7px] font-black shrink-0 border border-current overflow-hidden">
+                                                            {emp?.profileImage ? (
+                                                                <img src={emp.profileImage} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                            ) : (
+                                                                emp?.name?.charAt(0) || '?'
+                                                            )}
+                                                        </div>
+                                                        <span className="truncate">{emp?.name || 'Unknown'}</span>
+                                                    </div>
+                                                );
+                                            })}
+
+                                            {dateApprovals.length > 3 && (
+                                                <div className="text-[8px] font-black text-slate-400 text-center uppercase tracking-wider bg-slate-100/60 rounded py-0.5 border border-dashed border-slate-200">
+                                                    + {dateApprovals.length - 3} more
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Selected Day Details Panel */}
+                    {selectedDateKey && (() => {
+                        const dateApprovals = getApprovedLeavesForDate(selectedDateKey);
+                        const displayDate = new Date(selectedDateKey);
+                        const formattedTitle = displayDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+                        return (
+                            <div className="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-1 px-2.5 bg-brand-50 rounded-lg text-brand-700 font-bold text-xs">
+                                            📅 {dateApprovals.length} Approved Away
+                                        </div>
+                                        <span className="text-sm font-black text-slate-800">
+                                            Away on {formattedTitle}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => setSelectedDateKey(null)}
+                                        className="text-xs font-bold text-slate-450 hover:text-slate-650 px-2.5 py-1 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+                                    >
+                                        Clear Details
+                                    </button>
+                                </div>
+
+                                {dateApprovals.length === 0 ? (
+                                    <p className="text-xs text-slate-400 italic">No approved leave requests for this day. Everyone is scheduled to work!</p>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
+                                        {dateApprovals.map((req) => {
+                                            const emp = employees.find((e: any) => e.id === req.employeeId);
+                                            const isAnnual = req.type === AttendanceStatus.ANNUAL_LEAVE || req.type === 'AL';
+                                            const isSick = req.type === AttendanceStatus.SICK_LEAVE || req.type === 'SL';
+                                            const isEmergency = req.type === AttendanceStatus.EMERGENCY_LEAVE || req.type === 'EL';
+
+                                            return (
+                                                <div key={req.id} className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow">
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-[12px] font-bold text-slate-500 border border-slate-200 overflow-hidden shrink-0">
+                                                            {emp?.profileImage ? (
+                                                                <img src={emp.profileImage} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                            ) : (
+                                                                emp?.name?.charAt(0) || '?'
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <div className="text-xs font-black text-slate-900 truncate">{emp?.name || 'Unknown'}</div>
+                                                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{emp?.role || '-'}</div>
+                                                            <span className={cn(
+                                                                "inline-flex items-center gap-1 text-[8px] font-extrabold px-1.5 py-0.5 rounded border uppercase mt-1.5",
+                                                                isAnnual ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                                                                isSick ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                                                                isEmergency ? 'bg-amber-50 text-amber-700 border-amber-100' :
+                                                                'bg-slate-100 text-slate-700 border-slate-200'
+                                                            )}>
+                                                                {req.type}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-3.5 pt-3.5 border-t border-slate-100 space-y-1">
+                                                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Leave Duration</div>
+                                                        <div className="text-xs font-medium text-slate-705">
+                                                            {new Date(req.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} to {new Date(req.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                                                        </div>
+                                                        {req.reason && (
+                                                            <>
+                                                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pt-1.5">Reason</div>
+                                                                <div className="text-[11px] text-slate-500 italic truncate" title={req.reason}>"{req.reason}"</div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                </div>
+            ) : (
+                <div className="glass-card rounded-3xl overflow-hidden border border-white shadow-xl shadow-slate-200/50">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-50/50 border-b border-slate-100">
+                                    <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Employee</th>
+                                    <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</th>
+                                    <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Period</th>
+                                    <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+                                    <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-50">
+                                <AnimatePresence mode="popLayout">
+                                    {filteredRequests.sort((a:any, b:any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((req: LeaveRequest) => {
+                                        const emp = employees.find((e:any) => e.id === req.employeeId);
+                                        return (
+                                            <motion.tr 
+                                                key={req.id}
+                                                layout
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                className="hover:bg-slate-50/50 transition-colors group"
+                                            >
+                                                <td className="p-5">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-[12px] font-bold text-slate-500 border border-slate-200 overflow-hidden">
+                                                            {emp?.profileImage ? (
+                                                                <img src={emp.profileImage} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                            ) : (
+                                                                emp?.name?.charAt(0) || '?'
+                                                            )}
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-sm font-bold text-slate-900">{emp?.name || 'Unknown'}</div>
+                                                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{emp?.role || '-'}</div>
+                                                            {emp && emp.leaveBalance !== undefined && emp.leaveBalance <= 0 && (
+                                                                <div className="flex items-center gap-1 text-[9px] font-black text-rose-650 bg-rose-50 border border-rose-100 rounded-lg px-2 py-0.5 mt-1.5 w-fit uppercase tracking-wider">
+                                                                    <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                                                    <span>Exhausted Balance</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="p-5">
+                                                    <div className="text-sm font-bold text-slate-700">{req.type}</div>
+                                                    <div className="text-[10px] text-slate-400 italic truncate max-w-[150px]">{req.reason || 'No reason provided'}</div>
+                                                </td>
+                                                <td className="p-5">
+                                                    <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
+                                                        <span>{new Date(req.startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
+                                                        <ArrowRight className="w-3 h-3 text-slate-300" />
+                                                        <span>{new Date(req.endDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-400 font-bold">
+                                                        {Math.ceil((new Date(req.endDate).getTime() - new Date(req.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1} Days
+                                                    </div>
+                                                </td>
+                                                <td className="p-5">
+                                                    <span className={cn(
+                                                        "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                                                        req.status === LeaveStatus.APPROVED ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                        req.status === LeaveStatus.REJECTED ? 'bg-red-50 text-red-600 border-red-100' :
+                                                        'bg-orange-50 text-orange-600 border-orange-100'
+                                                    )}>
+                                                        {req.status}
+                                                    </span>
+                                                </td>
+                                                <td className="p-5">
+                                                    <div className="flex justify-end gap-2">
+                                                        {req.status === LeaveStatus.PENDING && (
+                                                            <>
+                                                                <button 
+                                                                    onClick={() => handleStatus(req.id!, LeaveStatus.APPROVED)}
+                                                                    className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all"
+                                                                    title="Approve"
+                                                                >
+                                                                    <Check className="w-5 h-5" />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleStatus(req.id!, LeaveStatus.REJECTED)}
+                                                                    className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                                    title="Reject"
+                                                                >
+                                                                    <X className="w-5 h-5" />
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        {canManageLeaves && (
+                                                            <>
+                                                                <button 
+                                                                    onClick={() => setEditingReq(req)}
+                                                                    className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                                                    title="Edit Request"
+                                                                >
+                                                                    <Edit className="w-5 h-5" />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleDelete(req.id!)}
+                                                                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                                                                    title="Delete Request"
+                                                                >
+                                                                    <Trash2 className="w-5 h-5" />
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        <button 
+                                                            className="p-2 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                                                            title="View Details"
+                                                        >
+                                                            <Eye className="w-5 h-5" />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </motion.tr>
+                                        );
+                                    })}
+                                </AnimatePresence>
+                            </tbody>
+                        </table>
+                    </div>
+                    {leaveRequests.length === 0 && (
+                        <div className="p-20 text-center">
+                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                                <Calendar className="w-8 h-8 text-slate-300" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900">No leave requests</h3>
+                            <p className="text-slate-500 max-w-xs mx-auto mt-1">All caught up! No pending leave requests to review.</p>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

@@ -56,28 +56,42 @@
 /* Print Styles */
 @media print {
   @page {
-    size: A4;
-    margin: 1cm;
+    size: A4 landscape;
+    margin: 0.3cm;
   }
   
   body {
     background: white !important;
-    font-size: 10pt;
+    font-size: 8pt;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  .no-print {
+  .no-print, .no-print-timesheet {
     display: none !important;
   }
 
-  header, footer, nav {
+  header, footer, nav, aside {
     display: none !important;
   }
 
   main {
     padding: 0 !important;
     margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* Override standard margins/padding of main shell when printing */
+  html, body, #root, main, main > div, main > div > div {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   /* Reset layout for print */
@@ -87,6 +101,125 @@
     box-shadow: none !important;
     break-inside: avoid;
     margin-bottom: 1rem;
+  }
+
+  /* Timesheet Print Optimization to fit exactly on A4 Landscape without scroll/hidden columns */
+  .timesheet-print-wrapper {
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
+    overflow: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #timesheet-table-container {
+    overflow: visible !important;
+    max-height: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .timesheet-print-wrapper table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 6px !important;
+  }
+
+  .timesheet-print-wrapper th {
+    padding: 2px 0.5px !important;
+    font-size: 6.5px !important;
+    font-weight: 800 !important;
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
+    text-align: center !important;
+  }
+
+  .timesheet-print-wrapper th:first-child {
+    text-align: left !important;
+    width: 95px !important;
+    min-width: 95px !important;
+  }
+
+  .timesheet-print-wrapper th.sticky,
+  .timesheet-print-wrapper td.sticky,
+  .timesheet-print-wrapper th[class*="sticky"],
+  .timesheet-print-wrapper td[class*="sticky"] {
+    position: static !important;
+    background: white !important;
+    box-shadow: none !important;
+  }
+
+  .timesheet-print-wrapper td {
+    padding: 1.5px 0.5px !important;
+    font-size: 6.5px !important;
+    height: auto !important;
+    min-height: 0 !important;
+    border: 1px solid #cbd5e1 !important;
+    background: white !important;
+    color: #1e293b !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+
+  .timesheet-print-wrapper td:first-child {
+    text-align: left !important;
+    width: 95px !important;
+    min-width: 95px !important;
+    font-weight: bold !important;
+    color: #0f172a !important;
+    background: white !important;
+  }
+
+  /* Compact status button indicators inside the printed cells */
+  .timesheet-print-wrapper .status-code-btn {
+    width: 13px !important;
+    height: 13px !important;
+    font-size: 6px !important;
+    line-height: 13px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-radius: 2px !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Show small indicator text if buttons are disabled or styled */
+  .timesheet-print-wrapper .status-code-text {
+    font-size: 6.5px !important;
+    font-weight: 900 !important;
+  }
+
+  /* Force background colors to print beautifully */
+  .timesheet-print-wrapper .bg-emerald-600 { background-color: #10b981 !important; color: white !important; }
+  .timesheet-print-wrapper .bg-rose-600 { background-color: #f43f5e !important; color: white !important; }
+  .timesheet-print-wrapper .bg-amber-500 { background-color: #f59e0b !important; color: white !important; }
+  .timesheet-print-wrapper .bg-indigo-600 { background-color: #4f46e5 !important; color: white !important; }
+  .timesheet-print-wrapper .bg-sky-500 { background-color: #0ea5e9 !important; color: white !important; }
+  .timesheet-print-wrapper .bg-teal-600 { background-color: #0d9488 !important; color: white !important; }
+  .timesheet-print-wrapper .bg-pink-500 { background-color: #ec4899 !important; color: white !important; }
+  .timesheet-print-wrapper .bg-slate-400 { background-color: #94a3b8 !important; color: white !important; }
+  
+  .timesheet-print-wrapper .text-white { color: white !important; }
+  
+  /* Overtime indicators */
+  .timesheet-print-wrapper .hours-worked-badge {
+    font-size: 5.5px !important;
+    padding: 1px 1.5px !important;
+    line-height: 1 !important;
+    margin-top: 1px !important;
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 2px !important;
+    display: inline-block !important;
   }
 
   /* Ensure charts are visible */
