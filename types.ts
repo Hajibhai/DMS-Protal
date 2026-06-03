@@ -51,6 +51,10 @@ export interface EmployeeDocuments {
     labourCardNumber?: string;
     labourCardIssue?: string;
     labourCardExpiry?: string;
+    temporaryCompanyName?: string;
+    temporaryLabourCardNumber?: string;
+    temporaryLabourCardIssue?: string;
+    temporaryLabourCardExpiry?: string;
 }
 
 export interface DriveFile {
