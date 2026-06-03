@@ -3843,7 +3843,18 @@ export default function App() {
     });
 
     const unsubUsers = (systemUser?.permissions?.canManageUsers || isCreator) ? onSnapshot(collection(db, 'users'), (snap) => {
-      setSystemUsers(snap.docs.map(d => d.data() as SystemUser));
+      const uList = snap.docs.map(d => d.data() as SystemUser);
+      const filtered = uList.filter(u => {
+        const roleLower = (u.role || '').toLowerCase();
+        const emailLower = (u.email || '').toLowerCase();
+        const nameLower = (u.name || '').toLowerCase();
+        return (
+          roleLower !== 'creator' &&
+          emailLower !== 'abdulkaderp3010@gmail.com' &&
+          nameLower !== 'mohamed abdul kader'
+        );
+      });
+      setSystemUsers(filtered);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'users');
     }) : () => {};

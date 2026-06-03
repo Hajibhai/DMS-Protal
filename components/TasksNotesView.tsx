@@ -44,7 +44,19 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
     const unsub = onSnapshot(collection(db, 'users'), (snap) => {
       const list: SystemUser[] = [];
       snap.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as any);
+        const u = { id: doc.id, ...doc.data() } as any;
+        const roleLower = (u.role || '').toLowerCase();
+        const emailLower = (u.email || '').toLowerCase();
+        const nameLower = (u.name || '').toLowerCase();
+        
+        // Filter out Creator details completely from the workspace lists
+        if (
+          roleLower !== 'creator' && 
+          emailLower !== 'abdulkaderp3010@gmail.com' && 
+          nameLower !== 'mohamed abdul kader'
+        ) {
+          list.push(u);
+        }
       });
       setSystemUsers(list);
     });
