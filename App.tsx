@@ -11050,16 +11050,16 @@ const ReportsView = ({
     const ROLE_REPORT_ACCESS = useMemo(() => ({
         [UserRole.CREATOR]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
-            'corporate_tax', 'staff', 'attendance', 'payroll', 'projects', 
+            'corporate_tax', 'staff', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
             'finance', 'everyday', 'projected'
         ],
         [UserRole.ADMIN]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
-            'corporate_tax', 'staff', 'attendance', 'payroll', 'projects', 
+            'corporate_tax', 'staff', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
             'finance', 'everyday', 'projected'
         ],
         [UserRole.HR]: [
-            'staff', 'attendance', 'payroll', 'projects'
+            'staff', 'attendance', 'payroll', 'payroll_comparison', 'projects'
         ],
         [UserRole.ENGINEER]: [
             'attendance', 'projects', 'projected'
@@ -11069,7 +11069,7 @@ const ReportsView = ({
         ],
         [UserRole.ACCOUNTANT]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
-            'corporate_tax', 'payroll', 'projects', 'finance'
+            'corporate_tax', 'payroll', 'payroll_comparison', 'projects', 'finance'
         ],
         [UserRole.EMPLOYEE]: [
             'everyday'
@@ -11147,6 +11147,123 @@ const ReportsView = ({
             };
         });
     }, [activeStaff, monthlyAttendance, monthlyDeductions]);
+
+    const prevMonthDate = useMemo(() => {
+        return new Date(currentYear, currentMonth - 1, 1);
+    }, [currentYear, currentMonth]);
+    
+    const prevMonthStr = useMemo(() => {
+        const y = prevMonthDate.getFullYear();
+        const m = prevMonthDate.getMonth() + 1;
+        return `${y}-${String(m).padStart(2, '0')}`;
+    }, [prevMonthDate]);
+
+    const prevMonthName = useMemo(() => {
+        return prevMonthDate.toLocaleString('default', { month: 'long' });
+    }, [prevMonthDate]);
+
+    const prevMonthAttendance = useMemo(() => attendance.filter((r: any) => {
+        const d = new Date(r.date);
+        return d.getMonth() === prevMonthDate.getMonth() && d.getFullYear() === prevMonthDate.getFullYear();
+    }), [attendance, prevMonthDate]);
+
+    const prevMonthDeductions = useMemo(() => deductions.filter((d: any) => {
+        const date = new Date(d.date);
+        return date.getMonth() === prevMonthDate.getMonth() && date.getFullYear() === prevMonthDate.getFullYear();
+    }), [deductions, prevMonthDate]);
+
+    const comparativePayrollData = useMemo(() => {
+        const targetEmployees = employees.filter((e: any) => {
+            if (e.active) return true;
+            
+            const hasCurrentRecs = attendance.some((r: any) => r.employeeId === e.id && new Date(r.date).getMonth() === currentMonth && new Date(r.date).getFullYear() === currentYear) ||
+                                  deductions.some((d: any) => d.employeeId === e.id && new Date(d.date).getMonth() === currentMonth && new Date(d.date).getFullYear() === currentYear);
+            if (hasCurrentRecs) return true;
+            
+            const hasPrevRecs = attendance.some((r: any) => r.employeeId === e.id && new Date(r.date).getMonth() === prevMonthDate.getMonth() && new Date(r.date).getFullYear() === prevMonthDate.getFullYear()) ||
+                                deductions.some((d: any) => d.employeeId === e.id && new Date(d.date).getMonth() === prevMonthDate.getMonth() && new Date(d.date).getFullYear() === prevMonthDate.getFullYear());
+            return hasPrevRecs;
+        });
+
+        return targetEmployees.map((e: any) => {
+            const empCurrentAtt = monthlyAttendance.filter((r: any) => r.employeeId === e.id);
+            const empCurrentDeds = monthlyDeductions.filter((d: any) => d.employeeId === e.id);
+            const currentPayroll = calculatePayroll(e, empCurrentAtt, empCurrentDeds);
+
+            const empPrevAtt = prevMonthAttendance.filter((r: any) => r.employeeId === e.id);
+            const empPrevDeds = prevMonthDeductions.filter((d: any) => d.employeeId === e.id);
+            const prevPayroll = calculatePayroll(e, empPrevAtt, empPrevDeds);
+
+            const grossDiff = currentPayroll.grossSalary - prevPayroll.grossSalary;
+            const otHoursDiff = currentPayroll.totalOtHours - prevPayroll.totalOtHours;
+            const otPayDiff = currentPayroll.otAmount - prevPayroll.otAmount;
+            const lopDaysDiff = currentPayroll.totalUnpaidDays - prevPayroll.totalUnpaidDays;
+            const lopDeductionDiff = currentPayroll.lopDeduction - prevPayroll.lopDeduction;
+            const netDiff = currentPayroll.netSalary - prevPayroll.netSalary;
+
+            const explanations: string[] = [];
+            const isNewHire = empPrevAtt.length === 0 && empCurrentAtt.length > 0;
+            const isOffboarded = empCurrentAtt.length === 0 && empPrevAtt.length > 0;
+
+            if (isNewHire) {
+                explanations.push("New Hire (No previous payroll)");
+            } else if (isOffboarded) {
+                explanations.push("Inactive/No logs this month");
+            } else {
+                if (Math.abs(grossDiff) > 1) {
+                    if (e.team === 'Office Staff' || e.team === 'Internal Team') {
+                        explanations.push(`Contract salary change (Base changed by AED ${grossDiff.toFixed(0)})`);
+                    } else {
+                        const curHours = empCurrentAtt.reduce((s: any, r: any) => s + (r.hoursWorked || 0), 0);
+                        const prevHours = empPrevAtt.reduce((s: any, r: any) => s + (r.hoursWorked || 0), 0);
+                        explanations.push(`Base hours changed: ${(curHours - prevHours).toFixed(1)} hrs (AED ${grossDiff > 0 ? '+' : ''}${grossDiff.toFixed(0)})`);
+                    }
+                }
+                if (Math.abs(otHoursDiff) > 0.1) {
+                    explanations.push(`OT change: ${otHoursDiff > 0 ? '+' : ''}${otHoursDiff.toFixed(1)} hrs (AED ${otPayDiff > 0 ? '+' : ''}${otPayDiff.toFixed(0)})`);
+                }
+                if (Math.abs(lopDaysDiff) > 0.1) {
+                    explanations.push(`LOP change: ${lopDaysDiff > 0 ? '+' : ''}${lopDaysDiff.toFixed(1)} days (AED ${lopDeductionDiff > 0 ? '+' : ''}${lopDeductionDiff.toFixed(0)})`);
+                }
+                
+                const curOtherDeds = empCurrentDeds.reduce((sum: number, d: any) => sum + d.amount, 0);
+                const prevOtherDeds = empPrevDeds.reduce((sum: number, d: any) => sum + d.amount, 0);
+                const otherDedsDiff = curOtherDeds - prevOtherDeds;
+                if (Math.abs(otherDedsDiff) > 1) {
+                    explanations.push(`Deductions change: AED ${otherDedsDiff > 0 ? '+' : ''}${otherDedsDiff.toFixed(0)}`);
+                }
+            }
+
+            if (explanations.length === 0) {
+                explanations.push("No variance");
+            }
+
+            return {
+                employee: e,
+                current: currentPayroll,
+                previous: prevPayroll,
+                grossDiff,
+                otHoursDiff,
+                otPayDiff,
+                lopDaysDiff,
+                lopDeductionDiff,
+                netDiff,
+                explanations,
+                isNewHire,
+                isOffboarded
+            };
+        });
+    }, [employees, attendance, deductions, monthlyAttendance, monthlyDeductions, prevMonthAttendance, prevMonthDeductions, currentMonth, currentYear, prevMonthDate]);
+
+    const filteredComparativePayrollData = useMemo(() => {
+        if (!searchQuery) return comparativePayrollData;
+        const q = searchQuery.toLowerCase();
+        return comparativePayrollData.filter((p: any) => 
+            p.employee.code?.toLowerCase().includes(q) ||
+            p.employee.name?.toLowerCase().includes(q) ||
+            p.employee.company?.toLowerCase().includes(q)
+        );
+    }, [comparativePayrollData, searchQuery]);
 
     const stats = useMemo(() => {
         const totalGross = payrollData.reduce((acc, p) => acc + p.payroll.grossSalary + p.payroll.otAmount, 0);
@@ -11344,6 +11461,20 @@ const ReportsView = ({
                     'OT Amount': p.payroll.otAmount,
                     'Deductions': p.payroll.totalDeductions,
                     'Net Salary': p.payroll.netSalary
+                }));
+                break;
+            case 'payroll_comparison':
+                data = comparativePayrollData.map(p => ({
+                    'Code': p.employee.code,
+                    'Name': p.employee.name,
+                    'Company': p.employee.company,
+                    [`Previous (${prevMonthName}) Net`]: p.isNewHire ? 0 : p.previous.netSalary,
+                    [`Current (${monthName}) Net`]: p.isOffboarded ? 0 : p.current.netSalary,
+                    'Net Variance': p.netDiff,
+                    'Gross Variance': p.grossDiff + p.otPayDiff,
+                    'OT Hour Variance': p.otHoursDiff,
+                    'LOP Day Variance': p.lopDaysDiff,
+                    'Variance Causes': p.explanations.join('; ')
                 }));
                 break;
             case 'projects':
@@ -11568,6 +11699,7 @@ const ReportsView = ({
         { id: 'staff', label: 'Workforce', icon: Users },
         { id: 'attendance', label: 'Attendance', icon: Calendar },
         { id: 'payroll', label: 'Payroll', icon: Wallet },
+        { id: 'payroll_comparison', label: 'Payroll Comparison', icon: RefreshCw },
         { id: 'projects', label: 'Projects', icon: Briefcase },
         { id: 'finance', label: 'Finance', icon: TrendingUp },
         { id: 'everyday', label: 'Everyday', icon: CreditCard },
@@ -11736,6 +11868,33 @@ const ReportsView = ({
                     { label: 'Avg Payout', value: `AED ${Math.round(stats.totalNet / (activeStaff.length || 1)).toLocaleString()}`, icon: TrendingUp, color: 'violet' },
                 ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
 
+                {reportType === 'payroll_comparison' && (() => {
+                    const totalCurNet = comparativePayrollData.reduce((acc: number, p: any) => acc + (p.isOffboarded ? 0 : p.current.netSalary), 0);
+                    const totalPrevNet = comparativePayrollData.reduce((acc: number, p: any) => acc + (p.isNewHire ? 0 : p.previous.netSalary), 0);
+                    const totalCurGross = comparativePayrollData.reduce((acc: number, p: any) => acc + (p.isOffboarded ? 0 : (p.current.grossSalary + p.current.otAmount)), 0);
+                    const totalPrevGross = comparativePayrollData.reduce((acc: number, p: any) => acc + (p.isNewHire ? 0 : (p.previous.grossSalary + p.previous.otAmount)), 0);
+                    
+                    const netVarianceValue = totalCurNet - totalPrevNet;
+                    const grossVarianceValue = totalCurGross - totalPrevGross;
+                    
+                    return [
+                        { label: `${monthName} Net Payout`, value: `AED ${totalCurNet.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: Wallet, color: 'brand' },
+                        { label: `${prevMonthName} Net Payout`, value: `AED ${totalPrevNet.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: CreditCard, color: 'slate' },
+                        { 
+                            label: 'Net Variance', 
+                            value: `${netVarianceValue >= 0 ? '+' : ''}AED ${netVarianceValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, 
+                            icon: netVarianceValue >= 0 ? TrendingUp : TrendingDown, 
+                            color: netVarianceValue >= 0 ? 'rose' : 'emerald' 
+                        },
+                        { 
+                            label: 'Gross Base + OT Var', 
+                            value: `${grossVarianceValue >= 0 ? '+' : ''}AED ${grossVarianceValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, 
+                            icon: Activity, 
+                            color: grossVarianceValue >= 0 ? 'brand' : 'emerald' 
+                        },
+                    ];
+                })().map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
+
                 {reportType === 'projects' && [
                     { label: 'Active Projects', value: projects.filter((p: any) => p.status === 'Active').length, icon: Briefcase, color: 'brand' },
                     { label: 'Total Revenue', value: `AED ${stats.totalReceivable.toLocaleString()}`, icon: TrendingUp, color: 'emerald' },
@@ -11779,6 +11938,7 @@ const ReportsView = ({
                                 {reportType === 'staff' && ['Code', 'Name', 'Nationality', 'Company', 'Department', 'Designation', 'Gross Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
                                 {reportType === 'attendance' && ['Code', 'Name', 'Present', 'Absent', 'OT Hours', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
                                 {reportType === 'payroll' && ['Code', 'Name', 'Present Days', 'Unpaid Days', 'OT Hours', 'Gross', 'OT Amt', 'Deductions', 'Net Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
+                                {reportType === 'payroll_comparison' && ['Employee Code & Name', `${prevMonthName} Net`, `${monthName} Net`, 'Net Variance', 'Gross Variance', 'OT Hr Variance', 'LOP Day Variance', 'Primary Drivers / Causes'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
                                 {reportType === 'projects' && ['Project', 'Client', 'Staff', 'Revenue', 'Expense', 'Margin'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'finance' && ['Type', 'Date', 'Reference', 'Entity', 'Amount', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
                                 {reportType === 'everyday' && ['Date', 'Invoice', 'Shop/Supplier', 'Client', 'Amount', 'VAT'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">{h}</th>)}
@@ -12008,6 +12168,76 @@ const ReportsView = ({
                                     <td className="px-6 py-4 text-sm font-black text-emerald-600 bg-emerald-50/30 whitespace-nowrap">AED {p.payroll.netSalary.toLocaleString()}</td>
                                 </tr>
                             ))}
+                            {reportType === 'payroll_comparison' && filteredComparativePayrollData.map((p: any) => {
+                                const netVar = p.netDiff;
+                                const grossVar = p.grossDiff + p.otPayDiff;
+                                const otHrVar = p.otHoursDiff;
+                                const lopDayVar = p.lopDaysDiff;
+                                return (
+                                    <tr key={p.employee.id} className="hover:bg-slate-50/50 transition-colors">
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-sm font-black text-slate-900">{p.employee.name}</div>
+                                            <div className="text-[10px] font-bold text-slate-400 font-mono">Code: {p.employee.code} • {p.employee.company}</div>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-600 whitespace-nowrap">
+                                            {p.isNewHire ? (
+                                                <span className="text-slate-400 italic">N/A (New Hire)</span>
+                                            ) : (
+                                                `AED ${p.previous.netSalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-black text-slate-800 whitespace-nowrap">
+                                            {p.isOffboarded ? (
+                                                <span className="text-slate-400 italic font-medium">N/A (Inactive)</span>
+                                            ) : (
+                                                `AED ${p.current.netSalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                            )}
+                                        </td>
+                                        <td className={cn(
+                                            "px-6 py-4 text-sm font-black whitespace-nowrap",
+                                            netVar > 1 ? "text-rose-600 bg-rose-50/20" : netVar < -1 ? "text-emerald-600 bg-emerald-50/20" : "text-slate-500"
+                                        )}>
+                                            {netVar === 0 ? 'AED 0.00' : `${netVar > 0 ? '+' : ''}AED ${netVar.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                        </td>
+                                        <td className={cn(
+                                            "px-6 py-4 text-sm font-bold whitespace-nowrap",
+                                            grossVar > 1 ? "text-rose-600" : grossVar < -1 ? "text-emerald-600" : "text-slate-500"
+                                        )}>
+                                            {grossVar === 0 ? 'AED 0.00' : `${grossVar > 0 ? '+' : ''}AED ${grossVar.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                                        </td>
+                                        <td className={cn(
+                                            "px-6 py-4 text-sm font-bold whitespace-nowrap",
+                                            otHrVar > 0.1 ? "text-rose-600" : otHrVar < -0.1 ? "text-emerald-600" : "text-slate-500"
+                                        )}>
+                                            {otHrVar === 0 ? '-' : `${otHrVar > 0 ? '+' : ''}${otHrVar.toFixed(1)} hrs`}
+                                        </td>
+                                        <td className={cn(
+                                            "px-6 py-4 text-sm font-bold whitespace-nowrap",
+                                            lopDayVar > 0.1 ? "text-rose-600" : lopDayVar < -0.1 ? "text-emerald-600" : "text-slate-500"
+                                        )}>
+                                            {lopDayVar === 0 ? '-' : `${lopDayVar > 0 ? '+' : ''}${lopDayVar.toFixed(1)} days`}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-wrap gap-1.5 max-w-xs">
+                                                {p.explanations.map((exp: string, idx: number) => {
+                                                    let badgeClass = "bg-slate-50 text-slate-600 border border-slate-100";
+                                                    if (exp.includes("New Hire")) badgeClass = "bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold";
+                                                    else if (exp.includes("Inactive")) badgeClass = "bg-amber-50 text-amber-700 border border-amber-100 font-bold";
+                                                    else if (exp.includes("OT change")) badgeClass = otHrVar > 0 ? "bg-rose-50 text-rose-700 border border-rose-100" : "bg-emerald-50 text-emerald-700 border border-emerald-100";
+                                                    else if (exp.includes("LOP change")) badgeClass = lopDayVar > 0 ? "bg-orange-50 text-orange-700 border border-orange-100" : "bg-teal-50 text-teal-700 border border-teal-100";
+                                                    else if (exp.includes("Contract salary")) badgeClass = "bg-violet-50 text-violet-700 border border-violet-100";
+                                                    
+                                                    return (
+                                                        <span key={idx} className={cn("inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-tight whitespace-nowrap", badgeClass)}>
+                                                            {exp}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                             {reportType === 'projects' && filteredProjects.map((p: any) => {
                                 const projectStaff = activeStaff.filter((e: any) => e.team === p.name);
                                 const projectAR = monthlyAR.filter(ar => (ar.entityId || ar.projectId) === p.id && (ar.entityType || 'Project') === 'Project').reduce((acc, ar) => acc + ar.amount, 0);
