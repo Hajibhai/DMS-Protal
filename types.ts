@@ -161,6 +161,8 @@ export interface Company {
     driveFolderId?: string;
     order?: number;
     trn?: string;
+    establishmentId?: string; // 13-digit UAE MOHRE Establishment ID
+    bankRoutingCode?: string; // 9-digit UAE Central Bank Routing Code
 }
 
 export interface Supplier {

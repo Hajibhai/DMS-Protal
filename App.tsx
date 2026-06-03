@@ -2482,7 +2482,9 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
         email: '',
         phone: '',
         logo: '',
-        trn: ''
+        trn: '',
+        establishmentId: '',
+        bankRoutingCode: ''
     });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -2498,7 +2500,7 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
         setError(null);
         try {
             await onAdd(formData);
-            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '' });
+            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '', establishmentId: '', bankRoutingCode: '' });
             setIsAdding(false);
         } catch (err) {
             setError("Failed to save company. Please check your permissions.");
@@ -2654,6 +2656,28 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
                                         />
                                     </div>
                                 </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase">MOHRE Establishment ID (WPS)</label>
+                                        <input 
+                                            className="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-900 font-mono" 
+                                            placeholder="13 digits (e.g. 7012345678901)" 
+                                            value={formData.establishmentId} 
+                                            maxLength={13}
+                                            onChange={e => setFormData(prev => ({ ...prev, establishmentId: e.target.value.replace(/\D/g, '') }))} 
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Bank Routing Code (WPS)</label>
+                                        <input 
+                                            className="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-900 font-mono" 
+                                            placeholder="9 digits (e.g. 020101234)" 
+                                            value={formData.bankRoutingCode} 
+                                            maxLength={9}
+                                            onChange={e => setFormData(prev => ({ ...prev, bankRoutingCode: e.target.value.replace(/\D/g, '') }))} 
+                                        />
+                                    </div>
+                                </div>
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
                                         <div className="relative">
@@ -2760,6 +2784,26 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
                                                 value={c.trn || ''} 
                                                 onChange={e => handleUpdate({...c, trn: e.target.value})} 
                                                 placeholder="e.g. 100xxxxxxxxxxxx"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">MOHRE Establishment ID (WPS)</label>
+                                            <input 
+                                                className="w-full p-2 border border-gray-100 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50/30 text-gray-900 font-mono" 
+                                                value={c.establishmentId || ''} 
+                                                maxLength={13}
+                                                onChange={e => handleUpdate({...c, establishmentId: e.target.value.replace(/\D/g, '')})} 
+                                                placeholder="13 digits"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Bank Routing Code (WPS)</label>
+                                            <input 
+                                                className="w-full p-2 border border-gray-100 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50/30 text-gray-900 font-mono" 
+                                                value={c.bankRoutingCode || ''} 
+                                                maxLength={9}
+                                                onChange={e => handleUpdate({...c, bankRoutingCode: e.target.value.replace(/\D/g, '')})} 
+                                                placeholder="9 digits"
                                             />
                                         </div>
                                     </div>
@@ -4411,7 +4455,7 @@ export default function App() {
         />
       )}
       {activeTab === 'payroll' && (
-        <PayrollRegisterView employees={employees.filter(e => e.active)} attendance={attendance} deductions={deductions} selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} user={systemUser} companies={companies} />
+        <PayrollRegisterView employees={employees.filter(e => e.active)} attendance={attendance} deductions={deductions} selectedMonth={selectedMonth} onMonthChange={setSelectedMonth} user={systemUser} companies={companies} onLog={handleLogAction} />
       )}
       {activeTab === 'job-offer' && (
         <JobOfferView 
@@ -9832,8 +9876,477 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
     );
 };
 
-const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth, onMonthChange, user, companies }: any) => {
+// --- UAE Wages Protection System (WPS) SIF Export Component ---
+
+const COMMON_UAE_BANKS = [
+    { name: "Emirates NBD", code: "020100128" },
+    { name: "ADCB (Abu Dhabi Commercial Bank)", code: "020500124" },
+    { name: "DIB (Dubai Islamic Bank)", code: "020300122" },
+    { name: "FAB (First Abu Dhabi Bank)", code: "020800121" },
+    { name: "Mashreq Bank", code: "021100120" },
+    { name: "HSBC Bank Middle East", code: "020200126" },
+    { name: "Al Ansari Exchange", code: "099900014" },
+    { name: "Edenred (C3 Card / Payroll)", code: "099900030" },
+    { name: "Lulu Exchange", code: "099900022" },
+    { name: "Standard Bank / Other", code: "099999999" }
+];
+
+const getCentralBankRoutingCode = (bankName: string = ''): string => {
+    const name = bankName.toLowerCase();
+    if (name.includes('nbd') || name.includes('emirates')) return '020100128';
+    if (name.includes('adcb') || name.includes('abu dhabi')) return '020500124';
+    if (name.includes('dib') || name.includes('dubai islamic')) return '020300122';
+    if (name.includes('fab') || name.includes('first abu dhabi') || name.includes('first gulf')) return '020800121';
+    if (name.includes('mashreq')) return '021100120';
+    if (name.includes('hsbc')) return '020200126';
+    if (name.includes('ansari')) return '099900014';
+    if (name.includes('edenred') || name.includes('c3')) return '099900030';
+    if (name.includes('lulu')) return '099900022';
+    return '099999999';
+};
+
+const WpsSifExportModal = ({ isOpen, onClose, employees, attendance, deductions, selectedMonth, companies, onLog }: any) => {
+    const [selectedCompanyId, setSelectedCompanyId] = useState('');
+    const [establishmentId, setEstablishmentId] = useState('7012345678901');
+    const [bankRoutingCode, setBankRoutingCode] = useState('020101234');
+    const [reference, setReference] = useState('SalaryPAY');
+    
+    // Inline overrides
+    const [labourCards, setLabourCards] = useState<Record<string, string>>({});
+    const [routingCodes, setRoutingCodes] = useState<Record<string, string>>({});
+    const [ibans, setIbans] = useState<Record<string, string>>({});
+    const [daysPaid, setDaysPaid] = useState<Record<string, number>>({});
+    
+    const [isSavingChanges, setIsSavingChanges] = useState(false);
+    const [persistEnabled, setPersistEnabled] = useState(true);
+
+    // Get current month details
+    const daysInMonth = useMemo(() => {
+        if (!selectedMonth) return 30;
+        const parts = selectedMonth.split('-');
+        if (parts.length !== 2) return 30;
+        const year = Number(parts[0]);
+        const month = Number(parts[1]);
+        return new Date(year, month, 0).getDate();
+    }, [selectedMonth]);
+
+    // Active selected company object
+    const activeCompany = useMemo(() => {
+        return companies.find((c: any) => c.id === selectedCompanyId) || null;
+    }, [companies, selectedCompanyId]);
+
+    // Initialize defaults based on companies
+    useEffect(() => {
+        if (companies && companies.length > 0 && !selectedCompanyId) {
+            setSelectedCompanyId(companies[0].id);
+        }
+    }, [companies, selectedCompanyId]);
+
+    // Auto-prepopulate when active company changes
+    useEffect(() => {
+        if (activeCompany) {
+            setEstablishmentId(activeCompany.establishmentId || '7012345678901');
+            setBankRoutingCode(activeCompany.bankRoutingCode || '020101234');
+        }
+    }, [activeCompany]);
+
+    // Filtered payroll employees
+    const payrollEmployees = useMemo(() => {
+        if (!activeCompany) return [];
+        return employees.filter((e: any) => e.company === activeCompany.name && e.status === 'Active');
+    }, [employees, activeCompany]);
+
+    // Map fields for payroll records
+    const records = useMemo(() => {
+        return payrollEmployees.map((e: any) => {
+            const monthRecs = attendance.filter((r: any) => r.employeeId === e.id && r.date.startsWith(selectedMonth));
+            const monthDeds = deductions.filter((d: any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
+            const p = calculatePayroll(e, monthRecs, monthDeds);
+            
+            // Get current overriden fields or fallback
+            const finalLabourCard = labourCards[e.id] !== undefined ? labourCards[e.id] : (e.documents?.labourCardNumber || '');
+            const finalRoutingCode = routingCodes[e.id] !== undefined ? routingCodes[e.id] : getCentralBankRoutingCode(e.bankName);
+            const finalIban = ibans[e.id] !== undefined ? ibans[e.id] : (e.iban || '');
+            const finalDaysPaid = daysPaid[e.id] !== undefined ? daysPaid[e.id] : daysInMonth;
+
+            // Calculate Fixed and Variable salaries
+            // Fixed includes: Basic + Housing + Transport + Fixed Allowances
+            const isFixed = e.team === 'Office Staff' || e.team === 'Internal Team';
+            const fixedAmt = isFixed 
+                ? (p.breakdown?.basic || 0) + (p.breakdown?.housing || 0) + (p.breakdown?.transport || 0) + (p.breakdown?.other || 0)
+                : p.grossSalary; // for hourly, let fixed gross salary be their wages
+
+            const variableAmt = p.otAmount; // Overtime is the variable wages component
+            const dedAmt = p.totalDeductions;
+
+            return {
+                id: e.id,
+                employee: e,
+                labourCardNo: finalLabourCard,
+                employeeRoutingCode: finalRoutingCode,
+                accountNo: finalIban.replace(/\s+/g, ''),
+                daysPaid: finalDaysPaid,
+                fixedSalary: Math.max(0, fixedAmt),
+                variableSalary: Math.max(0, variableAmt),
+                deductions: Math.max(0, dedAmt),
+                netSalary: p.netSalary
+            };
+        });
+    }, [payrollEmployees, attendance, deductions, selectedMonth, labourCards, routingCodes, ibans, daysPaid, daysInMonth]);
+
+    // Generate SIF text on the fly
+    const sifContent = useMemo(() => {
+        if (!establishmentId || records.length === 0) return '';
+        
+        // Month string e.g. YYYYMM (no hyphen)
+        const salaryMonthNoHyphen = selectedMonth.replace('-', '');
+        
+        const fileDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const nowTime = new Date();
+        const fileTime = `${String(nowTime.getHours()).padStart(2, '0')}${String(nowTime.getMinutes()).padStart(2, '0')}`;
+        const count = records.length;
+        const totalSalary = records.reduce((sum, r) => sum + r.netSalary, 0).toFixed(2);
+        
+        // Header
+        const scrLine = `SCR,${establishmentId},${bankRoutingCode},${fileDate},${fileTime},${salaryMonthNoHyphen},${count},${totalSalary},AED,${reference.slice(0, 13)}`;
+        
+        // Employee Detail records
+        const edrLines = records.map(r => {
+            // Get cleaned Labor Card
+            const cardStr = r.labourCardNo ? r.labourCardNo.trim() : `784${String(r.employee.code || '').padStart(11, '0')}`;
+            const cleanCard = cardStr.replace(/\D/g, '').slice(0, 14).padEnd(14, '0');
+            
+            // Cleaned account/IBAN
+            const cleanIban = r.accountNo ? r.accountNo.trim().toUpperCase() : 'N_A';
+            
+            // Dates mapping based on selected month (YYYY-MM-DD)
+            const parts = selectedMonth.split('-');
+            const year = parts.length === 2 ? Number(parts[0]) : new Date().getFullYear();
+            const month = parts.length === 2 ? Number(parts[1]) : new Date().getMonth() + 1;
+            const startDateStr = `${year}-${String(month).padStart(2, '0')}-01`;
+            const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+            return `EDR,${cleanCard},${r.employeeRoutingCode},${cleanIban},${startDateStr},${endDateStr},${r.daysPaid},${r.fixedSalary.toFixed(2)},${r.variableSalary.toFixed(2)},${r.deductions.toFixed(2)}`;
+        });
+
+        return [scrLine, ...edrLines].join('\r\n');
+    }, [establishmentId, bankRoutingCode, reference, selectedMonth, records, daysInMonth]);
+
+    // Validations checklist
+    const validationErrors = useMemo(() => {
+        const list: string[] = [];
+        if (establishmentId.length !== 13) {
+            list.push("Company Establishment ID must be exactly 13 digits long.");
+        }
+        if (bankRoutingCode.length !== 9) {
+            list.push("Employer Bank Routing Code must be exactly 9 digits long.");
+        }
+        
+        let missingLabourCards = 0;
+        let missingIbans = 0;
+        records.forEach(r => {
+            if (!r.labourCardNo || r.labourCardNo.replace(/\D/g, '').length !== 14) {
+                missingLabourCards++;
+            }
+            if (!r.accountNo || r.accountNo.length < 14) {
+                missingIbans++;
+            }
+        });
+
+        if (missingLabourCards > 0) {
+            list.push(`${missingLabourCards} employees are missing a valid 14-digit Labor Card No. (A fallback dummy card will be auto-generated).`);
+        }
+        if (missingIbans > 0) {
+            list.push(`${missingIbans} employees have missing or invalid IBAN numbers.`);
+        }
+
+        return list;
+    }, [establishmentId, bankRoutingCode, records]);
+
+    if (!isOpen) return null;
+
+    const handleExportSIF = async () => {
+        setIsSavingChanges(true);
+        try {
+            // 1. Direct Persistent Cloud DB update of compilation metrics for company profile
+            if (activeCompany && persistEnabled) {
+                const updatedComp = {
+                    ...activeCompany,
+                    establishmentId,
+                    bankRoutingCode
+                };
+                await updateCompany(updatedComp);
+            }
+
+            // 2. Direct Persistent Cloud DB update of modified labor cards & IBANs back to employee collections
+            if (persistEnabled && records.length > 0) {
+                for (const r of records) {
+                    let hasMod = false;
+                    const emp = { ...r.employee };
+                    
+                    if (labourCards[r.id] !== undefined && labourCards[r.id] !== emp.documents?.labourCardNumber) {
+                        emp.documents = {
+                            ...(emp.documents || {}),
+                            labourCardNumber: labourCards[r.id].trim()
+                        };
+                        hasMod = true;
+                    }
+                    if (ibans[r.id] !== undefined && ibans[r.id] !== emp.iban) {
+                        emp.iban = ibans[r.id].trim();
+                        hasMod = true;
+                    }
+
+                    if (hasMod) {
+                        await saveEmployee(emp);
+                    }
+                }
+            }
+
+            // 3. Initiate text download trigger for portal compatibility
+            const blob = new Blob([sifContent], { type: 'text/plain;charset=utf-8' });
+            const link = document.createElement('a');
+            const salaryMonthNoHyphen = selectedMonth.replace('-', '');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${establishmentId}_${salaryMonthNoHyphen}.sif`;
+            link.click();
+
+            if (onLog) {
+                onLog('WPS SIF Exported', `Generated SIF for ${activeCompany?.name || 'entity'} (${selectedMonth}) with ${records.length} records.`, 'create');
+            }
+
+            onClose();
+        } catch (error) {
+            console.error("Failed executing SIF file synchronizer writes:", error);
+        } finally {
+            setIsSavingChanges(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                className="bg-white rounded-3xl border border-slate-100 shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[92vh] animate-in duration-200"
+            >
+                {/* Header */}
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-indigo-50 rounded-xl text-indigo-600 border border-indigo-100">
+                            <Landmark className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-black text-slate-900 tracking-tight">UAE Wages Protection System (WPS) SIF Export</h2>
+                            <p className="text-slate-500 text-xs mt-0.5 font-medium">Generate standardized .sif files compatible with UAE corporate banking portals.</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-200/50 rounded-full transition-colors">
+                        <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                </div>
+
+                <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-700">
+                    {/* Setup Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                        <div className="space-y-1.5 col-span-2 md:col-span-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-sans">1. Company Entity</label>
+                            <select 
+                                value={selectedCompanyId}
+                                onChange={e => setSelectedCompanyId(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 shadow-sm"
+                            >
+                                {companies.map((c: any) => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-sans">2. MOHRE Establishment ID</label>
+                            <input 
+                                type="text"
+                                maxLength={13}
+                                value={establishmentId}
+                                onChange={e => setEstablishmentId(e.target.value.replace(/\D/g, ''))}
+                                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 shadow-sm"
+                                placeholder="13 digits"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-sans">3. Employer Bank Routing Code</label>
+                            <input 
+                                type="text"
+                                maxLength={9}
+                                value={bankRoutingCode}
+                                onChange={e => setBankRoutingCode(e.target.value.replace(/\D/g, ''))}
+                                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 shadow-sm"
+                                placeholder="9 digits"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-sans">4. SIF Reference Code</label>
+                            <input 
+                                type="text"
+                                maxLength={13}
+                                value={reference}
+                                onChange={e => setReference(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
+                                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 shadow-sm"
+                                placeholder="Up to 13 chars"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Live Validation Alert banners */}
+                    {validationErrors.length > 0 && (
+                        <div className="bg-amber-50/60 border border-amber-100 rounded-2xl p-4 space-y-2">
+                            <div className="flex items-center gap-2 text-amber-800 text-xs font-black uppercase tracking-wider">
+                                <AlertCircle className="w-4 h-4 text-amber-600" />
+                                <span>WPS SIF Export Checklist / Alerts ({validationErrors.length})</span>
+                            </div>
+                            <ul className="list-disc pl-5 space-y-1.5 text-xs font-semibold text-slate-600">
+                                {validationErrors.map((err, i) => (
+                                    <li key={i}>{err}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {/* Employee Grid */}
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest font-sans">Employee Payroll Records ({records.length})</h3>
+                            <span className="text-xs font-bold text-slate-500 font-sans">Salary Month: <span className="font-black text-slate-800">{selectedMonth}</span></span>
+                        </div>
+                        
+                        <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-inner bg-slate-50/20 max-h-[300px] overflow-y-auto">
+                            <table className="w-full border-collapse text-left text-xs text-slate-600">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 uppercase font-bold text-[10px] tracking-wider sticky top-0 z-10">
+                                        <th className="p-3">Staff Member</th>
+                                        <th className="p-3">Labour Card No. (14d)</th>
+                                        <th className="p-3">Central Bank Code</th>
+                                        <th className="p-3">Account Number / IBAN</th>
+                                        <th className="p-3 text-center">Days</th>
+                                        <th className="p-3 text-right">Fixed</th>
+                                        <th className="p-3 text-right">Variable</th>
+                                        <th className="p-3 text-right font-bold text-indigo-600">Net Pay</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 bg-white">
+                                    {records.map(r => {
+                                        const missingLabour = !r.labourCardNo || r.labourCardNo.length !== 14;
+                                        const missingIban = !r.accountNo || r.accountNo.length < 14;
+                                        return (
+                                            <tr key={r.id} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="p-3">
+                                                    <div className="font-bold text-slate-900">{r.employee.name}</div>
+                                                    <div className="text-[10px] font-bold text-slate-400 font-mono">Code: {r.employee.code}</div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <input 
+                                                        type="text"
+                                                        maxLength={14}
+                                                        value={labourCards[r.id] !== undefined ? labourCards[r.id] : (r.employee.documents?.labourCardNumber || '')}
+                                                        onChange={e => setLabourCards(prev => ({ ...prev, [r.id]: e.target.value.replace(/\D/g, '') }))}
+                                                        placeholder={`784... (Fallback Generated)`}
+                                                        className={`w-36 p-1.5 border rounded-lg font-mono text-center text-xs font-bold ${missingLabour ? 'border-amber-300 bg-amber-50/30 text-amber-800' : 'border-slate-200'}`}
+                                                    />
+                                                </td>
+                                                <td className="p-3">
+                                                    <select 
+                                                        value={r.employeeRoutingCode}
+                                                        onChange={e => setRoutingCodes(prev => ({ ...prev, [r.id]: e.target.value }))}
+                                                        className="p-1.5 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-1 focus:ring-indigo-500 max-w-[150px]"
+                                                    >
+                                                        {COMMON_UAE_BANKS.map((bank, bIdx) => (
+                                                            <option key={bIdx} value={bank.code}>{bank.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                                <td className="p-3">
+                                                    <input 
+                                                        type="text"
+                                                        value={ibans[r.id] !== undefined ? ibans[r.id] : (r.employee.iban || '')}
+                                                        onChange={e => setIbans(prev => ({ ...prev, [r.id]: e.target.value }))}
+                                                        placeholder="Insert UAE IBAN"
+                                                        className={`w-44 p-1.5 border rounded-lg font-mono text-xs uppercase ${missingIban ? 'border-red-200 bg-red-50/30 text-red-800' : 'border-slate-200'}`}
+                                                    />
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                    <input 
+                                                        type="number"
+                                                        min={1}
+                                                        max={31}
+                                                        value={daysPaid[r.id] !== undefined ? daysPaid[r.id] : daysInMonth}
+                                                        onChange={e => setDaysPaid(prev => ({ ...prev, [r.id]: Math.min(31, Math.max(1, Number(e.target.value))) }))}
+                                                        className="w-12 p-1.5 border border-slate-200 rounded-lg font-bold text-center text-xs text-slate-800"
+                                                    />
+                                                </td>
+                                                <td className="p-3 text-right font-medium text-slate-800 font-mono">{r.fixedSalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td className="p-3 text-right font-medium text-slate-800 font-mono">{r.variableSalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                <td className="p-3 text-right font-black text-indigo-600 font-mono">{r.netSalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {records.length === 0 && (
+                                        <tr>
+                                            <td colSpan={8} className="py-8 text-center text-slate-400 font-bold">No active employees found for this company.</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* SIF String Preview */}
+                    <div className="space-y-2">
+                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest font-sans">Generated SIF File Preview (Live / Port compliant)</h3>
+                        <div className="bg-slate-900 text-slate-300 font-mono text-[10px] leading-relaxed p-4 rounded-2xl border border-slate-800 shadow-inner max-h-[140px] overflow-auto select-all" title="Click to copy preview content">
+                            <pre className="whitespace-pre-wrap">{sifContent || "Select an entity to render a SIF model file..."}</pre>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer Controls */}
+                <div className="p-6 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input 
+                            type="checkbox"
+                            checked={persistEnabled}
+                            onChange={e => setPersistEnabled(e.target.checked)}
+                            className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500/20 focus:ring-offset-0"
+                        />
+                        <span className="text-xs font-bold text-slate-600">Save correction details (Labour Cards, IBANs) permanently to database</span>
+                    </label>
+
+                    <div className="flex gap-3">
+                        <button 
+                            onClick={onClose}
+                            className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-100 hover:text-slate-800 transition-all shadow-sm"
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            onClick={handleExportSIF}
+                            disabled={isSavingChanges || records.length === 0}
+                            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-black transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2"
+                        >
+                            <Download className="w-4 h-4" />
+                            {isSavingChanges ? 'Saving profiles & IDs...' : 'Generate & Download .SIF'}
+                        </button>
+                    </div>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth, onMonthChange, user, companies, onLog }: any) => {
      const [searchTerm, setSearchTerm] = useState('');
+     const [showWpsModal, setShowWpsModal] = useState(false);
      const canManagePayroll = user?.permissions?.canManagePayroll;
 
      const filteredEmployees = useMemo(() => {
@@ -10314,6 +10827,12 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                           <Printer className="w-4 h-4" /> Download All Slips
                      </button>
                      <button 
+                        onClick={() => setShowWpsModal(true)} 
+                        className="neo-button bg-indigo-50 border border-indigo-100 hover:bg-indigo-100/80 text-indigo-700 px-6 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 shadow-sm transition-all text-nowrap"
+                     >
+                          <Landmark className="w-4 h-4 text-indigo-600" /> Export WPS SIF
+                     </button>
+                     <button 
                         onClick={handleExport} 
                         className="neo-button bg-white text-slate-700 px-6 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border border-slate-200 shadow-sm hover:bg-slate-50 transition-all"
                      >
@@ -10423,6 +10942,17 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                  onClose={() => setIsBatchPayslipModalOpen(false)}
                  onPrint={handlePrintAllPayslipsWithConfig}
                  title="Print All Payslips"
+             />
+
+             <WpsSifExportModal 
+                 isOpen={showWpsModal}
+                 onClose={() => setShowWpsModal(false)}
+                 employees={employees}
+                 attendance={attendance}
+                 deductions={deductions}
+                 selectedMonth={selectedMonth}
+                 companies={companies}
+                 onLog={onLog}
              />
          </div>
       );
