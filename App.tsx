@@ -3049,6 +3049,7 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser, openConfirm }: { is
     const [filterType, setFilterType] = useState<'all' | 'onboarding' | 'offboarding' | 'login' | 'logout' | 'delete' | 'update' | 'rehire'>('all');
     const [timeFilter, setTimeFilter] = useState<'all' | 'weekly' | 'monthly' | 'yearly'>('all');
     const [userFilter, setUserFilter] = useState<string>('all');
+    const [searchQuery, setSearchQuery] = useState('');
     const [editingLog, setEditingLog] = useState<AuditLog | null>(null);
     const [editDetails, setEditDetails] = useState('');
     const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
@@ -3061,6 +3062,17 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser, openConfirm }: { is
     const users = Array.from(new Set(logs.map(l => l.userName)));
 
     const filteredLogs = logs.filter(log => {
+        // Search query filter
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            const matchesAction = log.action.toLowerCase().includes(query);
+            const matchesDetails = log.details.toLowerCase().includes(query);
+            const matchesUser = log.userName.toLowerCase().includes(query);
+            if (!matchesAction && !matchesDetails && !matchesUser) {
+                return false;
+            }
+        }
+
         // Type filter
         if (filterType !== 'all') {
             const action = log.action.toLowerCase();
@@ -3173,7 +3185,21 @@ const AuditLogModal = ({ isOpen, onClose, logs, currentUser, openConfirm }: { is
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Search Audit Logs</label>
+                            <div className="relative">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input 
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Search by name, action or details..."
+                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-600 placeholder-slate-400 outline-none focus:ring-2 focus:ring-brand-500/20 transition-all"
+                                />
+                            </div>
+                        </div>
+
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Action Type</label>
                             <div className="relative">
@@ -4757,6 +4783,7 @@ export default function App() {
         <SettingsView 
           user={systemUser} 
           onPasswordReset={handlePasswordReset}
+          onViewAuditLogs={() => setShowAuditModal(true)}
         />
       )}
       {activeTab === 'help' && (
@@ -5177,45 +5204,50 @@ const DashboardView = ({
                 </div>
 
                 {/* Recent Activity Log */}
-                <div className="md:col-span-2 lg:col-span-5 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col">
-                    <div className="flex items-center justify-between mb-8">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 bg-brand-50 rounded-2xl">
-                                <Activity className="w-5 h-5 text-brand-600" />
+                {isUserAdminOrCreator && (
+                    <div className="md:col-span-2 lg:col-span-5 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col">
+                        <div className="flex items-center justify-between mb-8">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-brand-50 rounded-2xl">
+                                    <Activity className="w-5 h-5 text-brand-600" />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">System Activity</h3>
                             </div>
-                            <h3 className="text-xl font-black text-slate-900 tracking-tight">System Activity</h3>
+                            <button 
+                                onClick={() => setShowAuditModal(true)}
+                                className="text-xs font-bold text-brand-600 hover:underline"
+                            >
+                                View Audit Log
+                            </button>
                         </div>
-                        <button 
-                            onClick={() => setShowAuditModal(true)}
-                            className="text-xs font-bold text-brand-600 hover:underline"
-                        >
-                            View Audit Log
-                        </button>
+                        
+                        <div className="space-y-6 flex-1 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
+                            {auditLogs.length > 0 ? (
+                                auditLogs.slice(0, 5).map((log) => (
+                                    <ActivityItem 
+                                        key={log.id}
+                                        icon={log.type === 'create' ? UserPlus : log.type === 'delete' ? UserMinus : log.type === 'update' ? Edit : Activity} 
+                                        title={log.action} 
+                                        desc={log.details} 
+                                        time={new Date(log.timestamp).toLocaleString()} 
+                                        color={log.type === 'create' ? 'emerald' : log.type === 'delete' ? 'red' : log.type === 'update' ? 'brand' : 'indigo'}
+                                    />
+                                ))
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-full text-slate-400 py-10">
+                                    <Activity className="w-12 h-12 mb-4 opacity-20" />
+                                    <p className="text-sm font-bold">No recent activity</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                    
-                    <div className="space-y-6 flex-1 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
-                        {auditLogs.length > 0 ? (
-                            auditLogs.slice(0, 5).map((log) => (
-                                <ActivityItem 
-                                    key={log.id}
-                                    icon={log.type === 'create' ? UserPlus : log.type === 'delete' ? UserMinus : log.type === 'update' ? Edit : Activity} 
-                                    title={log.action} 
-                                    desc={log.details} 
-                                    time={new Date(log.timestamp).toLocaleString()} 
-                                    color={log.type === 'create' ? 'emerald' : log.type === 'delete' ? 'red' : log.type === 'update' ? 'brand' : 'indigo'}
-                                />
-                            ))
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-slate-400 py-10">
-                                <Activity className="w-12 h-12 mb-4 opacity-20" />
-                                <p className="text-sm font-bold">No recent activity</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
+                )}
 
                 {/* Quick Actions & Access */}
-                <div className="md:col-span-2 lg:col-span-5 bg-white rounded-[2.5rem] p-8 text-slate-900 border border-slate-200 flex flex-col relative overflow-hidden group">
+                <div className={cn(
+                    "md:col-span-2 bg-white rounded-[2.5rem] p-8 text-slate-900 border border-slate-200 flex flex-col relative overflow-hidden group",
+                    isUserAdminOrCreator ? "lg:col-span-5" : "lg:col-span-8"
+                )}>
                     <div className="absolute bottom-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mb-20 transition-transform duration-700 group-hover:scale-110"></div>
                     
                     <div className="relative z-10 flex flex-col h-full">
@@ -5453,20 +5485,23 @@ const ProfileView = ({ user, onUpdate }: { user: SystemUser, onUpdate: (updated:
 };
 
 // --- Settings View ---
-const SettingsView = ({ user, onPasswordReset }: { 
+const SettingsView = ({ user, onPasswordReset, onViewAuditLogs }: { 
     user: SystemUser, 
-    onPasswordReset: () => void 
+    onPasswordReset: () => void,
+    onViewAuditLogs?: () => void
 }) => {
     const canManageSettings = user?.permissions?.canManageSettings;
+    const userRoleLower = user?.role?.toLowerCase() || '';
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
     
-    if (!canManageSettings && user.role !== UserRole.CREATOR) {
+    if (!canManageSettings && user.role !== UserRole.CREATOR && !isAdmin) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-8">
                 <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-6">
                     <ShieldAlert className="w-10 h-10 text-red-600" />
                 </div>
                 <h2 className="text-2xl font-bold text-slate-900 mb-2">Access Denied</h2>
-                <p className="text-slate-500 max-w-md">
+                <p className="text-slate-500 max-w-md text-sm font-semibold">
                     You do not have permission to access system settings. Please contact your administrator if you believe this is an error.
                 </p>
             </div>
@@ -5486,6 +5521,27 @@ const SettingsView = ({ user, onPasswordReset }: {
             </div>
 
             <div className="grid grid-cols-1 gap-6">
+                {isAdmin && (
+                    <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm animate-in fade-in duration-300">
+                        <h3 className="text-lg font-black text-slate-900 mb-6">System Audit Logs</h3>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100">
+                                <div className="pr-4">
+                                    <p className="text-sm font-bold text-slate-900">System Activity Logs</p>
+                                    <p className="text-xs text-slate-500 font-medium">Track and view log entries for user actions, employee updates, and system changes</p>
+                                </div>
+                                <button 
+                                    onClick={onViewAuditLogs}
+                                    className="px-5 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-xl text-xs font-black transition-all active:scale-95 flex items-center gap-2 shrink-0"
+                                >
+                                    <Activity className="w-4 h-4" />
+                                    View
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm">
                     <h3 className="text-lg font-black text-slate-900 mb-6">Security</h3>
                     <div className="space-y-4">
@@ -8716,7 +8772,11 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
         setIsCopyModalOpen(false);
     };
 
-    const handleExport = () => {
+    const handleExportFiltered = () => {
+        if (filteredEmployees.length === 0) {
+            alert("No filtered employees to export.");
+            return;
+        }
         const headers = ['Code', 'Name', 'Company', 'Department', ...days.map(d => d.toString()), 'Present Days', 'Hours Worked', 'OT Hours'];
         const data = filteredEmployees.map((e: Employee) => {
             const row: any = {
@@ -8753,8 +8813,49 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
 
         const ws = XLSX.utils.json_to_sheet(data, { header: headers });
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Timesheet");
-        XLSX.writeFile(wb, `Timesheet_${selectedMonth}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, "Filtered Timesheet");
+        XLSX.writeFile(wb, `Timesheet_Filtered_${selectedMonth}.xlsx`);
+    };
+
+    const handleExportAll = () => {
+        const headers = ['Code', 'Name', 'Company', 'Department', ...days.map(d => d.toString()), 'Present Days', 'Hours Worked', 'OT Hours'];
+        const data = employees.map((e: Employee) => {
+            const row: any = {
+                'Code': e.code,
+                'Name': e.name,
+                'Company': e.company,
+                'Department': e.department,
+            };
+
+            const isFixedSalary = e.team === 'Office Staff' || e.team === 'Internal Team';
+
+            days.forEach(d => {
+                const dateStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+                const record = attendance.find((r: AttendanceRecord) => r.employeeId === e.id && r.date === dateStr);
+                if (record) {
+                    if (record.status === AttendanceStatus.PRESENT) {
+                        const hrs = record.hoursWorked !== undefined ? record.hoursWorked : (isFixedSalary ? 8 : 0);
+                        row[d.toString()] = `P (${hrs}h)`;
+                    } else {
+                        row[d.toString()] = record.status || '-';
+                    }
+                } else {
+                    row[d.toString()] = '-';
+                }
+            });
+
+            const empAtt = attendance.filter(r => r.employeeId === e.id && r.date.startsWith(selectedMonth));
+            row['Present Days'] = empAtt.filter(r => r.status === AttendanceStatus.PRESENT).length;
+            row['Hours Worked'] = empAtt.reduce((sum, r) => sum + (r.hoursWorked || 0), 0);
+            row['OT Hours'] = empAtt.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+
+            return row;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(data, { header: headers });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "All Timesheet");
+        XLSX.writeFile(wb, `Timesheet_All_${selectedMonth}.xlsx`);
     };
 
     const handleClearAll = () => {
@@ -8878,11 +8979,30 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                         <Printer className="w-5 h-5" />
                     </button>
                     <button 
-                        onClick={handleExport}
-                        className="p-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all active:scale-95 shadow-sm"
-                        title="Export to Excel"
+                        onClick={handleExportAll}
+                        className="p-2.5 bg-white border border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-50 transition-all active:scale-95 shadow-sm flex items-center gap-1.5"
+                        title="Export ALL employees to Excel"
                     >
                         <Download className="w-5 h-5" />
+                        <span className="text-xs font-bold text-slate-500 hidden md:inline">Export All</span>
+                    </button>
+                    <button 
+                        onClick={handleExportFiltered}
+                        className={cn(
+                            "p-2.5 rounded-2xl transition-all active:scale-95 shadow-sm flex items-center gap-1.5 border",
+                            searchTerm.trim() 
+                                ? "bg-amber-500 hover:bg-amber-600 text-white border-transparent" 
+                                : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                        )}
+                        title="Export ONLY searched/filtered employees to Excel"
+                    >
+                        <FileSpreadsheet className="w-5 h-5" />
+                        <span className={cn(
+                            "text-xs font-bold hidden md:inline",
+                            searchTerm.trim() ? "text-white" : "text-slate-500"
+                        )}>
+                            Export Filtered {searchTerm.trim() && `(${filteredEmployees.length})`}
+                        </span>
                     </button>
                 </div>
             </div>
@@ -10972,7 +11092,11 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                    (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
         });
     }, [employees, searchTerm, companies]);     // Real export functionality
-     const handleExport = () => {
+     const handleExportFiltered = () => {
+        if (filteredEmployees.length === 0) {
+            alert("No filtered employees to export.");
+            return;
+        }
         const data = filteredEmployees.map((e: Employee) => {
             const monthRecs = attendance.filter((r: any) => r.employeeId === e.id && r.date.startsWith(selectedMonth));
             const monthDeds = deductions.filter((d: any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
@@ -11007,8 +11131,47 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
 
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Payroll Register");
-        XLSX.writeFile(wb, `Payroll_Register_${selectedMonth}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, "Payroll Filtered");
+        XLSX.writeFile(wb, `Payroll_Register_Filtered_${selectedMonth}.xlsx`);
+     };
+
+     const handleExportAll = () => {
+        const data = employees.map((e: Employee) => {
+            const monthRecs = attendance.filter((r: any) => r.employeeId === e.id && r.date.startsWith(selectedMonth));
+            const monthDeds = deductions.filter((d: any) => d.employeeId === e.id && d.date.startsWith(selectedMonth));
+            const p = calculatePayroll(e, monthRecs, monthDeds);
+            
+             const isFixedSalary = e.team === 'Office Staff' || e.team === 'Internal Team';
+             const totalHours = monthRecs.reduce((sum: number, r: any) => sum + (r.hoursWorked || 0), 0);
+
+             const presentDays = monthRecs.filter((r: any) => r.status === AttendanceStatus.PRESENT).length;
+
+             return {
+                 'Employee Code': e.code,
+                 'Employee Name': e.name,
+                 'Month': selectedMonth,
+                 'Team': e.team,
+                 'Type': isFixedSalary ? 'Fixed' : 'Hourly',
+                 'Basic Salary': isFixedSalary ? p.breakdown.basic : 0,
+                 'Hourly Rate': isFixedSalary ? 0 : (p.breakdown.hourlyRate || 0),
+                 'Present Days': presentDays,
+                 'Hours Worked': totalHours,
+                 'Housing': isFixedSalary ? p.breakdown.housing : 0,
+                 'Transport': isFixedSalary ? p.breakdown.transport : 0,
+                 'Other Allowance': isFixedSalary ? p.breakdown.other : 0,
+                 'Gross Salary': p.grossSalary,
+                 'Unpaid (Absent)': p.totalUnpaidDays,
+                 'Deductions': p.totalDeductions,
+                 'OT Hours': p.totalOtHours,
+                 'OT Amount': p.otAmount,
+                 'Net Salary': p.netSalary
+             };
+        });
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Payroll All");
+        XLSX.writeFile(wb, `Payroll_Register_All_${selectedMonth}.xlsx`);
      };
 
      const getPayslipHtmlForEmployee = (e: Employee, p: any, monthRecs: AttendanceRecord[], monthDeds: DeductionRecord[], selectedMonth: string) => {
@@ -11448,10 +11611,23 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                           <Landmark className="w-4 h-4 text-indigo-600" /> Export WPS SIF
                      </button>
                      <button 
-                        onClick={handleExport} 
-                        className="neo-button bg-white text-slate-700 px-6 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border border-slate-200 shadow-sm hover:bg-slate-50 transition-all"
+                        onClick={handleExportAll} 
+                        className="neo-button bg-white text-slate-700 px-5 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 border border-slate-200 shadow-sm hover:bg-slate-50 transition-all text-nowrap"
+                        title="Export ALL employees' payroll register to Excel"
                      >
-                          <Download className="w-4 h-4" /> Export
+                          <Download className="w-4 h-4" /> Export All
+                     </button>
+                     <button 
+                        onClick={handleExportFiltered} 
+                        className={cn(
+                            "neo-button px-5 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 transition-all text-nowrap border",
+                            searchTerm.trim()
+                                ? "bg-amber-500 hover:bg-amber-600 text-white border-transparent"
+                                : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                        )}
+                        title="Export ONLY currently searched/filtered payroll register to Excel"
+                     >
+                          <FileSpreadsheet className="w-4 h-4" /> Export Filtered {searchTerm.trim() && `(${filteredEmployees.length})`}
                      </button>
                  </div>
              </div>
