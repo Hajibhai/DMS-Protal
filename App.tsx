@@ -1751,11 +1751,16 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
     const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [showEditingPassword, setShowEditingPassword] = useState(false);
+    
+    const fileInputNewRef = useRef<HTMLInputElement>(null);
+    const fileInputEditRef = useRef<HTMLInputElement>(null);
+
     const [newUser, setNewUser] = useState({ 
         username: '', 
         password: '', 
         role: '', 
         name: '',
+        photoURL: '',
         permissions: {
             canViewDashboard: true,
             canViewCompanyDashboard: true,
@@ -1879,6 +1884,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                 name: newUser.name,
                 role: newUser.role as any,
                 active: true,
+                photoURL: newUser.photoURL || '',
                 permissions: newUser.permissions
             };
             console.log("Saving user to Firestore...");
@@ -1902,6 +1908,7 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                 password: '', 
                 role: '', 
                 name: '',
+                photoURL: '',
                 permissions: { ...INITIAL_PERMISSIONS }
             });
         } catch (e: any) {
@@ -1999,7 +2006,64 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                     </div>
 
                     {showAdd && (
-                        <div className="mb-6 p-4 bg-indigo-50 rounded-xl border border-indigo-100 space-y-3">
+                        <div className="mb-6 p-4 bg-indigo-50 rounded-xl border border-indigo-100 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <div className="flex items-center gap-4 p-3 bg-white rounded-xl border border-indigo-150/40">
+                                <div className="relative group shrink-0">
+                                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-xl font-bold text-indigo-600/60 border border-gray-250 overflow-hidden shrink-0 shadow-sm relative">
+                                        {newUser.photoURL ? (
+                                            <img src={newUser.photoURL} alt="Preview" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <Camera className="w-6 h-6 text-indigo-400" />
+                                        )}
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => fileInputNewRef.current?.click()}
+                                        className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer animate-duration-200"
+                                    >
+                                        <Camera className="w-4 h-4 text-white" />
+                                    </button>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-xs font-bold text-gray-750">Profile Picture</p>
+                                    <p className="text-[10px] text-gray-400 font-medium">Click to upload user avatar. PNG/JPG, Max 2MB.</p>
+                                    <div className="flex gap-2.5">
+                                        <button 
+                                            type="button"
+                                            onClick={() => fileInputNewRef.current?.click()}
+                                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 hover:underline"
+                                        >
+                                            Upload Image
+                                        </button>
+                                        {newUser.photoURL && (
+                                            <button 
+                                                type="button"
+                                                onClick={() => setNewUser(prev => ({ ...prev, photoURL: '' }))}
+                                                className="text-[11px] font-bold text-red-650 hover:text-red-750 hover:underline"
+                                            >
+                                                Remove
+                                            </button>
+                                        )}
+                                    </div>
+                                    <input 
+                                        type="file" 
+                                        ref={fileInputNewRef}
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => {
+                                                    setNewUser(prev => ({ ...prev, photoURL: reader.result as string }));
+                                                };
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }}
+                                        accept="image/*" 
+                                        className="hidden" 
+                                    />
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-indigo-600 uppercase">Full Name</label>
@@ -2110,8 +2174,66 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                     )}
 
                     {editingUser && (
-                        <div className="mb-6 p-4 bg-orange-50 rounded-xl border border-orange-100 space-y-3">
-                            <h4 className="text-sm font-bold text-orange-800">Editing: {editingUser.name}</h4>
+                        <div className="mb-6 p-4 bg-orange-50 rounded-xl border border-orange-100 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <h4 className="text-sm font-bold text-orange-850">Editing: {editingUser.name}</h4>
+                            
+                            <div className="flex items-center gap-4 p-3 bg-white rounded-xl border border-orange-150/40">
+                                <div className="relative group shrink-0">
+                                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-xl font-bold text-orange-600/60 border border-gray-250 overflow-hidden shrink-0 shadow-sm relative">
+                                        {editingUser.photoURL ? (
+                                            <img src={editingUser.photoURL} alt="Preview" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <Camera className="w-6 h-6 text-orange-400" />
+                                        )}
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => fileInputEditRef.current?.click()}
+                                        className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer animate-duration-200"
+                                    >
+                                        <Camera className="w-4 h-4 text-white" />
+                                    </button>
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-xs font-bold text-gray-750">Profile Picture</p>
+                                    <p className="text-[10px] text-gray-400 font-medium">Click to upload user avatar. PNG/JPG, Max 2MB.</p>
+                                    <div className="flex gap-2.5">
+                                        <button 
+                                            type="button"
+                                            onClick={() => fileInputEditRef.current?.click()}
+                                            className="text-[11px] font-bold text-orange-650 hover:text-orange-750 hover:underline"
+                                        >
+                                            Upload Image
+                                        </button>
+                                        {editingUser.photoURL && (
+                                            <button 
+                                                type="button"
+                                                onClick={() => setEditingUser(prev => prev ? ({ ...prev, photoURL: '' }) : null)}
+                                                className="text-[11px] font-bold text-red-650 hover:text-red-750 hover:underline"
+                                            >
+                                                Remove
+                                            </button>
+                                        )}
+                                    </div>
+                                    <input 
+                                        type="file" 
+                                        ref={fileInputEditRef}
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => {
+                                                    setEditingUser(prev => prev ? ({ ...prev, photoURL: reader.result as string }) : null);
+                                                };
+                                                reader.readAsDataURL(file);
+                                            }
+                                        }}
+                                        accept="image/*" 
+                                        className="hidden" 
+                                    />
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-bold text-orange-600 uppercase">Full Name</label>
@@ -2234,8 +2356,12 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                             .map(u => (
                             <div key={u.uid || u.username} className="flex items-center justify-between p-3 border rounded-xl hover:bg-gray-50 transition-colors">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-bold text-xs">
-                                        {u.name.charAt(0)}
+                                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-bold text-sm overflow-hidden shrink-0 border border-slate-100 shadow-xs">
+                                        {u.photoURL ? (
+                                            <img src={u.photoURL} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                        ) : (
+                                            u.name ? u.name.charAt(0).toUpperCase() : '?'
+                                        )}
                                     </div>
                                     <div>
                                         <p className="font-medium text-gray-800 text-sm">{u.name} <span className="text-gray-400 font-normal">({u.email || u.username})</span></p>
