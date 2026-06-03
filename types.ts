@@ -42,11 +42,14 @@ export interface OffboardingDetails {
 
 export interface EmployeeDocuments {
     emiratesId?: string;
+    emiratesIdIssue?: string;
     emiratesIdExpiry?: string;
     passportNumber?: string;
+    passportIssue?: string;
     passportExpiry?: string;
     visaExpiry?: string;
     labourCardNumber?: string;
+    labourCardIssue?: string;
     labourCardExpiry?: string;
 }
 
@@ -531,6 +534,33 @@ export interface EngineerDocument {
   scopeOfWork?: string;
   offerValidity?: string;
   timeSchedule?: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  status: 'Pending' | 'In Progress' | 'Completed';
+  priority: 'Low' | 'Medium' | 'High';
+  dueDate?: string;
+  assignedTo?: string; // system user uid
+  assignedToName?: string; // system user name
+  createdAt: string;
+  updatedAt: string;
+  createdById: string;
+  createdBy: string;
+}
+
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  color?: 'yellow' | 'blue' | 'green' | 'rose' | 'slate';
+  pinned?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdById: string;
+  createdBy: string;
 }
 
 

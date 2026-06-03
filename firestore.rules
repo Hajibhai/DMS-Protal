@@ -171,5 +171,13 @@ service cloud.firestore {
     match /engineer_documents/{docId} {
       allow read, write: if isAuthenticated();
     }
+
+    match /tasks/{taskId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /notes/{noteId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

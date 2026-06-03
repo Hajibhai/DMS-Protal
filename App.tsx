@@ -98,6 +98,7 @@ import { HolidayManagementModal } from './components/HolidayManagementModal';
 import { SafetyView } from './components/SafetyView';
 import { JobOfferView } from './components/JobOfferView';
 import { EngineerView } from './components/EngineerView';
+import TasksNotesView from './components/TasksNotesView';
 
 // --- Constants & Helpers ---
 const INITIAL_PERMISSIONS: UserPermissions = {
@@ -1246,12 +1247,17 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                     {/* Documents */}
                     <div>
                         <h3 className="text-sm font-bold text-gray-900 uppercase mb-3">Documents & Identification</h3>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-3 gap-4">
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Emirates ID</label><input disabled={readOnly} type="text" value={data.documents?.emiratesId || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), emiratesId: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">EID Issue Date</label><input disabled={readOnly} type="date" value={data.documents?.emiratesIdIssue || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), emiratesIdIssue: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">EID Expiry</label><input disabled={readOnly} type="date" value={data.documents?.emiratesIdExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), emiratesIdExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Passport Number</label><input disabled={readOnly} type="text" value={data.documents?.passportNumber || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), passportNumber: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Passport Issue Date</label><input disabled={readOnly} type="date" value={data.documents?.passportIssue || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), passportIssue: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Passport Expiry</label><input disabled={readOnly} type="date" value={data.documents?.passportExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), passportExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Labour Card Number</label><input disabled={readOnly} type="text" value={data.documents?.labourCardNumber || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), labourCardNumber: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Labour Card Issue</label><input disabled={readOnly} type="date" value={data.documents?.labourCardIssue || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), labourCardIssue: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Labour Card Expiry</label><input disabled={readOnly} type="date" value={data.documents?.labourCardExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), labourCardExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                         </div>
                     </div>
@@ -1286,10 +1292,13 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
         type: StaffType.WORKER,
         documents: {
             emiratesId: '',
+            emiratesIdIssue: '',
             emiratesIdExpiry: '',
             passportNumber: '',
+            passportIssue: '',
             passportExpiry: '',
             labourCardNumber: '',
+            labourCardIssue: '',
             labourCardExpiry: ''
         }
     });
@@ -1634,13 +1643,22 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                     {step === 4 && (
                         <div className="space-y-6">
                             <h3 className="text-lg font-bold text-gray-900">Documents & Identification</h3>
-                            <div className="grid grid-cols-2 gap-6">
+                            <div className="grid grid-cols-3 gap-6">
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Emirates ID Number</label>
                                     <input 
                                         placeholder="784-..." 
                                         value={data.documents?.emiratesId||''} 
-                                        onChange={e=>setData({...data, documents:{...data.documents!, emiratesId:e.target.value}})} 
+                                        onChange={e=>setData({...data, documents:{...(data.documents || {}), emiratesId:e.target.value}})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">EID Issue Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={data.documents?.emiratesIdIssue||''} 
+                                        onChange={e=>setData({...data, documents:{...(data.documents || {}), emiratesIdIssue:e.target.value}})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
@@ -1649,16 +1667,26 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                     <input 
                                         type="date" 
                                         value={data.documents?.emiratesIdExpiry||''} 
-                                        onChange={e=>setData({...data, documents:{...data.documents!, emiratesIdExpiry:e.target.value}})} 
+                                        onChange={e=>setData({...data, documents:{...(data.documents || {}), emiratesIdExpiry:e.target.value}})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
+                                
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Passport Number</label>
                                     <input 
                                         placeholder="e.g. N1234567" 
                                         value={data.documents?.passportNumber||''} 
-                                        onChange={e=>setData({...data, documents:{...data.documents!, passportNumber:e.target.value}})} 
+                                        onChange={e=>setData({...data, documents:{...(data.documents || {}), passportNumber:e.target.value}})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Passport Issue Date</label>
+                                    <input 
+                                        type="date" 
+                                        value={data.documents?.passportIssue||''} 
+                                        onChange={e=>setData({...data, documents:{...(data.documents || {}), passportIssue:e.target.value}})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
@@ -1667,16 +1695,26 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                     <input 
                                         type="date" 
                                         value={data.documents?.passportExpiry||''} 
-                                        onChange={e=>setData({...data, documents:{...data.documents!, passportExpiry:e.target.value}})} 
+                                        onChange={e=>setData({...data, documents:{...(data.documents || {}), passportExpiry:e.target.value}})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
+                                
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Labour Card Number</label>
                                     <input 
                                         placeholder="e.g. L123456" 
                                         value={data.documents?.labourCardNumber||''} 
-                                        onChange={e=>setData({...data, documents:{...data.documents!, labourCardNumber:e.target.value}})} 
+                                        onChange={e=>setData({...data, documents:{...(data.documents || {}), labourCardNumber:e.target.value}})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Labour Card Issue</label>
+                                    <input 
+                                        type="date" 
+                                        value={data.documents?.labourCardIssue||''} 
+                                        onChange={e=>setData({...data, documents:{...(data.documents || {}), labourCardIssue:e.target.value}})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
@@ -1685,7 +1723,7 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                     <input 
                                         type="date" 
                                         value={data.documents?.labourCardExpiry||''} 
-                                        onChange={e=>setData({...data, documents:{...data.documents!, labourCardExpiry:e.target.value}})} 
+                                        onChange={e=>setData({...data, documents:{...(data.documents || {}), labourCardExpiry:e.target.value}})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
@@ -4000,6 +4038,7 @@ export default function App() {
         ]
       },
       { id: 'engineer-hub', label: 'Engineer', icon: HardHat, roleCheck: ['engineer', 'accountant', 'admin', 'creator'] },
+      { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
       { id: 'reports', label: 'Reports', icon: BarChart3, permission: 'canViewReports' },
       { id: 'about', label: 'About', icon: AlertCircle, creatorOnly: true },
     ];
@@ -4579,6 +4618,9 @@ export default function App() {
           vendors={vendors}
           user={systemUser}
         />
+      )}
+      {activeTab === 'tasks-notes' && (
+        <TasksNotesView systemUser={systemUser} />
       )}
       {activeTab === 'about' && (
         <AboutView />
@@ -11050,16 +11092,16 @@ const ReportsView = ({
     const ROLE_REPORT_ACCESS = useMemo(() => ({
         [UserRole.CREATOR]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
-            'corporate_tax', 'staff', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
+            'corporate_tax', 'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
             'finance', 'everyday', 'projected'
         ],
         [UserRole.ADMIN]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
-            'corporate_tax', 'staff', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
+            'corporate_tax', 'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
             'finance', 'everyday', 'projected'
         ],
         [UserRole.HR]: [
-            'staff', 'attendance', 'payroll', 'payroll_comparison', 'projects'
+            'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects'
         ],
         [UserRole.ENGINEER]: [
             'attendance', 'projects', 'projected'
@@ -11434,6 +11476,29 @@ const ReportsView = ({
                     'Joining Date': e.joiningDate
                 }));
                 break;
+            case 'full_employee':
+                data = activeStaff.map((e: any) => ({
+                    'Employee Code': e.code,
+                    'Employee Name': e.name,
+                    'Position / Designation': e.designation || '-',
+                    'Employer / Company Name': e.company,
+                    'Emirates ID No': e.documents?.emiratesId || '-',
+                    'Emirates ID Issue Date': e.documents?.emiratesIdIssue || '-',
+                    'Emirates ID Expiry Date': e.documents?.emiratesIdExpiry || '-',
+                    'Passport No': e.documents?.passportNumber || '-',
+                    'Passport Issue Date': e.documents?.passportIssue || '-',
+                    'Passport Expiry Date': e.documents?.passportExpiry || '-',
+                    'Labour Card No': e.documents?.labourCardNumber || '-',
+                    'Labour Card Issue Date': e.documents?.labourCardIssue || '-',
+                    'Labour Card Expiry Date': e.documents?.labourCardExpiry || '-',
+                    'Nationality': e.nationality || '-',
+                    'Mobile No': e.mobileNumber || '-',
+                    'Basic Salary (AED)': e.salary.basic || 0,
+                    'Other Allowance (AED)': (e.salary.housing || 0) + (e.salary.transport || 0) + (e.salary.other || 0),
+                    'Total Salary (AED)': (e.salary.basic || 0) + (e.salary.housing || 0) + (e.salary.transport || 0) + (e.salary.other || 0),
+                    'Hourly Rate (AED)': e.salary.hourlyRate || 0
+                }));
+                break;
             case 'attendance':
                 data = activeStaff.map((e: any) => {
                     const empAtt = monthlyAttendance.filter(r => r.employeeId === e.id);
@@ -11697,6 +11762,7 @@ const ReportsView = ({
         { id: 'cash_flow', label: 'Cash Flow', icon: RefreshCw },
         { id: 'corporate_tax', label: 'Financial Statement (Corporate Tax)', icon: FileText },
         { id: 'staff', label: 'Workforce', icon: Users },
+        { id: 'full_employee', label: 'Full Employee Details', icon: FileSpreadsheet },
         { id: 'attendance', label: 'Attendance', icon: Calendar },
         { id: 'payroll', label: 'Payroll', icon: Wallet },
         { id: 'payroll_comparison', label: 'Payroll Comparison', icon: RefreshCw },
@@ -11847,7 +11913,7 @@ const ReportsView = ({
                     { label: 'Cash Position', value: `AED ${(stats.pettyCashIn - stats.pettyCashOut).toLocaleString()}`, icon: Wallet, color: 'violet' },
                 ].map((stat, i) => <StatCard key={i} {...stat} delay={i * 0.1} />)}
 
-                {reportType === 'staff' && [
+                {(reportType === 'staff' || reportType === 'full_employee') && [
                     { label: 'Total Staff', value: activeStaff.length, icon: Users, color: 'brand' },
                     { label: 'Departments', value: new Set(activeStaff.map((e: any) => e.department)).size, icon: LayoutGrid, color: 'emerald' },
                     { label: 'Teams', value: new Set(activeStaff.map((e: any) => e.team)).size, icon: Briefcase, color: 'orange' },
@@ -11936,6 +12002,18 @@ const ReportsView = ({
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
                                 {reportType === 'staff' && ['Code', 'Name', 'Nationality', 'Company', 'Department', 'Designation', 'Gross Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
+                                {reportType === 'full_employee' && [
+                                    'Code', 
+                                    'Name', 
+                                    'Designation', 
+                                    'Company', 
+                                    'Emirates ID (Issue / Exp)', 
+                                    'Passport (Issue / Exp)', 
+                                    'Labour Card (Issue / Exp)', 
+                                    'Nationality', 
+                                    'Mobile', 
+                                    'Salary (Basic / Other = Total) [Hourly]'
+                                ].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
                                 {reportType === 'attendance' && ['Code', 'Name', 'Present', 'Absent', 'OT Hours', 'Status'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
                                 {reportType === 'payroll' && ['Code', 'Name', 'Present Days', 'Unpaid Days', 'OT Hours', 'Gross', 'OT Amt', 'Deductions', 'Net Salary'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
                                 {reportType === 'payroll_comparison' && ['Employee Code & Name', `${prevMonthName} Net`, `${monthName} Net`, 'Net Variance', 'Gross Variance', 'OT Hr Variance', 'LOP Day Variance', 'Primary Drivers / Causes'].map(h => <th key={h} className="px-6 py-5 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">{h}</th>)}
@@ -12130,6 +12208,33 @@ const ReportsView = ({
                                     <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap">{e.department}</td>
                                     <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap">{e.designation}</td>
                                     <td className="px-6 py-4 text-sm font-black text-slate-900 whitespace-nowrap">AED {(e.salary.basic + e.salary.housing + e.salary.transport + e.salary.other).toLocaleString()}</td>
+                                </tr>
+                            ))}
+                            {reportType === 'full_employee' && filteredStaff.map((e: any) => (
+                                <tr key={e.id} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4 text-sm font-black text-slate-900 whitespace-nowrap align-top">{e.code}</td>
+                                    <td className="px-6 py-4 text-sm font-bold text-slate-700 whitespace-nowrap align-top">{e.name}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap align-top">{e.designation}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap align-top">{e.company}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap align-top">
+                                        <div className="font-semibold text-slate-800">{e.documents?.emiratesId || '-'}</div>
+                                        <div className="text-[10px] text-slate-400 font-bold">I: {e.documents?.emiratesIdIssue || 'N/A'} | E: {e.documents?.emiratesIdExpiry || 'N/A'}</div>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap align-top">
+                                        <div className="font-semibold text-slate-800">{e.documents?.passportNumber || '-'}</div>
+                                        <div className="text-[10px] text-slate-400 font-bold">I: {e.documents?.passportIssue || 'N/A'} | E: {e.documents?.passportExpiry || 'N/A'}</div>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap align-top">
+                                        <div className="font-semibold text-slate-800">{e.documents?.labourCardNumber || '-'}</div>
+                                        <div className="text-[10px] text-slate-400 font-bold">I: {e.documents?.labourCardIssue || 'N/A'} | E: {e.documents?.labourCardExpiry || 'N/A'}</div>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap align-top">{e.nationality || '-'}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap align-top">{e.mobileNumber || '-'}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap align-top">
+                                        <div className="font-bold text-slate-700 text-xs">AED {e.salary.basic?.toLocaleString()} / AED {((e.salary.housing || 0) + (e.salary.transport || 0) + (e.salary.other || 0))?.toLocaleString()}</div>
+                                        <div className="text-xs font-black text-slate-900">Total: AED {((e.salary.basic || 0) + (e.salary.housing || 0) + (e.salary.transport || 0) + (e.salary.other || 0))?.toLocaleString()}</div>
+                                        <div className="text-[10px] text-brand-600 font-bold">Hourly: AED {e.salary.hourlyRate || 0}/Hr</div>
+                                    </td>
                                 </tr>
                             ))}
                             {reportType === 'attendance' && filteredStaff.map((e: any) => {

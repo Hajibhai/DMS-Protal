@@ -401,6 +401,43 @@
         "terms": { "type": "string" }
       },
       "required": ["id", "type", "docNumber", "date", "companyName", "preparedBy"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Collaborative task in the workspace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["Pending", "In Progress", "Completed"] },
+        "priority": { "type": "string", "enum": ["Low", "Medium", "High"] },
+        "dueDate": { "type": "string" },
+        "assignedTo": { "type": "string" },
+        "assignedToName": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdById": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "status", "priority", "createdAt", "createdById", "createdBy"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "Sticky memo/note in the workspace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "color": { "type": "string", "enum": ["yellow", "blue", "green", "rose", "slate"] },
+        "pinned": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdById": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "content", "createdAt", "createdById", "createdBy"]
     }
   },
   "firestore": {
@@ -483,6 +520,14 @@
     "/audit_logs/{logId}": {
       "schema": "AuditLog",
       "description": "System activity logs"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Collaborative tasks for team workflows"
+    },
+    "/notes/{noteId}": {
+      "schema": "Note",
+      "description": "Collaborative memorandum board sticky notes"
     }
   }
 }
