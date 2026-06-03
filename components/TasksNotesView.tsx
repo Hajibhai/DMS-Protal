@@ -21,6 +21,23 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<'tasks' | 'notes'>('tasks');
   const isEmployee = systemUser?.role?.toLowerCase() === 'employee';
   
+  const getProgressDays = (startedAt?: string, completedAt?: string): string => {
+    if (!startedAt) return "Not started yet";
+    const start = new Date(startedAt);
+    const end = completedAt ? new Date(completedAt) : new Date();
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+    if (diffDays < 1) {
+      const diffHours = diffTime / (1000 * 60 * 60);
+      if (diffHours < 1) {
+        const diffMinutes = diffTime / (1000 * 60);
+        return `${Math.round(diffMinutes)} mins`;
+      }
+      return `${diffHours.toFixed(1)} hours`;
+    }
+    return `${diffDays.toFixed(1)} days`;
+  };
+  
   // Real-time states
   const [tasks, setTasks] = useState<Task[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -101,6 +118,13 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   const canManageTask = (t: Task | undefined) => {
     if (!t) return false;
     if (!systemUser) return false;
+
+    // If the task has remarks, prevent regular users from editing or deleting it.
+    const hasRemarks = t.remarks && t.remarks.length > 0;
+    const isCurrentUserAdmin = systemUser.role?.toLowerCase() === 'admin' || systemUser.role?.toLowerCase() === 'creator';
+    if (hasRemarks && !isCurrentUserAdmin) {
+      return false;
+    }
     
     // Original creator of the task can always manage it
     if (t.createdById === systemUser.uid) return true;
@@ -124,22 +148,14 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
     return false;
   };
 
+  const [taskRemarksInput, setTaskRemarksInput] = useState<Record<string, string>>({});
+
   // Handlers for Tasks
   const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!showTaskForm?.title) return;
 
-    if (showTaskForm.id) {
-      // Edit mode
-      const originalTask = tasks.find(t => t.id === showTaskForm.id);
-      if (originalTask && !canManageTask(originalTask)) {
-        alert("Permission denied: You do not have permission to edit this task.");
-        return;
-      }
-    }
-
     const assignedUser = systemUsers.find(u => u.uid === showTaskForm.assignedTo);
-
     const taskData: Partial<Task> = {
       title: showTaskForm.title,
       description: showTaskForm.description || '',
@@ -148,8 +164,67 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       dueDate: showTaskForm.dueDate || '',
       assignedTo: showTaskForm.assignedTo || '',
       assignedToName: assignedUser ? assignedUser.name : '',
+      checklist: showTaskForm.checklist || [],
       updatedAt: new Date().toISOString()
     };
+
+    if (showTaskForm.id) {
+      // Edit mode
+      const originalTask = tasks.find(t => t.id === showTaskForm.id);
+      if (originalTask) {
+        if (!canManageTask(originalTask)) {
+          alert("Permission denied: You do not have permission to edit this task.");
+          return;
+        }
+
+        // Validate state regression: "not able to undo"
+        const currentStatus = originalTask.status;
+        const requestedStatus = showTaskForm.status || 'Pending';
+        if (currentStatus === 'Completed' && requestedStatus !== 'Completed') {
+          alert("Cannot undo a completed task.");
+          return;
+        }
+        if (currentStatus === 'In Progress' && requestedStatus === 'Pending') {
+          alert("Cannot revert an 'In Progress' task back to 'Pending'.");
+          return;
+        }
+
+        // Logging if status changed via edit form
+        if (currentStatus !== requestedStatus) {
+          const nowStr = new Date().toISOString();
+          const logs = [...(originalTask.progressLog || [])];
+          if (requestedStatus === 'In Progress') {
+            taskData.startedAt = nowStr;
+            logs.push({
+              status: 'In Progress',
+              timestamp: nowStr,
+              changedBy: systemUser?.name || 'Unknown',
+              changedById: systemUser?.uid || 'Unknown'
+            });
+            taskData.progressLog = logs;
+          } else if (requestedStatus === 'Completed') {
+            taskData.completedAt = nowStr;
+            if (!originalTask.startedAt) {
+              taskData.startedAt = nowStr;
+            }
+            logs.push({
+              status: 'Completed',
+              timestamp: nowStr,
+              changedBy: systemUser?.name || 'Unknown',
+              changedById: systemUser?.uid || 'Unknown'
+            });
+            taskData.progressLog = logs;
+          }
+        } else {
+          // preserve logs and timestamps if status didn't change
+          taskData.startedAt = originalTask.startedAt || '';
+          taskData.completedAt = originalTask.completedAt || '';
+          taskData.progressLog = originalTask.progressLog || [];
+        }
+        // preserve remarks
+        taskData.remarks = originalTask.remarks || [];
+      }
+    }
 
     try {
       if (showTaskForm.id) {
@@ -157,10 +232,35 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
         await updateDoc(doc(db, 'tasks', showTaskForm.id), taskData);
       } else {
         // Create mode
-        taskData.createdAt = new Date().toISOString();
+        const nowStr = new Date().toISOString();
+        taskData.createdAt = nowStr;
         taskData.createdById = systemUser?.uid || 'unknown';
         taskData.createdBy = systemUser?.name || 'Unknown User';
         taskData.createdByRole = systemUser?.role || 'User';
+        taskData.remarks = [];
+        
+        const logs = [];
+        if (taskData.status === 'In Progress') {
+          taskData.startedAt = nowStr;
+          logs.push({
+            status: 'In Progress',
+            timestamp: nowStr,
+            changedBy: systemUser?.name || 'Unknown',
+            changedById: systemUser?.uid || 'Unknown'
+          });
+          taskData.progressLog = logs;
+        } else if (taskData.status === 'Completed') {
+          taskData.startedAt = nowStr;
+          taskData.completedAt = nowStr;
+          logs.push({
+            status: 'Completed',
+            timestamp: nowStr,
+            changedBy: systemUser?.name || 'Unknown',
+            changedById: systemUser?.uid || 'Unknown'
+          });
+          taskData.progressLog = logs;
+        }
+        
         await addDoc(collection(db, 'tasks'), taskData);
       }
       setShowTaskForm(null);
@@ -185,19 +285,89 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   };
 
   const handleToggleTaskStatus = async (task: Task) => {
+    if (task.status === 'Completed') {
+      alert("This task is already completed and cannot be undone.");
+      return;
+    }
     const nextStatusMap: Record<Task['status'], Task['status']> = {
       'Pending': 'In Progress',
       'In Progress': 'Completed',
-      'Completed': 'Pending'
+      'Completed': 'Completed'
     };
     const newStatus = nextStatusMap[task.status];
+    const nowStr = new Date().toISOString();
+    const logs = [...(task.progressLog || [])];
+    const updates: Partial<Task> = {
+      status: newStatus,
+      updatedAt: nowStr
+    };
+
+    if (task.status === 'Pending' && newStatus === 'In Progress') {
+      updates.startedAt = nowStr;
+      logs.push({
+        status: 'In Progress',
+        timestamp: nowStr,
+        changedBy: systemUser?.name || 'Unknown',
+        changedById: systemUser?.uid || 'Unknown'
+      });
+      updates.progressLog = logs;
+    } else if (task.status === 'In Progress' && newStatus === 'Completed') {
+      updates.completedAt = nowStr;
+      logs.push({
+        status: 'Completed',
+        timestamp: nowStr,
+        changedBy: systemUser?.name || 'Unknown',
+        changedById: systemUser?.uid || 'Unknown'
+      });
+      updates.progressLog = logs;
+    }
+
+    try {
+      await updateDoc(doc(db, 'tasks', task.id), updates);
+    } catch (err) {
+      console.error("Error toggling task status:", err);
+    }
+  };
+
+  const handleToggleChecklistItem = async (task: Task, itemIndex: number) => {
+    if (!task.checklist) return;
+    const updatedChecklist = [...task.checklist];
+    updatedChecklist[itemIndex] = {
+      ...updatedChecklist[itemIndex],
+      completed: !updatedChecklist[itemIndex].completed
+    };
     try {
       await updateDoc(doc(db, 'tasks', task.id), {
-        status: newStatus,
+        checklist: updatedChecklist,
         updatedAt: new Date().toISOString()
       });
     } catch (err) {
-      console.error("Error toggling task status:", err);
+      console.error("Error toggling checklist item:", err);
+    }
+  };
+
+  const handleAddRemark = async (taskId: string, remarkText: string) => {
+    if (!remarkText.trim()) return;
+    const taskObj = tasks.find(t => t.id === taskId);
+    if (!taskObj) return;
+
+    const newRemark = {
+      id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 4),
+      text: remarkText.trim(),
+      createdAt: new Date().toISOString(),
+      createdBy: systemUser?.name || 'Unknown User',
+      createdById: systemUser?.uid || 'unknown'
+    };
+
+    const updatedRemarks = [...(taskObj.remarks || []), newRemark];
+
+    try {
+      await updateDoc(doc(db, 'tasks', taskId), {
+        remarks: updatedRemarks,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Error adding remark:", err);
     }
   };
 
@@ -469,14 +639,15 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col gap-2">
                         {/* Toggle Status Button */}
                         <button
                           onClick={() => handleToggleTaskStatus(t)}
+                          disabled={t.status === 'Completed'}
                           className={cn(
-                            "px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 transition-all flex items-center gap-1 w-full justify-center shadow-sm",
+                            "px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 transition-all flex items-center gap-1 w-full justify-center shadow-sm",
                             t.status === 'Completed' 
-                              ? "bg-indigo-600 border-indigo-600 text-white hover:bg-slate-900 hover:border-slate-900" 
+                              ? "bg-emerald-600 border-emerald-600 text-white cursor-not-allowed opacity-80" 
                               : t.status === 'In Progress'
                               ? "bg-brand-50 border-brand-200 text-brand-700 hover:bg-brand-100"
                               : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
@@ -488,7 +659,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                             </>
                           ) : t.status === 'In Progress' ? (
                             <>
-                              <Clock className="w-3.5 h-3.5" /> In Progress
+                              <Clock className="w-3.5 h-3.5" /> Complete Task
                             </>
                           ) : (
                             <>
@@ -496,6 +667,109 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                             </>
                           )}
                         </button>
+
+                        {/* Checklist Section (Optional) */}
+                        {t.checklist && t.checklist.length > 0 && (
+                          <div className="mt-2.5 pt-2.5 border-t border-slate-100/60 space-y-1.5 text-left">
+                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">📋 Subtask Checklist</div>
+                            <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                              {t.checklist.map((item, idx) => (
+                                <label key={item.id || idx} className="flex items-start gap-2 cursor-pointer text-[11px] font-semibold text-slate-700 hover:text-slate-900 transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.completed}
+                                    onChange={() => handleToggleChecklistItem(t, idx)}
+                                    className="w-3.5 h-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500 mt-0.5"
+                                  />
+                                  <span className={cn("break-words", item.completed && "line-through text-slate-300 font-normal")}>
+                                    {item.text}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Remarks & Issues Section */}
+                        <div className="mt-2.5 pt-2.5 border-t border-slate-100/60 text-left space-y-2">
+                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                            <span>📝 Issues & Remarks {t.remarks && t.remarks.length > 0 ? `(${t.remarks.length})` : ''}</span>
+                          </div>
+                          
+                          {/* List of static Remarks */}
+                          {t.remarks && t.remarks.length > 0 && (
+                            <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                              {t.remarks.map((rem) => (
+                                <div key={rem.id} className="p-2 bg-slate-50/80 border border-slate-100 rounded-xl text-[10px] font-semibold text-slate-700 flex flex-col gap-0.5 shadow-sm">
+                                  <p className="break-words font-medium text-slate-800 leading-snug">{rem.text}</p>
+                                  <div className="flex justify-between text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                                    <span>By: {rem.createdBy?.split(' ')[0]}</span>
+                                    <span>{new Date(rem.createdAt).toLocaleDateString()}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Add a Remark Input block */}
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              placeholder="Mention delay or issue reason..."
+                              value={taskRemarksInput[t.id] || ''}
+                              onChange={(e) => setTaskRemarksInput({ ...taskRemarksInput, [t.id]: e.target.value })}
+                              className="flex-1 p-2 border border-slate-200 rounded-xl text-[10px] font-semibold bg-white text-slate-800 outline-none focus:ring-1 focus:ring-brand-500 transition-all shadow-inner"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleAddRemark(t.id, taskRemarksInput[t.id] || '');
+                                  setTaskRemarksInput({ ...taskRemarksInput, [t.id]: '' });
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleAddRemark(t.id, taskRemarksInput[t.id] || '');
+                                setTaskRemarksInput({ ...taskRemarksInput, [t.id]: '' });
+                              }}
+                              className="px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-[10px] font-bold transition-all shrink-0"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Admin-only Timing Logs */}
+                        {(systemUser?.role?.toLowerCase() === 'admin' || systemUser?.role?.toLowerCase() === 'creator') && (
+                          <div className="mt-2.5 pt-2.5 border-t border-indigo-100 bg-indigo-50/40 p-2.5 rounded-2xl text-[10px] text-left space-y-1">
+                            <div className="font-extrabold text-indigo-700 uppercase tracking-widest text-[8px] mb-1">🛠 Progression Analytics (Admin Only)</div>
+                            {t.startedAt ? (
+                              <div className="space-y-0.5 text-slate-600 font-semibold">
+                                <div><span className="text-slate-400">Started:</span> {new Date(t.startedAt).toLocaleString()}</div>
+                                {t.completedAt && (
+                                  <div><span className="text-slate-400">Completed:</span> {new Date(t.completedAt).toLocaleString()}</div>
+                                )}
+                                <div>
+                                  <span className="text-slate-400">Progress Days:</span>{" "}
+                                  <span className="text-indigo-600 font-bold">{getProgressDays(t.startedAt, t.completedAt)}</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-slate-400 italic">No progress started yet</div>
+                            )}
+
+                            {t.progressLog && t.progressLog.length > 0 && (
+                              <div className="mt-1.5 pt-1.5 border-t border-indigo-100/60 font-mono text-[8px] leading-relaxed text-slate-500 max-h-16 overflow-y-auto space-y-0.5">
+                                {t.progressLog.map((log, index) => (
+                                  <div key={index}>
+                                    • [{new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}] {log.status} by {log.changedBy}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </motion.div>
@@ -702,6 +976,56 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                       <option key={u.uid} value={u.uid}>{u.name} ({u.role})</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* Checklist / Tick boxes section */}
+              <div className="space-y-2 pt-2 border-t border-slate-100/65">
+                <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <span>Checklist (Optional Subtasks)</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const currentChecklist = showTaskForm.checklist || [];
+                      setShowTaskForm({
+                        ...showTaskForm,
+                        checklist: [...currentChecklist, { id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 4), text: '', completed: false }]
+                      });
+                    }}
+                    className="text-[10px] text-brand-600 hover:text-brand-800 font-extrabold flex items-center gap-0.5 uppercase tracking-wider"
+                  >
+                    + Add Step
+                  </button>
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  {(showTaskForm.checklist || []).map((item, index) => (
+                    <div key={item.id || index} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. Verification step..."
+                        value={item.text}
+                        onChange={(e) => {
+                          const updated = [...(showTaskForm.checklist || [])];
+                          updated[index] = { ...updated[index], text: e.target.value };
+                          setShowTaskForm({ ...showTaskForm, checklist: updated });
+                        }}
+                        className="flex-1 p-2 border border-slate-200 rounded-xl text-xs font-semibold bg-white text-slate-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = (showTaskForm.checklist || []).filter((_, idx) => idx !== index);
+                          setShowTaskForm({ ...showTaskForm, checklist: updated });
+                        }}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {(showTaskForm.checklist || []).length === 0 && (
+                    <p className="text-[10px] text-slate-400 italic">No checklist tick boxes added yet.</p>
+                  )}
                 </div>
               </div>
 

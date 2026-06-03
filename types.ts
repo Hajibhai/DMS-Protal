@@ -554,6 +554,26 @@ export interface Task {
   createdById: string;
   createdBy: string;
   createdByRole?: string;
+  startedAt?: string;
+  completedAt?: string;
+  progressLog?: Array<{
+    status: string;
+    timestamp: string;
+    changedBy: string;
+    changedById: string;
+  }>;
+  remarks?: Array<{
+    id: string;
+    text: string;
+    createdAt: string;
+    createdBy: string;
+    createdById: string;
+  }>;
+  checklist?: Array<{
+    id: string;
+    text: string;
+    completed: boolean;
+  }>;
 }
 
 export interface Note {
