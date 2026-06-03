@@ -5759,6 +5759,25 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
         return gapAnalysis.reduce((total, res) => total + res.gaps.length, 0);
     }, [gapAnalysis]);
 
+    const companyStats = useMemo(() => {
+        const stats: Record<string, { total: number; active: number; code?: string }> = {};
+        employees.forEach((e: Employee) => {
+            const comp = e.company || 'Unknown';
+            if (!stats[comp]) {
+                const cObj = companyList.find(c => c.name === comp);
+                stats[comp] = { total: 0, active: 0, code: cObj?.code };
+            }
+            stats[comp].total++;
+            if (e.active) {
+                stats[comp].active++;
+            }
+        });
+        return stats;
+    }, [employees, companyList]);
+
+    const allTotal = employees.length;
+    const allActive = employees.filter(e => e.active).length;
+
     const filteredEmployees = useMemo(() => {
         const filtered = employees.filter((e: Employee) => {
             const company = companyList.find(c => c.name === e.company);
@@ -5792,6 +5811,60 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
 
     return (
         <div className="space-y-6">
+            {/* Interactive Company Distribution & Headcounts */}
+            <div className="flex flex-wrap gap-3 items-center">
+                <div 
+                    onClick={() => setCompanyFilter('All')}
+                    className={cn(
+                        "px-5 py-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 bg-white/70 backdrop-blur-xl select-none active:scale-[0.98]",
+                        companyFilter === 'All' 
+                            ? "bg-brand-600 border-brand-600 text-white shadow-lg shadow-brand-500/25" 
+                            : "bg-white/80 border-slate-100 text-slate-700 hover:bg-slate-50 hover:border-slate-200"
+                    )}
+                >
+                    <div className={cn(
+                        "w-2 h-2 rounded-full",
+                        companyFilter === 'All' ? "bg-white animate-pulse" : "bg-brand-500"
+                    )} />
+                    <div>
+                        <div className="text-[9px] font-black uppercase tracking-widest leading-none opacity-80">All Companies</div>
+                        <div className="font-extrabold text-xs mt-1">
+                            {allActive} Active <span className="opacity-65">/ {allTotal} Total</span>
+                        </div>
+                    </div>
+                </div>
+
+                {companies.filter(c => c !== 'All').map(c => {
+                    const stats = companyStats[c] || { total: 0, active: 0 };
+                    const isSelected = companyFilter === c;
+                    return (
+                        <div 
+                            key={c}
+                            onClick={() => setCompanyFilter(c)}
+                            className={cn(
+                                "px-5 py-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 bg-white/70 backdrop-blur-xl select-none active:scale-[0.98]",
+                                isSelected 
+                                    ? "bg-brand-600 border-brand-600 text-white shadow-lg shadow-brand-500/25" 
+                                    : "bg-white/80 border-slate-100 text-slate-700 hover:bg-slate-50 hover:border-slate-200"
+                            )}
+                        >
+                            <div className={cn(
+                                "w-2 h-2 rounded-full",
+                                isSelected ? "bg-white animate-pulse" : "bg-emerald-500"
+                            )} />
+                            <div>
+                                <div className="text-[9px] font-black uppercase tracking-widest leading-none opacity-90 truncate max-w-[200px]" title={c}>
+                                    {stats.code ? `[${stats.code}] ` : ''}{c}
+                                </div>
+                                <div className="font-extrabold text-xs mt-1">
+                                    {stats.active} Active <span className={isSelected ? "opacity-65" : "text-slate-400"}>/ {stats.total} Total</span>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
             {/* Advanced Filter Bar */}
             <div className="bg-white/70 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white shadow-xl shadow-slate-200/40 flex flex-col lg:flex-row gap-4 items-center">
                 <div className="relative flex-1 w-full">
@@ -5809,9 +5882,19 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                     <select 
                         value={companyFilter}
                         onChange={(e) => setCompanyFilter(e.target.value)}
-                        className="flex-1 lg:flex-none px-4 py-3.5 bg-slate-100/50 border-none rounded-2xl text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-brand-500 transition-all appearance-none cursor-pointer min-w-[130px]"
+                        className="flex-1 lg:flex-none px-4 py-3.5 bg-slate-100/50 border-none rounded-2xl text-sm font-bold text-slate-600 outline-none focus:ring-2 focus:ring-brand-500 transition-all appearance-none cursor-pointer min-w-[220px]"
                     >
-                        {companies.map(c => <option key={c} value={c}>{c}</option>)}
+                        {companies.map(c => {
+                            if (c === 'All') {
+                                return <option key="All" value="All">All Companies ({allActive} Active / {allTotal} Total)</option>;
+                            }
+                            const stats = companyStats[c] || { total: 0, active: 0 };
+                            return (
+                                <option key={c} value={c}>
+                                    {stats.code ? `${stats.code} - ` : ''}{c.length > 30 ? `${c.substring(0, 30)}...` : c} ({stats.active} Active / {stats.total} Total)
+                                </option>
+                            );
+                        })}
                     </select>
 
                     <select 
