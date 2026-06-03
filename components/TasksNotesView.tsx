@@ -19,6 +19,7 @@ interface TasksNotesViewProps {
 
 export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<'tasks' | 'notes'>('tasks');
+  const isEmployee = systemUser?.role?.toLowerCase() === 'employee';
   
   // Real-time states
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -100,6 +101,10 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   // Handlers for Tasks
   const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isEmployee) {
+      alert("Permission denied: Employees cannot create or edit tasks.");
+      return;
+    }
     if (!showTaskForm?.title) return;
 
     const assignedUser = systemUsers.find(u => u.uid === showTaskForm.assignedTo);
@@ -133,6 +138,10 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   };
 
   const handleDeleteTask = async (id: string) => {
+    if (isEmployee) {
+      alert("Permission denied: Employees cannot delete tasks.");
+      return;
+    }
     if (window.confirm("Are you sure you want to delete this task?")) {
       try {
         await deleteDoc(doc(db, 'tasks', id));
@@ -334,12 +343,14 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
               </select>
             </div>
 
-            <button
-              onClick={() => setShowTaskForm({ status: 'Pending', priority: 'Medium' })}
-              className="px-6 py-2.5 bg-brand-600 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-brand-500/20 hover:bg-brand-700 transition-all flex items-center gap-2 self-stretch md:self-auto justify-center"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" /> Add New Task
-            </button>
+            {!isEmployee && (
+              <button
+                onClick={() => setShowTaskForm({ status: 'Pending', priority: 'Medium' })}
+                className="px-6 py-2.5 bg-brand-600 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-brand-500/20 hover:bg-brand-700 transition-all flex items-center gap-2 self-stretch md:self-auto justify-center"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" /> Add New Task
+              </button>
+            )}
           </div>
 
           {/* Tasks List */}
@@ -370,22 +381,24 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                           {t.priority} Priority
                         </span>
 
-                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
-                          <button
-                            onClick={() => setShowTaskForm(t)}
-                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-all"
-                            title="Edit task"
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTask(t.id)}
-                            className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-all"
-                            title="Delete task"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        {!isEmployee && (
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                            <button
+                              onClick={() => setShowTaskForm(t)}
+                              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-all"
+                              title="Edit task"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTask(t.id)}
+                              className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-all"
+                              title="Delete task"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Content */}
