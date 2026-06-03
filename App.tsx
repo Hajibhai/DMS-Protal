@@ -8580,6 +8580,27 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const canManageAttendance = user?.permissions?.canManageAttendance;
 
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        // Automatically scroll to the current day of the month upon loading/mount
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonthNum = today.getMonth() + 1;
+        
+        const timer = setTimeout(() => {
+            if (year === currentYear && month === currentMonthNum && scrollContainerRef.current) {
+                const currentDay = today.getDate();
+                const element = document.getElementById(`timesheet-day-${currentDay}`);
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }
+            }
+        }, 150);
+
+        return () => clearTimeout(timer);
+    }, [year, month]);
+
     const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
     const fullYear = year.toString();
 
@@ -8855,7 +8876,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
             </div>
 
             <div className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-xl shadow-slate-200/50">
-                <div className="max-h-[calc(100vh-280px)] overflow-auto scrollbar-thin">
+                <div ref={scrollContainerRef} className="max-h-[calc(100vh-280px)] overflow-auto scrollbar-thin">
                     <table className="w-full text-center border-collapse text-[11px]">
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
@@ -8869,7 +8890,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                     const dayName = date.toLocaleString('default', { weekday: 'narrow' });
                                     const isSunday = date.getDay() === 0;
                                     return (
-                                        <th key={d} className={cn(
+                                        <th key={d} id={`timesheet-day-${d}`} className={cn(
                                             "p-2 w-10 border-r border-slate-50 min-w-[36px] sticky top-0 z-20 border-b border-slate-100 shadow-[inset_0_-1px_0_rgba(226,232,240,1)] animate-none",
                                             isSunday ? 'bg-red-50 text-red-500 font-bold' : 'bg-slate-50 text-slate-600'
                                         )}>
@@ -9805,8 +9826,20 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
                                         onChange={e=>setNewReq({...newReq, employeeId:e.target.value})}
                                     >
                                         <option value="">Select Staff Member</option>
-                                        {employees.map((e:any)=><option key={e.id} value={e.id}>{e.name}</option>)}
+                                        {employees.map((e:any)=><option key={e.id} value={e.id}>{e.name} ({e.leaveBalance !== undefined ? `${e.leaveBalance}d left` : '30d left'}) {e.leaveBalance !== undefined && e.leaveBalance <= 0 ? '⚠️ EXHAUSTED' : ''}</option>)}
                                     </select>
+                                    {(() => {
+                                        const selectedEmp = employees.find((e: any) => e.id === newReq.employeeId);
+                                        if (selectedEmp && selectedEmp.leaveBalance !== undefined && selectedEmp.leaveBalance <= 0) {
+                                            return (
+                                                <div className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 px-3 py-1.5 rounded-xl">
+                                                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                                                    <span>Annual leave balance is exhausted!</span>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Leave Type</label>
@@ -9903,8 +9936,20 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
                                             value={editingReq.employeeId} 
                                             onChange={e=>setEditingReq({...editingReq, employeeId:e.target.value})}
                                         >
-                                            {employees.map((e:any)=><option key={e.id} value={e.id}>{e.name}</option>)}
+                                            {employees.map((e:any)=><option key={e.id} value={e.id}>{e.name} ({e.leaveBalance !== undefined ? `${e.leaveBalance}d left` : '30d left'}) {e.leaveBalance !== undefined && e.leaveBalance <= 0 ? '⚠️ EXHAUSTED' : ''}</option>)}
                                         </select>
+                                        {(() => {
+                                            const selectedEmp = employees.find((e: any) => e.id === editingReq.employeeId);
+                                            if (selectedEmp && selectedEmp.leaveBalance !== undefined && selectedEmp.leaveBalance <= 0) {
+                                                return (
+                                                    <div className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-100 px-3 py-1.5 rounded-xl">
+                                                        <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                                                        <span>Annual leave balance is exhausted!</span>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })()}
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Leave Type</label>
@@ -10004,6 +10049,12 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
                                                     <div>
                                                         <div className="text-sm font-bold text-slate-900">{emp?.name || 'Unknown'}</div>
                                                         <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{emp?.role || '-'}</div>
+                                                        {emp && emp.leaveBalance !== undefined && emp.leaveBalance <= 0 && (
+                                                            <div className="flex items-center gap-1 text-[9px] font-black text-rose-650 bg-rose-50 border border-rose-100 rounded-lg px-2 py-0.5 mt-1.5 w-fit uppercase tracking-wider">
+                                                                <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                                                <span>Exhausted Balance</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </td>
