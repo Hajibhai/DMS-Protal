@@ -12006,9 +12006,9 @@ const ReportsView = ({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
-                className="glass-card rounded-[2.5rem] border border-white shadow-2xl shadow-slate-200/50 overflow-hidden"
+                className="glass-card rounded-[2.5rem] border border-white shadow-2xl shadow-slate-200/50 overflow-hidden w-full max-w-full"
             >
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto w-full max-w-full">
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">

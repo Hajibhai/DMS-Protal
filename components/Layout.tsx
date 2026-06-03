@@ -884,8 +884,8 @@ export const Layout: React.FC<LayoutProps> = ({
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="w-full p-4 sm:p-6 lg:p-10">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 max-w-full">
+        <div className="w-full p-4 sm:p-6 lg:p-10 max-w-full">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -893,6 +893,7 @@ export const Layout: React.FC<LayoutProps> = ({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
+              className="w-full max-w-full"
             >
               {children}
             </motion.div>
