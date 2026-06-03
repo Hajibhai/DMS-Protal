@@ -4,7 +4,7 @@ import {
   X, Save, AlertCircle, TrendingUp, TrendingDown, ClipboardList, PlusCircle,
   Truck, Building2, HelpCircle, Briefcase, DollarSign, ArrowUpRight, Scale
 } from 'lucide-react';
-import { Company, Supplier, Project, Vendor, EngineerDocument, DocumentItem, DocumentPayment, UserRole } from '../types';
+import { Company, Supplier, Project, Vendor, EngineerDocument, DocumentItem, DocumentPayment, UserRole, CorporateBankAccount } from '../types';
 import { jsPDF } from 'jspdf';
 
 interface EngineerViewProps {
@@ -17,6 +17,7 @@ interface EngineerViewProps {
   onSaveDocument: (doc: EngineerDocument) => Promise<void>;
   onDeleteDocument: (id: string) => Promise<void>;
   openConfirm: (title: string, message: string, onConfirm: () => void, type?: 'danger' | 'warning') => void;
+  bankAccounts?: CorporateBankAccount[];
 }
 
 export const EngineerView: React.FC<EngineerViewProps> = ({
@@ -28,7 +29,8 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
   engineerDocuments,
   onSaveDocument,
   onDeleteDocument,
-  openConfirm
+  openConfirm,
+  bankAccounts = []
 }) => {
   const [activeTab, setActiveTab] = useState<'Quotations' | 'LPOs'>('Quotations');
   const [searchQuery, setSearchQuery] = useState('');
@@ -396,6 +398,15 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
   // PDF Generator for Blank Original Letterhead Print and customized Professional Corporate layouts
   const handleDownloadPDF = (docItem: EngineerDocument) => {
     try {
+      const defaultBank = (bankAccounts || []).find(b => b.isDefault) || (bankAccounts || [])[0] || {
+        accountName: "Pioneer General Contracting LLC",
+        bankName: "Abu Dhabi Commercial Bank",
+        accountNumber: "11249315820001",
+        iban: "AE190030011249315820001",
+        swiftCode: "ADCBAEAA",
+        currency: "AED"
+      };
+
       const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -799,6 +810,25 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
         ];
         paymentBullets.forEach(b => {
           doc.text(b, 17, sumY);
+          sumY += 3.8;
+        });
+
+        sumY += 2;
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(153, 27, 27);
+        doc.text("5.0 CORPORATE WIRE TRANSFER DETAILS", 15, sumY);
+        sumY += 4;
+
+        doc.setFont("Helvetica", "normal");
+        const bankBullets = [
+          `Beneficiary Name: ${defaultBank.accountName}`,
+          `Bank Name: ${defaultBank.bankName}`,
+          `Account Number: ${defaultBank.accountNumber}`,
+          `IBAN (UAE Central Bank Compliant): ${defaultBank.iban}`,
+          `Swift Bic Code: ${defaultBank.swiftCode} (Currency: ${defaultBank.currency})`
+        ];
+        bankBullets.forEach(b => {
+          doc.text("- " + b, 17, sumY);
           sumY += 3.8;
         });
 

@@ -49,6 +49,7 @@ import {
   getDoc,
   getDocs,
   setDoc,
+  updateDoc,
   deleteDoc
 } from 'firebase/firestore';
 import { auth, db, loginWithGoogle, loginWithEmail, registerWithEmail, logout, resetPassword, adminCreateUser, adminDeleteUser, adminUpdateUser } from './firebase';
@@ -65,7 +66,8 @@ import {
   SafetyRecord,
   UserPermissions,
   PublicHoliday,
-  EngineerDocument
+  EngineerDocument,
+  CorporateBankAccount
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -3594,6 +3596,7 @@ export default function App() {
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
   const [deductions, setDeductions] = useState<DeductionRecord[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<CorporateBankAccount[]>([]);
   const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -3622,6 +3625,61 @@ export default function App() {
       openConfirm('Password Reset', `A password reset email has been sent to ${user.email}. Please check your inbox.`, () => {}, 'warning');
     } catch (error: any) {
       openConfirm('Error', `Failed to send reset email: ${error.message}`, () => {}, 'danger');
+    }
+  };
+
+  const handleSetDefaultBankAccount = async (id: string, log = true) => {
+    try {
+      // Find current default and unset it, set targeted one to default
+      const batchWrites = bankAccounts.map(async (acc) => {
+        const isTarget = acc.id === id;
+        if (acc.isDefault !== isTarget) {
+          await updateDoc(doc(db, 'bank_accounts', acc.id), { isDefault: isTarget });
+        }
+      });
+      await Promise.all(batchWrites);
+      if (log) {
+        const targetAcc = bankAccounts.find(a => a.id === id);
+        handleLogAction('Bank Account Default Changed', `Set ${targetAcc?.bankName || 'bank account'} as default for invoices & quotations.`, 'update');
+      }
+    } catch (error: any) {
+      openConfirm('Error', `Failed to set default bank account: ${error.message}`, () => {}, 'danger');
+    }
+  };
+
+  const handleAddBankAccount = async (acc: Omit<CorporateBankAccount, 'id'>) => {
+    try {
+      const newId = doc(collection(db, 'bank_accounts')).id;
+      const finalAcc = { ...acc, id: newId };
+      // If setting this to default, make sure others are set to false first
+      if (finalAcc.isDefault) {
+        await handleSetDefaultBankAccount(newId, false);
+      }
+      await setDoc(doc(db, 'bank_accounts', newId), finalAcc);
+      handleLogAction('Bank Account Created', `Created corporate bank account ${acc.bankName} (${acc.accountNumber}).`, 'create');
+    } catch (error: any) {
+      openConfirm('Error', `Failed to add bank account: ${error.message}`, () => {}, 'danger');
+    }
+  };
+
+  const handleUpdateBankAccount = async (acc: CorporateBankAccount) => {
+    try {
+      if (acc.isDefault) {
+        await handleSetDefaultBankAccount(acc.id, false);
+      }
+      await setDoc(doc(db, 'bank_accounts', acc.id), acc);
+      handleLogAction('Bank Account Updated', `Updated corporate bank account ${acc.bankName} (${acc.accountNumber}).`, 'update');
+    } catch (error: any) {
+      openConfirm('Error', `Failed to update bank account: ${error.message}`, () => {}, 'danger');
+    }
+  };
+
+  const handleDeleteBankAccount = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'bank_accounts', id));
+      handleLogAction('Bank Account Deleted', `Deleted corporate bank account.`, 'delete');
+    } catch (error: any) {
+      openConfirm('Error', `Failed to delete bank account: ${error.message}`, () => {}, 'danger');
     }
   };
   
@@ -3865,6 +3923,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'companies');
     });
 
+    const unsubBankAccounts = onSnapshot(collection(db, 'bank_accounts'), (snap) => {
+      setBankAccounts(snap.docs.map(d => ({ ...d.data(), id: d.id } as CorporateBankAccount)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'bank_accounts');
+    });
+
     const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snap) => {
       setSuppliers(snap.docs.map(d => d.data() as Supplier));
     }, (error) => {
@@ -3960,6 +4024,7 @@ export default function App() {
       unsubLeaves();
       unsubDeductions();
       unsubCompanies();
+      unsubBankAccounts();
       unsubSuppliers();
       unsubProjects();
       unsubVendors();
@@ -4644,6 +4709,7 @@ export default function App() {
           onDelete={handleDeleteAR}
           onSave={handleSaveAR}
           user={systemUser}
+          bankAccounts={bankAccounts}
         />
       )}
       {activeTab === 'finance' && (
@@ -4708,6 +4774,7 @@ export default function App() {
           onSaveDocument={handleSaveEngineerDocument}
           onDeleteDocument={handleDeleteEngineerDocument}
           openConfirm={openConfirm}
+          bankAccounts={bankAccounts}
         />
       )}
       {activeTab === 'reports' && (
@@ -4784,6 +4851,11 @@ export default function App() {
           user={systemUser} 
           onPasswordReset={handlePasswordReset}
           onViewAuditLogs={() => setShowAuditModal(true)}
+          bankAccounts={bankAccounts}
+          onAddBankAccount={handleAddBankAccount}
+          onUpdateBankAccount={handleUpdateBankAccount}
+          onDeleteBankAccount={handleDeleteBankAccount}
+          onSetDefaultBankAccount={handleSetDefaultBankAccount}
         />
       )}
       {activeTab === 'help' && (
@@ -5485,15 +5557,107 @@ const ProfileView = ({ user, onUpdate }: { user: SystemUser, onUpdate: (updated:
 };
 
 // --- Settings View ---
-const SettingsView = ({ user, onPasswordReset, onViewAuditLogs }: { 
+const SettingsView = ({ 
+    user, 
+    onPasswordReset, 
+    onViewAuditLogs,
+    bankAccounts = [],
+    onAddBankAccount,
+    onUpdateBankAccount,
+    onDeleteBankAccount,
+    onSetDefaultBankAccount
+}: { 
     user: SystemUser, 
     onPasswordReset: () => void,
-    onViewAuditLogs?: () => void
+    onViewAuditLogs?: () => void,
+    bankAccounts: CorporateBankAccount[],
+    onAddBankAccount: (acc: Omit<CorporateBankAccount, 'id'>) => Promise<void>,
+    onUpdateBankAccount: (acc: CorporateBankAccount) => Promise<void>,
+    onDeleteBankAccount: (id: string) => Promise<void>,
+    onSetDefaultBankAccount: (id: string) => Promise<void>
 }) => {
     const canManageSettings = user?.permissions?.canManageSettings;
     const userRoleLower = user?.role?.toLowerCase() || '';
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
     
+    // Corporate Bank Account component local states
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingAccount, setEditingAccount] = useState<CorporateBankAccount | null>(null);
+    const [formVal, setFormVal] = useState({
+        accountName: '',
+        bankName: '',
+        accountNumber: '',
+        iban: '',
+        swiftCode: '',
+        currency: 'AED',
+        isDefault: false
+    });
+
+    const resetForm = () => {
+        setFormVal({
+            accountName: '',
+            bankName: '',
+            accountNumber: '',
+            iban: '',
+            swiftCode: '',
+            currency: 'AED',
+            isDefault: false
+        });
+        setEditingAccount(null);
+        setIsFormOpen(false);
+    };
+
+    const handleOpenEdit = (acc: CorporateBankAccount) => {
+        setEditingAccount(acc);
+        setFormVal({
+            accountName: acc.accountName,
+            bankName: acc.bankName,
+            accountNumber: acc.accountNumber,
+            iban: acc.iban,
+            swiftCode: acc.swiftCode,
+            currency: acc.currency,
+            isDefault: acc.isDefault
+        });
+        setIsFormOpen(true);
+    };
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!formVal.accountName || !formVal.bankName || !formVal.accountNumber || !formVal.iban || !formVal.swiftCode) {
+            alert('Please fill out all required fields');
+            return;
+        }
+        try {
+            if (editingAccount) {
+                await onUpdateBankAccount({
+                    ...formVal,
+                    id: editingAccount.id
+                });
+            } else {
+                await onAddBankAccount(formVal);
+            }
+            resetForm();
+        } catch (err: any) {
+            console.error("Failed saving bank account:", err);
+        }
+    };
+
+    const handleQuickSeed = async () => {
+        try {
+            await onAddBankAccount({
+                accountName: "Pioneer General Contracting LLC",
+                bankName: "Abu Dhabi Commercial Bank",
+                accountNumber: "11249315820001",
+                iban: "AE190030011249315820001",
+                swiftCode: "ADCBAEAA",
+                currency: "AED",
+                isDefault: true
+            });
+        } catch (err) {
+            console.error("Seeding default ADCB account failed:", err);
+        }
+    };
+
     if (!canManageSettings && user.role !== UserRole.CREATOR && !isAdmin) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-8">
@@ -5523,6 +5687,204 @@ const SettingsView = ({ user, onPasswordReset, onViewAuditLogs }: {
             <div className="grid grid-cols-1 gap-6">
                 {isAdmin && (
                     <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm animate-in fade-in duration-300">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="text-lg font-black text-slate-900">Corporate Bank Accounts</h3>
+                                <p className="text-xs text-slate-500 font-medium mt-1">Manage official bank details used dynamically in generated Invoices & Quotations</p>
+                            </div>
+                            {!isFormOpen && (
+                                <button
+                                    onClick={() => { resetForm(); setIsFormOpen(true); }}
+                                    className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer"
+                                >
+                                    <Plus className="w-4 h-4" /> Add Corporate Bank
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Form details */}
+                        {isFormOpen && (
+                            <form onSubmit={handleSave} className="mb-6 p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+                                    <Landmark className="w-4 h-4 text-brand-600" />
+                                    {editingAccount ? 'Edit Bank Account Information' : 'Add New Bank Account'}
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Account Holder Name *</label>
+                                        <input
+                                            type="text"
+                                            value={formVal.accountName}
+                                            onChange={e => setFormVal(prev => ({ ...prev, accountName: e.target.value }))}
+                                            className="w-full px-3 py-2 border rounded-xl text-xs font-semibold text-slate-850"
+                                            placeholder="Pioneer General Contracting LLC"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Corporate Bank Name *</label>
+                                        <input
+                                            type="text"
+                                            value={formVal.bankName}
+                                            onChange={e => setFormVal(prev => ({ ...prev, bankName: e.target.value }))}
+                                            className="w-full px-3 py-2 border rounded-xl text-xs font-semibold text-slate-850"
+                                            placeholder="Abu Dhabi Commercial Bank"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Account Number *</label>
+                                        <input
+                                            type="text"
+                                            value={formVal.accountNumber}
+                                            onChange={e => setFormVal(prev => ({ ...prev, accountNumber: e.target.value }))}
+                                            className="w-full px-3 py-2 border rounded-xl text-xs font-semibold text-slate-850"
+                                            placeholder="11249315820001"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">IBAN Number (UAE Compliant) *</label>
+                                        <input
+                                            type="text"
+                                            value={formVal.iban}
+                                            onChange={e => setFormVal(prev => ({ ...prev, iban: e.target.value }))}
+                                            className="w-full px-3 py-2 border rounded-xl text-xs font-semibold text-slate-850"
+                                            placeholder="AE190030011249315820001"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">SWIFT Code *</label>
+                                        <input
+                                            type="text"
+                                            value={formVal.swiftCode}
+                                            onChange={e => setFormVal(prev => ({ ...prev, swiftCode: e.target.value }))}
+                                            className="w-full px-3 py-2 border rounded-xl text-xs font-semibold text-slate-850"
+                                            placeholder="ADCBAEAA"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Remittance Currency</label>
+                                        <select
+                                            value={formVal.currency}
+                                            onChange={e => setFormVal(prev => ({ ...prev, currency: e.target.value }))}
+                                            className="w-full px-3 py-2 border rounded-xl text-xs font-semibold text-slate-850 bg-white"
+                                        >
+                                            <option value="AED">AED - United Arab Emirates Dirham</option>
+                                            <option value="USD">USD - United States Dollar</option>
+                                            <option value="EUR">EUR - Euro</option>
+                                            <option value="GBP">GBP - British Pound</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 pt-2">
+                                    <input
+                                        type="checkbox"
+                                        id="isDefaultAcc"
+                                        checked={formVal.isDefault}
+                                        onChange={e => setFormVal(prev => ({ ...prev, isDefault: e.target.checked }))}
+                                        className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                                    />
+                                    <label htmlFor="isDefaultAcc" className="text-xs font-bold text-slate-700 cursor-pointer">Set as default account for system documents</label>
+                                </div>
+                                <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+                                    <button
+                                        type="button"
+                                        onClick={resetForm}
+                                        className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <Save className="w-4 h-4" /> Save Bank
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+
+                        {/* List box */}
+                        <div className="space-y-4">
+                            {bankAccounts.length === 0 ? (
+                                <div className="p-6 bg-slate-50/50 border border-dashed border-slate-200 rounded-2xl text-center space-y-4">
+                                    <div className="flex items-center justify-center">
+                                        <Landmark className="w-10 h-10 text-slate-300 animate-pulse" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-bold text-slate-800">No Corporate Bank Accounts Added</p>
+                                        <p className="text-xs text-slate-400 max-w-md mx-auto">Dynamic generated invoices and proposal quotations will default to Abu Dhabi Commercial Bank details.</p>
+                                    </div>
+                                    <button 
+                                        type="button"
+                                        onClick={handleQuickSeed}
+                                        className="px-4 py-2 bg-white hover:bg-slate-50 text-brand-600 border border-slate-200 rounded-xl text-xs font-black transition-all inline-flex items-center gap-2 cursor-pointer"
+                                    >
+                                        ✨ Quick-Setup: Seed Pioneer ADCB Bank Account
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {bankAccounts.map((acc) => (
+                                        <div key={acc.id} className={`p-5 rounded-2xl border transition-all ${acc.isDefault ? 'border-brand-100 bg-brand-50/10' : 'border-slate-100 bg-white'}`}>
+                                            <div className="flex justify-between items-start">
+                                                <div className="space-y-1 text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-extrabold text-slate-900 text-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">{acc.bankName}</span>
+                                                        {acc.isDefault && (
+                                                            <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-extrabold rounded-full text-[9px] uppercase tracking-wider flex items-center gap-1 border border-emerald-100 shrink-0">
+                                                                <Check className="w-3 h-3" /> Default
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-slate-500 font-medium pt-1"><span className="text-slate-400 font-bold">Holder:</span> {acc.accountName}</p>
+                                                    <p className="text-slate-500 font-mono font-bold"><span className="text-slate-400 font-bold font-sans">Acct No:</span> {acc.accountNumber}</p>
+                                                    <p className="text-slate-700 font-mono font-extrabold p-1.5 bg-slate-100/60 rounded text-[10px] tracking-tight mt-1 select-all"><span className="text-slate-400 font-black tracking-normal font-sans">IBAN:</span> {acc.iban}</p>
+                                                    <p className="text-slate-500 text-[10px] pt-1"><span className="text-slate-400 font-bold">Swift Code / Currency:</span> <span className="font-semibold">{acc.swiftCode} / {acc.currency}</span></p>
+                                                </div>
+                                                <div className="flex items-center gap-1 pl-2">
+                                                    {!acc.isDefault && (
+                                                        <button
+                                                            onClick={() => onSetDefaultBankAccount(acc.id)}
+                                                            className="p-2 hover:bg-slate-100 text-slate-400 hover:text-brand-600 rounded-xl transition cursor-pointer"
+                                                            title="Set as Default Account"
+                                                        >
+                                                            <Check className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleOpenEdit(acc)}
+                                                        className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-650 rounded-xl transition cursor-pointer"
+                                                        title="Edit Account Details"
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (confirm('Are you sure you want to delete this bank account?')) {
+                                                                onDeleteBankAccount(acc.id);
+                                                            }
+                                                        }}
+                                                        className="p-2 hover:bg-red-50 text-slate-400 hover:text-red-650 rounded-xl transition cursor-pointer"
+                                                        title="Delete Account"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {isAdmin && (
+                    <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm animate-in fade-in duration-300">
                         <h3 className="text-lg font-black text-slate-900 mb-6">System Audit Logs</h3>
                         <div className="space-y-4">
                             <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100">
@@ -5532,7 +5894,7 @@ const SettingsView = ({ user, onPasswordReset, onViewAuditLogs }: {
                                 </div>
                                 <button 
                                     onClick={onViewAuditLogs}
-                                    className="px-5 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-xl text-xs font-black transition-all active:scale-95 flex items-center gap-2 shrink-0"
+                                    className="px-5 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-xl text-xs font-black transition-all active:scale-95 flex items-center gap-2 shrink-0 cursor-pointer"
                                 >
                                     <Activity className="w-4 h-4" />
                                     View

@@ -589,4 +589,15 @@ export interface Note {
   createdByRole?: string;
 }
 
+export interface CorporateBankAccount {
+  id: string;
+  accountName: string;
+  bankName: string;
+  accountNumber: string;
+  iban: string;
+  swiftCode: string;
+  currency: string;
+  isDefault: boolean;
+}
+
 

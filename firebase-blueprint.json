@@ -438,6 +438,22 @@
         "createdBy": { "type": "string" }
       },
       "required": ["id", "title", "content", "createdAt", "createdById", "createdBy"]
+    },
+    "CorporateBankAccount": {
+      "title": "Corporate Bank Account",
+      "description": "Corporate bank details used for invoices and quotations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "accountName": { "type": "string" },
+        "bankName": { "type": "string" },
+        "accountNumber": { "type": "string" },
+        "iban": { "type": "string" },
+        "swiftCode": { "type": "string" },
+        "currency": { "type": "string" },
+        "isDefault": { "type": "boolean" }
+      },
+      "required": ["id", "accountName", "bankName", "accountNumber", "iban", "swiftCode", "currency", "isDefault"]
     }
   },
   "firestore": {
@@ -528,6 +544,10 @@
     "/notes/{noteId}": {
       "schema": "Note",
       "description": "Collaborative memorandum board sticky notes"
+    },
+    "/bank_accounts/{accountId}": {
+      "schema": "CorporateBankAccount",
+      "description": "Corporate bank accounts configuration"
     }
   }
 }

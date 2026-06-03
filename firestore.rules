@@ -179,5 +179,10 @@ service cloud.firestore {
     match /notes/{noteId} {
       allow read, write: if isAuthenticated();
     }
+
+    match /bank_accounts/{accountId} {
+      allow read: if isAuthenticated();
+      allow write: if hasPermission('canManageSettings') || isAdmin();
+    }
   }
 }

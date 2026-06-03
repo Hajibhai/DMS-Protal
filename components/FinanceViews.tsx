@@ -2299,12 +2299,21 @@ export const printAgingAndMonthlyReport = (
     printWindow.document.close();
 };
 
-export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) => {
+export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, bankAccounts: any[] = []) => {
     const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4'
     });
+
+    const defaultBank = (bankAccounts || []).find(b => b.isDefault) || (bankAccounts || [])[0] || {
+        accountName: "Pioneer General Contracting LLC",
+        bankName: "Abu Dhabi Commercial Bank",
+        accountNumber: "11249315820001",
+        iban: "AE190030011249315820001",
+        swiftCode: "ADCBAEAA",
+        currency: "AED"
+    };
 
     // Add Watermark Logo
     const assets = getPioneerPDFAssets();
@@ -2549,31 +2558,67 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any) =
     doc.setFontSize(10.5);
     doc.text(`AED ${Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1.5, { align: 'right' });
 
-    yPos += 20;
+    yPos += 15;
+    if (yPos > 235) {
+        doc.addPage();
+        yPos = 30;
+    }
+
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.setLineWidth(0.3);
+    doc.line(15, yPos, 195, yPos);
+    yPos += 6;
+
+    // LEFT COLUMN: TERMS
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.text("TERMS & INSTRUCTIONS", 15, yPos);
 
     doc.setFont("Helvetica", "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
     doc.text([
-        "1. Please reference the Invoice Number on bank transfers and wire remittance.",
-        "2. Payment is due within the stipulated credit days from invoice date.",
-        "3. Standard 5% UAE VAT applies to all items and charges outlined above."
+        "1. Please reference the Invoice Number on bank transfers.",
+        "2. Payment is due within the stipulated credit days.",
+        "3. Standard 5% UAE VAT applies to overall civil items."
     ], 15, yPos + 5);
 
+    // RIGHT COLUMN: BANK TRANSFER DETAILS
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(9.5);
+    doc.setFontSize(9);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("AUTHORIZED SIGNATORY", 192, yPos + 22, { align: 'right' });
-    doc.line(135, yPos + 17, 192, yPos + 17);
+    doc.text("BANK TRANSFER DETAILS", 110, yPos);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    doc.text("Beneficiary Name: ", 110, yPos + 5);
+    doc.text("Bank Name: ", 110, yPos + 9);
+    doc.text("Account Number: ", 110, yPos + 13);
+    doc.text("IBAN Number: ", 110, yPos + 17);
+    doc.text("Swift Code: ", 110, yPos + 21);
 
     doc.setFont("Helvetica", "normal");
-    doc.setFontSize(8);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    doc.text("Operations / Accounts Dept", 192, yPos + 26, { align: 'right' });
+    doc.text(defaultBank.accountName || "N/A", 138, yPos + 5);
+    doc.text(defaultBank.bankName || "N/A", 138, yPos + 9);
+    doc.text(defaultBank.accountNumber || "N/A", 138, yPos + 13);
+    doc.setFont("Helvetica", "bold");
+    doc.text(defaultBank.iban || "N/A", 138, yPos + 17);
+    doc.setFont("Helvetica", "normal");
+    doc.text(`${defaultBank.swiftCode || "N/A"} (${defaultBank.currency || "AED"})`, 138, yPos + 21);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("AUTHORIZED SIGNATORY", 192, yPos + 32, { align: 'right' });
+    doc.line(135, yPos + 27, 192, yPos + 27);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+    doc.text("Operations / Accounts Dept", 192, yPos + 36, { align: 'right' });
 
     doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.rect(0, 289, 210, 8, 'F');
@@ -2912,7 +2957,7 @@ export const downloadSOAExcel = (
     XLSX.writeFile(wb, `${isReceivable ? 'Receivable' : 'Payable'}_SOA_${partnerName.replace(/\s+/g, '_')}.xlsx`);
 };
 
-export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, user, companies }: any) => {
+export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, user, companies, bankAccounts = [] }: any) => {
     const [previewInvoiceItem, setPreviewInvoiceItem] = useState<{ item: any; comp: any; client: any } | null>(null);
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
@@ -3767,7 +3812,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                 return (
                                     <div className="flex items-center gap-1.5 whitespace-nowrap">
                                         <button
-                                            onClick={() => downloadZohoInvoicePDF(item, comp, client)}
+                                            onClick={() => downloadZohoInvoicePDF(item, comp, client, bankAccounts)}
                                             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-450 hover:text-blue-600 transition-colors shrink-0"
                                             title="Download Zoho PDF Invoice"
                                         >
@@ -4295,6 +4340,14 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             {/* Zoho Books Live Invoice Preview Lightbox */}
             {previewInvoiceItem && (() => {
                 const { item, comp, client } = previewInvoiceItem;
+                const defaultBank = (bankAccounts || []).find(b => b.isDefault) || (bankAccounts || [])[0] || {
+                    accountName: "Pioneer General Contracting LLC",
+                    bankName: "Abu Dhabi Commercial Bank",
+                    accountNumber: "11249315820001",
+                    iban: "AE190030011249315820001",
+                    swiftCode: "ADCBAEAA",
+                    currency: "AED"
+                };
                 const itemsList = item.items && item.items.length > 0 
                     ? item.items 
                     : [{ id: '1', name: item.description || 'General Contracting & Technical works', description: 'Detailed project works executed on-site', quantity: 1, rate: item.amount || 0, total: item.amount || 0 }];
@@ -4315,7 +4368,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button 
-                                        onClick={() => downloadZohoInvoicePDF(item, comp, client)}
+                                        onClick={() => downloadZohoInvoicePDF(item, comp, client, bankAccounts)}
                                         className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black px-4 py-2.5 rounded-xl transition shadow-lg shadow-blue-500/10 cursor-pointer"
                                     >
                                         <Download className="w-4 h-4" /> Download PDF
@@ -4422,9 +4475,37 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                             </table>
                                         </div>
 
-                                        {/* Totals compilation box */}
-                                        <div className="flex justify-end mb-6">
-                                            <div className="w-72 space-y-2 text-xs">
+                                        {/* Direct Banking & Totals block */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                            {/* Bank Transfer Details Box */}
+                                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[11px] self-start">
+                                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block mb-2">⚡ Direct Bank Remittance Details</span>
+                                                <div className="space-y-1.5 leading-normal">
+                                                    <div className="flex justify-between gap-2">
+                                                        <span className="text-slate-400 font-semibold whitespace-nowrap">Beneficiary:</span>
+                                                        <span className="font-bold text-slate-700 text-right">{defaultBank.accountName}</span>
+                                                    </div>
+                                                    <div className="flex justify-between gap-2">
+                                                        <span className="text-slate-400 font-semibold whitespace-nowrap">Bank Name:</span>
+                                                        <span className="font-bold text-slate-700 text-right">{defaultBank.bankName}</span>
+                                                    </div>
+                                                    <div className="flex justify-between gap-2">
+                                                        <span className="text-slate-400 font-semibold">Account No:</span>
+                                                        <span className="font-bold text-slate-700 text-right font-mono">{defaultBank.accountNumber}</span>
+                                                    </div>
+                                                    <div className="flex flex-col p-1.5 bg-blue-50/70 text-blue-950 rounded-lg px-2 mt-1 gap-0.5">
+                                                        <span className="font-black text-[9px] text-blue-600 uppercase tracking-wider">IBAN:</span>
+                                                        <span className="font-extrabold font-mono tracking-tight text-[11px] select-all">{defaultBank.iban}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-[10px] pt-1">
+                                                        <span className="text-slate-400 font-semibold">Swift Bic / Currency:</span>
+                                                        <span className="font-bold text-slate-600">{defaultBank.swiftCode} / {defaultBank.currency}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Totals compilation box */}
+                                            <div className="space-y-2 text-xs flex flex-col justify-end">
                                                 <div className="flex justify-between items-center text-slate-500 font-medium">
                                                     <span>Sub Total:</span>
                                                     <span className="font-bold text-slate-800">AED {Number(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
