@@ -37,6 +37,8 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
   // Modal states
   const [showDocModal, setShowDocModal] = useState(false);
   const [editingDoc, setEditingDoc] = useState<EngineerDocument | null>(null);
+  const [useCustomClient, setUseCustomClient] = useState(false);
+  const [useCustomSupplier, setUseCustomSupplier] = useState(false);
   
   // Payment Modal states
   const [showPaymentModal, setShowPaymentModal] = useState<EngineerDocument | null>(null);
@@ -227,6 +229,8 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
   // Open Edit Form
   const handleEditClick = (doc: EngineerDocument) => {
     setEditingDoc(doc);
+    setUseCustomClient(doc.type === 'Quotation' && !doc.companyId);
+    setUseCustomSupplier(doc.type === 'LPO' && !doc.supplierId);
     setFormData({
       type: doc.type,
       docNumber: doc.docNumber,
@@ -258,6 +262,8 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
   // Open Create Form
   const handleCreateClick = (type: 'Quotation' | 'LPO') => {
     setEditingDoc(null);
+    setUseCustomClient(false);
+    setUseCustomSupplier(false);
     const genNumber = `${type === 'Quotation' ? 'PGC-Q' : 'PGC-LPO'}-${new Date().getFullYear().toString().substring(2)}${Math.floor(10 + Math.random() * 90)}`; // matching PGC-Q-26010 style
     setFormData({
       type,
@@ -1251,8 +1257,8 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
 
                   return (
                     <tr key={docItem.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4">
-                        <span className="font-mono text-xs font-black text-slate-900 bg-slate-100 px-2 py-1 rounded">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="font-mono text-xs font-black text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg">
                           {docItem.docNumber}
                         </span>
                       </td>
@@ -1432,12 +1438,34 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
               </div>
 
               {/* Company / Supplier Select */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-1">
                 {formData.type === 'Quotation' ? (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Client Company (Receiving Quotation)</label>
-                    <div className="flex gap-2">
+                  <div className="space-y-1.5 flex flex-col justify-between">
+                    <div className="flex items-center justify-between pb-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Client Company (Receiving Quotation)</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUseCustomClient(!useCustomClient);
+                          setFormData({ ...formData, companyName: '', companyId: '' });
+                        }}
+                        className="text-[10px] font-extrabold text-indigo-650 hover:text-indigo-850 bg-indigo-50/70 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg transition-colors"
+                      >
+                        {useCustomClient ? "← Choose Registered Client" : "✍️ Type Custom Name"}
+                      </button>
+                    </div>
+                    {useCustomClient ? (
+                      <input
+                        type="text"
+                        placeholder="Type custom client company name..."
+                        required
+                        value={formData.companyName}
+                        onChange={(e) => setFormData({ ...formData, companyName: e.target.value, companyId: '' })}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-400"
+                      />
+                    ) : (
                       <select
+                        required
                         value={formData.companyId}
                         onChange={(e) => {
                           const matched = vendors.find(v => v.id === e.target.value);
@@ -1447,28 +1475,42 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
                             setFormData({ ...formData, companyId: '', companyName: '' });
                           }
                         }}
-                        className="flex-1 px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                       >
                         <option value="">-- Choose Existing Client --</option>
                         {vendors.map(v => (
                           <option key={v.id} value={v.id}>{v.name}</option>
                         ))}
                       </select>
-                      <input
-                        type="text"
-                        placeholder="Or type custom client name..."
-                        required
-                        value={formData.companyName}
-                        onChange={(e) => setFormData({ ...formData, companyName: e.target.value, companyId: '' })}
-                        className="flex-1 px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                      />
-                    </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Supplier / Vendor (Receiving LPO)</label>
-                    <div className="flex gap-2">
+                  <div className="space-y-1.5 flex flex-col justify-between">
+                    <div className="flex items-center justify-between pb-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Supplier / Vendor (Receiving LPO)</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUseCustomSupplier(!useCustomSupplier);
+                          setFormData({ ...formData, companyName: '', supplierId: '' });
+                        }}
+                        className="text-[10px] font-extrabold text-indigo-650 hover:text-indigo-850 bg-indigo-50/70 hover:bg-indigo-100/80 px-2.5 py-1 rounded-lg transition-colors"
+                      >
+                        {useCustomSupplier ? "← Choose Registered Supplier" : "✍️ Type Custom Name"}
+                      </button>
+                    </div>
+                    {useCustomSupplier ? (
+                      <input
+                        type="text"
+                        placeholder="Type custom supplier company name..."
+                        required
+                        value={formData.companyName}
+                        onChange={(e) => setFormData({ ...formData, companyName: e.target.value, supplierId: '' })}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-400"
+                      />
+                    ) : (
                       <select
+                        required
                         value={formData.supplierId}
                         onChange={(e) => {
                           const matched = suppliers.find(s => s.id === e.target.value);
@@ -1478,35 +1520,27 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
                             setFormData({ ...formData, supplierId: '', companyName: '' });
                           }
                         }}
-                        className="flex-1 px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                       >
                         <option value="">-- Choose Existing Supplier --</option>
                         {suppliers.map(s => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
                       </select>
-                      <input
-                        type="text"
-                        placeholder="Or type custom supplier name..."
-                        required
-                        value={formData.companyName}
-                        onChange={(e) => setFormData({ ...formData, companyName: e.target.value, supplierId: '' })}
-                        className="flex-1 px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                      />
-                    </div>
+                    )}
                   </div>
                 )}
 
                 {/* Subject of Work */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Subject / Work Description</label>
+                <div className="space-y-1.5 flex flex-col justify-end">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 pb-1">Subject / Work Description</label>
                   <input
                     type="text"
                     required
                     value={formData.subject}
                     onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
                     placeholder="e.g. Civil Maintenance at Airport, Supply of Ready-Mix concrete"
-                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                   />
                 </div>
               </div>
@@ -1654,80 +1688,95 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
 
               {/* Items Table Form */}
               <div className="space-y-4 border-t border-b border-rose-50/50 py-6">
-                <div className="flex justify-between items-center">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Document Line Items</h4>
+                <div className="flex justify-between items-center px-1">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Document Line Items</h4>
                   <button
                     type="button"
                     onClick={addFormItem}
-                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-black transition-all flex items-center gap-1.5"
+                    className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-black transition-all flex items-center gap-1.5 shadow"
                   >
-                    <PlusCircle className="w-4 h-4" />
+                    <PlusCircle className="w-4 h-4 text-white" />
                     Add line
                   </button>
                 </div>
 
+                {/* Desktop Grid Columns Header Row */}
+                <div className="hidden sm:flex gap-4 px-4 py-2 border-b border-slate-100 text-[9px] font-black uppercase tracking-widest text-slate-400">
+                  <div className="flex-1">Item Title / Category</div>
+                  <div className="flex-[2]">Detailed Specifications & Dimensions</div>
+                  <div className="w-20 text-center">Qty</div>
+                  <div className="w-28 text-right">Unit Rate (AED)</div>
+                  <div className="w-28 text-right">Total (AED)</div>
+                  <div className="w-10"></div> {/* Delete placeholder */}
+                </div>
+
                 <div className="space-y-3">
                   {formItems.map((item, idx) => (
-                    <div key={item.id} className="flex flex-col sm:flex-row gap-3 items-end sm:items-center bg-slate-50/50 p-4 rounded-xl">
+                    <div key={item.id} className="flex flex-col sm:flex-row gap-4 items-end sm:items-center bg-slate-50/50 hover:bg-slate-50/85 p-4 sm:p-2 sm:px-4 rounded-xl border border-dashed border-slate-200/80 transition-all">
                       <div className="flex-1 w-full space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 block sm:hidden">Item Title</label>
+                        <label className="text-[9px] font-black text-slate-400 block sm:hidden uppercase tracking-wider">Item Title</label>
                         <input
                           type="text"
                           required
                           value={item.name}
                           onChange={(e) => updateFormItem(idx, 'name', e.target.value)}
                           placeholder="e.g. Supply & Installation of Interlocks"
-                          className="w-full px-3 py-2 bg-white border border-slate-100 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
 
                       <div className="flex-[2] w-full space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 block sm:hidden">Detailed Specifications</label>
+                        <label className="text-[9px] font-black text-slate-400 block sm:hidden uppercase tracking-wider">Detailed Specifications</label>
                         <input
                           type="text"
                           value={item.description || ''}
                           onChange={(e) => updateFormItem(idx, 'description', e.target.value)}
                           placeholder="Specification, Brand, Dimensions details"
-                          className="w-full px-3 py-2 bg-white border border-slate-100 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
 
-                      <div className="w-20 space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 block sm:hidden">Quantity</label>
+                      <div className="w-full sm:w-20 space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 block sm:hidden uppercase tracking-wider">Quantity</label>
                         <input
                           type="number"
                           required
                           min={1}
                           value={item.quantity}
                           onChange={(e) => updateFormItem(idx, 'quantity', e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-100 rounded-lg text-xs font-bold text-center outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-center outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
 
-                      <div className="w-28 space-y-1">
-                        <label className="text-[9px] font-black text-slate-400 block sm:hidden">Unit Rate (AED)</label>
+                      <div className="w-full sm:w-28 space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 block sm:hidden uppercase tracking-wider">Unit Rate (AED)</label>
                         <input
                           type="number"
                           required
                           min={0}
                           value={item.rate || ''}
                           onChange={(e) => updateFormItem(idx, 'rate', e.target.value)}
-                          className="w-full px-3 py-2 bg-white border border-slate-100 rounded-lg text-xs font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500"
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                       </div>
 
-                      <div className="w-28 text-right font-black text-slate-900 text-xs px-2">
-                        {item.total.toLocaleString()} AED
+                      <div className="w-full sm:w-28 text-right font-black text-slate-900 text-xs px-2 py-1 sm:py-0">
+                        <label className="text-[9px] font-black text-slate-400 block sm:hidden uppercase tracking-wider text-left mb-1">Total</label>
+                        <span>{(item.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} AED</span>
                       </div>
 
-                      <button
-                        type="button"
-                        disabled={formItems.length === 1}
-                        onClick={() => removeFormItem(item.id)}
-                        className="p-2 hover:bg-rose-50 rounded-lg text-rose-500 disabled:opacity-50 transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      <div className="w-full sm:w-10 flex justify-end">
+                        <button
+                          type="button"
+                          disabled={formItems.length === 1}
+                          onClick={() => removeFormItem(item.id)}
+                          className="p-2 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-rose-400 disabled:opacity-30 transition-colors cursor-pointer"
+                          title="Delete line"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
