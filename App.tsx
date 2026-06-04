@@ -5,6 +5,49 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { jsPDF } from 'jspdf';
 
+// --- CUSTOM GLOBAL INTERCEPT FOR ALL PDF DOWNLOADS / SAVES Across Entire Codebase ---
+if (typeof window !== 'undefined' && jsPDF.prototype && !(jsPDF.prototype as any).__isIntercepted) {
+  const originalSave = jsPDF.prototype.save;
+  jsPDF.prototype.save = function (filename?: string, options?: any) {
+    const finalFilename = filename || 'document.pdf';
+    let blobUrl = '';
+    try {
+      const blob = this.output('blob');
+      blobUrl = URL.createObjectURL(blob);
+    } catch (err) {
+      console.error("PDF generation error, falling back to basic download:", err);
+      return originalSave.apply(this, [finalFilename, options]);
+    }
+
+    // Trigger active direct browser file savings
+    const triggerNativeDownload = () => {
+      try {
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = finalFilename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        console.warn("Direct blob download failed, falling back to original save method", e);
+        originalSave.apply(this, [finalFilename, options]);
+      }
+    };
+
+    // Dispatch system-wide event
+    window.dispatchEvent(new CustomEvent('shiftsync-pdf-download', {
+      detail: {
+        filename: finalFilename,
+        blobUrl: blobUrl,
+        triggerDownload: triggerNativeDownload
+      }
+    }));
+
+    return this;
+  };
+  (jsPDF.prototype as any).__isIntercepted = true;
+}
+
 import { cn, getPioneerPDFAssets } from './utils';
 import { PrintModal, PrintOptions } from './components/PrintModal';
 
@@ -712,6 +755,149 @@ const KeyboardShortcutsModal = ({ isOpen, onClose }: { isOpen: boolean, onClose:
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Pioneer DMS v2.5 Productivity Tools</p>
         </div>
       </motion.div>
+    </div>
+  );
+};
+
+interface DownloadPopupModalProps {
+  isOpen: boolean;
+  filename: string;
+  blobUrl: string;
+  triggerDownload?: () => void;
+  onClose: () => void;
+}
+
+const DownloadPopupModal = ({ isOpen, filename, blobUrl, triggerDownload, onClose }: DownloadPopupModalProps) => {
+  const [copied, setCopied] = useState(false);
+  const [downloadStarted, setDownloadStarted] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCopied(false);
+      setDownloadStarted(false);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(blobUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy link:", err);
+    }
+  };
+
+  const handleDownload = () => {
+    setDownloadStarted(true);
+    if (triggerDownload) {
+      triggerDownload();
+    } else {
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    setTimeout(() => setDownloadStarted(false), 3000);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="bg-white w-full max-w-md rounded-[2rem] border border-slate-100 shadow-2xl p-6 relative flex flex-col space-y-4 animate-in zoom-in-95 duration-200">
+        
+        {/* Header */}
+        <div className="flex justify-between items-center pb-2 border-b border-slate-150 animate-in slide-in-from-top-1 duration-200">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+              <Download className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900">Document Download Ready</h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Complete Site Download System</p>
+            </div>
+          </div>
+          <button 
+            type="button"
+            onClick={onClose}
+            className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* File Name section */}
+        <div className="p-3.5 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col space-y-1">
+          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">File Name</span>
+          <span className="text-xs font-black text-slate-800 break-all select-all flex items-center gap-1.5">
+            <span>{filename}</span>
+          </span>
+        </div>
+
+        {/* Copy Link input box */}
+        <div className="flex flex-col space-y-1.5">
+          <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Direct Download Link</label>
+          <div className="flex items-center gap-1.5">
+            <input 
+              type="text" 
+              readOnly 
+              value={blobUrl} 
+              onClick={e => (e.target as HTMLInputElement).select()}
+              className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-mono text-slate-600 outline-none cursor-pointer"
+              title="Click to select all"
+            />
+            <button
+              type="button"
+              onClick={handleCopy}
+              className={`px-3 py-2 text-xs font-extrabold rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${copied ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+            >
+              {copied ? (
+                <>
+                  <Check className="w-3.5 h-3.5" /> Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" /> Copy Link
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Primary Download / Copy buttons */}
+        <div className="flex gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-3 border border-slate-200 hover:bg-slate-50 rounded-2xl text-slate-600 hover:text-slate-800 text-xs font-black transition-all cursor-pointer text-center"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={handleDownload}
+            className={`flex-[2] py-3 text-white text-xs font-black rounded-2xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${downloadStarted ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-brand-600 hover:bg-brand-700'}`}
+          >
+            {downloadStarted ? (
+              <>
+                <Check className="w-4 h-4 animate-bounce" /> Downloading...
+              </>
+            ) : (
+              <>
+                <FileDown className="w-4 h-4" /> Start Download
+              </>
+            )}
+          </button>
+        </div>
+        
+        {/* Secure Environment notice */}
+        <p className="text-[9px] text-center text-slate-400 font-medium leading-relaxed">
+          If your browser blocks the dynamic download, simply copy the URL above and paste it directly in your browser's address bar.
+        </p>
+      </div>
     </div>
   );
 };
@@ -3583,6 +3769,35 @@ export default function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   
+  // Custom global download popup state and listener
+  const [downloadPopup, setDownloadPopup] = useState<{
+    isOpen: boolean;
+    filename: string;
+    blobUrl: string;
+    triggerDownload?: () => void;
+  }>({
+    isOpen: false,
+    filename: '',
+    blobUrl: ''
+  });
+
+  useEffect(() => {
+    const handlePdfDownloadEvent = (e: any) => {
+      const { filename, blobUrl, triggerDownload } = e.detail || {};
+      setDownloadPopup({
+        isOpen: true,
+        filename: filename || 'document.pdf',
+        blobUrl: blobUrl || '',
+        triggerDownload
+      });
+    };
+
+    window.addEventListener('shiftsync-pdf-download', handlePdfDownloadEvent);
+    return () => {
+      window.removeEventListener('shiftsync-pdf-download', handlePdfDownloadEvent);
+    };
+  }, []);
+  
   useEffect(() => {
     (window as any).openShortcuts = () => setShowShortcuts(true);
   }, []);
@@ -5024,6 +5239,13 @@ export default function App() {
       </AnimatePresence>
       
       <ConfirmationModal isOpen={confirmModal.isOpen} onClose={() => setConfirmModal({...confirmModal, isOpen: false})} {...confirmModal} />
+      <DownloadPopupModal 
+        isOpen={downloadPopup.isOpen}
+        filename={downloadPopup.filename}
+        blobUrl={downloadPopup.blobUrl}
+        triggerDownload={downloadPopup.triggerDownload}
+        onClose={() => setDownloadPopup(prev => ({ ...prev, isOpen: false }))}
+      />
       <KeyboardShortcutsModal isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </Layout>
   );
