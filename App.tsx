@@ -34,14 +34,12 @@ if (typeof window !== 'undefined' && jsPDF.prototype && !(jsPDF.prototype as any
       }
     };
 
-    // Dispatch system-wide event
-    window.dispatchEvent(new CustomEvent('shiftsync-pdf-download', {
-      detail: {
-        filename: finalFilename,
-        blobUrl: blobUrl,
-        triggerDownload: triggerNativeDownload
-      }
-    }));
+    // Use global callback to show popup modal, fallback to native download if app not yet ready
+    if (typeof window !== 'undefined' && (window as any)._shiftsyncShowDownload) {
+      (window as any)._shiftsyncShowDownload(finalFilename, blobUrl, triggerNativeDownload);
+    } else {
+      triggerNativeDownload();
+    }
 
     return this;
   };
@@ -3782,8 +3780,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    const handlePdfDownloadEvent = (e: any) => {
-      const { filename, blobUrl, triggerDownload } = e.detail || {};
+    (window as any)._shiftsyncShowDownload = (filename: string, blobUrl: string, triggerDownload: () => void) => {
       setDownloadPopup({
         isOpen: true,
         filename: filename || 'document.pdf',
@@ -3791,10 +3788,8 @@ export default function App() {
         triggerDownload
       });
     };
-
-    window.addEventListener('shiftsync-pdf-download', handlePdfDownloadEvent);
     return () => {
-      window.removeEventListener('shiftsync-pdf-download', handlePdfDownloadEvent);
+      delete (window as any)._shiftsyncShowDownload;
     };
   }, []);
   
