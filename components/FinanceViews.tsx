@@ -2464,7 +2464,8 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
 
         doc.setFont("Helvetica", "normal");
         doc.setFontSize(7.5);
-        const descLines = doc.splitTextToSize(li.description || 'Standard service charges as per agreement', 70);
+        const hasDesc = li.description && li.description.trim() !== '';
+        const descLines = hasDesc ? doc.splitTextToSize(li.description, 70) : [];
 
         const nameHeight = nameLines.length * 4.0;
         const descHeight = descLines.length > 0 ? (descLines.length * 3.4) : 0;
@@ -2529,6 +2530,9 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
         yPos = 30;
     }
 
+    const totalsStartY = yPos;
+
+    // Draw Totals Block (Right column)
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
@@ -2558,8 +2562,63 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setFontSize(10.5);
     doc.text(`AED ${Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1.5, { align: 'right' });
 
-    yPos += 15;
-    if (yPos > 235) {
+    // Draw Bank Details Box (Left column, parallel to Totals)
+    const boxY = totalsStartY - 2;
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(15, boxY, 98, 30, 2, 2, 'FD');
+
+    // Box Header
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(59, 130, 246);
+    doc.text("Bank Details:", 18, boxY + 4.5);
+
+    // Beneficiary Row
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(7.0);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Beneficiary:", 18, boxY + 9.5);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(33, 37, 41);
+    doc.text(defaultBank.accountName || "N/A", 42, boxY + 9.5);
+
+    // Bank Name Row
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Bank Name:", 18, boxY + 13.5);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(33, 37, 41);
+    doc.text(defaultBank.bankName || "N/A", 42, boxY + 13.5);
+
+    // Account No Row
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Account No:", 18, boxY + 17.5);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(33, 37, 41);
+    doc.text(defaultBank.accountNumber || "N/A", 42, boxY + 17.5);
+
+    // IBAN Row
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("IBAN:", 18, boxY + 21.5);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(59, 130, 246);
+    doc.text(defaultBank.iban || "N/A", 42, boxY + 21.5);
+
+    // Swift / Currency Row
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Swift / Currency:", 18, boxY + 25.5);
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(33, 37, 41);
+    doc.text(`${defaultBank.swiftCode || "N/A"} / ${defaultBank.currency || "AED"}`, 42, boxY + 25.5);
+
+    // Advance position past the bank details / totals blocks
+    yPos = totalsStartY + 30;
+    if (yPos > 240) {
         doc.addPage();
         yPos = 30;
     }
@@ -2584,41 +2643,17 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
         "3. Standard 5% UAE VAT applies to overall civil items."
     ], 15, yPos + 5);
 
-    // RIGHT COLUMN: BANK TRANSFER DETAILS
+    // RIGHT COLUMN: AUTHORIZED SIGNATORY (Placed parallel to TERMS under the line)
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(9);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("BANK TRANSFER DETAILS", 110, yPos);
-
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
-    doc.text("Beneficiary Name: ", 110, yPos + 5);
-    doc.text("Bank Name: ", 110, yPos + 9);
-    doc.text("Account Number: ", 110, yPos + 13);
-    doc.text("IBAN Number: ", 110, yPos + 17);
-    doc.text("Swift Code: ", 110, yPos + 21);
-
-    doc.setFont("Helvetica", "normal");
-    doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    doc.text(defaultBank.accountName || "N/A", 138, yPos + 5);
-    doc.text(defaultBank.bankName || "N/A", 138, yPos + 9);
-    doc.text(defaultBank.accountNumber || "N/A", 138, yPos + 13);
-    doc.setFont("Helvetica", "bold");
-    doc.text(defaultBank.iban || "N/A", 138, yPos + 17);
-    doc.setFont("Helvetica", "normal");
-    doc.text(`${defaultBank.swiftCode || "N/A"} (${defaultBank.currency || "AED"})`, 138, yPos + 21);
-
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("AUTHORIZED SIGNATORY", 192, yPos + 32, { align: 'right' });
-    doc.line(135, yPos + 27, 192, yPos + 27);
+    doc.text("AUTHORIZED SIGNATORY", 192, yPos, { align: 'right' });
+    doc.line(135, yPos + 12, 192, yPos + 12);
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    doc.text("Operations / Accounts Dept", 192, yPos + 36, { align: 'right' });
+    doc.text("Operations / Accounts Dept", 192, yPos + 17, { align: 'right' });
 
     doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.rect(0, 289, 210, 8, 'F');
@@ -4479,7 +4514,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                                             {/* Bank Transfer Details Box */}
                                             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[11px] self-start">
-                                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block mb-2">⚡ Direct Bank Remittance Details</span>
+                                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block mb-2">Bank Details:</span>
                                                 <div className="space-y-1.5 leading-normal">
                                                     <div className="flex justify-between gap-2">
                                                         <span className="text-slate-400 font-semibold whitespace-nowrap">Beneficiary:</span>
