@@ -1303,6 +1303,109 @@ const AudioPlayer = ({ audioUrl, audioName, darkTheme }: AudioPlayerProps) => {
 };
 
 // ==========================================
+// AUDIO COMPRESSION & WAV ENCODING HELPERS
+// ==========================================
+const downsampleBuffer = (buffer: Float32Array, srcSampleRate: number, destSampleRate: number) => {
+  if (destSampleRate === srcSampleRate) {
+    return buffer;
+  }
+  if (destSampleRate > srcSampleRate) {
+    return buffer;
+  }
+  const sampleRateRatio = srcSampleRate / destSampleRate;
+  const newLength = Math.round(buffer.length / sampleRateRatio);
+  const result = new Float32Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+      accum += buffer[i];
+      count++;
+    }
+    result[offsetResult] = count > 0 ? accum / count : 0;
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
+  }
+  return result;
+};
+
+const writeUTFBytes = (view: DataView, offset: number, string: string) => {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
+};
+
+const encodeWAV = (samples: Float32Array, sampleRate: number) => {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  writeUTFBytes(view, 0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeUTFBytes(view, 8, 'WAVE');
+  writeUTFBytes(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, 1, true); // Mono channel
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // Byte rate
+  view.setUint16(32, 2, true); // Block align
+  view.setUint16(34, 16, true); // Bits per sample
+  writeUTFBytes(view, 36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    let s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+
+  return new Blob([view], { type: 'audio/wav' });
+};
+
+const processAndCompressAudio = async (blobOrFile: Blob | File): Promise<{ base64Url: string; duration: number; isTrimmed: boolean }> => {
+  const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const arrayBuffer = await blobOrFile.arrayBuffer();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  
+  const duration = audioBuffer.duration;
+  let workingChannelData = audioBuffer.getChannelData(0);
+  let isTrimmed = false;
+  const maxAllowedSeconds = 60; // 1 minute limit is plenty for notes & task memos
+  
+  if (duration > maxAllowedSeconds) {
+    const numSamplesToKeep = Math.floor(maxAllowedSeconds * audioBuffer.sampleRate);
+    workingChannelData = workingChannelData.subarray(0, numSamplesToKeep);
+    isTrimmed = true;
+  }
+
+  // Choose optimal sampling rate to produce sub-600KB base64 strings
+  let targetSampleRate = 11025;
+  const currentDuration = Math.min(duration, maxAllowedSeconds);
+  if (currentDuration > 30) {
+    targetSampleRate = 8000; // Save further block space on longer audio file
+  }
+
+  const resampled = downsampleBuffer(workingChannelData, audioBuffer.sampleRate, targetSampleRate);
+  const wavBlob = encodeWAV(resampled, targetSampleRate);
+  
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(wavBlob);
+    reader.onloadend = () => {
+      resolve({
+        base64Url: reader.result as string,
+        duration: currentDuration,
+        isTrimmed
+      });
+    };
+    reader.onerror = reject;
+  });
+};
+
+// ==========================================
 // CUSTOM AUDIO RECORD / UPLOAD WIDGET COMPONENT
 // ==========================================
 interface AudioVoiceSupportInputProps {
@@ -1318,6 +1421,7 @@ const AudioVoiceSupportInput = ({
 }: AudioVoiceSupportInputProps) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<any>(null);
@@ -1344,19 +1448,24 @@ const AudioVoiceSupportInput = ({
         }
       };
 
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.readAsDataURL(blob);
-        reader.onloadend = () => {
-          const base64Url = reader.result as string;
+      recorder.onstop = async () => {
+        const rawBlob = new Blob(chunks, { type: 'audio/webm' });
+        try {
+          setIsProcessing(true);
+          setError("Processing and optimizing audio...");
+          const { base64Url, isTrimmed } = await processAndCompressAudio(rawBlob);
           const timestamp = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
           onChange({
             audioUrl: base64Url,
             audioName: `Recorded Note (${timestamp})`
           });
-        };
-        stream.getTracks().forEach(track => track.stop());
+          setError(isTrimmed ? "Audio trimmed to 60s for optimal storage." : null);
+        } catch (err: any) {
+          console.error(err);
+          setError("Failed to process recorded voice note. Please try again.");
+        } finally {
+          setIsProcessing(false);
+        }
       };
 
       recorder.start();
@@ -1385,25 +1494,26 @@ const AudioVoiceSupportInput = ({
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 800 * 1024) {
-      setError("Audio limit is 800KB for database syncing.");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onloadend = () => {
-      const base64Url = reader.result as string;
+    setIsProcessing(true);
+    try {
+      setError("Optimizing and compressing audio for sync...");
+      const { base64Url, isTrimmed } = await processAndCompressAudio(file);
       onChange({
         audioUrl: base64Url,
         audioName: file.name
       });
-    };
+      setError(isTrimmed ? "Audio optimized & trimmed to 60s for storage." : null);
+    } catch (err: any) {
+      console.error(err);
+      setError("Could not parse audio. Please choose an audio file (mp3, wav, m4a, ogg, webm).");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const clearAudio = () => {
@@ -1432,20 +1542,32 @@ const AudioVoiceSupportInput = ({
         )}
       </div>
 
-      {error && <p className="text-[9px] font-bold text-rose-500">{error}</p>}
+      {error && (
+        <p className={cn(
+          "text-[9px] font-bold leading-tight",
+          (error.includes("Optimizing") || error.includes("Processing")) ? "text-brand-600 animate-pulse" : 
+          error.includes("trimmed") ? "text-amber-500" : "text-rose-500"
+        )}>
+          {error}
+        </p>
+      )}
 
       {!audioUrl && !isRecording && (
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
+            disabled={isProcessing}
             onClick={startRecording}
-            className="flex items-center justify-center gap-1.5 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-xl text-[10px] font-black transition-all cursor-pointer border border-brand-100/50"
+            className="flex items-center justify-center gap-1.5 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-xl text-[10px] font-black transition-all cursor-pointer border border-brand-100/50 disabled:opacity-50"
           >
             <Mic className="w-3.5 h-3.5" />
             Record Voice
           </button>
 
-          <label className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black transition-all cursor-pointer border border-slate-200/50">
+          <label className={cn(
+            "flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black transition-all cursor-pointer border border-slate-200/50",
+            isProcessing && "opacity-50 pointer-events-none"
+          )}>
             <Upload className="w-3.5 h-3.5" />
             Upload file
             <input 
@@ -1453,6 +1575,7 @@ const AudioVoiceSupportInput = ({
               accept="audio/*" 
               className="hidden" 
               onChange={handleFileUpload} 
+              disabled={isProcessing}
             />
           </label>
         </div>
