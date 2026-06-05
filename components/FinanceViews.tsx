@@ -2967,11 +2967,44 @@ export const generatePdfSOA = ({
         currentY += 8;
     });
 
+    let totalActualAmt = 0;
+    let totalVatAmt = 0;
+    let totalTotalAmt = 0;
+    let totalBalanceAmt = 0;
+
+    items.forEach((itm: any) => {
+        const actualAmt = itm.amount || 0;
+        const vatAmt = itm.vatAmount || 0;
+        const totalAmt = itm.totalAmount || itm.amount || 0;
+        const isPaid = itm.status === 'Paid' || itm.status === 'Received';
+        const balanceAmt = isPaid ? 0 : totalAmt;
+
+        totalActualAmt += actualAmt;
+        totalVatAmt += vatAmt;
+        totalTotalAmt += totalAmt;
+        totalBalanceAmt += balanceAmt;
+    });
+
+    if (currentY + 11 > 190) {
+        doc.addPage();
+        doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+        doc.rect(0, 0, 297, 6, 'F');
+        currentY = 15;
+    }
+
     doc.setFillColor(241, 245, 249);
     doc.rect(15, currentY + 2, 267, 9, 'F');
     doc.setFont("Helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(30, 41, 59);
     doc.text("STATEMENT OUTSTANDING BALANCE", 18, currentY + 8);
-    doc.text(`AED ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 280, currentY + 8, { align: 'right' });
+
+    doc.text(totalActualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 121, currentY + 8, { align: 'right' });
+    doc.text(totalVatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 141, currentY + 8, { align: 'right' });
+    doc.text(totalTotalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 166, currentY + 8, { align: 'right' });
+    
+    doc.setTextColor(220, 38, 38);
+    doc.text(totalBalanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 191, currentY + 8, { align: 'right' });
 
     doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.rect(0, 201, 297, 9, 'F');
