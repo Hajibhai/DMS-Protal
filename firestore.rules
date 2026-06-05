@@ -60,6 +60,11 @@ service cloud.firestore {
       allow write: if hasPermission('canManagePayroll');
     }
 
+    match /camps/{campId} {
+      allow read: if isAuthenticated();
+      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance');
+    }
+
     match /everyday_expenses/{eeId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();

@@ -604,4 +604,17 @@ export interface CorporateBankAccount {
   isDefault: boolean;
 }
 
+export interface CampExpense {
+  id: string;
+  campName: string;
+  depositAmount: number;
+  rent: number;
+  rentMonth: string;
+  dueDate: string;
+  startDate: string;
+  endDate: string;
+  description?: string;
+}
+
+
 

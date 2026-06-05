@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
   FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle,
-  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent, Scale
+  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent, Scale, Home
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -2600,7 +2600,7 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
-    doc.text("Total Amount (AED):", 129, yPos + 1.5);
+    doc.text("Total Amount:", 129, yPos + 1.5);
     doc.setFontSize(10.5);
     doc.text(`AED ${Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1.5, { align: 'right' });
 
@@ -9600,6 +9600,7 @@ export const FinancialDashboardView: React.FC<{
     employees: any[];
     setActiveTab: (tab: string) => void;
     user: any;
+    camps?: any[];
 }> = ({
     accountsPayable,
     accountsReceivable,
@@ -9608,7 +9609,8 @@ export const FinancialDashboardView: React.FC<{
     projects,
     employees,
     setActiveTab,
-    user
+    user,
+    camps = []
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
@@ -9624,6 +9626,11 @@ export const FinancialDashboardView: React.FC<{
 
     // Everyday Expenses
     const totalEE = useMemo(() => (everydayExpenses || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || Number(x.billAmount) || 0), 0), [everydayExpenses]);
+
+    // Camp Expenses (deposit amount, rent, start date, end date, due date)
+    const totalCampExpenses = useMemo(() => (camps || []).reduce((sum: number, x: any) => sum + (Number(x.rent) || 0) + (Number(x.depositAmount) || 0), 0), [camps]);
+    const totalCampRent = useMemo(() => (camps || []).reduce((sum: number, x: any) => sum + (Number(x.rent) || 0), 0), [camps]);
+    const totalCampDeposit = useMemo(() => (camps || []).reduce((sum: number, x: any) => sum + (Number(x.depositAmount) || 0), 0), [camps]);
 
     // Extract categories/books representing accounts in Petty Cash
     const books = useMemo(() => {
@@ -9685,8 +9692,9 @@ export const FinancialDashboardView: React.FC<{
         { name: 'Receivables', amount: totalAR, color: '#10b981' },
         { name: 'Payables', amount: totalAP, color: '#ef4444' },
         { name: 'Everyday Costs', amount: totalEE, color: '#f59e0b' },
+        { name: 'Camp Accommodation', amount: totalCampExpenses, color: '#6366f1' },
         { name: 'Petty Cash In Hand', amount: totalPCReconciledBalance >= 0 ? totalPCReconciledBalance : 0, color: '#2563eb' },
-    ], [totalAR, totalAP, totalEE, totalPCReconciledBalance]);
+    ], [totalAR, totalAP, totalEE, totalCampExpenses, totalPCReconciledBalance]);
 
     // Chronological detail ledger for the selected account card click
     const selectedAccountLedger = useMemo(() => {
@@ -10134,7 +10142,7 @@ export const FinancialDashboardView: React.FC<{
             </div>
 
             {/* Top KPIs Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                 {/* 1. Accounts Receivable card */}
                 <div 
                     onClick={() => setActiveTab('accounts-receivable')}
@@ -10201,7 +10209,29 @@ export const FinancialDashboardView: React.FC<{
                     </div>
                 </div>
 
-                {/* 4. Petty Cash In Hand card */}
+                {/* 4. Camp Accommodation card */}
+                <div 
+                    onClick={() => setActiveTab('camp')}
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-indigo-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                >
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 block">Camp Accommodation</span>
+                            <span className="text-2xl font-black text-slate-900 tracking-tight block">
+                                AED {totalCampExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                            </span>
+                        </div>
+                        <div className="p-3 bg-indigo-50 text-indigo-650 rounded-2xl">
+                            <Home className="w-5 h-5" />
+                        </div>
+                    </div>
+                    <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
+                        <span>Rent: <span className="font-extrabold text-indigo-650">AED {totalCampRent.toLocaleString()}</span></span>
+                        <span>Deposit: <span className="font-extrabold text-indigo-650">AED {totalCampDeposit.toLocaleString()}</span></span>
+                    </div>
+                </div>
+
+                {/* 5. Petty Cash In Hand card */}
                 <div 
                     onClick={() => setActiveTab('petty-cash')}
                     className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-brand-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"

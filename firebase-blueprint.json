@@ -298,6 +298,23 @@
       },
       "required": ["id", "date", "invoiceNo", "billAmount", "vatAmount", "totalAmount"]
     },
+    "CampExpense": {
+      "title": "Camp Expense",
+      "description": "Corporate accommodation/camp expenses including deposits and rent",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "campName": { "type": "string" },
+        "depositAmount": { "type": "number" },
+        "rent": { "type": "number" },
+        "rentMonth": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "campName", "rent", "dueDate"]
+    },
     "CICPARecord": {
       "title": "CICPA Record",
       "description": "Security pass application tracking",
@@ -520,6 +537,10 @@
     "/everyday_expenses/{eeId}": {
       "schema": "EverydayExpense",
       "description": "Everyday expense records"
+    },
+    "/camps/{campId}": {
+      "schema": "CampExpense",
+      "description": "Camp accommodation expense records"
     },
     "/cicpa_records/{recordId}": {
       "schema": "CICPARecord",

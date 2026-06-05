@@ -68,7 +68,7 @@ import {
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle, LayoutDashboard,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator,
-  Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet
+  Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -108,7 +108,8 @@ import {
   UserPermissions,
   PublicHoliday,
   EngineerDocument,
-  CorporateBankAccount
+  CorporateBankAccount,
+  CampExpense
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -126,7 +127,8 @@ import {
   saveProjectedExpense, deleteProjectedExpense,
   saveEverydayExpense, deleteEverydayExpense,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType,
-  saveHoliday, deleteHoliday, saveEngineerDocument, deleteEngineerDocument
+  saveHoliday, deleteHoliday, saveEngineerDocument, deleteEngineerDocument,
+  saveCamp, deleteCamp
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
 import SmartCommand from './components/SmartCommand';
@@ -137,6 +139,7 @@ import {
   VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal, ProjectedExpenseModal, EverydayExpenseModal,
   FinancialDashboardView
 } from './components/FinanceViews';
+import { CampView, CampModal } from './components/CampView';
 import { HolidayManagementModal } from './components/HolidayManagementModal';
 import { SafetyView } from './components/SafetyView';
 import { JobOfferView } from './components/JobOfferView';
@@ -3816,6 +3819,8 @@ export default function App() {
   const [pettyCash, setPettyCash] = useState<PettyCash[]>([]);
   const [projectedExpenses, setProjectedExpenses] = useState<ProjectedExpense[]>([]);
   const [everydayExpenses, setEverydayExpenses] = useState<EverydayExpense[]>([]);
+  const [camps, setCamps] = useState<CampExpense[]>([]);
+  const [showCampModal, setShowCampModal] = useState<CampExpense | boolean>(false);
   const [engineerDocuments, setEngineerDocuments] = useState<EngineerDocument[]>([]);
   const [cicpaRecords, setCicpaRecords] = useState<CICPARecord[]>([]);
   const [showCICPAModal, setShowCICPAModal] = useState<CICPARecord | boolean>(false);
@@ -4187,6 +4192,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
     });
 
+    const unsubCamps = onSnapshot(collection(db, 'camps'), (snap) => {
+      setCamps(snap.docs.map(d => d.data() as CampExpense));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'camps');
+    });
+
     const unsubEngineerDocs = onSnapshot(collection(db, 'engineer_documents'), (snap) => {
       setEngineerDocuments(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EngineerDocument));
     }, (error) => {
@@ -4243,6 +4254,7 @@ export default function App() {
       unsubPettyCash();
       unsubProjectedExpenses();
       unsubEverydayExpenses();
+      unsubCamps();
       unsubEngineerDocs();
       unsubCICPA();
       unsubSafety();
@@ -4342,6 +4354,20 @@ export default function App() {
     });
   };
 
+  const handleSaveCamp = async (data: CampExpense) => {
+    await saveCamp(data);
+    const isUpdate = camps.some(c => c.id === data.id);
+    handleLogAction(isUpdate ? 'Camp Updated' : 'Camp Added', `Camp expense ${data.campName} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
+    setShowCampModal(false);
+  };
+
+  const handleDeleteCamp = async (c: CampExpense) => {
+    openConfirm("Delete Entry", `Are you sure you want to delete camp expense: ${c.campName}?`, async () => {
+      await deleteCamp(c.id);
+      handleLogAction('Camp Deleted', `Camp expense ${c.campName} was deleted.`, 'delete');
+    });
+  };
+
   const handleSaveEverydayExpense = async (data: EverydayExpense) => {
     const enrichedData = {
       ...data,
@@ -4430,6 +4456,7 @@ export default function App() {
           { id: 'accounts-receivable', label: 'Invoices (Accounts Receivable)', icon: TrendingUp, permission: 'canManageFinance' },
           { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManageFinance' },
           { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManageFinance' },
+          { id: 'camp', label: 'Camp', icon: Home, permission: 'canManageFinance' },
           { id: 'projected-expenses', label: 'Projected Expenses', icon: TrendingDown, permission: 'canManageFinance' },
           { id: 'engineer-hub', label: 'Engineer Documents', icon: HardHat, permission: 'canManageFinance' },
         ]
@@ -4948,6 +4975,7 @@ export default function App() {
           employees={employees}
           setActiveTab={setActiveTab}
           user={systemUser}
+          camps={camps}
         />
       )}
       {activeTab === 'petty-cash' && (
@@ -4987,6 +5015,15 @@ export default function App() {
           user={systemUser}
           employees={employees}
           pettyCash={pettyCash}
+        />
+      )}
+      {activeTab === 'camp' && (
+        <CampView
+          data={camps}
+          onAdd={() => setShowCampModal(true)}
+          onEdit={(c: CampExpense) => setShowCampModal(c)}
+          onDelete={handleDeleteCamp}
+          user={systemUser}
         />
       )}
       {activeTab === 'engineer-hub' && (
@@ -5212,6 +5249,13 @@ export default function App() {
             user={systemUser}
             everydayExpenses={everydayExpenses}
             employees={employees}
+          />
+        )}
+        {showCampModal && (
+          <CampModal
+            camp={typeof showCampModal === 'object' ? showCampModal : null}
+            onSave={handleSaveCamp}
+            onCancel={() => setShowCampModal(false)}
           />
         )}
         {showAuditModal && (
