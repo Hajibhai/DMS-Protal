@@ -4271,6 +4271,14 @@ export default function App() {
   };
 
   const handleSaveAP = async (data: AccountsPayable) => {
+    const isDuplicate = accountsPayable.some(
+      ap => ap.id !== data.id && 
+            ap.invoiceNumber?.trim().toLowerCase() === data.invoiceNumber?.trim().toLowerCase()
+    );
+    if (isDuplicate) {
+      alert(`Error: A bill/invoice with number "${data.invoiceNumber}" already exists in Accounts Payable. Duplicate bill/invoice numbers are not accepted.`);
+      return;
+    }
     await saveAccountsPayable(data);
     const isUpdate = accountsPayable.some(ap => ap.id === data.id);
     handleLogAction(isUpdate ? 'Payable Updated' : 'Payable Added', `Accounts payable entry ${data.invoiceNumber} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
@@ -4285,6 +4293,14 @@ export default function App() {
   };
 
   const handleSaveAR = async (data: AccountsReceivable) => {
+    const isDuplicate = accountsReceivable.some(
+      ar => ar.id !== data.id && 
+            ar.invoiceNumber?.trim().toLowerCase() === data.invoiceNumber?.trim().toLowerCase()
+    );
+    if (isDuplicate) {
+      alert(`Error: A Tax Invoice with Invoice Number "${data.invoiceNumber}" already exists in the system. Duplicate invoice numbers are not accepted.`);
+      return;
+    }
     await saveAccountsReceivable(data);
     const isUpdate = accountsReceivable.some(ar => ar.id === data.id);
     handleLogAction(isUpdate ? 'Receivable Updated' : 'Receivable Added', `Accounts receivable entry ${data.invoiceNumber} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');

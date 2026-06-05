@@ -264,6 +264,16 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
       timeSchedule: formData.type === 'Quotation' ? formData.timeSchedule : undefined,
     };
 
+    const isDuplicate = (engineerDocuments || []).some(
+      d => d.id !== docData.id &&
+           d.type === docData.type &&
+           d.docNumber.trim().toLowerCase() === docData.docNumber.trim().toLowerCase()
+    );
+    if (isDuplicate) {
+      alert(`Error: A ${docData.type} with Document Number "${docData.docNumber}" already exists in the system. Duplicate numbers are not accepted.`);
+      return;
+    }
+
     await onSaveDocument(docData);
     setShowDocModal(false);
     setEditingDoc(null);
