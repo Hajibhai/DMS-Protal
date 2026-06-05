@@ -822,7 +822,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
     // Statement of Account Items filter logic
     const soaFilteredItems = useMemo(() => {
-        return (data || []).filter((item: any) => {
+        const filtered = (data || []).filter((item: any) => {
             // Must match selected vendor
             if (soaVendorId !== 'All') {
                 if (soaVendorId.startsWith('BY_NAME:')) {
@@ -852,6 +852,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
             return true;
         });
+        return [...filtered].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     }, [data, soaVendorId, soaProjectId, soaStartDate, soaEndDate, soaScope, soaCompanyId, suppliers, vendors]);
 
     // Executing EXCEL Download for specific month
@@ -3179,7 +3180,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
     // Statement of Account Items filter logic
     const soaFilteredItems = useMemo(() => {
-        return (data || []).filter((item: any) => {
+        const filtered = (data || []).filter((item: any) => {
             // Must match selected client entity
             if (soaEntityId !== 'All') {
                 if (soaEntityId.startsWith('BY_NAME:')) {
@@ -3207,6 +3208,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
             return true;
         });
+        return [...filtered].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     }, [data, soaEntityId, soaProjectId, soaCompanyId, soaStartDate, soaEndDate, soaScope, vendors, suppliers, projects]);
 
     // Executing EXCEL Download for specific month
