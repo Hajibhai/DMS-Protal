@@ -589,21 +589,28 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       doc.rect(20, sigY, 82, 35, 'D');
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42); // slate 900
       doc.text("For Pioneer General Contracting LLC", 24, sigY + 6);
+      doc.setDrawColor(15, 23, 42);
       doc.line(26, sigY + 24, 76, sigY + 24);
       doc.setFont("Helvetica", "normal");
       doc.setFontSize(8.5);
+      doc.setTextColor(71, 85, 105); // slate 600
       doc.text("Authorized Signatory", 36, sigY + 29);
 
       // Accepted by Employee Signatory Box
+      doc.setFillColor(255, 255, 255); // Explicitly reset fill state to white
       doc.rect(108, sigY, 82, 35, 'F');
       doc.rect(108, sigY, 82, 35, 'D');
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42); // slate 900
       doc.text("Accepted by Employee", 112, sigY + 6);
+      doc.setDrawColor(15, 23, 42);
       doc.line(114, sigY + 24, 164, sigY + 24);
       doc.setFont("Helvetica", "normal");
       doc.setFontSize(8.5);
+      doc.setTextColor(71, 85, 105); // slate 600
       doc.text("Employee Signature", 126, sigY + 29);
 
       // Apply Pioneer high-res dynamic Letterheads, Watermarks, and Footers across the 3 A4 pages
