@@ -143,6 +143,7 @@ export const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
+  const isEmployee = user?.role?.toLowerCase() === 'employee';
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
@@ -449,86 +450,90 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="flex items-center gap-1 sm:gap-2">
               
               {/* Search Icon - Desktop */}
-              <button 
-                onClick={() => setIsSearchOpen(true)}
-                className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all group relative"
-                title="Search (Ctrl+K)"
-              >
-                <Search className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                <div className="absolute -bottom-1 -right-1 hidden xl:flex items-center gap-0.5 px-1 py-0.5 bg-white border border-slate-200 rounded shadow-sm scale-75">
-                  <span className="text-[8px] font-bold text-slate-400">⌘K</span>
-                </div>
-              </button>
+              {!isEmployee && (
+                <button 
+                  onClick={() => setIsSearchOpen(true)}
+                  className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all group relative"
+                  title="Search (Ctrl+K)"
+                >
+                  <Search className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                  <div className="absolute -bottom-1 -right-1 hidden xl:flex items-center gap-0.5 px-1 py-0.5 bg-white border border-slate-200 rounded shadow-sm scale-75">
+                    <span className="text-[8px] font-bold text-slate-400">⌘K</span>
+                  </div>
+                </button>
+              )}
 
               {/* Notifications */}
-              <div className="relative">
-                <button 
-                  onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-                  className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all relative group"
-                >
-                  <Bell className="w-4 h-4 group-hover:animate-swing" />
-                  {expiringDocs.length > 0 && (
-                    <span className={cn(
-                      "absolute top-2 right-2 w-1.5 h-1.5 rounded-full border border-white",
-                      expiringDocs.some(d => d.status === 'Expired') ? "bg-red-500" : "bg-orange-500"
-                    )}></span>
-                  )}
-                </button>
+              {!isEmployee && (
+                <div className="relative">
+                  <button 
+                    onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                    className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all relative group"
+                  >
+                    <Bell className="w-4 h-4 group-hover:animate-swing" />
+                    {expiringDocs.length > 0 && (
+                      <span className={cn(
+                        "absolute top-2 right-2 w-1.5 h-1.5 rounded-full border border-white",
+                        expiringDocs.some(d => d.status === 'Expired') ? "bg-red-500" : "bg-orange-500"
+                      )}></span>
+                    )}
+                  </button>
 
-                <AnimatePresence>
-                  {isNotificationsOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setIsNotificationsOpen(false)}></div>
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute right-0 mt-2 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 p-2 z-20 overflow-hidden"
-                      >
-                        <div className="p-4 border-b border-slate-50 mb-2">
-                          <p className="text-xs font-bold text-slate-900 uppercase tracking-widest">Document Alerts</p>
-                        </div>
-                        <div className="max-h-80 overflow-y-auto space-y-1">
-                          {expiringDocs.length === 0 ? (
-                            <div className="p-8 text-center">
-                              <Bell className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                              <p className="text-xs font-bold text-slate-400">No active alerts</p>
-                            </div>
-                          ) : (
-                           expiringDocs.map((doc, idx) => (
-                             <button
-                               key={idx}
-                               onClick={() => {
-                                 onNotificationClick?.(doc);
-                                 setIsNotificationsOpen(false);
-                               }}
-                               className="w-full text-left p-3 hover:bg-slate-100 bg-slate-50 rounded-2xl border border-slate-100 space-y-1 block transition-all relative cursor-pointer active:scale-[0.98]"
-                             >
-                               <div className="flex justify-between items-start">
-                                 <span className={cn(
-                                   "text-[10px] font-black px-2 py-0.5 rounded-full uppercase",
-                                   doc.status === 'Expired' ? "bg-red-100 text-red-600" : "bg-orange-100 text-orange-600"
-                                 )}>
-                                   {doc.status}
-                                 </span>
-                                 <span className="text-[10px] font-bold text-slate-400">{doc.date}</span>
-                               </div>
-                               <p className="text-xs font-bold text-slate-900">
-                                 {doc.type === 'company' ? `Company: ${doc.employeeName}` : 
-                                  doc.type === 'cicpa' ? `CICPA: ${doc.employeeName}` :
-                                  doc.type === 'safety' ? `Safety: ${doc.employeeName}` :
-                                  doc.employeeName}
-                               </p>
-                               <p className="text-[10px] font-medium text-slate-500">{doc.docName}</p>
-                             </button>
-                           ))
-                          )}
-                        </div>
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
+                  <AnimatePresence>
+                    {isNotificationsOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setIsNotificationsOpen(false)}></div>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          className="absolute right-0 mt-2 w-80 bg-white rounded-3xl shadow-2xl border border-slate-100 p-2 z-20 overflow-hidden"
+                        >
+                          <div className="p-4 border-b border-slate-50 mb-2">
+                            <p className="text-xs font-bold text-slate-900 uppercase tracking-widest">Document Alerts</p>
+                          </div>
+                          <div className="max-h-80 overflow-y-auto space-y-1">
+                            {expiringDocs.length === 0 ? (
+                              <div className="p-8 text-center">
+                                <Bell className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                                <p className="text-xs font-bold text-slate-400">No active alerts</p>
+                              </div>
+                            ) : (
+                             expiringDocs.map((doc, idx) => (
+                               <button
+                                 key={idx}
+                                 onClick={() => {
+                                   onNotificationClick?.(doc);
+                                   setIsNotificationsOpen(false);
+                                 }}
+                                 className="w-full text-left p-3 hover:bg-slate-100 bg-slate-50 rounded-2xl border border-slate-100 space-y-1 block transition-all relative cursor-pointer active:scale-[0.98]"
+                               >
+                                 <div className="flex justify-between items-start">
+                                   <span className={cn(
+                                     "text-[10px] font-black px-2 py-0.5 rounded-full uppercase",
+                                     doc.status === 'Expired' ? "bg-red-100 text-red-600" : "bg-orange-100 text-orange-600"
+                                   )}>
+                                     {doc.status}
+                                   </span>
+                                   <span className="text-[10px] font-bold text-slate-400">{doc.date}</span>
+                                 </div>
+                                 <p className="text-xs font-bold text-slate-900">
+                                   {doc.type === 'company' ? `Company: ${doc.employeeName}` : 
+                                    doc.type === 'cicpa' ? `CICPA: ${doc.employeeName}` :
+                                    doc.type === 'safety' ? `Safety: ${doc.employeeName}` :
+                                    doc.employeeName}
+                                 </p>
+                                 <p className="text-[10px] font-medium text-slate-500">{doc.docName}</p>
+                               </button>
+                             ))
+                            )}
+                          </div>
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
 
               <div className="h-8 w-px bg-slate-200 mx-1 hidden sm:block"></div>
 

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, Trash2, Edit, Check, Clock, AlertCircle, 
   User, Calendar, Search, Pin, ClipboardList, 
-  StickyNote, CheckSquare, Sparkles, Filter, MoreVertical, CheckCircle2, ChevronRight
+  StickyNote, CheckSquare, Sparkles, Filter, MoreVertical, CheckCircle2, ChevronRight,
+  Mic, Square, Upload, Play, Pause, Volume2
 } from 'lucide-react';
 import { 
   collection, onSnapshot, addDoc, updateDoc, 
@@ -166,6 +167,8 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       assignedTo: showTaskForm.assignedTo || '',
       assignedToName: assignedUser ? assignedUser.name : '',
       checklist: showTaskForm.checklist || [],
+      audioUrl: showTaskForm.audioUrl || '',
+      audioName: showTaskForm.audioName || '',
       updatedAt: new Date().toISOString()
     };
 
@@ -408,6 +411,8 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       content: showNoteForm.content,
       color: showNoteForm.color || 'yellow',
       pinned: showNoteForm.pinned || false,
+      audioUrl: showNoteForm.audioUrl || '',
+      audioName: showNoteForm.audioName || '',
       updatedAt: new Date().toISOString()
     };
 
@@ -639,6 +644,11 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                             {t.description}
                           </p>
                         )}
+                        {t.audioUrl && (
+                          <div className="mt-3">
+                            <AudioPlayer audioUrl={t.audioUrl} audioName={t.audioName} />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -848,7 +858,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
                     className={cn(
-                      "group border rounded-3xl p-6 hover:shadow-xl transition-all relative flex flex-col justify-between h-56",
+                      "group border rounded-3xl p-6 hover:shadow-xl transition-all relative flex flex-col justify-between min-h-[14rem] h-auto",
                       stickyColors[n.color || 'yellow']
                     )}
                   >
@@ -892,6 +902,11 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                       <p className="text-xs mt-3 leading-relaxed font-medium break-words line-clamp-4 whitespace-pre-wrap">
                         {n.content}
                       </p>
+                      {n.audioUrl && (
+                        <div className="mt-3">
+                          <AudioPlayer audioUrl={n.audioUrl} audioName={n.audioName} darkTheme={n.color === 'slate'} />
+                        </div>
+                      )}
                     </div>
 
                     {/* Meta Footer */}
@@ -1006,6 +1021,15 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                 </div>
               </div>
 
+              {/* Audio/Voice Recording Option */}
+              <div className="pt-2">
+                <AudioVoiceSupportInput 
+                  audioUrl={showTaskForm.audioUrl} 
+                  audioName={showTaskForm.audioName} 
+                  onChange={(audio) => setShowTaskForm({ ...showTaskForm, audioUrl: audio.audioUrl, audioName: audio.audioName })} 
+                />
+              </div>
+
               {/* Checklist / Tick boxes section */}
               <div className="space-y-2 pt-2 border-t border-slate-100/65">
                 <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -1115,6 +1139,15 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                 />
               </div>
 
+              {/* Audio/Voice Recording Option */}
+              <div className="pt-2">
+                <AudioVoiceSupportInput 
+                  audioUrl={showNoteForm.audioUrl} 
+                  audioName={showNoteForm.audioName} 
+                  onChange={(audio) => setShowNoteForm({ ...showNoteForm, audioUrl: audio.audioUrl, audioName: audio.audioName })} 
+                />
+              </div>
+
               <div className="flex items-center justify-between">
                 {/* Pin note toggle */}
                 <button
@@ -1176,3 +1209,276 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
     </div>
   );
 }
+
+// ==========================================
+// CUSTOM AUDIO PLAYER COMPONENT
+// ==========================================
+interface AudioPlayerProps {
+  audioUrl: string;
+  audioName?: string;
+  darkTheme?: boolean;
+}
+
+const AudioPlayer = ({ audioUrl, audioName, darkTheme }: AudioPlayerProps) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(e => console.warn(e));
+    }
+  };
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onLoadedMetadata = () => setDuration(audio.duration || 0);
+    const onEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('ended', onEnded);
+
+    return () => {
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('ended', onEnded);
+    };
+  }, [audioUrl]);
+
+  const formatTime = (time: number) => {
+    if (isNaN(time) || !isFinite(time)) return '0:00';
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const textClass = darkTheme ? 'text-slate-100' : 'text-slate-700';
+  const subTextClass = darkTheme ? 'text-slate-300' : 'text-slate-400';
+  const buttonBg = darkTheme ? 'bg-white/10 hover:bg-white/20' : 'bg-brand-50 hover:bg-brand-100';
+  const buttonIconColor = darkTheme ? 'text-white' : 'text-brand-600';
+
+  return (
+    <div className={cn("flex items-center gap-3 p-2 rounded-xl border transition-all shadow-sm", darkTheme ? "bg-slate-800/40 border-white/5" : "bg-slate-50/50 border-slate-100")}>
+      <audio ref={audioRef} src={audioUrl} />
+      
+      <button
+        type="button"
+        onClick={togglePlay}
+        className={cn("w-7 h-7 rounded-full flex items-center justify-center transition-all shrink-0 cursor-pointer active:scale-90", buttonBg)}
+      >
+        {isPlaying ? (
+          <Pause className={cn("w-3 h-3 stroke-[3]", buttonIconColor)} />
+        ) : (
+          <Play className={cn("w-3 h-3 stroke-[3] translate-x-0.5", buttonIconColor)} />
+        )}
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <div className={cn("text-[9px] font-bold truncate leading-tight", textClass)}>
+          {audioName || 'Voice Note / Memo'}
+        </div>
+        <div className={cn("text-[8px] font-semibold mt-0.5 flex items-center justify-between", subTextClass)}>
+          <span>{formatTime(currentTime)} / {formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// CUSTOM AUDIO RECORD / UPLOAD WIDGET COMPONENT
+// ==========================================
+interface AudioVoiceSupportInputProps {
+  audioUrl?: string;
+  audioName?: string;
+  onChange: (data: { audioUrl?: string; audioName?: string }) => void;
+}
+
+const AudioVoiceSupportInput = ({
+  audioUrl,
+  audioName,
+  onChange
+}: AudioVoiceSupportInputProps) => {
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const timerRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const startRecording = async () => {
+    setError(null);
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Microphone API is not supported in this browser.");
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+          const base64Url = reader.result as string;
+          const timestamp = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+          onChange({
+            audioUrl: base64Url,
+            audioName: `Recorded Note (${timestamp})`
+          });
+        };
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      timerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+      }, 1000);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Failed to access microphone. Please allow permissions.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    setIsRecording(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 800 * 1024) {
+      setError("Audio limit is 800KB for database syncing.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onloadend = () => {
+      const base64Url = reader.result as string;
+      onChange({
+        audioUrl: base64Url,
+        audioName: file.name
+      });
+    };
+  };
+
+  const clearAudio = () => {
+    onChange({ audioUrl: undefined, audioName: undefined });
+    setError(null);
+  };
+
+  const formatSeconds = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  return (
+    <div className="space-y-2 border border-slate-100 bg-slate-50 p-3 rounded-2xl">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Audio Note / Recording</span>
+        {audioUrl && (
+          <button 
+            type="button" 
+            onClick={clearAudio} 
+            className="text-[9px] font-black uppercase text-rose-500 hover:text-rose-600 transition-colors"
+          >
+            Remove Audio
+          </button>
+        )}
+      </div>
+
+      {error && <p className="text-[9px] font-bold text-rose-500">{error}</p>}
+
+      {!audioUrl && !isRecording && (
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={startRecording}
+            className="flex items-center justify-center gap-1.5 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-xl text-[10px] font-black transition-all cursor-pointer border border-brand-100/50"
+          >
+            <Mic className="w-3.5 h-3.5" />
+            Record Voice
+          </button>
+
+          <label className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black transition-all cursor-pointer border border-slate-200/50">
+            <Upload className="w-3.5 h-3.5" />
+            Upload file
+            <input 
+              type="file" 
+              accept="audio/*" 
+              className="hidden" 
+              onChange={handleFileUpload} 
+            />
+          </label>
+        </div>
+      )}
+
+      {isRecording && (
+        <div className="flex items-center justify-between py-2 px-3 bg-rose-50 text-rose-600 rounded-xl border border-rose-100/60 animate-pulse">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+            <span className="text-[10px] font-black">Recording... ({formatSeconds(recordingSeconds)})</span>
+          </div>
+          <button
+            type="button"
+            onClick={stopRecording}
+            className="p-1 rounded-full bg-rose-600 text-white hover:bg-rose-700 transition-all cursor-pointer"
+          >
+            <Square className="w-3 h-3 fill-current" />
+          </button>
+        </div>
+      )}
+
+      {audioUrl && (
+        <div className="space-y-1 bg-white p-1 rounded-xl">
+          <AudioPlayer audioUrl={audioUrl} audioName={audioName} />
+        </div>
+      )}
+    </div>
+  );
+};

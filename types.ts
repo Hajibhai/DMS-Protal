@@ -574,6 +574,8 @@ export interface Task {
     text: string;
     completed: boolean;
   }>;
+  audioUrl?: string;
+  audioName?: string;
 }
 
 export interface Note {
@@ -587,6 +589,8 @@ export interface Note {
   createdById: string;
   createdBy: string;
   createdByRole?: string;
+  audioUrl?: string;
+  audioName?: string;
 }
 
 export interface CorporateBankAccount {
