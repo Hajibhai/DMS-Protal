@@ -4459,15 +4459,15 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                             </div>
 
                             {/* Live Zoho Invoice Page Render Container */}
-                            <div className="flex-1 overflow-y-auto bg-slate-100 p-8 flex justify-center">
-                                <div className="bg-white w-[184mm] min-h-[260mm] shadow-lg rounded-2xl p-10 border border-slate-200/60 flex flex-col justify-between relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]">
+                            <div className="flex-1 overflow-auto bg-slate-100 p-3 sm:p-8 flex justify-start sm:justify-center items-start">
+                                <div className="bg-white w-full max-w-[184mm] min-h-fit sm:min-h-[260mm] shadow-lg rounded-2xl p-4 sm:p-10 border border-slate-200/60 flex flex-col justify-between relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]">
                                     
                                     <div>
                                         {/* Top Accent line */}
                                         <div className="absolute top-0 left-0 right-0 h-1.5 bg-blue-500 rounded-t-2xl"></div>
 
                                         {/* Invoice Header Section */}
-                                        <div className="flex justify-between items-start mb-8">
+                                        <div className="flex flex-col md:flex-row justify-between items-start gap-6 md:gap-4 mb-8">
                                             {/* Left - Seller details */}
                                             <div className="space-y-4">
                                                 {comp?.logo ? (
@@ -4523,32 +4523,34 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                         </div>
 
                                         {/* Line items list grid */}
-                                        <div className="border border-slate-200 rounded-xl overflow-hidden mb-8">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead>
-                                                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                                        <th className="px-4 py-3 text-center w-12">S.No</th>
-                                                        <th className="px-4 py-3">Item Name & Description</th>
-                                                        <th className="px-4 py-3 text-right w-24">Qty</th>
-                                                        <th className="px-4 py-3 text-right w-36">Rate (AED)</th>
-                                                        <th className="px-4 py-3 text-right w-36">Total (AED)</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100 text-xs">
-                                                    {itemsList.map((li: any, idx: number) => (
-                                                        <tr key={li.id || idx} className="hover:bg-slate-50/50">
-                                                            <td className="px-4 py-3 text-center text-slate-400 font-medium">{idx + 1}</td>
-                                                            <td className="px-4 py-3 pr-8">
-                                                                <span className="font-extrabold text-slate-900 block">{li.name || 'Service Rendering Item'}</span>
-                                                                <span className="text-[10.5px] text-slate-450 block mt-0.5 leading-normal">{li.description || 'General contracting technical work'}</span>
-                                                            </td>
-                                                            <td className="px-4 py-3 text-right text-slate-600 font-bold">{li.quantity || 1}</td>
-                                                            <td className="px-4 py-3 text-right text-slate-600 font-bold">AED {Number(li.rate || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                                            <td className="px-4 py-3 text-right text-slate-900 font-black">AED {Number(li.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <div className="border border-slate-200 rounded-xl overflow-hidden mb-8 w-full">
+                                            <div className="overflow-x-auto w-full">
+                                                <table className="w-full min-w-[600px] text-left border-collapse">
+                                                    <thead>
+                                                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                                            <th className="px-4 py-3 text-center w-12">S.No</th>
+                                                            <th className="px-4 py-3">Item Name & Description</th>
+                                                            <th className="px-4 py-3 text-right w-24">Qty</th>
+                                                            <th className="px-4 py-3 text-right w-36">Rate (AED)</th>
+                                                            <th className="px-4 py-3 text-right w-36">Total (AED)</th>
                                                         </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100 text-xs">
+                                                        {itemsList.map((li: any, idx: number) => (
+                                                            <tr key={li.id || idx} className="hover:bg-slate-50/50">
+                                                                <td className="px-4 py-3 text-center text-slate-400 font-medium">{idx + 1}</td>
+                                                                <td className="px-4 py-3 pr-8">
+                                                                    <span className="font-extrabold text-slate-900 block">{li.name || 'Service Rendering Item'}</span>
+                                                                    <span className="text-[10.5px] text-slate-450 block mt-0.5 leading-normal">{li.description || 'General contracting technical work'}</span>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-right text-slate-600 font-bold">{li.quantity || 1}</td>
+                                                                <td className="px-4 py-3 text-right text-slate-600 font-bold">AED {Number(li.rate || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                                <td className="px-4 py-3 text-right text-slate-900 font-black">AED {Number(li.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
 
                                         {/* Direct Banking & Totals block */}
@@ -9784,12 +9786,12 @@ export const FinancialDashboardView: React.FC<{
         doc.setFont("Helvetica", "bold");
         doc.setFontSize(8);
         doc.setTextColor(255, 255, 255);
-        doc.text("ACCOUNT (CASH BOOK)", 18, tableHeaderY + 5.5);
-        doc.text("ADVANCES RECEIVED", 75, tableHeaderY + 5.5, { align: 'right' });
-        doc.text("DIRECT PETTY SPENT", 110, tableHeaderY + 5.5, { align: 'right' });
-        doc.text("EVERYDAY COST", 145, tableHeaderY + 5.5, { align: 'right' });
-        doc.text("RECONCILED SAFE CASH", 182, tableHeaderY + 5.5, { align: 'right' });
-        doc.text("STATUS", 188, tableHeaderY + 5.5, { align: 'left' });
+        doc.text("ACCOUNT NAME", 17, tableHeaderY + 5.5);
+        doc.text("ADVANCES (AED)", 72, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("DIRECT SPENT", 108, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("EVERYDAY COST", 142, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("RECONCILED CASH", 178, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("STATUS", 182, tableHeaderY + 5.5, { align: 'left' });
 
         let currentY = tableHeaderY + 8.5;
         filteredReconciliations.forEach((recon: any, idx: number) => {
@@ -9809,13 +9811,13 @@ export const FinancialDashboardView: React.FC<{
             doc.setFont("Helvetica", "bold");
             doc.setFontSize(8);
             doc.setTextColor(51, 65, 85);
-            doc.text((recon.accountName || '').toUpperCase(), 18, currentY + 5.5);
+            doc.text((recon.accountName || '').toUpperCase(), 17, currentY + 5.5);
 
             doc.setFont("Helvetica", "normal");
             doc.setFontSize(8);
-            doc.text(`AED ${recon.advances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 75, currentY + 5.5, { align: 'right' });
-            doc.text(`AED ${recon.directSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 110, currentY + 5.5, { align: 'right' });
-            doc.text(`AED ${recon.everydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 145, currentY + 5.5, { align: 'right' });
+            doc.text(`AED ${recon.advances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 72, currentY + 5.5, { align: 'right' });
+            doc.text(`AED ${recon.directSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 108, currentY + 5.5, { align: 'right' });
+            doc.text(`AED ${recon.everydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 142, currentY + 5.5, { align: 'right' });
 
             const isSurplus = recon.reconciledBalance >= 0;
             doc.setFont("Helvetica", "bold");
@@ -9824,10 +9826,10 @@ export const FinancialDashboardView: React.FC<{
             } else {
                 doc.setTextColor(190, 24, 74); // Red/Crimson
             }
-            doc.text(`AED ${recon.reconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 182, currentY + 5.5, { align: 'right' });
+            doc.text(`AED ${recon.reconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 178, currentY + 5.5, { align: 'right' });
             
             doc.setFontSize(7.5);
-            doc.text(isSurplus ? "BALANCED" : "DEFICIT", 188, currentY + 5.5, { align: 'left' });
+            doc.text(isSurplus ? "BALANCED" : "DEFICIT", 182, currentY + 5.5, { align: 'left' });
 
             currentY += 8;
         });
@@ -9847,7 +9849,7 @@ export const FinancialDashboardView: React.FC<{
         doc.setFont("Helvetica", "bold");
         doc.setFontSize(8.5);
         doc.setTextColor(15, 23, 42);
-        doc.text("TOTALS SUMMARY", 18, currentY + 7);
+        doc.text("TOTALS SUMMARY", 17, currentY + 7);
 
         const totalAdvances = filteredReconciliations.reduce((sum, r) => sum + r.advances, 0);
         const totalDirectSpent = filteredReconciliations.reduce((sum, r) => sum + r.directSpent, 0);
@@ -9855,17 +9857,17 @@ export const FinancialDashboardView: React.FC<{
         const totalReconciled = filteredReconciliations.reduce((sum, r) => sum + r.reconciledBalance, 0);
 
         doc.setFontSize(8);
-        doc.text(`AED ${totalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 75, currentY + 7, { align: 'right' });
-        doc.text(`AED ${totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 110, currentY + 7, { align: 'right' });
-        doc.text(`AED ${totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 145, currentY + 7, { align: 'right' });
+        doc.text(`AED ${totalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 72, currentY + 7, { align: 'right' });
+        doc.text(`AED ${totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 108, currentY + 7, { align: 'right' });
+        doc.text(`AED ${totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 142, currentY + 7, { align: 'right' });
         
         if (totalReconciled >= 0) {
             doc.setTextColor(16, 124, 65);
         } else {
             doc.setTextColor(190, 24, 74);
         }
-        doc.text(`AED ${totalReconciled.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 182, currentY + 7, { align: 'right' });
-        doc.text(totalReconciled >= 0 ? "BALANCED" : "DEFICIT", 188, currentY + 7, { align: 'left' });
+        doc.text(`AED ${totalReconciled.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 178, currentY + 7, { align: 'right' });
+        doc.text(totalReconciled >= 0 ? "BALANCED" : "DEFICIT", 182, currentY + 7, { align: 'left' });
 
         doc.save("Automated_Petty_Cash_Reconciliation_Directory.pdf");
     };
