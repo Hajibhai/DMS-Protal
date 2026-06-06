@@ -134,6 +134,21 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json(parsedData);
   } catch (error: any) {
     console.error("Error extracting receipt with Gemini:", error);
-    return res.status(500).json({ error: error.message || "Failed to extract receipt" });
+    let errMsg = error.message || "Failed to extract receipt";
+
+    try {
+      const parsed = JSON.parse(errMsg);
+      if (parsed?.error?.message) {
+        errMsg = parsed.error.message;
+      }
+    } catch {
+      // Keep original message if it's not a JSON string
+    }
+
+    if (errMsg.includes("prepayment credits are depleted") || errMsg.includes("RESOURCE_EXHAUSTED")) {
+      errMsg = "Your Google AI Studio prepayment credits are depleted. Please update your billing setup or add prepayment credits in AI Studio (https://ai.studio).";
+    }
+
+    return res.status(500).json({ error: errMsg });
   }
 }

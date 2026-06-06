@@ -3958,7 +3958,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     onAdd={onAdd}
                     onEdit={onEdit}
                     onDelete={onDelete}
-                    searchFields={['invoiceNumber', 'description']}
+                    searchFields={['invoiceNumber']}
                     exportFileName="Accounts_Receivable"
                     user={user}
                 />
@@ -8181,6 +8181,10 @@ export const EverydayExpenseView: React.FC<{
     const [tallySearch, setTallySearch] = useState('');
     const [reconciliationDetail, setReconciliationDetail] = useState<any | null>(null);
 
+    const userRoleLower = user?.role?.toLowerCase() || '';
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
+    const currentTab = isAdmin ? activeViewTab : 'ledger';
+
     // Standard columns for everyday expenses ledger
     const columns = [
         { key: 'siNo', label: 'SI No', sortable: true },
@@ -8331,29 +8335,31 @@ export const EverydayExpenseView: React.FC<{
     return (
         <>
             {/* Top View Toggle Tab Strip */}
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 mb-2 no-print">
-                <div className="bg-slate-100/80 backdrop-blur-sm p-1.5 rounded-2xl inline-flex gap-2 border border-slate-200/50">
-                    <button 
-                        onClick={() => setActiveViewTab('ledger')}
-                        className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${activeViewTab === 'ledger' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
-                        <Wallet className="w-4 h-4 text-brand-600" />
-                        <span>Everyday Expenses Ledger</span>
-                    </button>
-                    <button 
-                        onClick={() => setActiveViewTab('tally')}
-                        className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${activeViewTab === 'tally' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
-                        <Scale className="w-4 h-4 text-[#ef4444]" />
-                        <span>Petty Cash Reconciliation Sheet</span>
-                        <span className="bg-brand-100 text-[#2563eb] text-[10px] px-2 py-0.5 rounded-full font-black">
-                            {staffWithTallyCount} active
-                        </span>
-                    </button>
+            {isAdmin && (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 mb-2 no-print">
+                    <div className="bg-slate-100/80 backdrop-blur-sm p-1.5 rounded-2xl inline-flex gap-2 border border-slate-200/50">
+                        <button 
+                            onClick={() => setActiveViewTab('ledger')}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${currentTab === 'ledger' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                            <Wallet className="w-4 h-4 text-brand-600" />
+                            <span>Everyday Expenses Ledger</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveViewTab('tally')}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${currentTab === 'tally' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                        >
+                            <Scale className="w-4 h-4 text-[#ef4444]" />
+                            <span>Petty Cash Reconciliation Sheet</span>
+                            <span className="bg-brand-100 text-[#2563eb] text-[10px] px-2 py-0.5 rounded-full font-black">
+                                {staffWithTallyCount} active
+                            </span>
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
-            {activeViewTab === 'ledger' ? (
+            {currentTab === 'ledger' ? (
                 <DataTable 
                     title="Everyday Expenses"
                     description="Track daily operational expenses and billings."
@@ -8364,7 +8370,7 @@ export const EverydayExpenseView: React.FC<{
                     onEdit={onEdit}
                     onDelete={onDelete}
                     onViewBill={(item) => setViewingBill(item.attachment || null)}
-                    searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description']}
+                    searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date']}
                     exportFileName="Everyday_Expenses"
                     user={user}
                     filterOptions={filterOptions}

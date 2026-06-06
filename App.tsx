@@ -5004,9 +5004,16 @@ export default function App() {
       {activeTab === 'everyday-expenses' && (
         <EverydayExpenseView 
           data={
-            (systemUser?.role === UserRole.EMPLOYEE || systemUser?.role?.toLowerCase() === 'employee')
-              ? everydayExpenses.filter(ee => ee.uploadedByUid === systemUser.uid || ee.uploadedBy === systemUser.name || ee.updatedBy === systemUser.name)
-              : everydayExpenses
+            (() => {
+              const roleLower = systemUser?.role?.toLowerCase() || '';
+              const isCreatorUser = roleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
+              const isAppAdmin = roleLower === 'admin' || isCreatorUser;
+              if (isAppAdmin) {
+                return everydayExpenses;
+              } else {
+                return everydayExpenses.filter(ee => ee.uploadedByUid === systemUser.uid || ee.uploadedBy === systemUser.name || ee.updatedBy === systemUser.name);
+              }
+            })()
           }
           projects={projects}
           onAdd={() => setShowEverydayExpenseModal(true)}
