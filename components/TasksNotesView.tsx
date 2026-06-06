@@ -1041,8 +1041,8 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                             </div>
                             {t.assignedToMultiple && t.assignedToMultiple.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {t.assignedToMultiple.map((userObj) => (
-                                  <span key={userObj.uid} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-brand-50 hover:bg-brand-100 text-brand-800 rounded-lg text-[9px] font-bold border border-brand-100 transition-colors">
+                                {t.assignedToMultiple.map((userObj, idx) => (
+                                  <span key={`${userObj.uid || ''}-${idx}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-brand-50 hover:bg-brand-100 text-brand-800 rounded-lg text-[9px] font-bold border border-brand-100 transition-colors">
                                     {userObj.name}
                                   </span>
                                 ))}
@@ -1126,8 +1126,8 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                           {/* List of static Remarks */}
                           {t.remarks && t.remarks.length > 0 && (
                             <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                              {t.remarks.map((rem) => (
-                                <div key={rem.id} className="p-2 bg-slate-50/80 border border-slate-100 rounded-xl text-[10px] font-semibold text-slate-700 flex flex-col gap-0.5 shadow-sm">
+                              {t.remarks.map((rem, idx) => (
+                                <div key={rem.id || idx} className="p-2 bg-slate-50/80 border border-slate-100 rounded-xl text-[10px] font-semibold text-slate-700 flex flex-col gap-0.5 shadow-sm">
                                   <p className="break-words font-medium text-slate-800 leading-snug">{rem.text}</p>
                                   <div className="flex justify-between text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
                                     <span>By: {rem.createdBy?.split(' ')[0]}</span>
