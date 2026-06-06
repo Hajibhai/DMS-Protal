@@ -1184,7 +1184,7 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
             <HardHat className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Engineer Hub</h1>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Procurement Hub</h1>
             <p className="text-slate-500 text-sm font-medium">Coordinating material flow, preparing Quotations & Supplier LPOs</p>
           </div>
         </div>

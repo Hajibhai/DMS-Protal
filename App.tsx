@@ -4460,10 +4460,10 @@ export default function App() {
           { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManageFinance' },
           { id: 'camp', label: 'Camp', icon: Home, permission: 'canManageFinance' },
           { id: 'projected-expenses', label: 'Projected Expenses', icon: TrendingDown, permission: 'canManageFinance' },
-          { id: 'engineer-hub', label: 'Engineer Documents', icon: HardHat, permission: 'canManageFinance' },
+          { id: 'engineer-hub', label: 'Procurement Documents', icon: HardHat, permission: 'canManageFinance' },
         ]
       },
-      { id: 'engineer-hub', label: 'Engineer', icon: HardHat, roleCheck: ['engineer', 'accountant', 'admin', 'creator'] },
+      { id: 'engineer-hub', label: 'Procurement', icon: HardHat, roleCheck: ['engineer', 'accountant', 'admin', 'creator'] },
       { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
       { id: 'reports', label: 'Reports', icon: BarChart3, permission: 'canViewReports' },
       { id: 'about', label: 'About', icon: AlertCircle, creatorOnly: true },
