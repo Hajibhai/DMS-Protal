@@ -86,13 +86,7 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAuthenticated() && (
-        isOwner(userId) || 
-        isCreator() || 
-        isAdmin() || 
-        (resource != null && resource.data.email == request.auth.token.email) ||
-        hasPermission('canManageUsers')
-      );
+      allow read: if isAuthenticated();
       allow write: if isAuthenticated() && (
         isOwner(userId) || 
         isCreator() || 

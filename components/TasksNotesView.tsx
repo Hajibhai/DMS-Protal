@@ -86,6 +86,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
 
   // 1. Fetch System Users for assignment
   useEffect(() => {
+    if (!systemUser) return;
     const unsub = onSnapshot(collection(db, 'users'), (snap) => {
       const list: SystemUser[] = [];
       snap.forEach((doc) => {
@@ -106,10 +107,11 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       setSystemUsers(list);
     });
     return unsub;
-  }, []);
+  }, [systemUser]);
 
   // 2. Fetch Tasks with real-time sync
   useEffect(() => {
+    if (!systemUser) return;
     const qTasks = query(collection(db, 'tasks'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(qTasks, (snap) => {
       const list: Task[] = [];
@@ -123,10 +125,11 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       setLoadingTasks(false);
     });
     return unsub;
-  }, []);
+  }, [systemUser]);
 
   // 3. Fetch Notes with real-time sync
   useEffect(() => {
+    if (!systemUser) return;
     const qNotes = query(collection(db, 'notes'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(qNotes, (snap) => {
       const list: Note[] = [];
@@ -140,10 +143,11 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       setLoadingNotes(false);
     });
     return unsub;
-  }, []);
+  }, [systemUser]);
 
   // 4. Fetch Meetings with real-time sync
   useEffect(() => {
+    if (!systemUser) return;
     const qMeetings = query(collection(db, 'meetings'), orderBy('dateTime', 'asc'));
     const unsub = onSnapshot(qMeetings, (snap) => {
       const list: Meeting[] = [];
@@ -157,7 +161,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       setLoadingMeetings(false);
     });
     return unsub;
-  }, []);
+  }, [systemUser]);
 
   const canManageTask = (t: Task | undefined) => {
     if (!t) return false;

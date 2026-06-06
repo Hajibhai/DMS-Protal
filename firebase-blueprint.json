@@ -486,6 +486,28 @@
         "lastSentAt": { "type": "string" }
       },
       "required": ["id", "stakeholders", "reports", "active"]
+    },
+    "Meeting": {
+      "title": "Meeting",
+      "description": "Scheduled meetings space with potential Google Meet links",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "dateTime": { "type": "string" },
+        "duration": { "type": "number" },
+        "meetLink": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "createdById": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdByRole": { "type": "string" },
+        "assignedToMultiple": { "type": "array" },
+        "assignedTo": { "type": "string" },
+        "assignedToName": { "type": "string" }
+      },
+      "required": ["id", "title", "dateTime", "duration", "createdAt", "createdById", "createdBy"]
     }
   },
   "firestore": {
@@ -588,6 +610,10 @@
     "/report_schedules/{scheduleId}": {
       "schema": "ReportSchedule",
       "description": "Schedule settings for monthly automated reports to stakeholders"
+    },
+    "/meetings/{meetingId}": {
+      "schema": "Meeting",
+      "description": "Collaboration meetings and scheduling information"
     }
   }
 }
