@@ -4,7 +4,8 @@ import {
   Plus, Trash2, Edit, Check, Clock, AlertCircle, 
   User, Calendar, Search, Pin, ClipboardList, 
   StickyNote, CheckSquare, Sparkles, Filter, MoreVertical, CheckCircle2, ChevronRight,
-  Mic, Square, Upload, Play, Pause, Volume2
+  Mic, Square, Upload, Play, Pause, Volume2,
+  Share2, Image as ImageIcon, Film, Copy, ExternalLink
 } from 'lucide-react';
 import { 
   collection, onSnapshot, addDoc, updateDoc, 
@@ -50,6 +51,21 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   const [taskStatusFilter, setTaskStatusFilter] = useState<string>('all');
   const [taskPriorityFilter, setTaskPriorityFilter] = useState<string>('all');
   const [noteSearch, setNoteSearch] = useState('');
+  const [shareToast, setShareToast] = useState<string | null>(null);
+  
+  // Custom dialog (confirm/alert) states to bypass iframe-blocked browser window.confirm / alert calls
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+  } | null>(null);
+
+  const [alertDialog, setAlertDialog] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
   
   // Modal / Form states
   const [showTaskForm, setShowTaskForm] = useState<Partial<Task> | null>(null);
@@ -169,6 +185,9 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       checklist: showTaskForm.checklist || [],
       audioUrl: showTaskForm.audioUrl || '',
       audioName: showTaskForm.audioName || '',
+      mediaUrl: showTaskForm.mediaUrl || '',
+      mediaType: showTaskForm.mediaType || undefined,
+      mediaName: showTaskForm.mediaName || '',
       updatedAt: new Date().toISOString()
     };
 
@@ -177,7 +196,10 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       const originalTask = tasks.find(t => t.id === showTaskForm.id);
       if (originalTask) {
         if (!canManageTask(originalTask)) {
-          alert("Permission denied: You do not have permission to edit this task.");
+          setAlertDialog({
+            title: "Permission Denied",
+            message: "You do not have permission to edit this task."
+          });
           return;
         }
 
@@ -186,11 +208,17 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
         const requestedStatus = showTaskForm.status || 'Pending';
         if (!isCurrentUserAdmin) {
           if (currentStatus === 'Completed' && requestedStatus !== 'Completed') {
-            alert("Cannot undo a completed task.");
+            setAlertDialog({
+              title: "Action Restricted",
+              message: "Cannot undo a completed task."
+            });
             return;
           }
           if (currentStatus === 'In Progress' && requestedStatus === 'Pending') {
-            alert("Cannot revert an 'In Progress' task back to 'Pending'.");
+            setAlertDialog({
+              title: "Action Restricted",
+              message: "Cannot revert an 'In Progress' task back to 'Pending'."
+            });
             return;
           }
         }
@@ -289,21 +317,34 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   const handleDeleteTask = async (id: string) => {
     const targetTask = tasks.find(t => t.id === id);
     if (targetTask && !canManageTask(targetTask)) {
-      alert("Permission denied: You do not have permission to delete this task.");
+      setAlertDialog({
+        title: "Permission Denied",
+        message: "You do not have permission to delete this task."
+      });
       return;
     }
-    if (window.confirm("Are you sure you want to delete this task?")) {
-      try {
-        await deleteDoc(doc(db, 'tasks', id));
-      } catch (err) {
-        console.error("Error deleting task:", err);
+    setConfirmDialog({
+      title: "Delete Task",
+      message: "Are you sure you want to delete this task permanently?",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'tasks', id));
+          setConfirmDialog(null);
+        } catch (err) {
+          console.error("Error deleting task:", err);
+        }
       }
-    }
+    });
   };
 
   const handleToggleTaskStatus = async (task: Task) => {
     if (task.status === 'Completed' && !isCurrentUserAdmin) {
-      alert("This task is already completed and cannot be undone.");
+      setAlertDialog({
+        title: "Action Restricted",
+        message: "This task is already completed and cannot be undone."
+      });
       return;
     }
 
@@ -413,6 +454,9 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       pinned: showNoteForm.pinned || false,
       audioUrl: showNoteForm.audioUrl || '',
       audioName: showNoteForm.audioName || '',
+      mediaUrl: showNoteForm.mediaUrl || '',
+      mediaType: showNoteForm.mediaType || undefined,
+      mediaName: showNoteForm.mediaName || '',
       updatedAt: new Date().toISOString()
     };
 
@@ -432,13 +476,20 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   };
 
   const handleDeleteNote = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this note?")) {
-      try {
-        await deleteDoc(doc(db, 'notes', id));
-      } catch (err) {
-        console.error("Error deleting note:", err);
+    setConfirmDialog({
+      title: "Delete Note",
+      message: "Are you sure you want to delete this note permanently?",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'notes', id));
+          setConfirmDialog(null);
+        } catch (err) {
+          console.error("Error deleting note:", err);
+        }
       }
-    }
+    });
   };
 
   const handleTogglePinNote = async (note: Note) => {
@@ -476,6 +527,104 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [notes, noteSearch]);
+
+  const handleShareMedia = async (
+    title: string,
+    content: string,
+    status?: string,
+    priority?: string,
+    type: 'task' | 'memo' = 'task',
+    mediaUrl?: string,
+    mediaType?: 'image' | 'video',
+    mediaName?: string
+  ) => {
+    let shareText = '';
+    if (type === 'task') {
+      shareText = `📋 *Task Details*\n` +
+                  `*Title:* ${title}\n` +
+                  `*Description:* ${content}\n` +
+                  `*Priority:* ${priority || 'Medium'}\n` +
+                  `*Status:* ${status || 'Pending'}\n` +
+                  `*App URL:* ${window.location.href}`;
+    } else {
+      shareText = `📝 *Memo Details*\n` +
+                  `*Title:* ${title}\n` +
+                  `*Content:* ${content}\n` +
+                  `*App URL:* ${window.location.href}`;
+    }
+
+    let filesToShare: File[] = [];
+    if (mediaUrl) {
+      try {
+        const mimeToExt: Record<string, string> = {
+          'image/png': 'png',
+          'image/jpeg': 'jpg',
+          'image/jpg': 'jpg',
+          'image/webp': 'webp',
+          'image/gif': 'gif',
+          'video/mp4': 'mp4',
+          'video/webm': 'webm',
+          'video/ogg': 'ogv',
+          'video/quicktime': 'mov'
+        };
+
+        const arr = mediaUrl.split(',');
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : '';
+        const extension = mimeToExt[mime] || mime.split('/')[1] || 'bin';
+        
+        let cleanName = mediaName || (mediaType === 'image' ? 'Attachment' : 'Video');
+        if (!cleanName.includes('.')) {
+          cleanName = `${cleanName}.${extension}`;
+        }
+
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+
+        const file = new File([u8arr], cleanName, { type: mime });
+        filesToShare = [file];
+      } catch (err) {
+        console.error("Failed to parse base64 to File for sharing:", err);
+      }
+    }
+
+    if (navigator.share) {
+      try {
+        const shareData: ShareData = {
+          title: title,
+          text: shareText,
+          url: window.location.href
+        };
+
+        if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
+          shareData.files = filesToShare;
+        }
+
+        await navigator.share(shareData);
+        setShareToast("Shared successfully!");
+        setTimeout(() => setShareToast(null), 2500);
+        return;
+      } catch (err: any) {
+        console.log("Web Share canceled or failed, using Clipboard fallback.", err);
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setShareToast("📋 Formatted details copied to clipboard!");
+      setTimeout(() => setShareToast(null), 2500);
+    } catch (err) {
+      console.error("Clipboard copy error:", err);
+      setAlertDialog({
+        title: "Copy Failed",
+        message: "Your browser blocked direct clipboard copy."
+      });
+    }
+  };
 
   const priorityColors = {
     Low: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -614,24 +763,33 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                           {t.priority} Priority
                         </span>
 
-                        {canManageTask(t) && (
-                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
-                            <button
-                              onClick={() => setShowTaskForm(t)}
-                              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-all"
-                              title="Edit task"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteTask(t.id)}
-                              className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-all"
-                              title="Delete task"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={() => handleShareMedia(t.title, t.description || '', t.status, t.priority, 'task', t.mediaUrl, t.mediaType, t.mediaName)}
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-800 transition-all"
+                            title="Share task details"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
+                          {canManageTask(t) && (
+                            <>
+                              <button
+                                onClick={() => setShowTaskForm(t)}
+                                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-800 transition-all"
+                                title="Edit task"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTask(t.id)}
+                                className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-600 transition-all"
+                                title="Delete task"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
 
                       {/* Content */}
@@ -647,6 +805,25 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                         {t.audioUrl && (
                           <div className="mt-3">
                             <AudioPlayer audioUrl={t.audioUrl} audioName={t.audioName} />
+                          </div>
+                        )}
+                        {t.mediaUrl && (
+                          <div className="mt-3.5 rounded-2xl overflow-hidden border border-slate-100 bg-slate-50/50 p-1 flex items-center justify-center">
+                            {t.mediaType === 'image' ? (
+                              <img 
+                                src={t.mediaUrl} 
+                                alt={t.mediaName || "Task asset"} 
+                                className="max-h-[180px] w-auto max-w-full rounded-xl object-contain shadow-xs hover:scale-[1.02] transition-transform cursor-pointer"
+                                onClick={() => window.open(t.mediaUrl, '_blank')}
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <video 
+                                src={t.mediaUrl} 
+                                controls 
+                                className="max-h-[180px] w-full rounded-xl"
+                              />
+                            )}
                           </div>
                         )}
                       </div>
@@ -882,6 +1059,14 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                           </button>
                           
                           <button
+                            onClick={() => handleShareMedia(n.title, n.content, undefined, undefined, 'memo', n.mediaUrl, n.mediaType, n.mediaName)}
+                            className="p-1 hover:bg-black/5 rounded text-slate-500 opacity-20 group-hover:opacity-100 transition-all"
+                            title="Share Memo"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
                             onClick={() => setShowNoteForm(n)}
                             className="p-1 hover:bg-black/5 rounded text-slate-500 opacity-0 group-hover:opacity-100 transition-all"
                             title="Edit"
@@ -905,6 +1090,25 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                       {n.audioUrl && (
                         <div className="mt-3">
                           <AudioPlayer audioUrl={n.audioUrl} audioName={n.audioName} darkTheme={n.color === 'slate'} />
+                        </div>
+                      )}
+                      {n.mediaUrl && (
+                        <div className="mt-3.5 rounded-2xl overflow-hidden border border-black/5 bg-black/5 p-1 flex items-center justify-center">
+                          {n.mediaType === 'image' ? (
+                            <img 
+                              src={n.mediaUrl} 
+                              alt={n.mediaName || "Memo asset"} 
+                              className="max-h-[160px] w-auto max-w-full rounded-xl object-contain shadow-xs hover:scale-[1.01] transition-all cursor-pointer"
+                              onClick={() => window.open(n.mediaUrl, '_blank')}
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <video 
+                              src={n.mediaUrl} 
+                              controls 
+                              className="max-h-[160px] w-full rounded-xl"
+                            />
+                          )}
                         </div>
                       )}
                     </div>
@@ -1030,6 +1234,16 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                 />
               </div>
 
+              {/* Media (Image/Video) Attachment Option */}
+              <div className="pt-2">
+                <MediaAttachmentInput 
+                  mediaUrl={showTaskForm.mediaUrl} 
+                  mediaType={showTaskForm.mediaType} 
+                  mediaName={showTaskForm.mediaName} 
+                  onChange={(media) => setShowTaskForm({ ...showTaskForm, mediaUrl: media.mediaUrl, mediaType: media.mediaType, mediaName: media.mediaName })} 
+                />
+              </div>
+
               {/* Checklist / Tick boxes section */}
               <div className="space-y-2 pt-2 border-t border-slate-100/65">
                 <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -1148,6 +1362,16 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                 />
               </div>
 
+              {/* Media (Image/Video) Attachment Option */}
+              <div className="pt-2">
+                <MediaAttachmentInput 
+                  mediaUrl={showNoteForm.mediaUrl} 
+                  mediaType={showNoteForm.mediaType} 
+                  mediaName={showNoteForm.mediaName} 
+                  onChange={(media) => setShowNoteForm({ ...showNoteForm, mediaUrl: media.mediaUrl, mediaType: media.mediaType, mediaName: media.mediaName })} 
+                />
+              </div>
+
               <div className="flex items-center justify-between">
                 {/* Pin note toggle */}
                 <button
@@ -1203,6 +1427,68 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {shareToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 border border-slate-800 animate-bounce">
+          <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+          <span className="text-xs font-bold">{shareToast}</span>
+        </div>
+      )}
+
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-black/55 backdrop-blur-xs flex items-center justify-center z-[110] p-4">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden border border-slate-100 p-6 space-y-5 animate-scale-up">
+            <div className="space-y-2 text-center">
+              <div className="mx-auto w-12 h-12 bg-rose-50 rounded-full flex items-center justify-center text-rose-500">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">{confirmDialog.title}</h3>
+              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                {confirmDialog.message}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                {confirmDialog.cancelText || "Cancel"}
+              </button>
+              <button
+                type="button"
+                onClick={confirmDialog.onConfirm}
+                className="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-lg shadow-rose-600/10 cursor-pointer"
+              >
+                {confirmDialog.confirmText || "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {alertDialog && (
+        <div className="fixed inset-0 bg-black/55 backdrop-blur-xs flex items-center justify-center z-[110] p-4">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden border border-slate-100 p-6 space-y-5 animate-scale-up">
+            <div className="space-y-2 text-center">
+              <div className="mx-auto w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center text-amber-500">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">{alertDialog.title}</h3>
+              <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                {alertDialog.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAlertDialog(null)}
+              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}
@@ -1600,6 +1886,201 @@ const AudioVoiceSupportInput = ({
       {audioUrl && (
         <div className="space-y-1 bg-white p-1 rounded-xl">
           <AudioPlayer audioUrl={audioUrl} audioName={audioName} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==========================================
+// IMAGE COMPRESSION HELPER
+// ==========================================
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1000;
+        const MAX_HEIGHT = 1000;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          resolve(dataUrl);
+        } else {
+          resolve(event.target?.result as string);
+        }
+      };
+      img.onerror = () => {
+        reject(new Error("Failed to load image for compression"));
+      };
+    };
+    reader.onerror = reject;
+  });
+};
+
+// ==========================================
+// CUSTOM MEDIA ATTACHMENT INPUT
+// ==========================================
+interface MediaAttachmentInputProps {
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
+  mediaName?: string;
+  onChange: (data: { mediaUrl?: string; mediaType?: 'image' | 'video'; mediaName?: string }) => void;
+}
+
+const MediaAttachmentInput = ({
+  mediaUrl,
+  mediaType,
+  mediaName,
+  onChange
+}: MediaAttachmentInputProps) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileType = file.type;
+    const isImage = fileType.startsWith('image/');
+    const isVideo = fileType.startsWith('video/');
+
+    if (!isImage && !isVideo) {
+      setError("Please choose a valid image (png, jpg, webp) or video (mp4, webm) file.");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      if (isImage) {
+        setError("Optimizing image size to preserve storage...");
+        const compressedBase64 = await compressImage(file);
+        onChange({
+          mediaUrl: compressedBase64,
+          mediaType: 'image',
+          mediaName: file.name
+        });
+        setError(null);
+      } else {
+        setError("Analyzing video size criteria...");
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error("Video size exceeds 10MB. Please upload a shorter or smaller clip.");
+        }
+        
+        const videoBase64 = await convertFileToBase64(file);
+        onChange({
+          mediaUrl: videoBase64,
+          mediaType: 'video',
+          mediaName: file.name
+        });
+        setError(null);
+      }
+    } catch (err: any) {
+      console.error("Media processing err:", err);
+      setError(err.message || "Failed to process selected file. Try a smaller or different file.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (e) => reject(e);
+    });
+  };
+
+  const clearMedia = () => {
+    onChange({ mediaUrl: undefined, mediaType: undefined, mediaName: undefined });
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  return (
+    <div className="space-y-2 border border-slate-100 bg-slate-50 p-3 rounded-2xl">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Media Attachment (Image / Video)</span>
+        {mediaUrl && (
+          <button 
+            type="button" 
+            onClick={clearMedia} 
+            className="text-[9px] font-black uppercase text-rose-500 hover:text-rose-600 transition-colors"
+          >
+            Remove Media
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <p className={cn(
+          "text-[9px] font-bold leading-tight",
+          (error.includes("Optimizing") || error.includes("Analyzing")) ? "text-brand-600 animate-pulse" : "text-rose-500"
+        )}>
+          {error}
+        </p>
+      )}
+
+      {!mediaUrl && (
+        <label className={cn(
+          "flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black transition-all cursor-pointer border border-slate-200/50",
+          isProcessing && "opacity-50 pointer-events-none"
+        )}>
+          <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
+          <span>Upload Image / Video</span>
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept="image/*,video/*" 
+            className="hidden" 
+            onChange={handleFileChange} 
+            disabled={isProcessing}
+          />
+        </label>
+      )}
+
+      {mediaUrl && (
+        <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-black/5 flex flex-col items-center justify-center p-1">
+          {mediaType === 'image' ? (
+            <img 
+              src={mediaUrl} 
+              alt={mediaName || "Uploaded item"} 
+              className="max-h-[160px] max-w-full rounded-lg object-contain"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <video 
+              src={mediaUrl} 
+              controls 
+              className="max-h-[160px] max-w-full rounded-lg"
+            />
+          )}
+          <span className="text-[9px] text-slate-500 font-bold mt-1 max-w-[90%] truncate">{mediaName}</span>
         </div>
       )}
     </div>

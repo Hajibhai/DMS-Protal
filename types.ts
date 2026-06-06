@@ -576,6 +576,9 @@ export interface Task {
   }>;
   audioUrl?: string;
   audioName?: string;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
+  mediaName?: string;
 }
 
 export interface Note {
@@ -591,6 +594,9 @@ export interface Note {
   createdByRole?: string;
   audioUrl?: string;
   audioName?: string;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
+  mediaName?: string;
 }
 
 export interface CorporateBankAccount {
