@@ -466,6 +466,8 @@ export interface JobApplicant {
   interviewDate?: string;
   notes?: string;
   salaryExpectation?: number;
+  interviewType?: 'F2F' | 'Online';
+  interviewMeetLink?: string;
 }
 
 export interface JobOffer {

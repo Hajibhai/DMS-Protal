@@ -48,10 +48,12 @@ if (typeof window !== 'undefined' && jsPDF.prototype && !(jsPDF.prototype as any
 }
 import { getPioneerPDFAssets, applyPioneerLetterheadDoc } from '../utils';
 import { RecruitmentReportModal } from './RecruitmentReportModal';
+import { GoogleMeetGenerator } from './GoogleMeetGenerator';
 import { 
   Users, Mail, Phone, Shield, FileText, Download, Plus, Search, 
   Trash2, Edit, CheckCircle, XCircle, Calendar, DollarSign,
-  ChevronRight, Sparkles, SlidersHorizontal, Info, Briefcase, FileCheck, Check
+  ChevronRight, Sparkles, SlidersHorizontal, Info, Briefcase, FileCheck, Check,
+  Video, ExternalLink
 } from 'lucide-react';
 
 interface JobOfferViewProps {
@@ -97,7 +99,9 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     passportNumber: '',
     salaryExpectation: 0,
     notes: '',
-    status: 'Applied' as JobApplicant['status']
+    status: 'Applied' as JobApplicant['status'],
+    interviewType: 'F2F' as 'F2F' | 'Online',
+    interviewMeetLink: ''
   });
 
   // Job Offer Draft Form
@@ -179,7 +183,9 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         salaryExpectation: Number(applicantForm.salaryExpectation),
         status: applicantForm.status,
         appliedDate: editingApplicant ? editingApplicant.appliedDate : new Date().toISOString().split('T')[0],
-        notes: applicantForm.notes
+        notes: applicantForm.notes,
+        interviewType: applicantForm.status === 'Interview Scheduled' ? applicantForm.interviewType : undefined,
+        interviewMeetLink: applicantForm.status === 'Interview Scheduled' && applicantForm.interviewType === 'Online' ? (applicantForm.interviewMeetLink || '') : undefined
       };
 
       await setDoc(doc(db, 'job_applicants', applicantId), data);
@@ -188,7 +194,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       // Reset Form
       setApplicantForm({
         name: '', email: '', mobileNumber: '', position: 'Cleaner', 
-        passportNumber: '', salaryExpectation: 0, notes: '', status: 'Applied'
+        passportNumber: '', salaryExpectation: 0, notes: '', status: 'Applied',
+        interviewType: 'F2F', interviewMeetLink: ''
       });
     } catch (err) {
       console.error("Error saving applicant:", err);
@@ -207,7 +214,9 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       passportNumber: app.passportNumber || '',
       salaryExpectation: app.salaryExpectation || 0,
       notes: app.notes || '',
-      status: app.status
+      status: app.status,
+      interviewType: app.interviewType || 'F2F',
+      interviewMeetLink: app.interviewMeetLink || ''
     });
     setShowApplicantModal(true);
   };
@@ -814,7 +823,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                 setEditingApplicant(null);
                 setApplicantForm({
                   name: '', email: '', mobileNumber: '', position: 'Cleaner', 
-                  passportNumber: '', salaryExpectation: 0, notes: '', status: 'Applied'
+                  passportNumber: '', salaryExpectation: 0, notes: '', status: 'Applied',
+                  interviewType: 'F2F', interviewMeetLink: ''
                 });
                 setShowApplicantModal(true);
               }}
@@ -1026,9 +1036,30 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                               </span>
                             )}
                             {app.status === 'Interview Scheduled' && (
-                              <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                                Scheduled
-                              </span>
+                              <div className="space-y-1">
+                                <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse inline-block">
+                                  Scheduled
+                                </span>
+                                <div className="flex flex-col gap-0.5 mt-1 text-[10px] text-slate-500 font-medium">
+                                  {app.interviewType === 'Online' ? (
+                                    <>
+                                      <span className="flex items-center gap-1 text-slate-600"><Video className="w-3.5 h-3.5 text-indigo-500" /> Online Interview</span>
+                                      {app.interviewMeetLink && (
+                                        <a
+                                          href={app.interviewMeetLink}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 text-[10px] text-indigo-600 hover:text-indigo-800 font-bold hover:underline w-max bg-indigo-50 px-1.5 py-0.5 rounded"
+                                        >
+                                          Join Meet <ExternalLink className="w-2.5 h-2.5 text-indigo-500" />
+                                        </a>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-slate-600"><Users className="w-3.5 h-3.5 text-emerald-500" /> F2F Interview</span>
+                                  )}
+                                </div>
+                              </div>
                             )}
                             {app.status === 'Interview Conducted' && (
                               <span className="bg-purple-50 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
@@ -1059,8 +1090,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                           <div className="mt-1.5 flex gap-1.5">
                             <button
                               onClick={() => {
-                                handleUpdateStatus(app, 'Interview Scheduled');
-                                alert(`Status updated: Interview has been scheduled for ${app.name}`);
+                                openEditApplicant({ ...app, status: 'Interview Scheduled' });
                               }}
                               className="text-[9px] text-amber-600 hover:underline font-bold"
                             >
@@ -1435,6 +1465,52 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                   </select>
                 </div>
               </div>
+
+              {applicantForm.status === 'Interview Scheduled' && (
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Interview Type *
+                    </label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 bg-white px-4 py-2 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors w-1/2">
+                        <input
+                          type="radio"
+                          name="interviewType"
+                          value="F2F"
+                          checked={applicantForm.interviewType === 'F2F'}
+                          onChange={() => setApplicantForm({ ...applicantForm, interviewType: 'F2F' })}
+                          className="accent-brand-600 h-4 w-4"
+                        />
+                        <span>F2F (Face to face)</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 bg-white px-4 py-2 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors w-1/2">
+                        <input
+                          type="radio"
+                          name="interviewType"
+                          value="Online"
+                          checked={applicantForm.interviewType === 'Online'}
+                          onChange={() => setApplicantForm({ ...applicantForm, interviewType: 'Online' })}
+                          className="accent-brand-600 h-4 w-4"
+                        />
+                        <span>Online</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {applicantForm.interviewType === 'Online' && (
+                    <div className="space-y-1 mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Google Meet Integration
+                      </label>
+                      <GoogleMeetGenerator
+                        meetLink={applicantForm.interviewMeetLink || undefined}
+                        onChange={(link) => setApplicantForm({ ...applicantForm, interviewMeetLink: link || '' })}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
