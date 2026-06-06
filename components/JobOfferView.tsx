@@ -156,7 +156,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
   const positionStats = () => {
     const counts: { [key: string]: number } = {};
     applicants.forEach(app => {
-      counts[app.position] = (counts[app.position] || 0) + 1;
+      const pos = app.position ? app.position.trim() : 'Unknown';
+      counts[pos] = (counts[pos] || 0) + 1;
     });
     return counts;
   };
@@ -937,8 +938,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                   className="bg-transparent text-xs font-bold text-slate-800 outline-none border-none py-0.5"
                 >
                   <option value="All">All Applied</option>
-                  {Array.from(new Set([...designationsList, ...applicants.map(a => a.position).filter(Boolean)])).sort().map(item => (
-                    <option key={item} value={item}>{item}</option>
+                  {Array.from(new Set([...designationsList.map(x => x.trim()), ...applicants.map(a => a.position?.trim()).filter(Boolean)])).sort().map((item, idx) => (
+                    <option key={`${item}-${idx}`} value={item}>{item}</option>
                   ))}
                 </select>
               </div>
@@ -1379,8 +1380,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                       className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
                     />
                     <datalist id="applicant-designations">
-                      {Array.from(new Set([...designationsList, ...applicants.map(a => a.position).filter(Boolean)])).sort().map(item => (
-                        <option key={item} value={item} />
+                      {Array.from(new Set([...designationsList.map(x => x.trim()), ...applicants.map(a => a.position?.trim()).filter(Boolean)])).sort().map((item, idx) => (
+                        <option key={`${item}-${idx}`} value={item} />
                       ))}
                     </datalist>
                     {/* Compact suggestions badges */}
@@ -1522,8 +1523,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                       className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
                     />
                     <datalist id="offer-designations">
-                      {Array.from(new Set([...designationsList, ...applicants.map(a => a.position).filter(Boolean)])).sort().map(item => (
-                        <option key={item} value={item} />
+                      {Array.from(new Set([...designationsList.map(x => x.trim()), ...applicants.map(a => a.position?.trim()).filter(Boolean)])).sort().map((item, idx) => (
+                        <option key={`${item}-${idx}`} value={item} />
                       ))}
                     </datalist>
                     {/* Compact suggestions badges */}

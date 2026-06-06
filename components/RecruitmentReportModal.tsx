@@ -34,7 +34,11 @@ export const RecruitmentReportModal: React.FC<RecruitmentReportModalProps> = ({
 
   const totalOffered = useMemo(() => {
     const fromOffers = offers.filter(o => o.status === 'Offered').length;
-    const fromApplicants = applicants.filter(a => a.status === 'Offered').length;
+    const fromApplicants = applicants.filter(a => {
+      if (a.status !== 'Offered') return false;
+      const hasOfferRecord = offers.some(o => o.applicantId === a.id || o.employeeName?.trim().toLowerCase() === a.name?.trim().toLowerCase());
+      return !hasOfferRecord;
+    }).length;
     return fromOffers + fromApplicants;
   }, [applicants, offers]);
 
@@ -62,31 +66,35 @@ export const RecruitmentReportModal: React.FC<RecruitmentReportModalProps> = ({
   // 2. Compute Position Designation Breakdown
   const designationBreakdown = useMemo(() => {
     const designations = Array.from(new Set([
-      ...applicants.map(a => a.position),
-      ...offers.map(o => o.position)
+      ...applicants.map(a => a.position?.trim()),
+      ...offers.map(o => o.position?.trim())
     ].filter(Boolean))).sort();
 
     return designations.map(pos => {
       // Applied in this designation
-      const posApplied = applicants.filter(a => a.position === pos).length;
+      const posApplied = applicants.filter(a => a.position?.trim() === pos).length;
       
       // Interviewing in this designation
-      const posInterviewing = applicants.filter(a => a.position === pos && (a.status === 'Interview Scheduled' || a.status === 'Interview Conducted')).length;
+      const posInterviewing = applicants.filter(a => a.position?.trim() === pos && (a.status === 'Interview Scheduled' || a.status === 'Interview Conducted')).length;
       
-      // Offered index
-      const posOfferedOffers = offers.filter(o => o.position === pos && o.status === 'Offered').length;
-      const posOfferedApplicants = applicants.filter(a => a.position === pos && a.status === 'Offered').length;
+      // Offered index (deduplicated)
+      const posOfferedOffers = offers.filter(o => o.position?.trim() === pos && o.status === 'Offered').length;
+      const posOfferedApplicants = applicants.filter(a => {
+        if (a.position?.trim() !== pos || a.status !== 'Offered') return false;
+        const hasOfferRecord = offers.some(o => o.applicantId === a.id || o.employeeName?.trim().toLowerCase() === a.name?.trim().toLowerCase());
+        return !hasOfferRecord;
+      }).length;
       const posOffered = posOfferedOffers + posOfferedApplicants;
       
       // Hired in this designation
-      const posHiredOffers = offers.filter(o => o.position === pos && o.status === 'Accepted').length;
-      const posHiredCandidates = applicants.filter(a => a.position === pos && a.status === 'Hired').length;
+      const posHiredOffers = offers.filter(o => o.position?.trim() === pos && o.status === 'Accepted').length;
+      const posHiredCandidates = applicants.filter(a => a.position?.trim() === pos && a.status === 'Hired').length;
       // Subtract possible double-count
       const posHired = Math.max(posHiredOffers, posHiredCandidates);
 
       // Declined/Rejected
-      const posDeclined = offers.filter(o => o.position === pos && o.status === 'Declined').length +
-                           applicants.filter(a => a.position === pos && a.status === 'Rejected').length;
+      const posDeclined = offers.filter(o => o.position?.trim() === pos && o.status === 'Declined').length +
+                           applicants.filter(a => a.position?.trim() === pos && a.status === 'Rejected').length;
 
       const successRate = posApplied > 0 ? Math.round((posHired / posApplied) * 100) : 0;
 
@@ -464,8 +472,8 @@ export const RecruitmentReportModal: React.FC<RecruitmentReportModalProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {designationBreakdown.map((row) => (
-                      <tr key={row.designation} className="hover:bg-slate-50/50 transition-colors">
+                    {designationBreakdown.map((row, idx) => (
+                      <tr key={`${row.designation}-${idx}`} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-4 py-3 text-slate-900 font-bold uppercase text-[11px] whitespace-nowrap">
                           {row.designation}
                         </td>
@@ -592,8 +600,8 @@ export const RecruitmentReportModal: React.FC<RecruitmentReportModalProps> = ({
               </tr>
             </thead>
             <tbody>
-              {designationBreakdown.map((row) => (
-                <tr key={row.designation}>
+              {designationBreakdown.map((row, idx) => (
+                <tr key={`${row.designation}-${idx}`}>
                   <td className="p-2 border border-slate-400 font-bold uppercase">{row.designation}</td>
                   <td className="p-2 border border-slate-400 text-center">{row.applied}</td>
                   <td className="p-2 border border-slate-400 text-center">{row.interviewing}</td>

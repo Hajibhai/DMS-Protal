@@ -9285,6 +9285,79 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
     const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
     const canManageAttendance = user?.permissions?.canManageAttendance;
 
+    const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+    const [bulkDay, setBulkDay] = useState<number>(() => {
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonthNum = today.getMonth() + 1;
+        const currentMonthStr = `${currentYear}-${String(currentMonthNum).padStart(2, '0')}`;
+        if (selectedMonth === currentMonthStr) {
+            return today.getDate();
+        }
+        return 1;
+    });
+
+    useEffect(() => {
+        setSelectedEmployeeIds([]);
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonthNum = today.getMonth() + 1;
+        const currentMonthStr = `${currentYear}-${String(currentMonthNum).padStart(2, '0')}`;
+        if (selectedMonth === currentMonthStr) {
+            setBulkDay(today.getDate());
+        } else {
+            setBulkDay(1);
+        }
+    }, [selectedMonth]);
+
+    const handleDownloadSampleFile = () => {
+        const sampleData = employees.length > 0 
+            ? employees.map((emp: any) => ({
+                'Employee Code': emp.code || '',
+                'Employee Name': emp.name || '',
+                'Date': `${selectedMonth}-${String(bulkDay).padStart(2, '0')}`,
+                'Status (P/A/W/PH/SL/AL/UL/EL)': 'P',
+                'Hours Worked': 8,
+                'Overtime Hours': 0,
+                'Note': 'Regular Attendance'
+              }))
+            : [
+                {
+                    'Employee Code': '10001',
+                    'Employee Name': 'TORA GURMU REGASA',
+                    'Date': `${selectedMonth}-01`,
+                    'Status (P/A/W/PH/SL/AL/UL/EL)': 'P',
+                    'Hours Worked': 8,
+                    'Overtime Hours': 2,
+                    'Note': 'Regular Overtime Completed'
+                },
+                {
+                    'Employee Code': '10002',
+                    'Employee Name': 'SHASHI KUMAR PASWAN',
+                    'Date': `${selectedMonth}-01`,
+                    'Status (P/A/W/PH/SL/AL/UL/EL)': 'A',
+                    'Hours Worked': 0,
+                    'Overtime Hours': 0,
+                    'Note': 'Absent'
+                }
+              ];
+
+        const ws = XLSX.utils.json_to_sheet(sampleData);
+        ws['!cols'] = [
+            { wch: 15 },
+            { wch: 30 },
+            { wch: 12 },
+            { wch: 32 },
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 25 }
+        ];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "TimesheetTemplate");
+        XLSX.writeFile(wb, `Attendance_Bulk_Import_Template_${selectedMonth}.xlsx`);
+    };
+
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     const handlePrint = () => {
@@ -9621,6 +9694,14 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                 <span className="hidden sm:inline">Import Excel</span>
                             </button>
                             <button 
+                                onClick={handleDownloadSampleFile}
+                                className="flex items-center gap-2 px-4 py-2.5 bg-sky-50 text-sky-600 border border-sky-100 rounded-2xl text-sm font-black hover:bg-sky-100 transition-all active:scale-95 shadow-lg shadow-sky-600/10 cursor-pointer"
+                                title="Download Excel template for bulk imports"
+                            >
+                                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                                <span className="hidden sm:inline">Sample Entry Excel</span>
+                            </button>
+                            <button 
                                 onClick={onOpenHolidayManagement}
                                 className="flex items-center gap-2 px-4 py-2.5 bg-violet-50 text-violet-600 border border-violet-100 rounded-2xl text-sm font-black hover:bg-violet-100 transition-all active:scale-95 shadow-lg shadow-violet-600/10"
                             >
@@ -9665,13 +9746,129 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                 </div>
             </div>
 
+            {selectedEmployeeIds.length > 0 && (
+                <div id="timesheet-bulk-toolbar" className="bg-slate-900 text-white p-5 rounded-3xl shadow-lg border border-slate-800 animate-in fade-in slide-in-from-top-4 duration-300 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-brand-500/10 text-brand-400 rounded-xl border border-brand-500/20">
+                            <CheckSquare className="w-5 h-5 text-brand-400" />
+                        </div>
+                        <div>
+                            <h3 className="font-extrabold text-sm uppercase tracking-wider flex items-center gap-2">
+                                Bulk Status Entry Desk
+                                <span className="bg-brand-500 text-white text-[9px] px-2 py-0.5 rounded-full font-black">
+                                    {selectedEmployeeIds.length} Staff Selected
+                                </span>
+                            </h3>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                                Mark attendance of checked personnel in a single click for your selected day.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-2 bg-slate-800 p-1.5 rounded-2xl border border-slate-700">
+                            <span className="text-[10px] font-black uppercase text-slate-400 px-2">Select Day:</span>
+                            <select 
+                                value={bulkDay} 
+                                onChange={(e) => setBulkDay(Number(e.target.value))}
+                                className="bg-slate-900 border border-slate-700 text-white font-extrabold text-xs px-3 py-1.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer text-center"
+                            >
+                                {days.map((d) => {
+                                    const date = new Date(year, month - 1, d);
+                                    const dayName = date.toLocaleString('default', { weekday: 'short' });
+                                    return (
+                                        <option key={d} value={d} className="bg-slate-900 text-white font-bold">
+                                            Day {d} ({dayName})
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                if (!canManageAttendance) return;
+                                const dateStr = `${selectedMonth}-${String(bulkDay).padStart(2, '0')}`;
+                                for (const empId of selectedEmployeeIds) {
+                                    await onLogAttendance(
+                                        empId,
+                                        AttendanceStatus.PRESENT,
+                                        dateStr,
+                                        0, 
+                                        undefined,
+                                        user?.username || 'System',
+                                        'Bulk Operation PRESENT',
+                                        8 
+                                    );
+                                }
+                                setSelectedEmployeeIds([]);
+                            }}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-600/10 border border-emerald-500"
+                        >
+                            <CheckCircle className="w-4 h-4" />
+                            <span>Mark Present (P)</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                if (!canManageAttendance) return;
+                                const dateStr = `${selectedMonth}-${String(bulkDay).padStart(2, '0')}`;
+                                for (const empId of selectedEmployeeIds) {
+                                    await onLogAttendance(
+                                        empId,
+                                        AttendanceStatus.ABSENT,
+                                        dateStr,
+                                        0, 
+                                        undefined,
+                                        user?.username || 'System',
+                                        'Bulk Operation ABSENT',
+                                        0 
+                                    );
+                                }
+                                setSelectedEmployeeIds([]);
+                            }}
+                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-rose-600/10 border border-rose-500"
+                        >
+                            <XCircle className="w-4 h-4" />
+                            <span>Mark Absent (A)</span>
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setSelectedEmployeeIds([])}
+                            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 text-xs font-bold rounded-xl border border-slate-700 transition-all cursor-pointer"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-xl shadow-slate-200/50 timesheet-print-wrapper">
                 <div ref={scrollContainerRef} id="timesheet-table-container" className="max-h-[calc(100vh-280px)] overflow-auto scrollbar-thin">
                     <table className="w-full text-center border-collapse text-[11px]">
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
-                                <th className="p-4 text-left bg-slate-50 sticky top-0 left-0 z-30 border-r border-b border-slate-100 min-w-[180px] shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">
-                                    <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Employee Name</span>
+                                <th className="p-4 text-left bg-slate-50 sticky top-0 left-0 z-30 border-r border-b border-slate-100 min-w-[200px] shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">
+                                    <div className="flex items-center gap-3">
+                                        <input 
+                                            type="checkbox"
+                                            checked={filteredEmployees.length > 0 && filteredEmployees.every((e: Employee) => selectedEmployeeIds.includes(e.id))}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    const allIds = filteredEmployees.map((ev: Employee) => ev.id);
+                                                    setSelectedEmployeeIds(prev => Array.from(new Set([...prev, ...allIds])));
+                                                } else {
+                                                    const visibleIds = filteredEmployees.map((ev: Employee) => ev.id);
+                                                    setSelectedEmployeeIds(prev => prev.filter(id => !visibleIds.includes(id)));
+                                                }
+                                            }}
+                                            className="w-4 h-4 rounded text-brand-650 accent-brand-600 focus:ring-brand-500 border-slate-300 cursor-pointer"
+                                        />
+                                        <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Employee Name</span>
+                                    </div>
                                 </th>
                                 <th className="p-4 font-bold text-slate-500 border-r border-b border-slate-100 uppercase tracking-widest text-[10px] sticky top-0 z-20 bg-slate-50 shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">Leave</th>
                                 <th className="p-4 font-bold text-brand-600 border-r border-b border-slate-100 uppercase tracking-widest text-[10px] sticky top-0 z-20 bg-slate-50 shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">OT</th>
@@ -9703,15 +9900,30 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                     )}
                                 >
                                     <td className="p-4 text-left border-r border-slate-100 sticky left-0 bg-white/90 backdrop-blur-sm z-10 group-hover:bg-brand-50/50 transition-colors">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 overflow-hidden timesheet-profile-pic">
-                                                {e.profileImage ? (
-                                                    <img src={e.profileImage} alt={e.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                                ) : (
-                                                    e.name.charAt(0)
-                                                )}
+                                        <div className="flex items-center gap-3">
+                                            <input 
+                                                type="checkbox"
+                                                checked={selectedEmployeeIds.includes(e.id)}
+                                                onChange={(ev) => {
+                                                    if (ev.target.checked) {
+                                                        setSelectedEmployeeIds(prev => [...prev, e.id]);
+                                                    } else {
+                                                        setSelectedEmployeeIds(prev => prev.filter(id => id !== e.id));
+                                                    }
+                                                }}
+                                                onClick={(ev) => ev.stopPropagation()}
+                                                className="w-4 h-4 rounded text-brand-650 accent-brand-600 focus:ring-brand-500 border-slate-300 cursor-pointer"
+                                            />
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200 overflow-hidden timesheet-profile-pic">
+                                                    {e.profileImage ? (
+                                                        <img src={e.profileImage} alt={e.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                                    ) : (
+                                                        e.name.charAt(0)
+                                                    )}
+                                                </div>
+                                                <span className="font-bold text-slate-900 truncate max-w-[120px]">{e.name}</span>
                                             </div>
-                                            <span className="font-bold text-slate-900 truncate max-w-[120px]">{e.name}</span>
                                         </div>
                                     </td>
                                     <td className="p-4 border-r border-slate-50 font-bold text-slate-500">{e.leaveBalance}</td>
