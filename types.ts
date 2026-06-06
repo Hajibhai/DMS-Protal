@@ -581,6 +581,7 @@ export interface Task {
   mediaName?: string;
   assignedToMultiple?: Array<{ uid: string; name: string }>;
   documents?: Array<{ url: string; name: string; type: string; size?: string }>;
+  meetLink?: string;
 }
 
 export interface Note {
@@ -600,6 +601,24 @@ export interface Note {
   mediaType?: 'image' | 'video';
   mediaName?: string;
   documents?: Array<{ url: string; name: string; type: string; size?: string }>;
+  meetLink?: string;
+}
+
+export interface Meeting {
+  id: string;
+  title: string;
+  description?: string;
+  dateTime: string; // ISO string format preferred
+  duration: number; // in minutes, default 30
+  meetLink?: string;
+  createdAt: string;
+  updatedAt?: string;
+  createdById: string;
+  createdBy: string;
+  createdByRole?: string;
+  assignedToMultiple?: Array<{ uid: string; name: string }>;
+  assignedTo?: string; // fallback or single person id
+  assignedToName?: string; // fallback or single person name
 }
 
 export interface CorporateBankAccount {

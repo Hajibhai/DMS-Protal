@@ -5,24 +5,27 @@ import {
   User, Calendar, Search, Pin, ClipboardList, 
   StickyNote, CheckSquare, Sparkles, Filter, MoreVertical, CheckCircle2, ChevronRight,
   Mic, Square, Upload, Play, Pause, Volume2,
-  Share2, Image as ImageIcon, Film, Copy, ExternalLink, FileText, Paperclip
+  Share2, Image as ImageIcon, Film, Copy, ExternalLink, FileText, Paperclip, Video
 } from 'lucide-react';
 import { 
   collection, onSnapshot, addDoc, updateDoc, 
   deleteDoc, doc, query, orderBy 
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Task, Note, SystemUser } from '../types';
+import { Task, Note, SystemUser, Meeting } from '../types';
 import { cn } from '../utils';
+import { GoogleMeetGenerator } from './GoogleMeetGenerator';
 
 interface TasksNotesViewProps {
   systemUser: SystemUser | null;
 }
 
 export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'tasks' | 'notes'>('tasks');
+  const [activeSubTab, setActiveSubTab] = useState<'tasks' | 'notes' | 'meetings'>('tasks');
   const isEmployee = systemUser?.role?.toLowerCase() === 'employee';
   const isCurrentUserAdmin = systemUser?.role?.toLowerCase() === 'admin' || systemUser?.role?.toLowerCase() === 'creator';
+  const userRoleLower = systemUser?.role?.toLowerCase() || '';
+  const canScheduleMeetings = ['admin', 'creator', 'hr', 'accountant', 'engineer'].includes(userRoleLower);
   
   const getProgressDays = (startedAt?: string, completedAt?: string): string => {
     if (!startedAt) return "Not started yet";
@@ -70,12 +73,16 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   // Modal / Form states
   const [showTaskForm, setShowTaskForm] = useState<Partial<Task> | null>(null);
   const [showNoteForm, setShowNoteForm] = useState<Partial<Note> | null>(null);
+  const [showMeetingForm, setShowMeetingForm] = useState<Partial<Meeting> | null>(null);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [meetingSearch, setMeetingSearch] = useState('');
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
   const [showAssigneesDropdown, setShowAssigneesDropdown] = useState(false);
 
   // loading states
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [loadingNotes, setLoadingNotes] = useState(true);
+  const [loadingMeetings, setLoadingMeetings] = useState(true);
 
   // 1. Fetch System Users for assignment
   useEffect(() => {
@@ -131,6 +138,23 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
     }, (err) => {
       console.error("Error reading notes:", err);
       setLoadingNotes(false);
+    });
+    return unsub;
+  }, []);
+
+  // 4. Fetch Meetings with real-time sync
+  useEffect(() => {
+    const qMeetings = query(collection(db, 'meetings'), orderBy('dateTime', 'asc'));
+    const unsub = onSnapshot(qMeetings, (snap) => {
+      const list: Meeting[] = [];
+      snap.forEach((doc) => {
+        list.push({ id: doc.id, ...doc.data() } as Meeting);
+      });
+      setMeetings(list);
+      setLoadingMeetings(false);
+    }, (err) => {
+      console.error("Error reading meetings:", err);
+      setLoadingMeetings(false);
     });
     return unsub;
   }, []);
@@ -214,6 +238,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       mediaUrl: showTaskForm.mediaUrl || '',
       mediaType: showTaskForm.mediaType || undefined,
       mediaName: showTaskForm.mediaName || '',
+      meetLink: showTaskForm.meetLink || '',
       updatedAt: new Date().toISOString()
     };
 
@@ -484,6 +509,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       mediaType: showNoteForm.mediaType || undefined,
       mediaName: showNoteForm.mediaName || '',
       documents: showNoteForm.documents || [],
+      meetLink: showNoteForm.meetLink || '',
       updatedAt: new Date().toISOString()
     };
 
@@ -530,6 +556,84 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
     }
   };
 
+  // Handlers for Meetings
+  const handleSaveMeeting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showMeetingForm?.title || !showMeetingForm?.dateTime) {
+      setAlertDialog({
+        title: "Missing Information",
+        message: "Please fill in all required fields (Meeting Title and Date/Time)."
+      });
+      return;
+    }
+
+    const userRoleLower = systemUser?.role?.toLowerCase() || '';
+    const canScheduleMeetings = ['admin', 'creator', 'hr', 'accountant', 'engineer'].includes(userRoleLower);
+
+    if (!canScheduleMeetings) {
+      setAlertDialog({
+        title: "Access Denied",
+        message: "Only Admin, HR, Accountants, and Engineers are authorized to create or update meetings."
+      });
+      return;
+    }
+
+    const meetingData: Partial<Meeting> = {
+      title: showMeetingForm.title,
+      description: showMeetingForm.description || '',
+      dateTime: showMeetingForm.dateTime,
+      duration: Number(showMeetingForm.duration || 30),
+      meetLink: showMeetingForm.meetLink || '',
+      assignedToMultiple: showMeetingForm.assignedToMultiple || [],
+      assignedTo: showMeetingForm.assignedTo || '',
+      assignedToName: showMeetingForm.assignedToName || '',
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      if (showMeetingForm.id) {
+        await updateDoc(doc(db, 'meetings', showMeetingForm.id), meetingData);
+      } else {
+        meetingData.createdAt = new Date().toISOString();
+        meetingData.createdById = systemUser?.uid || 'unknown';
+        meetingData.createdBy = systemUser?.name || 'Unknown User';
+        meetingData.createdByRole = systemUser?.role || 'Staff';
+        await addDoc(collection(db, 'meetings'), meetingData);
+      }
+      setShowMeetingForm(null);
+    } catch (err) {
+      console.error("Error saving meeting:", err);
+    }
+  };
+
+  const handleDeleteMeeting = async (id: string) => {
+    const userRoleLower = systemUser?.role?.toLowerCase() || '';
+    const canScheduleMeetings = ['admin', 'creator', 'hr', 'accountant', 'engineer'].includes(userRoleLower);
+
+    if (!canScheduleMeetings) {
+      setAlertDialog({
+        title: "Access Denied",
+        message: "Only Admin, HR, Accountants, and Engineers are authorized to delete meetings."
+      });
+      return;
+    }
+
+    setConfirmDialog({
+      title: "Delete Scheduled Meeting",
+      message: "Are you sure you want to delete and cancel this scheduled meeting permanently?",
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'meetings', id));
+          setConfirmDialog(null);
+        } catch (err) {
+          console.error("Error deleting meeting:", err);
+        }
+      }
+    });
+  };
+
   // Filter computations
   const filteredTasks = useMemo(() => {
     return tasks.filter(t => {
@@ -554,6 +658,17 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
   }, [notes, noteSearch]);
+
+  const filteredMeetings = useMemo(() => {
+    return meetings.filter(m => {
+      const queryStr = meetingSearch.toLowerCase();
+      const matchesSearch = m.title.toLowerCase().includes(queryStr) || 
+                            (m.description || '').toLowerCase().includes(queryStr) ||
+                            (m.createdBy || '').toLowerCase().includes(queryStr) ||
+                            (m.assignedToMultiple || []).some(u => u.name.toLowerCase().includes(queryStr));
+      return matchesSearch;
+    });
+  }, [meetings, meetingSearch]);
 
   const handleShareMedia = async (
     title: string,
@@ -705,10 +820,19 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
           >
             <StickyNote className="w-4 h-4" /> Memo Board
           </button>
+          <button
+            onClick={() => setActiveSubTab('meetings')}
+            className={cn(
+              "px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2",
+              activeSubTab === 'meetings' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+            )}
+          >
+            <Calendar className="w-4 h-4" /> Meetings
+          </button>
         </div>
       </div>
 
-      {activeSubTab === 'tasks' ? (
+      {activeSubTab === 'tasks' && (
         // ================= TASKS PANEL =================
         <div className="space-y-6">
           {/* Controls Header */}
@@ -875,6 +999,28 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                                 </div>
                               ))}
                             </div>
+                          </div>
+                        )}
+
+                        {t.meetLink && (
+                          <div className="mt-3.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl p-3 flex items-center justify-between gap-2 text-left">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded-lg shrink-0">
+                                <Video className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[8px] uppercase tracking-wider font-extrabold text-indigo-700 block">Google Meet Room</span>
+                                <span className="text-[10px] font-bold text-slate-600 truncate block">{t.meetLink}</span>
+                              </div>
+                            </div>
+                            <a
+                              href={t.meetLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[9px] uppercase tracking-wider rounded-xl shadow-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                            >
+                              <Video className="w-3.5 h-3.5" /> Join Space
+                            </a>
                           </div>
                         )}
                       </div>
@@ -1055,7 +1201,9 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
             </div>
           )}
         </div>
-      ) : (
+      )}
+
+      {activeSubTab === 'notes' && (
         // ================= NOTES BOARD =================
         <div className="space-y-6">
           {/* Controls Header */}
@@ -1198,6 +1346,28 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                           </div>
                         </div>
                       )}
+
+                      {n.meetLink && (
+                        <div className="mt-3.5 bg-black/5 hover:bg-black/10 border border-black/5 rounded-2xl p-2.5 flex items-center justify-between gap-2 text-left transition-all">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div className="p-1.5 bg-white text-emerald-650 rounded-lg shrink-0 shadow-xs border border-black/5">
+                              <Video className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[7.5px] uppercase tracking-wider font-extrabold text-black/45 block">Google Meet Room</span>
+                              <span className="text-[9.5px] font-bold text-slate-800 truncate block">{n.meetLink}</span>
+                            </div>
+                          </div>
+                          <a
+                            href={n.meetLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-[8.5px] uppercase tracking-wider rounded-xl shadow-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                          >
+                            <Video className="w-3.5 h-3.5" /> Join
+                          </a>
+                        </div>
+                      )}
                     </div>
 
                     {/* Meta Footer */}
@@ -1220,10 +1390,179 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
         </div>
       )}
 
+      {activeSubTab === 'meetings' && (
+        <div className="space-y-6">
+          {/* Controls Header */}
+          <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search meetings..."
+                  value={meetingSearch}
+                  onChange={(e) => setMeetingSearch(e.target.value)}
+                  className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-inner w-56 focus:w-64"
+                />
+              </div>
+            </div>
+
+            {canScheduleMeetings && (
+              <button
+                onClick={() => setShowMeetingForm({ duration: 30, dateTime: new Date().toISOString().slice(0, 16) })}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-2xl shadow-md shadow-indigo-100 transition-all flex items-center gap-2 cursor-pointer w-full md:w-auto justify-center"
+              >
+                <Calendar className="w-4 h-4" /> Schedule Meeting
+              </button>
+            )}
+          </div>
+
+          {/* Loading state or displaying Meetings list */}
+          {loadingMeetings ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-white border border-slate-100 rounded-[2rem] shadow-sm">
+              <div className="w-8 h-8 rounded-full border-4 border-slate-100 border-t-indigo-650 animate-spin"></div>
+              <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mt-4 animate-pulse">Loading Team Meetings...</p>
+            </div>
+          ) : filteredMeetings.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 bg-white border border-slate-100 rounded-[2rem] shadow-sm text-center px-6">
+              <div className="p-4 bg-slate-50 border border-slate-100/50 rounded-full text-slate-400 shadow-sm">
+                <Calendar className="w-8 h-8 animate-bounce" />
+              </div>
+              <h3 className="text-slate-700 font-bold text-base mt-4">No Meetings Scheduled</h3>
+              <p className="text-slate-400 text-xs mt-1 max-w-sm">No synchronized team sessions or Google Meet sessions could be found matching your search query.</p>
+              {canScheduleMeetings && (
+                <button
+                  onClick={() => setShowMeetingForm({ duration: 30, dateTime: new Date().toISOString().slice(0, 16) })}
+                  className="mt-6 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all"
+                >
+                  Create First Meeting
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <AnimatePresence>
+                {filteredMeetings.map((m) => (
+                  <motion.div
+                    key={m.id}
+                    layout
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.25 }}
+                    className="p-6 bg-white border border-slate-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-full"
+                  >
+                    <div>
+                      {/* Meeting Header */}
+                      <div className="flex justify-between items-start gap-2 mb-3">
+                        <span className="px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-full text-[10px] font-black text-indigo-700 uppercase tracking-widest">
+                          {m.duration} Min Session
+                        </span>
+                        
+                        {/* Actions dropdown/buttons if permitted */}
+                        {canScheduleMeetings && (
+                          <div className="flex items-center gap-1.5 overflow-hidden">
+                            <button
+                              onClick={() => setShowMeetingForm(m)}
+                              className="p-1.5 hover:bg-slate-50 border border-transparent hover:border-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all cursor-pointer"
+                              title="Edit Meeting"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMeeting(m.id)}
+                              className="px-2 py-0.5 hover:bg-rose-50 border border-transparent hover:border-rose-100 text-slate-300 hover:text-rose-600 rounded-lg transition-all cursor-pointer"
+                              title="Delete Meeting"
+                            >
+                              <span className="text-sm font-bold leading-none">×</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Title & Description */}
+                      <h3 className="text-sm font-bold text-slate-900 leading-snug line-clamp-2 mb-1">{m.title}</h3>
+                      {m.description && (
+                        <p className="text-slate-500 text-xs line-clamp-3 mb-4">{m.description}</p>
+                      )}
+
+                      {/* Time Schedule details */}
+                      <div className="space-y-2 mb-4 pt-3 border-t border-slate-100/60">
+                        <div className="flex items-center gap-2 text-slate-600">
+                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="text-xs font-semibold">
+                            {new Date(m.dateTime).toLocaleDateString(undefined, { 
+                              weekday: 'short', month: 'short', day: 'numeric' 
+                            })} at {new Date(m.dateTime).toLocaleTimeString(undefined, {
+                              hour: '2-digit', minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+
+                        {/* Assignees / Team space */}
+                        {m.assignedToMultiple && m.assignedToMultiple.length > 0 && (
+                          <div className="flex items-start gap-2 text-slate-500">
+                            <User className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Assigned Attendees</span>
+                              <span className="text-xs font-semibold text-slate-600">
+                                {m.assignedToMultiple.map(u => u.name).join(', ')}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Google Meet Integrations space */}
+                    <div>
+                      {m.meetLink ? (
+                        <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-3 flex items-center justify-between gap-2 text-left">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg shrink-0">
+                              <Video className="w-4 h-4 animate-pulse" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[8px] uppercase tracking-wider font-extrabold text-emerald-700 block">Google Meet Room</span>
+                              <span className="text-[10px] font-bold text-slate-600 truncate block">{m.meetLink}</span>
+                            </div>
+                          </div>
+                          <a
+                            href={m.meetLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[9px] uppercase tracking-wider rounded-xl shadow-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                          >
+                            <Video className="w-3.5 h-3.5" /> Join Space
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="text-center p-2.5 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          No Meet Link Generated
+                        </div>
+                      )}
+
+                      {/* Creator Metadata */}
+                      <div className="text-[9px] font-bold text-slate-400 mt-4 pt-2 border-t border-slate-100/60 flex items-center justify-between">
+                        <span>Scheduled by: {m.createdBy?.split(' ')[0]} ({m.createdByRole})</span>
+                        <span>
+                          {new Date(m.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ===================== ADD/EDIT TASK MODAL ===================== */}
       {showTaskForm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
               <h2 className="text-base font-bold text-slate-900">{showTaskForm.id ? 'Edit Task Settings' : 'Create New Task'}</h2>
               <button 
@@ -1234,7 +1573,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
               </button>
             </div>
 
-            <form onSubmit={handleSaveTask} className="p-6 space-y-4">
+            <form onSubmit={handleSaveTask} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Task Title</label>
                 <input
@@ -1391,6 +1730,14 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                 />
               </div>
 
+              {/* Google Meet Link Option */}
+              <div className="pt-2">
+                <GoogleMeetGenerator 
+                  meetLink={showTaskForm.meetLink}
+                  onChange={(link) => setShowTaskForm({ ...showTaskForm, meetLink: link })}
+                />
+              </div>
+
               {/* Checklist / Tick boxes section */}
               <div className="space-y-2 pt-2 border-t border-slate-100/65">
                 <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -1461,10 +1808,146 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
         </div>
       )}
 
+      {/* ===================== ADD/EDIT MEETING MODAL ===================== */}
+      {showMeetingForm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <h2 className="text-base font-bold text-slate-900">{showMeetingForm.id ? 'Edit Meeting Schedule' : 'Schedule New Meeting'}</h2>
+              <button 
+                onClick={() => setShowMeetingForm(null)} 
+                className="w-8 h-8 rounded-full bg-slate-200 hover:bg-slate-300 flex items-center justify-center text-slate-500 transition-colors cursor-pointer"
+              >
+                <span className="text-lg font-bold">×</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMeeting} className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Meeting Title *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Design Sync, Urgent Daily Board Review..."
+                  value={showMeetingForm.title || ''}
+                  onChange={(e) => setShowMeetingForm({ ...showMeetingForm, title: e.target.value })}
+                  className="w-full p-3 border border-slate-200 rounded-2xl text-xs font-semibold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Description</label>
+                <textarea
+                  placeholder="Review timesheets, submit audit records, or details..."
+                  value={showMeetingForm.description || ''}
+                  onChange={(e) => setShowMeetingForm({ ...showMeetingForm, description: e.target.value })}
+                  className="w-full p-3 border border-slate-200 rounded-2xl text-xs font-semibold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner min-h-20 max-h-40"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Date / Time *</label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={showMeetingForm.dateTime ? showMeetingForm.dateTime.slice(0, 16) : ''}
+                    onChange={(e) => setShowMeetingForm({ ...showMeetingForm, dateTime: e.target.value })}
+                    className="w-full p-3 border border-slate-200 rounded-2xl text-xs font-semibold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-inner"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">Duration</label>
+                  <select
+                    value={showMeetingForm.duration || 30}
+                    onChange={(e) => setShowMeetingForm({ ...showMeetingForm, duration: Number(e.target.value) })}
+                    className="w-full p-3 border border-slate-200 rounded-2xl text-xs font-semibold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  >
+                    <option value="15">15 Minutes</option>
+                    <option value="30">30 Minutes</option>
+                    <option value="45">45 Minutes</option>
+                    <option value="60">1 Hour</option>
+                    <option value="90">1.5 Hours</option>
+                    <option value="120">2 Hours</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Assign Single / Multiple Persons Checkbox Selector */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block text-left">Assign Session Attendees</label>
+                <div className="text-[10px] text-slate-400 mb-1">Select team members to include in this scheduled meeting:</div>
+                <div className="border border-slate-100 rounded-2xl bg-slate-50/50 p-2 max-h-40 overflow-y-auto space-y-1 pr-1.5 shadow-inner">
+                  {systemUsers.map((user) => {
+                    const isSelected = (showMeetingForm.assignedToMultiple || []).some(sel => sel.uid === user.uid);
+                    return (
+                      <label 
+                        key={user.uid} 
+                        className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-white border border-transparent hover:border-slate-100 transition-all cursor-pointer text-xs font-semibold text-slate-700 hover:text-slate-900 shadow-xs"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            const list = [...(showMeetingForm.assignedToMultiple || [])];
+                            const existsIdx = list.findIndex(item => item.uid === user.uid);
+                            if (existsIdx > -1) {
+                              list.splice(existsIdx, 1);
+                            } else {
+                              list.push({ uid: user.uid, name: user.name });
+                            }
+                            setShowMeetingForm({ ...showMeetingForm, assignedToMultiple: list });
+                          }}
+                          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div className="flex flex-col text-left">
+                          <span className="text-xs font-bold leading-none">{user.name}</span>
+                          <span className="text-[9px] text-slate-400 mt-0.5 uppercase tracking-wide font-medium">{user.role}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                  {systemUsers.length === 0 && (
+                    <div className="text-center text-slate-400 py-4 italic text-xs">No active team members registered on portal.</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Google Meet Link Generator integration */}
+              <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block text-left mb-1">Google Meet Integration</label>
+                <GoogleMeetGenerator
+                  meetLink={showMeetingForm.meetLink}
+                  onChange={(link) => setShowMeetingForm({ ...showMeetingForm, meetLink: link })}
+                />
+              </div>
+
+              {/* Action Buttons footer */}
+              <div className="pt-4 border-t border-slate-100 flex justify-end gap-2 bg-slate-50/20 -mx-6 -mb-6 p-6">
+                <button
+                  type="button"
+                  onClick={() => setShowMeetingForm(null)}
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-colors shadow-lg shadow-indigo-500/20 cursor-pointer"
+                >
+                  {showMeetingForm.id ? 'Save Updates' : 'Add Session'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ===================== ADD/EDIT MEMO / NOTE MODAL ===================== */}
       {showNoteForm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
             <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
               <h2 className="text-base font-bold text-slate-900">{showNoteForm.id ? 'Modify Memorandum' : 'Write New Sticky Memo'}</h2>
               <button 
@@ -1475,7 +1958,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
               </button>
             </div>
 
-            <form onSubmit={handleSaveNote} className="p-6 space-y-4">
+            <form onSubmit={handleSaveNote} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Memo Title</label>
                 <input
@@ -1524,6 +2007,14 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                 <DocumentAttachmentInput 
                   documents={showNoteForm.documents}
                   onChange={(docs) => setShowNoteForm({ ...showNoteForm, documents: docs })}
+                />
+              </div>
+
+              {/* Google Meet Link Option */}
+              <div className="pt-2">
+                <GoogleMeetGenerator 
+                  meetLink={showNoteForm.meetLink}
+                  onChange={(link) => setShowNoteForm({ ...showNoteForm, meetLink: link })}
                 />
               </div>
 

@@ -16,13 +16,37 @@ import firebaseConfig from './firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-1befa271-378d-46fb-90e8-ebc035d1db13');
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope("https://www.googleapis.com/auth/meetings.space.created");
+googleProvider.addScope("https://www.googleapis.com/auth/meetings.space.readonly");
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
 
-export const loginWithGoogle = () => signInWithPopup(auth, googleProvider);
+// Cache the access token in memory.
+let cachedGoogleAccessToken: string | null = null;
+
+export const getGoogleAccessToken = () => cachedGoogleAccessToken;
+export const setGoogleAccessToken = (token: string | null) => {
+  cachedGoogleAccessToken = token;
+};
+
+export const loginWithGoogle = async () => {
+  const result = await signInWithPopup(auth, googleProvider);
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  if (credential?.accessToken) {
+    cachedGoogleAccessToken = credential.accessToken;
+  }
+  return result;
+};
+
 export const loginWithEmail = (email: string, pass: string) => signInWithEmailAndPassword(auth, email, pass);
 export const registerWithEmail = (email: string, pass: string) => createUserWithEmailAndPassword(auth, email, pass);
-export const logout = () => signOut(auth);
+export const logout = async () => {
+  cachedGoogleAccessToken = null;
+  await signOut(auth);
+};
 export const resetPassword = (email: string) => sendPasswordResetEmail(auth, email);
 
 // Function to create a user without logging in (using a secondary app instance)
