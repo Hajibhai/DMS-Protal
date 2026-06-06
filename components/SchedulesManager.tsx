@@ -46,6 +46,7 @@ export function SchedulesManager({
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
   // Form fields
   const [stakeholderInput, setStakeholderInput] = useState("");
@@ -194,7 +195,6 @@ export function SchedulesManager({
 
   // Delete configured dispatch directly in Firestore
   const handleDeleteSchedule = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this automated report schedule?")) return;
     try {
       setActionLoading(`delete-${id}`);
       const docRef = doc(db, "report_schedules", id);
@@ -1014,18 +1014,41 @@ export function SchedulesManager({
                   </button>
 
                   {/* Delete schedule */}
-                  <button
-                    onClick={() => handleDeleteSchedule(item.id)}
-                    disabled={actionLoading !== null}
-                    className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50/30 rounded-2xl transition-colors border border-transparent hover:border-rose-100"
-                    title="Delete Schedule"
-                  >
-                    {actionLoading === `delete-${item.id}` ? (
-                      <RefreshCw className="w-4 h-4 animate-spin text-rose-500" />
-                    ) : (
-                      <Trash2 className="w-4 h-4" />
-                    )}
-                  </button>
+                  {deleteConfirmId === item.id ? (
+                    <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-100 rounded-2xl p-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteConfirmId(null);
+                          handleDeleteSchedule(item.id);
+                        }}
+                        className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-black transition-colors cursor-pointer"
+                      >
+                        Confirm Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmId(null)}
+                        className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmId(item.id)}
+                      disabled={actionLoading !== null}
+                      className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50/30 rounded-2xl transition-colors border border-transparent hover:border-rose-100 cursor-pointer"
+                      title="Delete Schedule"
+                    >
+                      {actionLoading === `delete-${item.id}` ? (
+                        <RefreshCw className="w-4 h-4 animate-spin text-rose-500" />
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
