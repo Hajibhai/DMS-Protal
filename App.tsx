@@ -74,7 +74,7 @@ import {
 import * as XLSX from 'xlsx';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend, AreaChart, Area
+  PieChart, Pie, Cell, Legend, AreaChart, Area, LineChart, Line
 } from 'recharts';
 import { 
   onAuthStateChanged,
@@ -5379,6 +5379,49 @@ const DashboardView = ({
         return Object.entries(counts).map(([name, value]) => ({ name, value }));
     }, [activeStaff]);
 
+    // Chart Data: last 7 days of attendance trends
+    const attendanceTrendData = useMemo(() => {
+        let endRefDate = new Date();
+        if (attendance && attendance.length > 0) {
+            const filledDates = attendance
+                .map((a: any) => a.date)
+                .filter(Boolean)
+                .sort();
+            if (filledDates.length > 0) {
+                const latestDate = new Date(filledDates[filledDates.length - 1]);
+                if (latestDate > endRefDate) {
+                    endRefDate = latestDate;
+                }
+            }
+        }
+
+        const trend = [];
+        for (let i = 6; i >= 0; i--) {
+            const activeDate = new Date(endRefDate.getTime());
+            activeDate.setDate(activeDate.getDate() - i);
+            
+            const yearStr = activeDate.getFullYear();
+            const monthStr = String(activeDate.getMonth() + 1).padStart(2, '0');
+            const dayStr = String(activeDate.getDate()).padStart(2, '0');
+            const fullDateStr = `${yearStr}-${monthStr}-${dayStr}`;
+            
+            const dayRecords = attendance.filter((a: any) => a.date === fullDateStr);
+            const presentCount = dayRecords.filter((a: any) => a.status === 'P' || a.status === AttendanceStatus.PRESENT).length;
+            const absentCount = dayRecords.filter((a: any) => a.status === 'A' || a.status === AttendanceStatus.ABSENT).length;
+            const leaveCount = dayRecords.filter((a: any) => ['SL', 'AL', 'UL', 'EL'].includes(a.status)).length;
+            
+            const formattedLabel = activeDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+            trend.push({
+                date: fullDateStr,
+                label: formattedLabel,
+                'Present': presentCount,
+                'Absent': absentCount,
+                'On Leave': leaveCount
+            });
+        }
+        return trend;
+    }, [attendance]);
+
     // Chart Data: Monthly Growth (Mocked for visual impact)
     const growthData = [
         { month: 'Oct', count: activeStaff.length - 15 },
@@ -5558,6 +5601,74 @@ const DashboardView = ({
                                 <p className="text-xs font-bold font-semibold">No active department stats</p>
                             </div>
                         )}
+                    </div>
+                </div>
+
+                {/* Attendance Trend (6 columns) */}
+                <div className="md:col-span-2 lg:col-span-6 bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm flex flex-col min-h-[400px]">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-sky-50 rounded-2xl text-sky-600">
+                                <TrendingUp className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">7-Day Attendance Trends</h3>
+                                <p className="text-xs text-slate-500 font-semibold">Evolution of daily workforce participation and status.</p>
+                            </div>
+                        </div>
+                        {attendanceTrendData.length > 0 && (
+                            <div className="flex items-center gap-3 text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Live Monitoring
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-1 min-h-[220px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={attendanceTrendData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                                <XAxis 
+                                    dataKey="label" 
+                                    stroke="#94a3b8" 
+                                    fontSize={10} 
+                                    fontWeight={700}
+                                    tickLine={false}
+                                    axisLine={false} 
+                                />
+                                <YAxis 
+                                    stroke="#94a3b8" 
+                                    fontSize={10} 
+                                    fontWeight={700}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    allowDecimals={false}
+                                />
+                                <Tooltip 
+                                    contentStyle={{ 
+                                        backgroundColor: '#1e293b', 
+                                        borderRadius: '16px', 
+                                        border: 'none', 
+                                        color: '#fff',
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                                    }}
+                                    itemStyle={{ color: '#fff' }}
+                                    cursor={{ fill: 'rgba(241, 245, 249, 0.5)', radius: 4 }}
+                                />
+                                <Legend 
+                                    verticalAlign="top" 
+                                    height={36} 
+                                    iconType="circle"
+                                    iconSize={8}
+                                    wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }} 
+                                />
+                                <Bar dataKey="Present" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                                <Bar dataKey="Absent" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                                <Bar dataKey="On Leave" fill="#f59e0b" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                            </BarChart>
+                        </ResponsiveContainer>
                     </div>
                 </div>
 
