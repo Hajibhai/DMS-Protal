@@ -5,7 +5,7 @@ import {
   User, Calendar, Search, Pin, ClipboardList, 
   StickyNote, CheckSquare, Sparkles, Filter, MoreVertical, CheckCircle2, ChevronRight,
   Mic, Square, Upload, Play, Pause, Volume2,
-  Share2, Image as ImageIcon, Film, Copy, ExternalLink
+  Share2, Image as ImageIcon, Film, Copy, ExternalLink, FileText, Paperclip
 } from 'lucide-react';
 import { 
   collection, onSnapshot, addDoc, updateDoc, 
@@ -70,6 +70,8 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   // Modal / Form states
   const [showTaskForm, setShowTaskForm] = useState<Partial<Task> | null>(null);
   const [showNoteForm, setShowNoteForm] = useState<Partial<Note> | null>(null);
+  const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
+  const [showAssigneesDropdown, setShowAssigneesDropdown] = useState(false);
 
   // loading states
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -168,6 +170,28 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
 
   const [taskRemarksInput, setTaskRemarksInput] = useState<Record<string, string>>({});
 
+  const toggleAssignee = (user: SystemUser) => {
+    if (!showTaskForm) return;
+    const currentMultiple = showTaskForm.assignedToMultiple || [];
+    const exists = currentMultiple.some(u => u.uid === user.uid);
+    let updated;
+    if (exists) {
+      updated = currentMultiple.filter(u => u.uid !== user.uid);
+    } else {
+      updated = [...currentMultiple, { uid: user.uid, name: user.name }];
+    }
+    
+    const primaryId = updated.length > 0 ? updated[0].uid : '';
+    const primaryName = updated.length > 0 ? updated[0].name : '';
+
+    setShowTaskForm({
+      ...showTaskForm,
+      assignedTo: primaryId,
+      assignedToName: primaryName,
+      assignedToMultiple: updated
+    });
+  };
+
   // Handlers for Tasks
   const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,6 +206,8 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       dueDate: showTaskForm.dueDate || '',
       assignedTo: showTaskForm.assignedTo || '',
       assignedToName: assignedUser ? assignedUser.name : '',
+      assignedToMultiple: showTaskForm.assignedToMultiple || [],
+      documents: showTaskForm.documents || [],
       checklist: showTaskForm.checklist || [],
       audioUrl: showTaskForm.audioUrl || '',
       audioName: showTaskForm.audioName || '',
@@ -457,6 +483,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       mediaUrl: showNoteForm.mediaUrl || '',
       mediaType: showNoteForm.mediaType || undefined,
       mediaName: showNoteForm.mediaName || '',
+      documents: showNoteForm.documents || [],
       updatedAt: new Date().toISOString()
     };
 
@@ -826,6 +853,30 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                             )}
                           </div>
                         )}
+                        {t.documents && t.documents.length > 0 && (
+                          <div className="mt-3.5 space-y-1.5 pt-2.5 border-t border-dashed border-slate-100">
+                            <p className="text-[9px] uppercase tracking-widest font-black text-slate-400">Attached Documents</p>
+                            <div className="grid grid-cols-1 gap-1.5 max-h-36 overflow-y-auto">
+                              {t.documents.map((docItem, idx) => (
+                                <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-100/80 rounded-xl hover:bg-slate-100 hover:border-slate-200 transition-all">
+                                  <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                                    <FileText className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                                    <span className="text-[10px] font-bold text-slate-700 truncate">{docItem.name}</span>
+                                    <span className="text-[8px] font-bold text-slate-400 shrink-0 capitalize">({docItem.size})</span>
+                                  </div>
+                                  <a
+                                    href={docItem.url}
+                                    download={docItem.name}
+                                    className="p-1 hover:bg-white border hover:border-slate-200 rounded-lg text-slate-500 hover:text-indigo-600 transition-all flex items-center gap-1 shrink-0 text-[10px] font-bold"
+                                    title="Download File"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" /> Download
+                                  </a>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -833,13 +884,25 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                     <div className="mt-5 pt-3.5 border-t border-slate-50 flex flex-col gap-3">
                       <div className="flex items-center justify-between gap-1.5">
                         {/* Assignee */}
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-                            <User className="w-3 h-3" />
+                        <div className="flex flex-col gap-1 min-w-0 flex-1">
+                          <div className="flex flex-wrap gap-1 items-center">
+                            <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 flex-shrink-0">
+                              <User className="w-3 h-3" />
+                            </div>
+                            {t.assignedToMultiple && t.assignedToMultiple.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {t.assignedToMultiple.map((userObj) => (
+                                  <span key={userObj.uid} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-brand-50 hover:bg-brand-100 text-brand-800 rounded-lg text-[9px] font-bold border border-brand-100 transition-colors">
+                                    {userObj.name}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-600 truncate max-w-[120px]">
+                                {t.assignedToName || 'Unassigned'}
+                              </span>
+                            )}
                           </div>
-                          <span className="text-[10px] font-bold text-slate-600 truncate max-w-[120px]">
-                            {t.assignedToName || 'Unassigned'}
-                          </span>
                         </div>
 
                         {/* Due Date */}
@@ -1111,6 +1174,30 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                           )}
                         </div>
                       )}
+                      {n.documents && n.documents.length > 0 && (
+                        <div className="mt-3.5 space-y-1.5 pt-2.5 border-t border-dashed border-black/5">
+                          <p className="text-[9px] uppercase tracking-widest font-black text-black/40">Attached Documents</p>
+                          <div className="grid grid-cols-1 gap-1.5 max-h-36 overflow-y-auto">
+                            {n.documents.map((docItem, idx) => (
+                              <div key={idx} className="flex items-center justify-between p-1.5 bg-black/5 border border-black/5 rounded-xl hover:bg-black/10 hover:border-black/10 transition-all">
+                                <div className="flex items-center gap-1 min-w-0 pr-1.5">
+                                  <FileText className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
+                                  <span className="text-[9px] font-bold text-slate-800 truncate" title={docItem.name}>{docItem.name}</span>
+                                  <span className="text-[7.5px] font-bold text-slate-500 shrink-0 capitalize">({docItem.size})</span>
+                                </div>
+                                <a
+                                  href={docItem.url}
+                                  download={docItem.name}
+                                  className="p-1 hover:bg-white/50 border border-transparent hover:border-black/10 rounded-lg text-slate-600 hover:text-black transition-all flex items-center gap-0.5 shrink-0 text-[8.5px] font-bold"
+                                  title="Download File"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" /> Get
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Meta Footer */}
@@ -1210,18 +1297,70 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Assignee</label>
-                  <select
-                    value={showTaskForm.assignedTo || ''}
-                    onChange={(e) => setShowTaskForm({ ...showTaskForm, assignedTo: e.target.value })}
-                    className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition-all text-xs font-semibold bg-white text-slate-700"
+                <div className="space-y-1.5 relative">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Assignee(s) / Team</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAssigneesDropdown(!showAssigneesDropdown)}
+                    className="w-full p-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition-all text-xs font-semibold bg-white text-slate-700 text-left flex items-center justify-between"
                   >
-                    <option value="">Unassigned</option>
-                    {systemUsers.map((u) => (
-                      <option key={u.uid} value={u.uid}>{u.name} ({u.role})</option>
-                    ))}
-                  </select>
+                    <span className="truncate max-w-[120px]">
+                      {showTaskForm.assignedToMultiple && showTaskForm.assignedToMultiple.length > 0
+                        ? showTaskForm.assignedToMultiple.map(u => u.name).join(', ')
+                        : showTaskForm.assignedToName || 'Unassigned'}
+                    </span>
+                    <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md font-bold">
+                      {showTaskForm.assignedToMultiple ? showTaskForm.assignedToMultiple.length : (showTaskForm.assignedTo ? 1 : 0)} selected
+                    </span>
+                  </button>
+
+                  {showAssigneesDropdown && (
+                    <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 space-y-2.5 max-h-[220px] overflow-y-auto">
+                      <input
+                        type="text"
+                        placeholder="Search team members..."
+                        value={assigneeSearchQuery}
+                        onChange={(e) => setAssigneeSearchQuery(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-100 rounded-lg text-xs font-medium focus:ring-2 focus:ring-brand-500 outline-none text-slate-700 bg-slate-50"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+
+                      <div className="space-y-1">
+                        {systemUsers
+                          .filter(u => u.name.toLowerCase().includes(assigneeSearchQuery.toLowerCase()))
+                          .map((u) => {
+                            const isSelected = (showTaskForm.assignedToMultiple || []).some(sel => sel.uid === u.uid) || (showTaskForm.assignedTo === u.uid);
+                            return (
+                              <button
+                                key={u.uid}
+                                type="button"
+                                onClick={() => toggleAssignee(u)}
+                                className={cn(
+                                  "w-full flex items-center justify-between p-2 rounded-xl text-left text-xs font-semibold transition-all hover:bg-slate-50",
+                                  isSelected ? "bg-brand-50/50 text-brand-900" : "text-slate-600"
+                                )}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 text-[9px] font-bold">
+                                    {u.name.charAt(0)}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold leading-none">{u.name}</p>
+                                    <p className="text-[8px] text-slate-400 capitalize mt-0.5">{u.role}</p>
+                                  </div>
+                                </div>
+                                <div className={cn(
+                                  "w-4 h-4 rounded-md border flex items-center justify-center transition-all",
+                                  isSelected ? "border-brand-500 bg-brand-500 text-white" : "border-slate-300"
+                                )}>
+                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1241,6 +1380,14 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                   mediaType={showTaskForm.mediaType} 
                   mediaName={showTaskForm.mediaName} 
                   onChange={(media) => setShowTaskForm({ ...showTaskForm, mediaUrl: media.mediaUrl, mediaType: media.mediaType, mediaName: media.mediaName })} 
+                />
+              </div>
+
+              {/* Document Attachments (PDF, Word, Excel, maximum 10MB) */}
+              <div className="pt-2">
+                <DocumentAttachmentInput 
+                  documents={showTaskForm.documents}
+                  onChange={(docs) => setShowTaskForm({ ...showTaskForm, documents: docs })}
                 />
               </div>
 
@@ -1369,6 +1516,14 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                   mediaType={showNoteForm.mediaType} 
                   mediaName={showNoteForm.mediaName} 
                   onChange={(media) => setShowNoteForm({ ...showNoteForm, mediaUrl: media.mediaUrl, mediaType: media.mediaType, mediaName: media.mediaName })} 
+                />
+              </div>
+
+              {/* Document Attachments (PDF, Word, Excel, maximum 10MB) */}
+              <div className="pt-2">
+                <DocumentAttachmentInput 
+                  documents={showNoteForm.documents}
+                  onChange={(docs) => setShowNoteForm({ ...showNoteForm, documents: docs })}
                 />
               </div>
 
@@ -1958,10 +2113,101 @@ const MediaAttachmentInput = ({
 }: MediaAttachmentInputProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [fileSizeStr, setFileSizeStr] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const formatBytes = (bytes: number, decimals = 1) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  const compressImageWithProgress = (file: File, onStep: (msg: string, progress: number) => void): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      onStep("Initiating content reader...", 15);
+      const reader = new FileReader();
+      reader.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 30) + 15; // 15 to 45
+          onStep("Reading asset buffer...", pct);
+        }
+      };
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        onStep("Re-rendering canvas layers...", 55);
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          onStep("Optimizing pixel maps...", 70);
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1000;
+          const MAX_HEIGHT = 1000;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            onStep("Compressing JPG weights...", 85);
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            onStep("Polishing compression layers...", 95);
+            setTimeout(() => {
+              resolve(dataUrl);
+            }, 150);
+          } else {
+            resolve(event.target?.result as string);
+          }
+        };
+        img.onerror = () => {
+          reject(new Error("Failed to load image for compression"));
+        };
+      };
+      reader.onerror = reject;
+    });
+  };
+
+  const convertFileWithProgress = (file: File, onProgress: (percent: number) => void): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          onProgress(percent);
+        }
+      };
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (e) => reject(e);
+      reader.readAsDataURL(file);
+    });
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
+    setStatusMessage(null);
+    setSuccessMessage(null);
+    setUploadProgress(0);
+    setFileSizeStr(null);
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -1975,50 +2221,67 @@ const MediaAttachmentInput = ({
     }
 
     setIsProcessing(true);
+    setFileSizeStr(formatBytes(file.size));
+
     try {
       if (isImage) {
-        setError("Optimizing image size to preserve storage...");
-        const compressedBase64 = await compressImage(file);
+        const compressedBase64 = await compressImageWithProgress(file, (msg, pct) => {
+          setStatusMessage(msg);
+          setUploadProgress(pct);
+        });
+        
+        // Approximate the compressed size by base64 length (approx 0.75 ratio)
+        const compressedLength = Math.round((compressedBase64.length - 814) / 1.37);
+        setFileSizeStr(formatBytes(compressedLength));
+
         onChange({
           mediaUrl: compressedBase64,
           mediaType: 'image',
           mediaName: file.name
         });
-        setError(null);
+        setUploadProgress(100);
+        setStatusMessage(null);
+        setSuccessMessage(`Compressed & verified photo attachment.`);
       } else {
-        setError("Analyzing video size criteria...");
+        setStatusMessage("Analyzing video payload thresholds...");
+        setUploadProgress(10);
+        
         if (file.size > 10 * 1024 * 1024) {
-          throw new Error("Video size exceeds 10MB. Please upload a shorter or smaller clip.");
+          throw new Error("Video size exceeds 10MB limit. Please upload a smaller clip.");
         }
         
-        const videoBase64 = await convertFileToBase64(file);
+        setStatusMessage("Buffering and rendering video tracks...");
+        const videoBase64 = await convertFileWithProgress(file, (pct) => {
+          setStatusMessage(`Decoding video chunks (${pct}%)...`);
+          const scaledProgress = Math.round(10 + (pct * 0.9)); // scale 10 to 100
+          setUploadProgress(scaledProgress);
+        });
+
         onChange({
           mediaUrl: videoBase64,
           mediaType: 'video',
           mediaName: file.name
         });
-        setError(null);
+        setUploadProgress(100);
+        setStatusMessage(null);
+        setSuccessMessage(`Buffered video clip successfully.`);
       }
     } catch (err: any) {
       console.error("Media processing err:", err);
       setError(err.message || "Failed to process selected file. Try a smaller or different file.");
+      setUploadProgress(0);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const convertFileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = (e) => reject(e);
-    });
-  };
-
   const clearMedia = () => {
     onChange({ mediaUrl: undefined, mediaType: undefined, mediaName: undefined });
     setError(null);
+    setStatusMessage(null);
+    setSuccessMessage(null);
+    setUploadProgress(0);
+    setFileSizeStr(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -2038,15 +2301,40 @@ const MediaAttachmentInput = ({
       </div>
 
       {error && (
-        <p className={cn(
-          "text-[9px] font-bold leading-tight",
-          (error.includes("Optimizing") || error.includes("Analyzing")) ? "text-brand-600 animate-pulse" : "text-rose-500"
-        )}>
+        <p className="text-[9px] font-bold leading-tight text-rose-500">
           {error}
         </p>
       )}
 
-      {!mediaUrl && (
+      {isProcessing && (
+        <div className="space-y-2 p-3 bg-white rounded-xl border border-slate-100 shadow-xs">
+          <div className="flex justify-between items-center">
+            <span className="text-[9px] text-slate-500 font-bold flex items-center gap-1.5 min-w-0">
+              <span className="relative flex h-2 w-2 flex-shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
+              </span>
+              <span className="truncate">{statusMessage || "Processing asset data..."}</span>
+            </span>
+            <span className="text-[9px] font-black text-brand-600 flex-shrink-0">{uploadProgress}%</span>
+          </div>
+
+          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+            <div 
+              className="bg-brand-500 h-full rounded-full transition-all duration-150 ease-out"
+              style={{ width: `${uploadProgress}%` }}
+            ></div>
+          </div>
+          
+          {fileSizeStr && (
+            <p className="text-[8px] font-black uppercase tracking-widest text-slate-400/80 leading-none">
+              Original Weight: {fileSizeStr}
+            </p>
+          )}
+        </div>
+      )}
+
+      {!mediaUrl && !isProcessing && (
         <label className={cn(
           "flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black transition-all cursor-pointer border border-slate-200/50",
           isProcessing && "opacity-50 pointer-events-none"
@@ -2062,6 +2350,16 @@ const MediaAttachmentInput = ({
             disabled={isProcessing}
           />
         </label>
+      )}
+
+      {successMessage && mediaUrl && (
+        <div className="flex items-center gap-2 p-2 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-100/65">
+          <Check className="w-3 h-3 text-emerald-500 stroke-[3]" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[9px] font-bold truncate leading-none">{successMessage}</p>
+            {fileSizeStr && <p className="text-[8px] text-emerald-600 font-bold mt-0.5 uppercase tracking-widest">Post Size: {fileSizeStr}</p>}
+          </div>
+        </div>
       )}
 
       {mediaUrl && (
@@ -2086,3 +2384,159 @@ const MediaAttachmentInput = ({
     </div>
   );
 };
+
+// ==========================================
+// CUSTOM DOCUMENT ATTACHMENT INPUT
+// ==========================================
+interface DocumentAttachmentInputProps {
+  documents?: Array<{ url: string; name: string; type: string; size?: string }>;
+  onChange: (docs: Array<{ url: string; name: string; type: string; size?: string }>) => void;
+}
+
+const DocumentAttachmentInput = ({
+  documents = [],
+  onChange
+}: DocumentAttachmentInputProps) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [progressMsg, setProgressMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const formatBytes = (bytes: number, decimals = 1) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsProcessing(true);
+    const updatedDocs = [...documents];
+
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        // 10MB limit per document
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error(`File ${file.name} exceeds 10MB document size limit.`);
+        }
+
+        setProgressMsg(`Reading ${file.name}...`);
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        updatedDocs.push({
+          url: base64,
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          size: formatBytes(file.size)
+        });
+      }
+      
+      onChange(updatedDocs);
+      setProgressMsg(null);
+    } catch (err: any) {
+      console.error("Document upload error:", err);
+      setError(err.message || "Failed to upload one or more documents.");
+    } finally {
+      setIsProcessing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const removeDoc = (indexToRemove: number) => {
+    const updated = documents.filter((_, idx) => idx !== indexToRemove);
+    onChange(updated);
+  };
+
+  return (
+    <div className="space-y-2.5 border border-slate-100 bg-slate-50 p-3 rounded-2xl">
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1">
+          <Paperclip className="w-2.5 h-2.5 text-slate-400" />
+          Documents (PDF, Word, Excel, maximum 10MB)
+        </span>
+      </div>
+
+      {error && (
+        <p className="text-[9px] font-bold leading-tight text-rose-500">
+          {error}
+        </p>
+      )}
+
+      {isProcessing && (
+        <div className="p-2.5 bg-white rounded-xl border border-slate-100 shadow-xs flex items-center gap-2 animate-pulse">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
+          </span>
+          <span className="text-[9px] font-bold text-slate-500">{progressMsg || "Uploading documents..."}</span>
+        </div>
+      )}
+
+      {!isProcessing && (
+        <label className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-black transition-all cursor-pointer border border-slate-200/50">
+          <Upload className="w-3.5 h-3.5 text-slate-500" />
+          <span>Upload Document File(s)</span>
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            multiple
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" 
+            className="hidden" 
+            onChange={handleFileChange} 
+            disabled={isProcessing}
+          />
+        </label>
+      )}
+
+      {documents.length > 0 && (
+        <div className="space-y-1.5 mt-2 max-h-[160px] overflow-y-auto pr-1">
+          {documents.map((docItem, idx) => (
+            <div key={idx} className="flex items-center justify-between p-2 bg-white rounded-xl border border-slate-100 hover:border-slate-200 transition-all group">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500 flex-shrink-0">
+                  <FileText className="w-3.5 h-3.5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold text-slate-700 truncate leading-tight">{docItem.name}</p>
+                  <p className="text-[8px] text-slate-400 font-extrabold mt-0.5 uppercase tracking-widest">{docItem.size || 'Unknown size'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <a 
+                  href={docItem.url} 
+                  download={docItem.name}
+                  className="p-1.5 hover:bg-slate-50 rounded text-slate-500 hover:text-brand-600 transition-all"
+                  title="Download File"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => removeDoc(idx)}
+                  className="p-1.5 hover:bg-rose-50 rounded text-slate-300 hover:text-rose-500 transition-all"
+                  title="Delete Document"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+

@@ -579,6 +579,8 @@ export interface Task {
   mediaUrl?: string;
   mediaType?: 'image' | 'video';
   mediaName?: string;
+  assignedToMultiple?: Array<{ uid: string; name: string }>;
+  documents?: Array<{ url: string; name: string; type: string; size?: string }>;
 }
 
 export interface Note {
@@ -597,6 +599,7 @@ export interface Note {
   mediaUrl?: string;
   mediaType?: 'image' | 'video';
   mediaName?: string;
+  documents?: Array<{ url: string; name: string; type: string; size?: string }>;
 }
 
 export interface CorporateBankAccount {
