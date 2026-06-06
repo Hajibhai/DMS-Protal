@@ -461,7 +461,7 @@ export interface JobApplicant {
   mobileNumber: string;
   position: string;
   passportNumber: string;
-  status: 'Applied' | 'Interview Scheduled' | 'Interview Conducted' | 'Hired' | 'Rejected';
+  status: 'Applied' | 'Interview Scheduled' | 'Interview Conducted' | 'Offered' | 'Hired' | 'Rejected';
   appliedDate: string;
   interviewDate?: string;
   notes?: string;

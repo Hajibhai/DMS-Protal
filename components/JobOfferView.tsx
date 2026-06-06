@@ -47,6 +47,7 @@ if (typeof window !== 'undefined' && jsPDF.prototype && !(jsPDF.prototype as any
   (jsPDF.prototype as any).__isIntercepted = true;
 }
 import { getPioneerPDFAssets, applyPioneerLetterheadDoc } from '../utils';
+import { RecruitmentReportModal } from './RecruitmentReportModal';
 import { 
   Users, Mail, Phone, Shield, FileText, Download, Plus, Search, 
   Trash2, Edit, CheckCircle, XCircle, Calendar, DollarSign,
@@ -85,6 +86,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
   const [editingApplicant, setEditingApplicant] = useState<JobApplicant | null>(null);
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [editingOffer, setEditingOffer] = useState<JobOffer | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Applicant Draft Form
   const [applicantForm, setApplicantForm] = useState({
@@ -837,6 +839,13 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
               <Plus className="w-4 h-4" />
               Draft Job Offer
             </button>
+            <button
+              onClick={() => setShowReportModal(true)}
+              className="flex-1 md:flex-none flex items-center justify-center gap-1.5 px-4 py-2.5 bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-extrabold rounded-xl border border-brand-200/60 shadow-sm cursor-pointer transition-all"
+            >
+              <FileCheck className="w-4 h-4 text-brand-600" />
+              Recruitment Report (View/PDF/Print)
+            </button>
           </div>
         )}
       </div>
@@ -946,7 +955,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                   <option value="Applied">Applied</option>
                   <option value="Interview Scheduled">Interview Scheduled</option>
                   <option value="Interview Conducted">Interview Conducted</option>
-                  <option value="Hired">Hired (Offered)</option>
+                  <option value="Offered">Offered</option>
+                  <option value="Hired">Hired (Approved)</option>
                   <option value="Rejected">Rejected</option>
                 </select>
               </div>
@@ -1022,6 +1032,11 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                             {app.status === 'Interview Conducted' && (
                               <span className="bg-purple-50 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
                                 Conducted
+                              </span>
+                            )}
+                            {app.status === 'Offered' && (
+                              <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                Offered
                               </span>
                             )}
                             {app.status === 'Hired' && (
@@ -1267,6 +1282,14 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         </div>
       )}
 
+      {/* ================= MODAL: RECRUITMENT LIFE-CYCLE REPORT ================= */}
+      <RecruitmentReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        applicants={applicants}
+        offers={offers}
+      />
+
       {/* ================= MODAL: ADD / EDIT APPLICANT ================= */}
       {showApplicantModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-xs p-4 overflow-y-auto">
@@ -1405,6 +1428,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                     <option value="Applied">Applied</option>
                     <option value="Interview Scheduled">Interview Scheduled</option>
                     <option value="Interview Conducted">Interview Conducted</option>
+                    <option value="Offered">Offered</option>
                     <option value="Hired">Hired (Approved)</option>
                     <option value="Rejected">Rejected</option>
                   </select>
