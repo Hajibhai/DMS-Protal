@@ -56,6 +56,20 @@ export function SchedulesManager({
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  // Custom Date Range Report Form Fields
+  const [isCustomSending, setIsCustomSending] = useState(false);
+  const [customFromDate, setCustomFromDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1); // 1st of current month
+    return d.toISOString().slice(0, 10);
+  });
+  const [customToDate, setCustomToDate] = useState(() => {
+    return new Date().toISOString().slice(0, 10);
+  });
+  const [customRecipientInput, setCustomRecipientInput] = useState("");
+  const [customRecipients, setCustomRecipients] = useState<string[]>([]);
+  const [customSelectedReports, setCustomSelectedReports] = useState<string[]>(["summary", "attendance"]);
+
   // Fetch configured schedules directly via Firestore client-side
   const fetchSchedules = async () => {
     try {
@@ -338,6 +352,145 @@ export function SchedulesManager({
     }
   };
 
+  // Test and immediately Send Custom Period Report using locally computed metrics for custom date-range
+  const handleTriggerCustomNow = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (customRecipients.length === 0) {
+      setErrorMsg("At least one recipient email is required.");
+      return;
+    }
+    if (customSelectedReports.length === 0) {
+      setErrorMsg("At least one report type must be selected.");
+      return;
+    }
+    if (new Date(customFromDate) > new Date(customToDate)) {
+      setErrorMsg("Start date cannot be after end date.");
+      return;
+    }
+
+    try {
+      setActionLoading("trigger-custom");
+      setErrorMsg("");
+      setSuccessMsg("");
+
+      // Format custom period string to cleanly fit within our report headers
+      const formattedFrom = new Date(customFromDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+      const formattedTo = new Date(customToDate).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+      const monthName = `Custom Period: ${formattedFrom} to ${formattedTo}`;
+      const currentYear = ""; // Empty string, so subtitle reads elegantly
+
+      const activeStaff = employees.filter((e: any) => e.active);
+      
+      const startDate = new Date(customFromDate);
+      startDate.setHours(0,0,0,0);
+      const endDate = new Date(customToDate);
+      endDate.setHours(23,59,59,999);
+
+      const isInRange = (dateStr: string) => {
+        if (!dateStr) return false;
+        const d = new Date(dateStr);
+        return d >= startDate && d <= endDate;
+      };
+
+      const monthlyAttendance = attendance.filter((r: any) => isInRange(r.date));
+      const monthlyDeductions = deductions.filter((d: any) => isInRange(d.date));
+      const monthlyAP = accountsPayable.filter((ap: any) => isInRange(ap.date || ap.dueDate));
+      const monthlyAR = accountsReceivable.filter((ar: any) => isInRange(ar.date || ar.dueDate));
+      const monthlyPettyCash = pettyCash.filter((pc: any) => isInRange(pc.date));
+      const monthlyEveryday = (everydayExpenses || []).filter((ee: any) => isInRange(ee.date));
+
+      // Simple Payroll calculation to estimate Total Payroll Cost
+      const payrollDataList = activeStaff.map((e: any) => {
+        const empAttendance = monthlyAttendance.filter((r: any) => r.employeeId === e.id);
+        const empDeductions = monthlyDeductions.filter((d: any) => d.employeeId === e.id);
+        
+        // Match base payroll properties
+        const basic = Number(e.paymentDetails?.basicSalary || 0);
+        const allowance = Number(e.paymentDetails?.allowance || 0);
+        const hourlyRate = Number(e.paymentDetails?.hourlyRate || 0);
+        const otHours = empAttendance.reduce((sum: number, r: any) => sum + (Number(r.overtimeHours) || Number(r.otHours) || 0), 0);
+        const otherDeds = empDeductions.reduce((sum: number, d: any) => sum + Number(d.amount || 0), 0);
+
+        const gross = basic + allowance + (otHours * hourlyRate * 1.5);
+        const net = Math.max(0, gross - otherDeds);
+
+        return {
+          code: e.code || e.employeeId || "",
+          name: e.name,
+          presentCount: empAttendance.filter((r: any) => r.status === "Present" || r.status === "present" || r.status === "On Duty").length,
+          absentCount: empAttendance.filter((r: any) => r.status === "Absent" || r.status === "absent").length,
+          otHours: otHours,
+          netSalary: net,
+          grossSalary: gross
+        };
+      });
+
+      // Summation of financials
+      const totalPayrollCost = payrollDataList.reduce((acc, p) => acc + p.grossSalary, 0);
+      const totalAPAmount = monthlyAP.reduce((acc, ap) => acc + ap.amount, 0);
+      const totalARAmount = monthlyAR.reduce((acc, ar) => acc + ar.amount, 0);
+      
+      const totalVatReceivable = monthlyAR.reduce((acc, ar) => acc + (ar.vatAmount || 0), 0);
+      const totalVatPayable = monthlyAP.reduce((acc, ap) => acc + (ap.vatAmount || 0), 0);
+      const totalVatEveryday = monthlyEveryday.reduce((acc, ee) => acc + (ee.vatAmount || 0), 0);
+
+      const pettyCashIn = monthlyPettyCash.filter(pc => pc.type === "Income").reduce((acc, pc) => acc + pc.amount, 0);
+      const pettyCashOut = monthlyPettyCash.filter(pc => pc.type === "Expense").reduce((acc, pc) => acc + pc.amount, 0);
+      const totalEveryday = monthlyEveryday.reduce((acc, ee) => acc + ee.totalAmount, 0);
+
+      const totalIncome = totalARAmount + pettyCashIn;
+      const totalExpenses = totalAPAmount + pettyCashOut + totalEveryday + totalPayrollCost;
+      const netProfit = totalIncome - totalExpenses;
+      const vatPayableAmount = totalVatReceivable - totalVatPayable - totalVatEveryday;
+
+      const reportStats = {
+        totalIncome,
+        totalExpenses,
+        totalVatReceivable,
+        totalVatPayable,
+        totalVatEveryday,
+        vatPayableAmount,
+        netProfit
+      };
+
+      const attendanceData = payrollDataList.map(p => ({
+        code: p.code,
+        name: p.name,
+        present: p.presentCount,
+        absent: p.absentCount,
+        otHours: Math.round(p.otHours * 10) / 10
+      }));
+
+      // Submit data package to Express SMTP mail router
+      const res = await fetch("/api/reports/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stakeholders: customRecipients,
+          reports: customSelectedReports,
+          monthName,
+          stats: reportStats,
+          attendanceData
+        })
+      });
+      const resData = await res.json();
+      
+      if (resData.success) {
+        setSuccessMsg("Custom range report generated and emailed successfully!");
+        setCustomRecipients([]);
+        setIsCustomSending(false);
+        setTimeout(() => setSuccessMsg(""), 5000);
+      } else {
+        setErrorMsg(resData.error || "An error occurred during report dispatch.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "Failed to connect with scheduler engine.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // Calculate high-level stats for cards
   const totalSchedules = schedules.length;
   const activeSchedulesCount = schedules.filter(s => s.active).length;
@@ -405,7 +558,7 @@ export function SchedulesManager({
         )}
       </AnimatePresence>
 
-      <div className="flex justify-between items-center bg-slate-900 rounded-3xl p-6 text-white shadow-lg">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 rounded-3xl p-6 text-white shadow-lg">
         <div>
           <h3 className="text-lg font-black tracking-tight flex items-center gap-2">
             <Settings className="w-5 h-5 text-brand-400 animate-spin-slow" />
@@ -415,18 +568,213 @@ export function SchedulesManager({
             Automatically package business analytics reports, then email to subscribing stakeholders on the last calendar day of each month.
           </p>
         </div>
-        {!isAdding && (
-          <button
-            onClick={() => setIsAdding(true)}
-            className="px-5 py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-extrabold text-xs transition-all flex items-center gap-2 shadow-lg shadow-brand-500/10 active:scale-95"
-          >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            New Schedule
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2.5">
+          {!isAdding && !isCustomSending && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustomSending(true);
+                  if (user?.email && !customRecipients.includes(user.email)) {
+                    setCustomRecipients([user.email]);
+                  }
+                }}
+                className="px-5 py-3 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-2xl font-extrabold text-xs transition-all flex items-center gap-2 justify-center active:scale-95 cursor-pointer"
+              >
+                <Mail className="w-4 h-4 stroke-[2]" />
+                Send Custom Range Report
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAdding(true)}
+                className="px-5 py-3 bg-brand-500 hover:bg-brand-600 text-white rounded-2xl font-extrabold text-xs transition-all flex items-center gap-2 justify-center shadow-lg shadow-brand-500/10 active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                New Schedule
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <AnimatePresence>
+        {isCustomSending && (
+          <motion.form 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            onSubmit={handleTriggerCustomNow}
+            className="bg-white border text-slate-800 border-slate-100 rounded-3xl p-6 shadow-2xl shadow-slate-200/50 space-y-6 overflow-hidden"
+          >
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <div>
+                <h4 className="font-extrabold text-sm uppercase text-slate-800 tracking-wider">Send Custom Date Range Report</h4>
+                <p className="text-slate-400 text-[10px] mt-0.5">Select from and to dates to calculate metrics and email the report.</p>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => { setIsCustomSending(false); setCustomRecipients([]); setErrorMsg(""); }}
+                className="p-1.5 bg-slate-100 rounded-xl hover:bg-slate-200 text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Date selection: FROM and TO dates side-by-side */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-2">From Date</label>
+                  <input
+                    type="date"
+                    value={customFromDate}
+                    onChange={(e) => setCustomFromDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-2">To Date</label>
+                  <input
+                    type="date"
+                    value={customToDate}
+                    onChange={(e) => setCustomToDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Stakeholder input email tag list */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-2">Recipient Emails</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter recipient email (e.g., director@pioneerdms.com)"
+                    value={customRecipientInput}
+                    onChange={(e) => setCustomRecipientInput(e.target.value)}
+                    className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all placeholder:text-slate-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      const email = customRecipientInput.trim().toLowerCase();
+                      if (!email) return;
+                      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                      if (!emailRegex.test(email)) {
+                        setErrorMsg("Please enter a valid email address.");
+                        return;
+                      }
+                      if (customRecipients.includes(email)) {
+                        setErrorMsg("This email is already added.");
+                        return;
+                      }
+                      setCustomRecipients([...customRecipients, email]);
+                      setCustomRecipientInput("");
+                      setErrorMsg("");
+                    }}
+                    className="px-4 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs hover:bg-slate-800 transition-all active:scale-95 cursor-pointer"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {customRecipients.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-3 block">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block w-full mb-1">To be emailed:</span>
+                    {customRecipients.map((email, idx) => (
+                      <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-800 rounded-xl text-[10px] font-black border border-slate-200/40">
+                        {email}
+                        <button 
+                          type="button" 
+                          onClick={() => setCustomRecipients(customRecipients.filter((_, i) => i !== idx))}
+                          className="text-rose-500 hover:text-rose-700 cursor-pointer text-xs"
+                        >
+                          <X className="w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Report selection checkbox panel */}
+              <div>
+                <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-3">Include Business Reports</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div 
+                    onClick={() => {
+                      if (customSelectedReports.includes("summary")) {
+                        if (customSelectedReports.length === 1) return;
+                        setCustomSelectedReports(customSelectedReports.filter(r => r !== "summary"));
+                      } else {
+                        setCustomSelectedReports([...customSelectedReports, "summary"]);
+                      }
+                    }}
+                    className={`flex items-center gap-3 p-4 rounded-2xl cursor-pointer border select-none transition-all ${
+                      customSelectedReports.includes("summary") 
+                        ? "bg-slate-900/5 text-slate-900 border-slate-900/20" 
+                        : "bg-slate-50 text-slate-500 border-transparent hover:border-slate-200"
+                    }`}
+                  >
+                    {customSelectedReports.includes("summary") ? <CheckSquare className="w-5 h-5 text-brand-600" /> : <Square className="w-5 h-5 text-slate-300" />}
+                    <div>
+                      <div className="text-xs font-black uppercase tracking-wider">Financial Summary Report</div>
+                      <div className="text-[10px] opacity-70 mt-0.5">Custom range P&L statement and net VAT liability</div>
+                    </div>
+                  </div>
+
+                  <div 
+                    onClick={() => {
+                      if (customSelectedReports.includes("attendance")) {
+                        if (customSelectedReports.length === 1) return;
+                        setCustomSelectedReports(customSelectedReports.filter(r => r !== "attendance"));
+                      } else {
+                        setCustomSelectedReports([...customSelectedReports, "attendance"]);
+                      }
+                    }}
+                    className={`flex items-center gap-3 p-4 rounded-2xl cursor-pointer border select-none transition-all ${
+                      customSelectedReports.includes("attendance") 
+                        ? "bg-slate-900/5 text-slate-900 border-slate-900/20" 
+                        : "bg-slate-50 text-slate-500 border-transparent hover:border-slate-200"
+                    }`}
+                  >
+                    {customSelectedReports.includes("attendance") ? <CheckSquare className="w-5 h-5 text-brand-600" /> : <Square className="w-5 h-5 text-slate-300" />}
+                    <div>
+                      <div className="text-xs font-black uppercase tracking-wider">Attendance Ledger</div>
+                      <div className="text-[10px] opacity-70 mt-0.5">Custom range workforce metrics: present, absent and overtime logged</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-50 pt-4">
+              <button
+                type="button"
+                onClick={() => { setIsCustomSending(false); setCustomRecipients([]); setErrorMsg(""); }}
+                className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading === "trigger-custom"}
+                className="px-5 py-3 bg-brand-500 hover:bg-brand-600 disabled:bg-slate-200 text-white rounded-2xl text-xs font-black transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-brand-500/10 cursor-pointer"
+              >
+                {actionLoading === "trigger-custom" ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4 stroke-[2.5] fill-white" />
+                )}
+                Generate & Send Custom Report
+              </button>
+            </div>
+          </motion.form>
+        )}
+
         {isAdding && (
           <motion.form 
             initial={{ opacity: 0, height: 0 }}
