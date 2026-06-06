@@ -68,7 +68,7 @@ import {
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle, LayoutDashboard,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator,
-  Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home
+  Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home, Mail
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -95,6 +95,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, loginWithGoogle, loginWithEmail, registerWithEmail, logout, resetPassword, adminCreateUser, adminDeleteUser, adminUpdateUser } from './firebase';
 import { Login } from './components/Login';
+import { SchedulesManager } from './components/SchedulesManager';
 import { 
   Employee, AttendanceRecord, AttendanceStatus, StaffType, 
   LeaveRequest, LeaveStatus, OffboardingDetails, 
@@ -12488,12 +12489,12 @@ const ReportsView = ({
         [UserRole.CREATOR]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
             'corporate_tax', 'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
-            'finance', 'everyday', 'projected'
+            'finance', 'everyday', 'projected', 'schedules'
         ],
         [UserRole.ADMIN]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
             'corporate_tax', 'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
-            'finance', 'everyday', 'projected'
+            'finance', 'everyday', 'projected', 'schedules'
         ],
         [UserRole.HR]: [
             'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects'
@@ -13165,6 +13166,7 @@ const ReportsView = ({
         { id: 'finance', label: 'Finance', icon: TrendingUp },
         { id: 'everyday', label: 'Everyday', icon: CreditCard },
         { id: 'projected', label: 'Projected', icon: BarChart3 },
+        { id: 'schedules', label: 'Email Schedules', icon: Mail },
     ];
 
     if (allowedReports.length === 0) {
@@ -13386,11 +13388,35 @@ const ReportsView = ({
             </div>
 
             {/* Main Content Table */}
+            {reportType === 'schedules' && (
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4 }}
+                >
+                    <SchedulesManager 
+                        user={user}
+                        employees={employees}
+                        attendance={attendance}
+                        deductions={deductions}
+                        accountsPayable={accountsPayable}
+                        accountsReceivable={accountsReceivable}
+                        pettyCash={pettyCash}
+                        everydayExpenses={everydayExpenses}
+                        projectedExpenses={projectedExpenses}
+                        selectedMonth={selectedMonth}
+                    />
+                </motion.div>
+            )}
+
             <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
-                className="glass-card rounded-[2.5rem] border border-white shadow-2xl shadow-slate-200/50 overflow-hidden w-full max-w-full"
+                className={cn(
+                    "glass-card rounded-[2.5rem] border border-white shadow-2xl shadow-slate-200/50 overflow-hidden w-full max-w-full",
+                    reportType === 'schedules' && "hidden"
+                )}
             >
                 <div className="overflow-x-auto w-full max-w-full">
                     <table className="w-full border-collapse">

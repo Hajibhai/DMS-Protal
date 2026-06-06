@@ -8,6 +8,14 @@ import extractReceiptHandler from "./api/gemini/extract-receipt";
 import authUrlHandler from "./api/auth/google/url";
 import authCallbackHandler from "./api/auth/callback";
 import driveFilesHandler from "./api/drive/files";
+import { 
+  getSchedules, 
+  saveSchedule, 
+  deleteSchedule, 
+  triggerSchedule, 
+  sendEmailReport,
+  startMonthlyCronDispatcher 
+} from "./api/reports/automated-report";
 
 const app = express();
 const PORT = 3000;
@@ -21,6 +29,16 @@ app.post("/api/gemini/extract-receipt", extractReceiptHandler);
 app.get("/api/auth/google/url", authUrlHandler);
 app.get("/auth/callback", authCallbackHandler);
 app.get("/api/drive/files", driveFilesHandler);
+
+// Wire up report automation endpoints
+app.get("/api/reports/schedules", getSchedules);
+app.post("/api/reports/schedules", saveSchedule);
+app.delete("/api/reports/schedules/:id", deleteSchedule);
+app.post("/api/reports/schedules/:id/trigger", triggerSchedule);
+app.post("/api/reports/send-email", sendEmailReport);
+
+// Initialize monthly scheduler background dispatcher daemon
+startMonthlyCronDispatcher();
 
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

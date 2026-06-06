@@ -189,5 +189,9 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if hasPermission('canManageSettings') || isAdmin();
     }
+
+    match /report_schedules/{scheduleId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

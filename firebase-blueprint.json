@@ -471,6 +471,21 @@
         "isDefault": { "type": "boolean" }
       },
       "required": ["id", "accountName", "bankName", "accountNumber", "iban", "swiftCode", "currency", "isDefault"]
+    },
+    "ReportSchedule": {
+      "title": "Report Schedule",
+      "description": "Schedule settings for monthly automated reports to stakeholders",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "stakeholders": { "type": "array" },
+        "reports": { "type": "array" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "lastSentAt": { "type": "string" }
+      },
+      "required": ["id", "stakeholders", "reports", "active"]
     }
   },
   "firestore": {
@@ -569,6 +584,10 @@
     "/bank_accounts/{accountId}": {
       "schema": "CorporateBankAccount",
       "description": "Corporate bank accounts configuration"
+    },
+    "/report_schedules/{scheduleId}": {
+      "schema": "ReportSchedule",
+      "description": "Schedule settings for monthly automated reports to stakeholders"
     }
   }
 }
