@@ -48,6 +48,7 @@ if (typeof window !== 'undefined' && jsPDF.prototype && !(jsPDF.prototype as any
 
 import { cn, getPioneerPDFAssets } from './utils';
 import { PrintModal, PrintOptions } from './components/PrintModal';
+import { TimesheetPrintPreviewModal } from './components/TimesheetPrintPreviewModal';
 
 const DirhamIcon = ({ className }: { className?: string }) => (
   <div className={cn("flex items-center justify-center font-black text-[10px] leading-none tracking-tighter", className)}>
@@ -9281,12 +9282,13 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
     const [editingCell, setEditingCell] = useState<{empId: string, date: string} | null>(null);
     const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
     const canManageAttendance = user?.permissions?.canManageAttendance;
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     const handlePrint = () => {
-        window.print();
+        setIsPrintPreviewOpen(true);
     };
 
     useEffect(() => {
@@ -9537,6 +9539,15 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                 employees={employees}
                 user={user}
                 onLogAttendance={onLogAttendance}
+            />
+            <TimesheetPrintPreviewModal
+                isOpen={isPrintPreviewOpen}
+                onClose={() => setIsPrintPreviewOpen(false)}
+                employees={employees}
+                attendance={attendance}
+                selectedMonth={selectedMonth}
+                companies={companies}
+                currentUser={user}
             />
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                 <div className="flex items-center gap-6">
