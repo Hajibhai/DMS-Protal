@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Search, Filter, Download, Plus, Edit, Trash2, 
   ChevronDown, X, FileText, Globe, Truck, Car,
@@ -8195,6 +8195,16 @@ export const EverydayExpenseView: React.FC<{
         { key: 'supplierName', label: 'Supplier Name', sortable: true },
         { key: 'shopName', label: 'Shop Name', sortable: true },
         { 
+            key: 'category', 
+            label: 'Category', 
+            sortable: true,
+            render: (item: EverydayExpense) => (
+                <span className="inline-flex items-center px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-800 text-[10px] font-black uppercase tracking-wider">
+                    {item.category || 'General'}
+                </span>
+            )
+        },
+        { 
             key: 'description', 
             label: 'Description',
             render: (item: EverydayExpense) => (
@@ -8244,6 +8254,11 @@ export const EverydayExpenseView: React.FC<{
             key: 'projectId',
             label: 'Project',
             options: projects.map(p => ({ label: p.name, value: p.id }))
+        },
+        {
+            key: 'category',
+            label: 'Category',
+            options: Array.from(new Set(data.map(d => d.category))).filter(Boolean).sort().map(c => ({ label: c, value: c }))
         },
         {
             key: 'shopName',
@@ -8396,7 +8411,7 @@ export const EverydayExpenseView: React.FC<{
                     onEdit={onEdit}
                     onDelete={onDelete}
                     onViewBill={(item) => setViewingBill(item.attachment || null)}
-                    searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date', 'vehicleNumber']}
+                    searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date', 'vehicleNumber', 'category']}
                     exportFileName="Everyday_Expenses"
                     user={user}
                     filterOptions={filterOptions}
@@ -8799,25 +8814,88 @@ export const EverydayExpenseModal: React.FC<{
         return String(userExpenses.length + 1);
     };
 
-    const [formData, setFormData] = useState<EverydayExpense>(expense || {
-        id: Math.random().toString(36).substr(2, 9),
-        siNo: expense ? expense.siNo : calculateNextSiNo(user?.uid || '', user?.name || ''),
-        date: new Date().toISOString().split('T')[0],
-        invoiceNo: '',
-        trnNo: '',
-        clientName: '',
-        supplierName: '',
-        shopName: '',
-        billAmount: 0,
-        vatAmount: 0,
-        totalAmount: 0,
-        description: '',
-        projectId: '',
-        uploadedBy: user?.name || '',
-        uploadedByUid: user?.uid || '',
-        uploadedDate: new Date().toISOString().split('T')[0],
-        employeeId: ''
+    const [formData, setFormData] = useState<EverydayExpense>(() => {
+        if (expense) {
+            return {
+                ...expense,
+                category: expense.category || ''
+            };
+        }
+        return {
+            id: Math.random().toString(36).substr(2, 9),
+            siNo: calculateNextSiNo(user?.uid || '', user?.name || ''),
+            date: new Date().toISOString().split('T')[0],
+            invoiceNo: '',
+            trnNo: '',
+            clientName: '',
+            supplierName: '',
+            shopName: '',
+            billAmount: 0,
+            vatAmount: 0,
+            totalAmount: 0,
+            description: '',
+            category: '',
+            projectId: '',
+            uploadedBy: user?.name || '',
+            uploadedByUid: user?.uid || '',
+            uploadedDate: new Date().toISOString().split('T')[0],
+            employeeId: ''
+        };
     });
+
+    const [isCategoryManuallyEdited, setIsCategoryManuallyEdited] = useState(!!(expense && expense.category));
+
+    // Simple pattern matching for category auto-suggestion
+    const suggestCategoryFromDescription = (description: string): string => {
+        if (!description) return '';
+        const desc = description.toLowerCase();
+        
+        // Fuel category selection logic
+        if (desc.includes('fuel') || desc.includes('petrol') || desc.includes('diesel') || desc.includes('gas') || desc.includes('refuel') || desc.includes('enoc') || desc.includes('adnoc')) {
+            return 'Fuel';
+        }
+        
+        // Repair category selection logic
+        if (desc.includes('repair') || desc.includes('fix') || desc.includes('maintenance') || desc.includes('service') || desc.includes('mechanic') || desc.includes('puncture') || desc.includes('tyre') || desc.includes('tire') || desc.includes('breakdown') || desc.includes('spare part') || desc.includes('oil change') || desc.includes('lubricant')) {
+            return 'Repair';
+        }
+        
+        // Supplies category selection logic
+        if (desc.includes('supply') || desc.includes('supplies') || desc.includes('stationery') || desc.includes('office') || desc.includes('paper') || desc.includes('pen') || desc.includes('ink') || desc.includes('cartridge') || desc.includes('hardware') || desc.includes('grocery') || desc.includes('groceries') || desc.includes('water') || desc.includes('tea') || desc.includes('coffee') || desc.includes('pantry') || desc.includes('cleaning') || desc.includes('soap')) {
+            return 'Supplies';
+        }
+        
+        // Transport/Travel keywords
+        if (desc.includes('taxi') || desc.includes('uber') || desc.includes('careem') || desc.includes('transport') || desc.includes('toll') || desc.includes('salik') || desc.includes('metro') || desc.includes('bus') || desc.includes('flight') || desc.includes('travel') || desc.includes('ticket')) {
+            return 'Transport';
+        }
+
+        // Utilities keywords
+        if (desc.includes('electricity') || desc.includes('water bill') || desc.includes('dewa') || desc.includes('sewa') || desc.includes('fewa') || desc.includes('internet') || desc.includes('du ') || desc.includes('etisalat') || desc.includes('phone') || desc.includes('telecom') || desc.includes('utility') || desc.includes('utilities')) {
+            return 'Utilities';
+        }
+
+        // Food/Meals keywords
+        if (desc.includes('food') || desc.includes('lunch') || desc.includes('dinner') || desc.includes('breakfast') || desc.includes('meal') || desc.includes('restaurant') || desc.includes('catering') || desc.includes('snack') || desc.includes('supermarket') || desc.includes('cafeteria')) {
+            return 'Food & Meals';
+        }
+
+        return '';
+    };
+
+    const suggestedCat = useMemo(() => {
+        return suggestCategoryFromDescription(formData.description);
+    }, [formData.description]);
+
+    // Automatically suggest and set the category on description change, unless manually modified by user
+    useEffect(() => {
+        if (!isCategoryManuallyEdited && suggestedCat && formData.category !== suggestedCat) {
+            setFormData(prev => ({
+                ...prev,
+                category: suggestedCat
+            }));
+        }
+    }, [suggestedCat, isCategoryManuallyEdited]);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -9278,18 +9356,67 @@ export const EverydayExpenseModal: React.FC<{
                         />
                     </div>
 
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
-                        <select 
-                            value={formData.projectId}
-                            onChange={e => setFormData({ ...formData, projectId: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                        >
-                            <option value="">General / No Project</option>
-                            {projects.map((p: any) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Category / Book</label>
+                            <input 
+                                type="text"
+                                value={formData.category || ''}
+                                onChange={e => {
+                                    setFormData({ ...formData, category: e.target.value });
+                                    setIsCategoryManuallyEdited(true);
+                                }}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                placeholder="e.g. Fuel, Supplies, Repair"
+                            />
+                            {suggestedCat && formData.category !== suggestedCat && (
+                                <div className="mt-1 text-[10px] text-indigo-600 font-bold flex items-center gap-1.5 flex-wrap">
+                                    <span>💡 Suggestion:</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setFormData(prev => ({ ...prev, category: suggestedCat }));
+                                        }}
+                                        className="px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors text-indigo-700 cursor-pointer font-bold text-[10px]"
+                                    >
+                                        Apply "{suggestedCat}"
+                                    </button>
+                                </div>
+                            )}
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                                {['Fuel', 'Supplies', 'Repair', 'Transport', 'Utilities', 'Food & Meals'].map(cat => (
+                                    <button
+                                        key={cat}
+                                        type="button"
+                                        onClick={() => {
+                                            setFormData(prev => ({ ...prev, category: cat }));
+                                            setIsCategoryManuallyEdited(true);
+                                        }}
+                                        className={`px-2 py-0.5 rounded-md text-[9px] font-black transition-all border cursor-pointer ${
+                                            (formData.category || '').toLowerCase() === cat.toLowerCase()
+                                                ? "bg-brand-50 border-brand-200 text-brand-700"
+                                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                        }`}
+                                    >
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
+                            <select 
+                                value={formData.projectId}
+                                onChange={e => setFormData({ ...formData, projectId: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all h-[44px]"
+                            >
+                                <option value="">General / No Project</option>
+                                {projects.map((p: any) => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
                     {/* Fuel Expense Toggle & Inputs */}

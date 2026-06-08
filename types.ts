@@ -312,6 +312,7 @@ export interface EverydayExpense {
     vatAmount: number;
     totalAmount: number;
     description: string;
+    category?: string;
     projectId?: string; // Optional link to project
     uploadedBy?: string;
     updatedBy?: string;
