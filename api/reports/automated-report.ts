@@ -78,18 +78,19 @@ async function getTransporter() {
   }
 }
 
+// Helper to fetch all records in any collection
+async function getCollectionData(colName: string): Promise<any[]> {
+  try {
+    const snap = await getDocs(collection(db, colName));
+    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (e) {
+    console.warn(`Error fetching collection '${colName}':`, e);
+    return [];
+  }
+}
+
 // Fetch all relative collections in Firestore and filter them by target month & year
 async function fetchMonthData(targetYear: number, targetMonth: number) {
-  const getCollectionData = async (colName: string) => {
-    try {
-      const snap = await getDocs(collection(db, colName));
-      return snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
-    } catch (e) {
-      console.warn(`Error fetching collection '${colName}':`, e);
-      return [];
-    }
-  };
-
   const employees = await getCollectionData("employees");
   const attendance = await getCollectionData("attendance");
   const deductions = await getCollectionData("deductions");
@@ -191,8 +192,20 @@ function computeFinancialStats(data: any) {
 function generateReportEmailHtml(specs: {
   monthName: string;
   year: number;
+  reportsList: string[];
 }) {
-  const { monthName, year } = specs;
+  const { monthName, year, reportsList } = specs;
+  const listItems = [];
+  if (reportsList.includes("summary")) {
+    listItems.push(`<li><strong>Financial Dashboard Report (.pdf):</strong> Outlines VAT credits, operations overview, receivables standard calculation, daily bills/purchases overhead, and final profit/position.</li>`);
+  }
+  if (reportsList.includes("attendance")) {
+    listItems.push(`<li><strong>Workforce Attendance Ledger (.pdf):</strong> Outlines the full active staff timesheet records, total timesheets logged, absent tags, and calculated overtime hours.</li>`);
+  }
+  if (reportsList.includes("aging")) {
+    listItems.push(`<li><strong>Accounts Payable & Receivable Aging Report (.pdf):</strong> Outlines the outstanding balance aging brackets (0-30, 31-60, 61-90, 90+ days past due) across all open files.</li>`);
+  }
+
   return `
   <!DOCTYPE html>
   <html>
@@ -285,8 +298,7 @@ function generateReportEmailHtml(specs: {
         
         <div class="list-title">Attached Performance Documents</div>
         <ul>
-          <li><strong>Financial Dashboard Report (.pdf):</strong> Outlines VAT credits, operations overview, receivables standard calculation, daily bills/purchases overhead, and final profit/position.</li>
-          <li><strong>Workforce Attendance Ledger (.pdf):</strong> Outlines the full active staff timesheet records, total timesheets logged, absent tags, and calculated overtime hours.</li>
+          ${listItems.join("")}
         </ul>
         
         <p style="margin-top: 24px;">Please load the attached PDF documents directly to review the comprehensive performance or print local copy.</p>
@@ -546,7 +558,11 @@ function generateAttendancePdf(monthName: string, year: number, attendanceData: 
     
     doc.setFont("helvetica", "bold");
     doc.setTextColor(15, 23, 42);
-    doc.text(row.name || "N/A", 40, currentY + 5.5);
+    let displayName = row.name || "N/A";
+    if (displayName.length > 25) {
+      displayName = displayName.substring(0, 23) + "...";
+    }
+    doc.text(displayName, 40, currentY + 5.5);
     
     doc.setFont("helvetica", "normal");
     doc.setTextColor(16, 185, 129);
@@ -571,6 +587,361 @@ function generateAttendancePdf(monthName: string, year: number, attendanceData: 
   doc.setFontSize(7.5);
   doc.text(`System generated statement. Compiled successfully on ${new Date().toLocaleDateString()}`, 15, 280);
   doc.text("Confidential © Pioneer DMS Monthly System", 190, 280, { align: "right" });
+
+  return Buffer.from(doc.output("arraybuffer"));
+}
+
+// Generates a comprehensive accounts aging report (AR and AP combined)
+export function generateAgingPdf(
+  monthName: string,
+  year: number | string,
+  arRecords: any[],
+  apRecords: any[],
+  projects: any[] = [],
+  suppliers: any[] = [],
+  vendors: any[] = []
+): Buffer {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  
+  doc.setFont("helvetica", "normal");
+  
+  // Header Blue-Dark Box
+  doc.setFillColor(15, 23, 42); // slate-900
+  doc.rect(15, 15, 180, 25, "F");
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("PIONEER DOCUMENT MANAGEMENT SYSTEM", 20, 24);
+  
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.5);
+  doc.setTextColor(148, 163, 184); // #94a3b8
+  const titleYear = year ? ` - ${year}` : "";
+  doc.text(`ACCOUNTS RECEIVABLE & PAYABLE AGING STATEMENT${titleYear}`, 20, 32);
+
+  // Helper resolvers
+  const resolvePartyNameLocal = (item: any, isAR: boolean) => {
+    if (isAR) {
+      if (item.companyName) return item.companyName;
+      if (item.clientName) return item.clientName;
+      if (item.entityId) {
+        if (item.entityType === 'Supplier') {
+          const s = suppliers.find((x: any) => x.id === item.entityId);
+          if (s) return s.name;
+        } else if (item.entityType === 'Vendor') {
+          const v = vendors.find((x: any) => x.id === item.entityId);
+          if (v) return v.name;
+        } else if (item.entityType === 'Project') {
+          const p = projects.find((x: any) => x.id === item.entityId);
+          if (p) return p.name;
+        }
+      }
+      return "General Customer";
+    } else {
+      const vId = item.vendorId;
+      const vType = item.vendorType || 'Vendor';
+      if (vType === 'Supplier') {
+        const s = suppliers.find((x: any) => x.id === vId);
+        return s ? s.name : "Supplier (" + vId + ")";
+      } else {
+        const v = vendors.find((x: any) => x.id === vId);
+        return v ? v.name : "Vendor (" + vId + ")";
+      }
+    }
+  };
+
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  const getDaysPastDue = (refDateStr: string) => {
+    if (!refDateStr) return 0;
+    const refDate = new Date(refDateStr);
+    refDate.setHours(0,0,0,0);
+    const diffTime = today.getTime() - refDate.getTime();
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // Extract open receivables & payables
+  const openAR = (arRecords || []).filter((r: any) => r.status && r.status !== 'Received' && r.status !== 'Settled');
+  const openAP = (apRecords || []).filter((p: any) => p.status && p.status !== 'Paid' && p.status !== 'Settled');
+
+  // Sum outstanding amounts by bucket
+  let arBuckets = { b30: 0, b60: 0, b90: 0, bOver: 0 };
+  let apBuckets = { b30: 0, b60: 0, b90: 0, bOver: 0 };
+
+  const agedAR = openAR.map((item: any) => {
+    const dueDateStr = item.dueDate || item.date || "";
+    const days = getDaysPastDue(dueDateStr);
+    const amount = Number(item.totalAmount || item.amount || 0);
+    
+    let bucket = "0-30 Days";
+    if (days > 90) { bucket = "90+ Days"; arBuckets.bOver += amount; }
+    else if (days > 60) { bucket = "61-90 Days"; arBuckets.b90 += amount; }
+    else if (days > 30) { bucket = "31-60 Days"; arBuckets.b60 += amount; }
+    else { arBuckets.b30 += amount; }
+
+    return {
+      invoiceNumber: item.invoiceNumber || "N/A",
+      party: resolvePartyNameLocal(item, true),
+      dueDate: dueDateStr,
+      days,
+      bucket,
+      amount
+    };
+  });
+
+  const agedAP = openAP.map((item: any) => {
+    const dueDateStr = item.dueDate || item.date || "";
+    const days = getDaysPastDue(dueDateStr);
+    const amount = Number(item.totalAmount || item.amount || 0);
+
+    let bucket = "0-30 Days";
+    if (days > 90) { bucket = "90+ Days"; apBuckets.bOver += amount; }
+    else if (days > 60) { bucket = "61-90 Days"; apBuckets.b90 += amount; }
+    else if (days > 30) { bucket = "31-60 Days"; apBuckets.b60 += amount; }
+    else { apBuckets.b30 += amount; }
+
+    return {
+      invoiceNumber: item.invoiceNumber || "N/A",
+      party: resolvePartyNameLocal(item, false),
+      dueDate: dueDateStr,
+      days,
+      bucket,
+      amount
+    };
+  });
+
+  // Summary card box
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.rect(15, 45, 180, 36, "FD");
+
+  doc.setTextColor(71, 85, 105);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("EXECUTIVE PORTFOLIO AGING OUTLINE", 20, 52);
+  doc.line(20, 55, 190, 55);
+
+  const totalAR = agedAR.reduce((s, x) => s + x.amount, 0);
+  const totalAP = agedAP.reduce((s, x) => s + x.amount, 0);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text("TOTAL OUTSTANDING RECEIVABLES (A/R)", 20, 62);
+  doc.text("TOTAL OUTSTANDING PAYABLES (A/P)", 85, 62);
+  doc.text("PORTFOLIO DEBT NET BALANCE", 145, 62);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.5);
+  doc.setTextColor(16, 185, 129); // emerald-500
+  doc.text(`AED ${totalAR.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 20, 68);
+
+  doc.setTextColor(239, 68, 68); // rose-500
+  doc.text(`AED ${totalAP.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 85, 68);
+
+  const netBalance = totalAR - totalAP;
+  if (netBalance >= 0) {
+    doc.setTextColor(16, 185, 129);
+    doc.text(`+AED ${netBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 145, 68);
+  } else {
+    doc.setTextColor(239, 68, 68);
+    doc.text(`-AED ${Math.abs(netBalance).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 145, 68);
+  }
+
+  let currentY = 88;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text("OUTSTANDING AGING SUMMARY BY BRACKET", 15, currentY);
+
+  currentY += 4;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(15, currentY, 180, 8, "F");
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text("PORTFOLIO TRACK", 18, currentY + 5.5);
+  doc.text("0-30 DAYS PAST DUE", 60, currentY + 5.5, { align: "right" });
+  doc.text("31-60 DAYS PAST DUE", 100, currentY + 5.5, { align: "right" });
+  doc.text("61-90 DAYS PAST DUE", 140, currentY + 5.5, { align: "right" });
+  doc.text("90+ DAYS OVERDUE", 185, currentY + 5.5, { align: "right" });
+
+  currentY += 8;
+  
+  // AR Row
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(30, 41, 59);
+  doc.text("Accounts Receivable (AR Invoices)", 18, currentY + 5.5);
+  doc.text(`${arBuckets.b30.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 60, currentY + 5.5, { align: "right" });
+  doc.text(`${arBuckets.b60.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 100, currentY + 5.5, { align: "right" });
+  doc.text(`${arBuckets.b90.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 140, currentY + 5.5, { align: "right" });
+  doc.setTextColor(arBuckets.bOver > 0 ? 239 : 30, arBuckets.bOver > 0 ? 68 : 41, arBuckets.bOver > 0 ? 68 : 59);
+  doc.text(`${arBuckets.bOver.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 185, currentY + 5.5, { align: "right" });
+
+  doc.setDrawColor(241, 245, 249);
+  doc.line(15, currentY + 8, 195, currentY + 8);
+  currentY += 8;
+
+  // AP Row
+  doc.setFillColor(248, 250, 252);
+  doc.rect(15, currentY, 180, 8, "F");
+  
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(30, 41, 59);
+  doc.text("Accounts Payable (AP Bills)", 18, currentY + 5.5);
+  doc.text(`${apBuckets.b30.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 60, currentY + 5.5, { align: "right" });
+  doc.text(`${apBuckets.b60.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 100, currentY + 5.5, { align: "right" });
+  doc.text(`${apBuckets.b90.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 140, currentY + 5.5, { align: "right" });
+  doc.setTextColor(apBuckets.bOver > 0 ? 239 : 30, apBuckets.bOver > 0 ? 68 : 41, apBuckets.bOver > 0 ? 68 : 59);
+  doc.text(`${apBuckets.bOver.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 185, currentY + 5.5, { align: "right" });
+  
+  doc.line(15, currentY + 8, 195, currentY + 8);
+  currentY += 12;
+
+  // AR Details Title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text("OUTSTANDING CLIENT OPERATIONS - RECEIVABLES (A/R)", 15, currentY);
+
+  currentY += 4;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(15, currentY, 180, 8, "F");
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text("INVOICE #", 18, currentY + 5.5);
+  doc.text("CUSTOMER NAME", 45, currentY + 5.5);
+  doc.text("DUE DATE", 110, currentY + 5.5);
+  doc.text("PAST DUE", 145, currentY + 5.5, { align: "right" });
+  doc.text("AMOUNT (AED)", 185, currentY + 5.5, { align: "right" });
+
+  currentY += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+
+  if (agedAR.length === 0) {
+    doc.setTextColor(100, 116, 139);
+    doc.text("No outstanding accounts receivable found (all clear).", 18, currentY + 5.5);
+    currentY += 8;
+  } else {
+    agedAR.forEach((row, idx) => {
+      if (currentY > 265) {
+        doc.addPage();
+        currentY = 20;
+      }
+      if (idx % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, currentY, 180, 8, "F");
+      }
+      doc.setTextColor(51, 65, 85);
+      doc.text(row.invoiceNumber, 18, currentY + 5.5);
+      
+      let clientDisplayName = row.party;
+      if (clientDisplayName.length > 25) {
+        clientDisplayName = clientDisplayName.substring(0, 23) + "...";
+      }
+      doc.text(clientDisplayName, 45, currentY + 5.5);
+      doc.text(row.dueDate, 110, currentY + 5.5);
+      
+      const overDays = row.days;
+      if (overDays > 0) {
+        doc.setTextColor(overDays > 60 ? 239 : 220, overDays > 60 ? 68 : 95, overDays > 60 ? 68 : 0);
+        doc.text(`${overDays} days`, 145, currentY + 5.5, { align: "right" });
+      } else {
+        doc.setTextColor(16, 124, 65);
+        doc.text("Current", 145, currentY + 5.5, { align: "right" });
+      }
+      
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${row.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 185, currentY + 5.5, { align: "right" });
+      
+      doc.setDrawColor(241, 245, 249);
+      doc.line(15, currentY + 8, 195, currentY + 8);
+      currentY += 8;
+    });
+  }
+
+  currentY += 6;
+  if (currentY > 240) {
+    doc.addPage();
+    currentY = 20;
+  }
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text("OUTSTANDING SUPPLIER OPERATIONS - PAYABLES (A/P)", 15, currentY);
+
+  currentY += 4;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(15, currentY, 180, 8, "F");
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text("BILL / INVOICE #", 18, currentY + 5.5);
+  doc.text("SUPPLIER / VENDOR NAME", 45, currentY + 5.5);
+  doc.text("DUE DATE", 110, currentY + 5.5);
+  doc.text("PAST DUE", 145, currentY + 5.5, { align: "right" });
+  doc.text("AMOUNT (AED)", 185, currentY + 5.5, { align: "right" });
+
+  currentY += 8;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+
+  if (agedAP.length === 0) {
+    doc.setTextColor(100, 116, 139);
+    doc.text("No outstanding accounts payable found.", 18, currentY + 5.5);
+    currentY += 8;
+  } else {
+    agedAP.forEach((row, idx) => {
+      if (currentY > 265) {
+        doc.addPage();
+        currentY = 20;
+      }
+      if (idx % 2 === 1) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, currentY, 180, 8, "F");
+      }
+      doc.setTextColor(51, 65, 85);
+      doc.text(row.invoiceNumber, 18, currentY + 5.5);
+      
+      let supplierDisplayName = row.party;
+      if (supplierDisplayName.length > 25) {
+        supplierDisplayName = supplierDisplayName.substring(0, 23) + "...";
+      }
+      doc.text(supplierDisplayName, 45, currentY + 5.5);
+      doc.text(row.dueDate, 110, currentY + 5.5);
+      
+      const overDays = row.days;
+      if (overDays > 0) {
+        doc.setTextColor(overDays > 60 ? 239 : 220, overDays > 60 ? 68 : 95, overDays > 60 ? 68 : 0);
+        doc.text(`${overDays} days`, 145, currentY + 5.5, { align: "right" });
+      } else {
+        doc.setTextColor(16, 124, 65);
+        doc.text("Current", 145, currentY + 5.5, { align: "right" });
+      }
+      
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${row.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`, 185, currentY + 5.5, { align: "right" });
+      
+      doc.setDrawColor(241, 245, 249);
+      doc.line(15, currentY + 8, 195, currentY + 8);
+      currentY += 8;
+    });
+  }
+
+  // Footer page stamp
+  doc.setTextColor(148, 163, 184);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text(`System generated accounts aging statement. Compiled successfully on ${new Date().toLocaleDateString()}`, 15, 280);
+  doc.text("Confidential © Pioneer DMS Accounts Portfolio Engine", 190, 280, { align: "right" });
 
   return Buffer.from(doc.output("arraybuffer"));
 }
@@ -628,7 +999,8 @@ export async function executeAndSendReport(scheduleId: string, customMonthStr?: 
     // Generate Beautiful HTML content
     const htmlEmail = generateReportEmailHtml({
       monthName,
-      year
+      year,
+      reportsList: schedule.reports || ["summary", "attendance"]
     });
 
     const attachments = [];
@@ -647,6 +1019,19 @@ export async function executeAndSendReport(scheduleId: string, customMonthStr?: 
       attachments.push({
         filename: `Workforce_Attendance_Ledger_${monthName}_${year}.pdf`,
         content: attPdf
+      });
+    }
+
+    if (reportsList.includes("aging")) {
+      const allAR = await getCollectionData("accounts_receivable");
+      const allAP = await getCollectionData("accounts_payable");
+      const projects = await getCollectionData("projects");
+      const suppliers = await getCollectionData("suppliers");
+      const vendors = await getCollectionData("vendors");
+      const agingPdf = generateAgingPdf(monthName, year, allAR, allAP, projects, suppliers, vendors);
+      attachments.push({
+        filename: `Accounts_Aging_Report_${monthName}_${year}.pdf`,
+        content: agingPdf
       });
     }
 
@@ -761,13 +1146,15 @@ export const sendEmailReport = async (req: Request, res: Response) => {
     }
 
     const targetYear = year || new Date().getFullYear();
+    const reportsList = reports || ["summary", "attendance"];
+    
     const htmlEmail = generateReportEmailHtml({
       monthName,
-      year: targetYear
+      year: targetYear,
+      reportsList
     });
 
     const attachments = [];
-    const reportsList = reports || ["summary", "attendance"];
     
     if (reportsList.includes("summary")) {
       const finPdf = generateFinancialPdf(monthName, targetYear, stats || {});
@@ -782,6 +1169,19 @@ export const sendEmailReport = async (req: Request, res: Response) => {
       attachments.push({
         filename: `Workforce_Attendance_Ledger_${monthName}_${targetYear}.pdf`,
         content: attPdf
+      });
+    }
+
+    if (reportsList.includes("aging")) {
+      const allAR = await getCollectionData("accounts_receivable");
+      const allAP = await getCollectionData("accounts_payable");
+      const projects = await getCollectionData("projects");
+      const suppliers = await getCollectionData("suppliers");
+      const vendors = await getCollectionData("vendors");
+      const agingPdf = generateAgingPdf(monthName, targetYear, allAR, allAP, projects, suppliers, vendors);
+      attachments.push({
+        filename: `Accounts_Aging_Report_${monthName}_${targetYear}.pdf`,
+        content: agingPdf
       });
     }
 

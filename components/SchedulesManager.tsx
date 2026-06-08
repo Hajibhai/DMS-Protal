@@ -29,7 +29,10 @@ export function SchedulesManager({
   pettyCash = [],
   everydayExpenses = [],
   projectedExpenses = [],
-  selectedMonth = new Date().toISOString().slice(0, 7)
+  selectedMonth = new Date().toISOString().slice(0, 7),
+  suppliers = [],
+  vendors = [],
+  projects = []
 }: { 
   user: any;
   employees?: any[];
@@ -41,6 +44,9 @@ export function SchedulesManager({
   everydayExpenses?: any[];
   projectedExpenses?: any[];
   selectedMonth?: string;
+  suppliers?: any[];
+  vendors?: any[];
+  projects?: any[];
 }) {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +57,7 @@ export function SchedulesManager({
   // Form fields
   const [stakeholderInput, setStakeholderInput] = useState("");
   const [stakeholders, setStakeholders] = useState<string[]>([]);
-  const [selectedReports, setSelectedReports] = useState<string[]>(["summary", "attendance"]);
+  const [selectedReports, setSelectedReports] = useState<string[]>(["summary", "attendance", "aging"]);
   const [isActive, setIsActive] = useState(true);
   
   const [errorMsg, setErrorMsg] = useState("");
@@ -69,7 +75,7 @@ export function SchedulesManager({
   });
   const [customRecipientInput, setCustomRecipientInput] = useState("");
   const [customRecipients, setCustomRecipients] = useState<string[]>([]);
-  const [customSelectedReports, setCustomSelectedReports] = useState<string[]>(["summary", "attendance"]);
+  const [customSelectedReports, setCustomSelectedReports] = useState<string[]>(["summary", "attendance", "aging"]);
 
   // Fetch configured schedules directly via Firestore client-side
   const fetchSchedules = async () => {
@@ -165,7 +171,7 @@ export function SchedulesManager({
       setSuccessMsg("Monthly report calendar channel scheduled successfully!");
       setStakeholders([]);
       setStakeholderInput("");
-      setSelectedReports(["summary", "attendance"]);
+      setSelectedReports(["summary", "attendance", "aging"]);
       setIsActive(true);
       setIsAdding(false);
       fetchSchedules();
@@ -305,7 +311,13 @@ export function SchedulesManager({
         totalVatPayable,
         totalVatEveryday,
         vatPayableAmount,
-        netProfit
+        netProfit,
+        totalReceivable: totalARAmount,
+        pettyCashIn,
+        totalPayable: totalAPAmount,
+        pettyCashOut,
+        totalEveryday,
+        totalNetPayroll: totalPayrollCost
       };
 
       const attendanceData = payrollDataList.map(p => ({
@@ -450,7 +462,13 @@ export function SchedulesManager({
         totalVatPayable,
         totalVatEveryday,
         vatPayableAmount,
-        netProfit
+        netProfit,
+        totalReceivable: totalARAmount,
+        pettyCashIn,
+        totalPayable: totalAPAmount,
+        pettyCashOut,
+        totalEveryday,
+        totalNetPayroll: totalPayrollCost
       };
 
       const attendanceData = payrollDataList.map(p => ({
@@ -469,6 +487,7 @@ export function SchedulesManager({
           stakeholders: customRecipients,
           reports: customSelectedReports,
           monthName,
+          year: new Date(customToDate).getFullYear(),
           stats: reportStats,
           attendanceData
         })
@@ -703,7 +722,7 @@ export function SchedulesManager({
               {/* Report selection checkbox panel */}
               <div>
                 <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-3">Include Business Reports</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div 
                     onClick={() => {
                       if (customSelectedReports.includes("summary")) {
@@ -745,6 +764,28 @@ export function SchedulesManager({
                     <div>
                       <div className="text-xs font-black uppercase tracking-wider">Attendance Ledger</div>
                       <div className="text-[10px] opacity-70 mt-0.5">Custom range workforce metrics: present, absent and overtime logged</div>
+                    </div>
+                  </div>
+
+                  <div 
+                    onClick={() => {
+                      if (customSelectedReports.includes("aging")) {
+                        if (customSelectedReports.length === 1) return;
+                        setCustomSelectedReports(customSelectedReports.filter(r => r !== "aging"));
+                      } else {
+                        setCustomSelectedReports([...customSelectedReports, "aging"]);
+                      }
+                    }}
+                    className={`flex items-center gap-3 p-4 rounded-2xl cursor-pointer border select-none transition-all ${
+                      customSelectedReports.includes("aging") 
+                        ? "bg-slate-900/5 text-slate-900 border-slate-900/20" 
+                        : "bg-slate-50 text-slate-500 border-transparent hover:border-slate-200"
+                    }`}
+                  >
+                    {customSelectedReports.includes("aging") ? <CheckSquare className="w-5 h-5 text-brand-600" /> : <Square className="w-5 h-5 text-slate-300" />}
+                    <div>
+                      <div className="text-xs font-black uppercase tracking-wider">A/P & A/R Aging Report</div>
+                      <div className="text-[10px] opacity-70 mt-0.5">Outstanding aging brackets (30, 60, 90+ days) of all open accounts</div>
                     </div>
                   </div>
                 </div>
@@ -836,7 +877,7 @@ export function SchedulesManager({
               {/* Report selection checkbox panel */}
               <div>
                 <label className="block text-xs font-black uppercase text-slate-400 tracking-widest mb-3">Include Business Reports</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div 
                     onClick={() => handleToggleReport("summary")}
                     className={`flex items-center gap-3 p-4 rounded-2xl cursor-pointer border select-none transition-all ${
@@ -864,6 +905,21 @@ export function SchedulesManager({
                     <div>
                       <div className="text-xs font-black uppercase tracking-wider">Attendance Ledger</div>
                       <div className="text-[10px] opacity-70 mt-0.5">Workforce metrics: present, absent and overtime logged</div>
+                    </div>
+                  </div>
+
+                  <div 
+                    onClick={() => handleToggleReport("aging")}
+                    className={`flex items-center gap-3 p-4 rounded-2xl cursor-pointer border select-none transition-all ${
+                      selectedReports.includes("aging") 
+                        ? "bg-slate-900/5 text-slate-900 border-slate-900/20" 
+                        : "bg-slate-50 text-slate-500 border-transparent hover:border-slate-200"
+                    }`}
+                  >
+                    {selectedReports.includes("aging") ? <CheckSquare className="w-5 h-5 text-brand-600" /> : <Square className="w-5 h-5 text-slate-300" />}
+                    <div>
+                      <div className="text-xs font-black uppercase tracking-wider">A/P & A/R Aging Report</div>
+                      <div className="text-[10px] opacity-70 mt-0.5">Outstanding aging brackets (30, 60, 90+ days) of all open accounts</div>
                     </div>
                   </div>
                 </div>
@@ -953,10 +1009,10 @@ export function SchedulesManager({
                   {/* Included reports */}
                   <div className="flex items-center gap-3">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Delivering:</span>
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1.5 font-sans">
                       {item.reports.map((rep) => (
                         <span key={rep} className="items-center px-2 py-1 bg-brand-50 text-brand-700 rounded-lg text-[9px] font-black uppercase tracking-wider border border-brand-100/50">
-                          {rep === "summary" ? "Summary Report" : "Attendance Ledger"}
+                          {rep === "summary" ? "Summary Report" : rep === "attendance" ? "Attendance Ledger" : "Aging Report"}
                         </span>
                       ))}
                     </span>

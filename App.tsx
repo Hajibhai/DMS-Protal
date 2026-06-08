@@ -13739,6 +13739,9 @@ const ReportsView = ({
                         everydayExpenses={everydayExpenses}
                         projectedExpenses={projectedExpenses}
                         selectedMonth={selectedMonth}
+                        suppliers={suppliers}
+                        vendors={vendors}
+                        projects={projects}
                     />
                 </motion.div>
             )}
