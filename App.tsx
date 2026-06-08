@@ -147,6 +147,7 @@ import { SafetyView } from './components/SafetyView';
 import { JobOfferView } from './components/JobOfferView';
 import { EngineerView } from './components/EngineerView';
 import TasksNotesView from './components/TasksNotesView';
+import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/ExperienceLetterView';
 
 // --- Constants & Helpers ---
 const INITIAL_PERMISSIONS: UserPermissions = {
@@ -4445,6 +4446,7 @@ export default function App() {
           { id: 'leave', label: 'Leave Management', icon: FileText, permission: 'canManageLeaves' },
           { id: 'payroll', label: 'Payroll Register', icon: DirhamIcon, permission: 'canViewPayroll' },
           { id: 'job-offer', label: 'Job Offer', icon: FileSignature, permission: 'canManageEmployees' },
+          { id: 'experience', label: 'Experience Letter', icon: FileText, permission: 'canManageEmployees' },
         ]
       },
       { 
@@ -4537,6 +4539,14 @@ export default function App() {
       if (showOffboarding) {
           await offboardEmployee(showOffboarding.id, data);
           handleLogAction('Employee Offboarded', `Employee ${showOffboarding.name} (${showOffboarding.code}) was offboarded. Reason: ${data.reason}`, 'delete');
+          try {
+              downloadExperienceLetterPDF(showOffboarding, {
+                  exitDate: data.exitDate,
+                  conductText: `During their tenure with us, they fulfilled their duties to their best efforts. Their reason for exit was entered as: ${data.reason || 'Not specified'}.`
+              });
+          } catch (pdfErr) {
+              console.error("Auto experience certificate download failed:", pdfErr);
+          }
           setShowOffboarding(null);
       }
   };
@@ -4928,6 +4938,11 @@ export default function App() {
         <JobOfferView 
           user={systemUser} 
           openConfirm={openConfirm} 
+        />
+      )}
+      {activeTab === 'experience' && (
+        <ExperienceLetterView 
+          employees={employees} 
         />
       )}
       {activeTab === 'vendors' && (
