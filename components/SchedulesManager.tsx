@@ -96,6 +96,24 @@ export function SchedulesManager({
     }
   };
 
+  // Delete a transmission record from Firestore
+  const handleDeleteTransaction = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this transmission record?")) return;
+    try {
+      setActionLoading(`delete-tx-${id}`);
+      const docRef = doc(db, "report_transactions", id);
+      await deleteDoc(docRef);
+      setSuccessMsg("Transmission record deleted successfully.");
+      fetchTransactions();
+      setTimeout(() => setSuccessMsg(""), 3000);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "Failed to delete transmission record.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   // Fetch configured schedules directly via Firestore client-side
   const fetchSchedules = async () => {
     try {
@@ -1228,6 +1246,7 @@ export function SchedulesManager({
                   <th className="px-6 py-3.5">Included Reports</th>
                   <th className="px-6 py-3.5">Triggered By</th>
                   <th className="px-6 py-3.5">Status</th>
+                  <th className="px-6 py-3.5 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-sans">
@@ -1252,7 +1271,7 @@ export function SchedulesManager({
                         {t.type}
                       </span>
                     </td>
-                    <td className="px-6 py-4 font-bold text-slate-700 max-w-[180px] truncate" title={t.monthOrRange}>
+                    <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap" title={t.monthOrRange}>
                       {t.monthOrRange}
                     </td>
                     <td className="px-6 py-4 max-w-[200px] truncate" title={t.recipients?.join(", ")}>
@@ -1286,6 +1305,21 @@ export function SchedulesManager({
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                         {t.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTransaction(t.id)}
+                        disabled={actionLoading !== null}
+                        className="p-1 px-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center"
+                        title="Delete Transmission Record"
+                      >
+                        {actionLoading === `delete-tx-${t.id}` ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
                     </td>
                   </tr>
                 ))}
