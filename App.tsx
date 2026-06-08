@@ -148,6 +148,7 @@ import { JobOfferView } from './components/JobOfferView';
 import { EngineerView } from './components/EngineerView';
 import TasksNotesView from './components/TasksNotesView';
 import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/ExperienceLetterView';
+import { NocView } from './components/NocView';
 
 // --- Constants & Helpers ---
 const INITIAL_PERMISSIONS: UserPermissions = {
@@ -4447,6 +4448,7 @@ export default function App() {
           { id: 'payroll', label: 'Payroll Register', icon: DirhamIcon, permission: 'canViewPayroll' },
           { id: 'job-offer', label: 'Job Offer', icon: FileSignature, permission: 'canManageEmployees' },
           { id: 'experience', label: 'Experience Letter', icon: FileText, permission: 'canManageEmployees' },
+          { id: 'noc', label: 'No Objection Certificate (NOC)', icon: FileText, permission: 'canManageEmployees' },
         ]
       },
       { 
@@ -4942,6 +4944,11 @@ export default function App() {
       )}
       {activeTab === 'experience' && (
         <ExperienceLetterView 
+          employees={employees} 
+        />
+      )}
+      {activeTab === 'noc' && (
+        <NocView 
           employees={employees} 
         />
       )}
