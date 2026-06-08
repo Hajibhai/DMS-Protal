@@ -77,6 +77,25 @@ export function SchedulesManager({
   const [customRecipients, setCustomRecipients] = useState<string[]>([]);
   const [customSelectedReports, setCustomSelectedReports] = useState<string[]>(["summary", "attendance", "aging"]);
 
+  // Transmission Ledger states
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+
+  // Fetch Report transmission history
+  const fetchTransactions = async () => {
+    try {
+      setLoadingTransactions(true);
+      const snap = await getDocs(collection(db, "report_transactions"));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      list.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      setTransactions(list);
+    } catch (err) {
+      console.error("Failed to load report transactions:", err);
+    } finally {
+      setLoadingTransactions(false);
+    }
+  };
+
   // Fetch configured schedules directly via Firestore client-side
   const fetchSchedules = async () => {
     try {
@@ -95,6 +114,7 @@ export function SchedulesManager({
 
   useEffect(() => {
     fetchSchedules();
+    fetchTransactions();
   }, []);
 
   // Add a stakeholder email to the list
@@ -357,7 +377,25 @@ export function SchedulesManager({
         const docRef = doc(db, "report_schedules", item.id);
         await updateDoc(docRef, { lastSentAt: stamp });
 
+        // Record the transaction inside Firestore
+        try {
+          const transId = doc(collection(db, "report_transactions")).id;
+          await setDoc(doc(db, "report_transactions", transId), {
+            id: transId,
+            type: "Scheduled Run",
+            timestamp: new Date().toISOString(),
+            recipients: item.stakeholders,
+            reports: item.reports,
+            monthOrRange: monthName,
+            triggeredBy: user?.email || "Super Admin",
+            status: "Delivered"
+          });
+        } catch (dbErr) {
+          console.error("Logger failed:", dbErr);
+        }
+
         fetchSchedules();
+        fetchTransactions();
         setTimeout(() => setSuccessMsg(""), 5000);
       } else {
         setErrorMsg(resData.error || "An error occurred during report dispatch.");
@@ -508,8 +546,27 @@ export function SchedulesManager({
       
       if (resData.success) {
         setSuccessMsg("Custom range report generated and emailed successfully!");
+        
+        // Record the transaction inside Firestore
+        try {
+          const transId = doc(collection(db, "report_transactions")).id;
+          await setDoc(doc(db, "report_transactions", transId), {
+            id: transId,
+            type: "Custom Range",
+            timestamp: new Date().toISOString(),
+            recipients: customRecipients,
+            reports: customSelectedReports,
+            monthOrRange: monthName,
+            triggeredBy: user?.email || "Super Admin",
+            status: "Delivered"
+          });
+        } catch (dbErr) {
+          console.error("Logger failed:", dbErr);
+        }
+
         setCustomRecipients([]);
         setIsCustomSending(false);
+        fetchTransactions();
         setTimeout(() => setSuccessMsg(""), 5000);
       } else {
         setErrorMsg(resData.error || "An error occurred during report dispatch.");
@@ -1120,6 +1177,120 @@ export function SchedulesManager({
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Report Transmission Ledger (Dispatched Transactions) */}
+      <div className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-2xl shadow-slate-100 mt-8">
+        <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+          <div>
+            <h4 className="font-extrabold text-xs uppercase tracking-widest text-slate-500 flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-indigo-600" />
+              Report Transmission Ledger (Recent Transactions)
+            </h4>
+            <p className="text-slate-400 text-[10px] mt-0.5">Live record of all recent report generation and email dispatch transactions.</p>
+          </div>
+          <button 
+            type="button"
+            onClick={fetchTransactions}
+            disabled={loadingTransactions}
+            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+            title="Refresh Ledger"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingTransactions ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+
+        {loadingTransactions ? (
+          <div className="p-12 flex flex-col items-center justify-center text-slate-400">
+            <RefreshCw className="w-8 h-8 animate-spin text-brand-500 mb-2" />
+            <div className="text-[10px] font-bold font-mono">Loading transaction logs...</div>
+          </div>
+        ) : transactions.length === 0 ? (
+          <div className="p-12 text-center text-slate-400 space-y-2">
+            <Mail className="w-10 h-10 text-slate-250 mx-auto" />
+            <p className="text-sm font-bold text-slate-705">No transmission records available.</p>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              Generating active custom date-range reports or firing manually scheduled dispatches will immediately record traceable transactions here.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-800 border-collapse">
+              <thead>
+                <tr className="bg-slate-50/70 text-slate-400 font-bold border-b border-slate-100 uppercase tracking-widest text-[9px]">
+                  <th className="px-6 py-3.5">Timestamp</th>
+                  <th className="px-6 py-3.5">Type</th>
+                  <th className="px-6 py-3.5">Period / Range</th>
+                  <th className="px-6 py-3.5">Recipients</th>
+                  <th className="px-6 py-3.5">Included Reports</th>
+                  <th className="px-6 py-3.5">Triggered By</th>
+                  <th className="px-6 py-3.5">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-sans">
+                {transactions.map((t) => (
+                  <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-4 font-mono text-[10px] text-slate-500 font-bold whitespace-nowrap">
+                      {new Date(t.timestamp).toLocaleDateString("en-GB", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit"
+                      })}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                        t.type === "Custom Range" 
+                          ? "bg-amber-50 text-amber-700 border border-amber-100/50" 
+                          : "bg-indigo-50 text-indigo-700 border border-indigo-100/50"
+                      }`}>
+                        {t.type}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-bold text-slate-700 max-w-[180px] truncate" title={t.monthOrRange}>
+                      {t.monthOrRange}
+                    </td>
+                    <td className="px-6 py-4 max-w-[200px] truncate" title={t.recipients?.join(", ")}>
+                      <div className="flex flex-wrap gap-1">
+                        {t.recipients?.slice(0, 2).map((email: string, idx: number) => (
+                          <span key={idx} className="bg-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px] font-bold">
+                            {email}
+                          </span>
+                        ))}
+                        {t.recipients?.length > 2 && (
+                          <span className="text-[10px] text-slate-400 font-bold italic">
+                            +{t.recipients.length - 2} more
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-wrap gap-1">
+                        {t.reports?.map((rep: string) => (
+                          <span key={rep} className="px-1.5 py-0.5 bg-brand-50 text-brand-700 rounded text-[9px] font-black uppercase tracking-wider">
+                            {rep === "summary" ? "Summary" : rep === "attendance" ? "Attendance" : "Aging"}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-slate-500 font-semibold whitespace-nowrap truncate max-w-[120px]" title={t.triggeredBy}>
+                      {t.triggeredBy}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 text-emerald-605 text-emerald-600 font-extrabold text-[10px] bg-emerald-50 border border-emerald-100/30 px-2 py-0.5 rounded-lg">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        {t.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

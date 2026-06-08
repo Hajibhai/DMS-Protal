@@ -195,5 +195,9 @@ service cloud.firestore {
     match /report_schedules/{scheduleId} {
       allow read, write: if isAuthenticated();
     }
+
+    match /report_transactions/{transactionId} {
+      allow read, write: if true;
+    }
   }
 }

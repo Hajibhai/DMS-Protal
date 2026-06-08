@@ -508,6 +508,22 @@
         "assignedToName": { "type": "string" }
       },
       "required": ["id", "title", "dateTime", "duration", "createdAt", "createdById", "createdBy"]
+    },
+    "ReportTransaction": {
+      "title": "Report Transaction",
+      "description": "Log of generated and dispatched report email actions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["Scheduled Run", "Custom Range"] },
+        "timestamp": { "type": "string" },
+        "recipients": { "type": "array" },
+        "reports": { "type": "array" },
+        "monthOrRange": { "type": "string" },
+        "triggeredBy": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "type", "timestamp", "recipients"]
     }
   },
   "firestore": {
@@ -614,6 +630,10 @@
     "/meetings/{meetingId}": {
       "schema": "Meeting",
       "description": "Collaboration meetings and scheduling information"
+    },
+    "/report_transactions/{transactionId}": {
+      "schema": "ReportTransaction",
+      "description": "Record ledger of all generated and dispatched reports"
     }
   }
 }
