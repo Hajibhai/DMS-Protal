@@ -53,7 +53,7 @@ import {
   Users, Mail, Phone, Shield, FileText, Download, Plus, Search, 
   Trash2, Edit, CheckCircle, XCircle, Calendar, DollarSign,
   ChevronRight, Sparkles, SlidersHorizontal, Info, Briefcase, FileCheck, Check,
-  Video, ExternalLink
+  Video, ExternalLink, Upload, Eye
 } from 'lucide-react';
 
 interface JobOfferViewProps {
@@ -122,6 +122,10 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.',
     applicantId: ''
   });
+
+  // Signed document uploads state
+  const [showSignedUploadsId, setShowSignedUploadsId] = useState<string | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; name: string } | null>(null);
 
   // Listeners for Firestore Data
   useEffect(() => {
@@ -371,6 +375,62 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     );
   };
 
+  // Handle signed document upload
+  const handleSignedUpload = (offerId: string, type: 'offer' | 'acceptance', file: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      const originalOffer = offers.find(o => o.id === offerId);
+      if (!originalOffer) return;
+
+      const updateData = type === 'offer' ? {
+        signedOfferUrl: base64,
+        signedOfferName: file.name
+      } : {
+        signedAcceptanceUrl: base64,
+        signedAcceptanceName: file.name
+      };
+
+      try {
+        await setDoc(doc(db, 'job_offers', offerId), { ...originalOffer, ...updateData }, { merge: true });
+      } catch (err) {
+        console.error("Error setting signed document in Firestore:", err);
+      }
+    };
+    reader.onerror = (e) => {
+      console.error("FileReader error:", e);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle deleting signed document
+  const handleSignedDelete = (offerId: string, type: 'offer' | 'acceptance', fileName: string) => {
+    openConfirm(
+      'Remove Uploaded File',
+      `Are you sure you want to remove the uploaded signed document "${fileName || 'this document'}"?`,
+      async () => {
+        const originalOffer = offers.find(o => o.id === offerId);
+        if (!originalOffer) return;
+
+        const updateData = type === 'offer' ? {
+          signedOfferUrl: '',
+          signedOfferName: ''
+        } : {
+          signedAcceptanceUrl: '',
+          signedAcceptanceName: ''
+        };
+
+        try {
+          await setDoc(doc(db, 'job_offers', offerId), { ...originalOffer, ...updateData }, { merge: true });
+        } catch (err) {
+          console.error("Error clearing signed document in Firestore:", err);
+        }
+      },
+      'danger'
+    );
+  };
+
   // Format currencies (AED)
   const formatAED = (val: number | string) => {
     const num = Number(val) || 0;
@@ -484,8 +544,11 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       const splitNote = doc.splitTextToSize(noteTxt, 170);
       doc.text(splitNote, 20, clauseY + 5);
 
+      // Dynamically calculate the next Y position based on splitNote length to prevent overlapping
+      const splitNoteHeight = splitNote.length * 4.5;
+      let currentY = clauseY + 5 + splitNoteHeight + 5;
+
       // Clause 1
-      let currentY = clauseY + 14;
       doc.setFont("Helvetica", "bold");
       doc.text("1. Probation Period", 20, currentY);
       doc.setFont("Helvetica", "normal");
@@ -493,8 +556,11 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       const splitC1 = doc.splitTextToSize(c1Text, 170);
       doc.text(splitC1, 20, currentY + 4.5);
 
+      // Dynamically calculate the next Y position for Clause 2 based on splitC1 length to prevent overlapping
+      const splitC1Height = splitC1.length * 4.5;
+      currentY = currentY + 4.5 + splitC1Height + 5;
+
       // Clause 2
-      currentY = currentY + 14;
       doc.setFont("Helvetica", "bold");
       doc.text("2. Benefits During Probation", 20, currentY);
       doc.setFont("Helvetica", "normal");
@@ -1274,7 +1340,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                     </div>
 
                     <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 mt-3">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 font-sans">
                         <span className="text-[10px] text-slate-400 font-bold">Status:</span>
                         <select
                           value={offer.status}
@@ -1294,7 +1360,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                         </select>
                       </div>
 
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 font-sans">
                         <button
                           onClick={() => generateOfferLetterPDF(offer)}
                           className="flex items-center gap-1 px-2 py-1 bg-brand-50 hover:bg-brand-100 text-brand-700 text-[10px] font-black rounded cursor-pointer transition-all"
@@ -1309,6 +1375,19 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                         >
                           <Download className="w-3 h-3 text-brand-400" />
                           Acceptance (PDF)
+                        </button>
+
+                        <button
+                          onClick={() => setShowSignedUploadsId(showSignedUploadsId === offer.id ? null : offer.id)}
+                          className={`flex items-center gap-1 px-2 py-1 rounded cursor-pointer transition-all text-[10px] font-black ${
+                            offer.signedOfferUrl || offer.signedAcceptanceUrl
+                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                              : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700'
+                          }`}
+                          title="Manage Uploaded Signed Offer & Acceptance files"
+                        >
+                          <Upload className="w-3 h-3" />
+                          Signed Docs
                         </button>
 
                         <button
@@ -1330,6 +1409,141 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                         )}
                       </div>
                     </div>
+
+                    {showSignedUploadsId === offer.id && (
+                      <div className="mt-4 p-3.5 bg-slate-50 rounded-xl border border-slate-200/65 space-y-3 animate-in slide-in-from-top-1 duration-200 w-full text-left font-sans">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                            <FileText className="w-3 h-3 text-indigo-600" />
+                            Signed Upload Center
+                          </span>
+                          <button
+                            onClick={() => setShowSignedUploadsId(null)}
+                            className="text-[9px] font-bold text-slate-400 hover:text-slate-600 uppercase"
+                          >
+                            Hide
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Signed Offer Letter Slot */}
+                          <div className="bg-white p-2.5 rounded-lg border border-slate-100 space-y-2 flex flex-col justify-between">
+                            <div>
+                              <span className="text-[9px] font-black text-slate-500 uppercase block leading-none">
+                                Signed Offer Letter
+                              </span>
+                              {offer.signedOfferUrl ? (
+                                <div className="mt-1.5 flex items-center justify-between gap-1.5 p-1 px-2 bg-emerald-50/55 rounded border border-emerald-100">
+                                  <span className="text-[8px] text-emerald-800 font-bold truncate max-w-[120px]" title={offer.signedOfferName}>
+                                    {offer.signedOfferName || 'signed_offer.pdf'}
+                                  </span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() => setPreviewDoc({ url: offer.signedOfferUrl!, name: offer.signedOfferName || 'Signed Offer Letter' })}
+                                      className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
+                                      title="Preview File"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                    </button>
+                                    <a
+                                      href={offer.signedOfferUrl}
+                                      download={offer.signedOfferName || 'signed_offer.pdf'}
+                                      className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
+                                      title="Download"
+                                    >
+                                      <Download className="w-3 h-3" />
+                                    </a>
+                                    <button
+                                      onClick={() => handleSignedDelete(offer.id, 'offer', offer.signedOfferName || 'Signed Offer Letter')}
+                                      className="p-0.5 text-rose-600 hover:text-rose-800 rounded cursor-pointer"
+                                      title="Delete File"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-[8px] text-slate-400 mt-1">Accepts PDF or images</p>
+                              )}
+                            </div>
+
+                            {!offer.signedOfferUrl && (
+                              <label className="mt-1.5 flex items-center justify-center gap-1 px-1.5 py-1 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-[8px] font-bold rounded cursor-pointer transition-all border border-slate-200">
+                                <Upload className="w-2.5 h-2.5 text-slate-500" />
+                                <span>Choose Signed File</span>
+                                <input
+                                  type="file"
+                                  accept="application/pdf,image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleSignedUpload(offer.id, 'offer', file);
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
+
+                          {/* Signed Acceptance Letter Slot */}
+                          <div className="bg-white p-2.5 rounded-lg border border-slate-100 space-y-2 flex flex-col justify-between">
+                            <div>
+                              <span className="text-[9px] font-black text-slate-500 uppercase block leading-none">
+                                Signed Acceptance
+                              </span>
+                              {offer.signedAcceptanceUrl ? (
+                                <div className="mt-1.5 flex items-center justify-between gap-1.5 p-1 px-2 bg-emerald-50/55 rounded border border-emerald-100">
+                                  <span className="text-[8px] text-emerald-800 font-bold truncate max-w-[120px]" title={offer.signedAcceptanceName}>
+                                    {offer.signedAcceptanceName || 'signed_acceptance.pdf'}
+                                  </span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() => setPreviewDoc({ url: offer.signedAcceptanceUrl!, name: offer.signedAcceptanceName || 'Signed Acceptance Letter' })}
+                                      className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
+                                      title="Preview File"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                    </button>
+                                    <a
+                                      href={offer.signedAcceptanceUrl}
+                                      download={offer.signedAcceptanceName || 'signed_acceptance.pdf'}
+                                      className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
+                                      title="Download"
+                                    >
+                                      <Download className="w-3 h-3" />
+                                    </a>
+                                    <button
+                                      onClick={() => handleSignedDelete(offer.id, 'acceptance', offer.signedAcceptanceName || 'Signed Acceptance Letter')}
+                                      className="p-0.5 text-rose-600 hover:text-rose-800 rounded cursor-pointer"
+                                      title="Delete File"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-[8px] text-slate-400 mt-1">Accepts PDF or images</p>
+                              )}
+                            </div>
+
+                            {!offer.signedAcceptanceUrl && (
+                              <label className="mt-1.5 flex items-center justify-center gap-1 px-1.5 py-1 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-[8px] font-bold rounded cursor-pointer transition-all border border-slate-200">
+                                <Upload className="w-2.5 h-2.5 text-slate-500" />
+                                <span>Choose Signed File</span>
+                                <input
+                                  type="file"
+                                  accept="application/pdf,image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleSignedUpload(offer.id, 'acceptance', file);
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1870,6 +2084,66 @@ Pioneer DMS`}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: SIGNED DOCUMENT PREVIEW ================= */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden">
+            <div className="p-4 border-b border-slate-150 flex justify-between items-center bg-slate-50">
+              <h3 className="text-xs font-black text-slate-900 truncate">
+                Preview: {previewDoc.name}
+              </h3>
+              <div className="flex items-center gap-2">
+                <a
+                  href={previewDoc.url}
+                  download={previewDoc.name}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black rounded-lg transition-all shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download
+                </a>
+                <button 
+                  onClick={() => setPreviewDoc(null)}
+                  className="p-1 px-2 bg-slate-200 hover:bg-slate-300 rounded text-slate-800 text-[10px] font-black"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto bg-slate-100 p-4 flex items-center justify-center min-h-[350px]">
+              {previewDoc.url.startsWith('data:image/') ? (
+                <img 
+                  src={previewDoc.url} 
+                  alt={previewDoc.name} 
+                  referrerPolicy="no-referrer"
+                  className="max-w-full max-h-[70vh] rounded-lg shadow-md object-contain border border-slate-200"
+                />
+              ) : previewDoc.url.startsWith('data:application/pdf') ? (
+                <div className="w-full h-[70vh] flex flex-col items-center justify-center bg-white rounded-xl shadow-xs p-8 text-center space-y-4">
+                  <div className="p-4 bg-indigo-50 text-indigo-600 rounded-full">
+                    <FileText className="w-12 h-12 stroke-1" />
+                  </div>
+                  <h4 className="text-sm font-black text-slate-800">PDF Document Ready</h4>
+                  <p className="text-xs text-slate-500 max-w-md">
+                    Due to sandboxed browser security rules, inline rendering of base64 PDFs is restricted. Please click the download button below to load or save your file locally.
+                  </p>
+                  <a
+                    href={previewDoc.url}
+                    download={previewDoc.name}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-md"
+                  >
+                    <Download className="w-4 h-4" /> Save / Open PDF Document
+                  </a>
+                </div>
+              ) : (
+                <div className="text-center p-8 text-slate-500 text-xs font-bold bg-white rounded-xl shadow-xs">
+                  Unsupported file format preview. Please use the Download button in the header.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

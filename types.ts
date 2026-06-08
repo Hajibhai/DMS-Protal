@@ -486,6 +486,10 @@ export interface JobOffer {
   expiryDate?: string;
   status: 'Offered' | 'Accepted' | 'Declined';
   additionalDetails?: string;
+  signedOfferUrl?: string;
+  signedOfferName?: string;
+  signedAcceptanceUrl?: string;
+  signedAcceptanceName?: string;
 }
 
 export interface DocumentItem {
