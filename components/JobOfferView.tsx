@@ -127,6 +127,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
   const [showSignedUploadsId, setShowSignedUploadsId] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; name: string } | null>(null);
   const [fetchingFile, setFetchingFile] = useState<{ id: string, type: 'offer' | 'acceptance' } | null>(null);
+  const [uploadingState, setUploadingState] = useState<{ [key: string]: { percent: number; status: string } }>({});
 
   // Fetch chunked base64 file from subcollection
   const fetchChunkedFile = async (offerId: string, type: 'offer' | 'acceptance', chunksCount: number): Promise<string> => {
@@ -471,50 +472,84 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     // Up to 5 MB as requested
     const maxSafeSize = 5 * 1024 * 1024; 
 
+    const uploadKey = `${offerId}_${type}`;
+    setUploadingState(prev => ({
+      ...prev,
+      [uploadKey]: { percent: 5, status: 'Reading file...' }
+    }));
+
     const saveToFirestore = async (base64String: string) => {
-      // Delete old chunks first if any exist
-      const oldChunksCount = type === 'offer' 
-        ? (originalOffer.signedOfferChunksCount || 0) 
-        : (originalOffer.signedAcceptanceChunksCount || 0);
-      
-      if (oldChunksCount > 0) {
-        await deleteChunkedFile(offerId, type, oldChunksCount);
-      }
-
-      const maxDirectSize = 950 * 1024; // ~950KB max size for single document path to stay safe under 1MB Firestore limit
-      if (base64String.length <= maxDirectSize) {
-        const updateData = type === 'offer' ? {
-          signedOfferUrl: base64String,
-          signedOfferName: file.name,
-          signedOfferChunksCount: 0
-        } : {
-          signedAcceptanceUrl: base64String,
-          signedAcceptanceName: file.name,
-          signedAcceptanceChunksCount: 0
-        };
-
-        try {
-          await setDoc(doc(db, 'job_offers', offerId), updateData, { merge: true });
-        } catch (err: any) {
-          console.error("Error setting signed document in Firestore:", err);
-          openConfirm(
-            'Upload Error',
-            `Could not save the document. ${err?.message || 'Firestore storage limits exceeded.'}`,
-            () => {},
-            'danger'
-          );
+      try {
+        // Delete old chunks first if any exist
+        const oldChunksCount = type === 'offer' 
+          ? (originalOffer.signedOfferChunksCount || 0) 
+          : (originalOffer.signedAcceptanceChunksCount || 0);
+        
+        if (oldChunksCount > 0) {
+          setUploadingState(prev => ({
+            ...prev,
+            [uploadKey]: { percent: 15, status: 'Cleaning old files...' }
+          }));
+          await deleteChunkedFile(offerId, type, oldChunksCount);
         }
-      } else {
-        // Chunk storage
-        try {
+
+        const maxDirectSize = 950 * 1024; // ~950KB max size for single document path to stay safe under 1MB Firestore limit
+        if (base64String.length <= maxDirectSize) {
+          setUploadingState(prev => ({
+            ...prev,
+            [uploadKey]: { percent: 45, status: 'Uploading document...' }
+          }));
+
+          const updateData = type === 'offer' ? {
+            signedOfferUrl: base64String,
+            signedOfferName: file.name,
+            signedOfferChunksCount: 0
+          } : {
+            signedAcceptanceUrl: base64String,
+            signedAcceptanceName: file.name,
+            signedAcceptanceChunksCount: 0
+          };
+
+          await setDoc(doc(db, 'job_offers', offerId), updateData, { merge: true });
+
+          setUploadingState(prev => ({
+            ...prev,
+            [uploadKey]: { percent: 100, status: 'Complete' }
+          }));
+          setTimeout(() => {
+            setUploadingState(prev => {
+              const copy = { ...prev };
+              delete copy[uploadKey];
+              return copy;
+            });
+          }, 1500);
+        } else {
+          // Chunk storage
+          setUploadingState(prev => ({
+            ...prev,
+            [uploadKey]: { percent: 25, status: 'Packaging layers...' }
+          }));
+
           const CHUNK_SIZE = 800 * 1024;
           const chunksCount = Math.ceil(base64String.length / CHUNK_SIZE);
           
           for (let i = 0; i < chunksCount; i++) {
             const chunkData = base64String.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
             const chunkDocRef = doc(db, 'job_offers', offerId, 'chunks', `${type}_chunk_${i}`);
+            
+            const chunkProgress = 30 + Math.round((i / chunksCount) * 60);
+            setUploadingState(prev => ({
+              ...prev,
+              [uploadKey]: { percent: chunkProgress, status: `Uploading chunk ${i+1}/${chunksCount}...` }
+            }));
+
             await setDoc(chunkDocRef, { chunk: chunkData });
           }
+
+          setUploadingState(prev => ({
+            ...prev,
+            [uploadKey]: { percent: 92, status: 'Linking reference...' }
+          }));
 
           const updateData = type === 'offer' ? {
             signedOfferUrl: 'chunked',
@@ -527,15 +562,32 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
           };
 
           await setDoc(doc(db, 'job_offers', offerId), updateData, { merge: true });
-        } catch (err: any) {
-          console.error("Error saving chunked document to Firestore:", err);
-          openConfirm(
-            'Storage Error',
-            `Could not save the large document. ${err?.message || 'Storage error.'}`,
-            () => {},
-            'danger'
-          );
+
+          setUploadingState(prev => ({
+            ...prev,
+            [uploadKey]: { percent: 100, status: 'Complete' }
+          }));
+          setTimeout(() => {
+            setUploadingState(prev => {
+              const copy = { ...prev };
+              delete copy[uploadKey];
+              return copy;
+            });
+          }, 1500);
         }
+      } catch (err: any) {
+        console.error("Error setting signed document in Firestore:", err);
+        setUploadingState(prev => {
+          const copy = { ...prev };
+          delete copy[uploadKey];
+          return copy;
+        });
+        openConfirm(
+          'Upload Error',
+          `Could not save the document. ${err?.message || 'Firestore storage limits exceeded.'}`,
+          () => {},
+          'danger'
+        );
       }
     };
 
@@ -543,6 +595,11 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     if (file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = () => {
+        setUploadingState(prev => ({
+          ...prev,
+          [uploadKey]: { percent: 10, status: 'Optimizing image...' }
+        }));
+
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
@@ -580,11 +637,21 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       };
       reader.onerror = (e) => {
         console.error("FileReader error:", e);
+        setUploadingState(prev => {
+          const copy = { ...prev };
+          delete copy[uploadKey];
+          return copy;
+        });
       };
       reader.readAsDataURL(file);
     } else {
       // Validate up to 5MB before reading
       if (file.size > maxSafeSize) {
+        setUploadingState(prev => {
+          const copy = { ...prev };
+          delete copy[uploadKey];
+          return copy;
+        });
         openConfirm(
           'Document Too Large',
           `The selected file "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)} MB). Please select a file under 5.0 MB.`,
@@ -596,10 +663,19 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
 
       const reader = new FileReader();
       reader.onload = () => {
+        setUploadingState(prev => ({
+          ...prev,
+          [uploadKey]: { percent: 15, status: 'Preparing document stream...' }
+        }));
         saveToFirestore(reader.result as string);
       };
       reader.onerror = (e) => {
         console.error("FileReader error:", e);
+        setUploadingState(prev => {
+          const copy = { ...prev };
+          delete copy[uploadKey];
+          return copy;
+        });
       };
       reader.readAsDataURL(file);
     }
@@ -1644,7 +1720,22 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                               <span className="text-[9px] font-black text-slate-500 uppercase block leading-none">
                                 Signed Offer Letter
                               </span>
-                              {offer.signedOfferUrl ? (
+                              {uploadingState[`${offer.id}_offer`] ? (
+                                <div className="mt-1.5 p-1.5 bg-indigo-50/50 rounded border border-indigo-100/80 space-y-1">
+                                  <div className="flex justify-between items-center text-[7.5px] font-bold text-indigo-700">
+                                    <span className="truncate max-w-[100px] animate-pulse">
+                                      {uploadingState[`${offer.id}_offer`].status}
+                                    </span>
+                                    <span>{uploadingState[`${offer.id}_offer`].percent}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
+                                    <div 
+                                      className="bg-indigo-600 h-1 rounded-full transition-all duration-300" 
+                                      style={{ width: `${uploadingState[`${offer.id}_offer`].percent}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ) : offer.signedOfferUrl ? (
                                 <div className="mt-1.5 flex items-center justify-between gap-1.5 p-1 px-2 bg-emerald-50/55 rounded border border-emerald-100">
                                   <span className="text-[8px] text-emerald-800 font-bold truncate max-w-[120px]" title={offer.signedOfferName}>
                                     {offer.signedOfferName || 'signed_offer.pdf'}
@@ -1686,7 +1777,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                               )}
                             </div>
 
-                            {!offer.signedOfferUrl && (
+                            {!offer.signedOfferUrl && !uploadingState[`${offer.id}_offer`] && (
                               <label className="mt-1.5 flex items-center justify-center gap-1 px-1.5 py-1 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-[8px] font-bold rounded cursor-pointer transition-all border border-slate-200">
                                 <Upload className="w-2.5 h-2.5 text-slate-500" />
                                 <span>Choose Signed File</span>
@@ -1709,7 +1800,22 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                               <span className="text-[9px] font-black text-slate-500 uppercase block leading-none">
                                 Signed Acceptance
                               </span>
-                              {offer.signedAcceptanceUrl ? (
+                              {uploadingState[`${offer.id}_acceptance`] ? (
+                                <div className="mt-1.5 p-1.5 bg-indigo-50/50 rounded border border-indigo-100/80 space-y-1">
+                                  <div className="flex justify-between items-center text-[7.5px] font-bold text-indigo-700">
+                                    <span className="truncate max-w-[100px] animate-pulse">
+                                      {uploadingState[`${offer.id}_acceptance`].status}
+                                    </span>
+                                    <span>{uploadingState[`${offer.id}_acceptance`].percent}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
+                                    <div 
+                                      className="bg-indigo-600 h-1 rounded-full transition-all duration-300" 
+                                      style={{ width: `${uploadingState[`${offer.id}_acceptance`].percent}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ) : offer.signedAcceptanceUrl ? (
                                 <div className="mt-1.5 flex items-center justify-between gap-1.5 p-1 px-2 bg-emerald-50/55 rounded border border-emerald-100">
                                   <span className="text-[8px] text-emerald-800 font-bold truncate max-w-[120px]" title={offer.signedAcceptanceName}>
                                     {offer.signedAcceptanceName || 'signed_acceptance.pdf'}
@@ -1751,7 +1857,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                               )}
                             </div>
 
-                            {!offer.signedAcceptanceUrl && (
+                            {!offer.signedAcceptanceUrl && !uploadingState[`${offer.id}_acceptance`] && (
                               <label className="mt-1.5 flex items-center justify-center gap-1 px-1.5 py-1 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-[8px] font-bold rounded cursor-pointer transition-all border border-slate-200">
                                 <Upload className="w-2.5 h-2.5 text-slate-500" />
                                 <span>Choose Signed File</span>
