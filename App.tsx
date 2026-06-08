@@ -150,6 +150,48 @@ import TasksNotesView from './components/TasksNotesView';
 import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/ExperienceLetterView';
 import { NocView } from './components/NocView';
 
+// --- Image Compression Helper ---
+const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
+  return new Promise((resolve) => {
+    if (!base64Str || !base64Str.startsWith('data:image/')) {
+      resolve(base64Str);
+      return;
+    }
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width = Math.round((width * maxHeight) / height);
+          height = maxHeight;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.65));
+      } else {
+        resolve(base64Str);
+      }
+    };
+    img.onerror = () => {
+      resolve(base64Str);
+    };
+  });
+};
+
 // --- Constants & Helpers ---
 const INITIAL_PERMISSIONS: UserPermissions = {
     canViewDashboard: true,
@@ -1347,8 +1389,9 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                                                 const file = e.target.files?.[0];
                                                 if (file) {
                                                     const reader = new FileReader();
-                                                    reader.onloadend = () => {
-                                                        setData({...data, profileImage: reader.result as string});
+                                                    reader.onloadend = async () => {
+                                                        const compressed = await compressImage(reader.result as string);
+                                                        setData({...data, profileImage: compressed});
                                                     };
                                                     reader.readAsDataURL(file);
                                                 }
@@ -1588,8 +1631,9 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                                     const file = e.target.files?.[0];
                                                     if (file) {
                                                         const reader = new FileReader();
-                                                        reader.onloadend = () => {
-                                                            setData({ ...data, profileImage: reader.result as string });
+                                                        reader.onloadend = async () => {
+                                                            const compressed = await compressImage(reader.result as string);
+                                                            setData({ ...data, profileImage: compressed });
                                                         };
                                                         reader.readAsDataURL(file);
                                                     }
@@ -2330,8 +2374,9 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                             const file = e.target.files?.[0];
                                             if (file) {
                                                 const reader = new FileReader();
-                                                reader.onloadend = () => {
-                                                    setNewUser(prev => ({ ...prev, photoURL: reader.result as string }));
+                                                reader.onloadend = async () => {
+                                                    const compressed = await compressImage(reader.result as string);
+                                                    setNewUser(prev => ({ ...prev, photoURL: compressed }));
                                                 };
                                                 reader.readAsDataURL(file);
                                             }
@@ -2500,8 +2545,9 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                                             const file = e.target.files?.[0];
                                             if (file) {
                                                 const reader = new FileReader();
-                                                reader.onloadend = () => {
-                                                    setEditingUser(prev => prev ? ({ ...prev, photoURL: reader.result as string }) : null);
+                                                reader.onloadend = async () => {
+                                                    const compressed = await compressImage(reader.result as string);
+                                                    setEditingUser(prev => prev ? ({ ...prev, photoURL: compressed }) : null);
                                                 };
                                                 reader.readAsDataURL(file);
                                             }
@@ -2811,10 +2857,11 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
         const reader = new FileReader();
         reader.onload = async (evt) => {
             const base64 = evt.target?.result as string;
+            const compressed = await compressImage(base64);
             if (company) {
-                await updateCompany({ ...company, logo: base64 });
+                await updateCompany({ ...company, logo: compressed });
             } else {
-                setFormData(prev => ({ ...prev, logo: base64 }));
+                setFormData(prev => ({ ...prev, logo: compressed }));
             }
         };
         reader.readAsDataURL(file);
@@ -5827,8 +5874,9 @@ const ProfileView = ({ user, onUpdate }: { user: SystemUser, onUpdate: (updated:
         const file = e.target.files?.[0];
         if (file) {
             const reader = new FileReader();
-            reader.onloadend = () => {
-                setFormData(prev => ({ ...prev, photoURL: reader.result as string }));
+            reader.onloadend = async () => {
+                const compressed = await compressImage(reader.result as string);
+                setFormData(prev => ({ ...prev, photoURL: compressed }));
             };
             reader.readAsDataURL(file);
         }
@@ -7442,10 +7490,11 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
         const reader = new FileReader();
         reader.onload = async (evt) => {
             const base64 = evt.target?.result as string;
+            const compressed = await compressImage(base64);
             if (supplier) {
-                await updateSupplier({ ...supplier, logo: base64 });
+                await updateSupplier({ ...supplier, logo: compressed });
             } else {
-                setFormData(prev => ({ ...prev, logo: base64 }));
+                setFormData(prev => ({ ...prev, logo: compressed }));
             }
         };
         reader.readAsDataURL(file);
@@ -8729,10 +8778,11 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSea
         const reader = new FileReader();
         reader.onload = async (evt) => {
             const base64 = evt.target?.result as string;
+            const compressed = await compressImage(base64);
             if (company) {
-                await updateCompany({ ...company, logo: base64 });
+                await updateCompany({ ...company, logo: compressed });
             } else {
-                setFormData(prev => ({ ...prev, logo: base64 }));
+                setFormData(prev => ({ ...prev, logo: compressed }));
             }
         };
         reader.readAsDataURL(file);
@@ -10459,10 +10509,11 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                             const file = e.target.files?.[0];
                                             if (file) {
                                                 const reader = new FileReader();
-                                                reader.onloadend = () => {
+                                                reader.onloadend = async () => {
+                                                    const compressed = await compressImage(reader.result as string);
                                                     setNewItem({
                                                         ...newItem,
-                                                        attachment: reader.result as string,
+                                                        attachment: compressed,
                                                         attachmentName: file.name
                                                     });
                                                 };
@@ -10798,10 +10849,11 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                                     const file = e.target.files?.[0];
                                                     if (file) {
                                                         const reader = new FileReader();
-                                                        reader.onloadend = () => {
+                                                        reader.onloadend = async () => {
+                                                            const compressed = await compressImage(reader.result as string);
                                                             setEditingItem({
                                                                 ...editingItem,
-                                                                attachment: reader.result as string,
+                                                                attachment: compressed,
                                                                 attachmentName: file.name
                                                             });
                                                         };
@@ -14575,7 +14627,10 @@ const ReportsView = ({
                                                             const file = e.target.files?.[0];
                                                             if (file) {
                                                                 const reader = new FileReader();
-                                                                reader.onloadend = () => setShowModal({ ...showModal, profilePicture: reader.result as string });
+                                                                reader.onloadend = async () => {
+                                                                    const compressed = await compressImage(reader.result as string);
+                                                                    setShowModal({ ...showModal, profilePicture: compressed });
+                                                                };
                                                                 reader.readAsDataURL(file);
                                                             }
                                                         }}
@@ -14623,7 +14678,10 @@ const ReportsView = ({
                                                             const file = e.target.files?.[0];
                                                             if (file) {
                                                                 const reader = new FileReader();
-                                                                reader.onloadend = () => setShowModal({ ...showModal, cicpaCardFront: reader.result as string });
+                                                                reader.onloadend = async () => {
+                                                                    const compressed = await compressImage(reader.result as string);
+                                                                    setShowModal({ ...showModal, cicpaCardFront: compressed });
+                                                                };
                                                                 reader.readAsDataURL(file);
                                                             }
                                                         }}
@@ -14671,7 +14729,10 @@ const ReportsView = ({
                                                             const file = e.target.files?.[0];
                                                             if (file) {
                                                                 const reader = new FileReader();
-                                                                reader.onloadend = () => setShowModal({ ...showModal, cicpaCardBack: reader.result as string });
+                                                                reader.onloadend = async () => {
+                                                                    const compressed = await compressImage(reader.result as string);
+                                                                    setShowModal({ ...showModal, cicpaCardBack: compressed });
+                                                                };
                                                                 reader.readAsDataURL(file);
                                                             }
                                                         }}
