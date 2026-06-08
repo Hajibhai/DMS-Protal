@@ -1411,6 +1411,7 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                                      {companies.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                                  </select>
                              </div>
+                             <div><label className="text-xs font-semibold text-gray-500 uppercase">Joining Date</label><input disabled={readOnly} type="date" value={data.joiningDate || ''} onChange={e => setData({...data, joiningDate: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                         </div>
                     </div>
  
