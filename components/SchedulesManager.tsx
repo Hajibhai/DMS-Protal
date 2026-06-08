@@ -80,6 +80,7 @@ export function SchedulesManager({
   // Transmission Ledger states
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [deleteTxConfirmId, setDeleteTxConfirmId] = useState<string | null>(null);
 
   // Fetch Report transmission history
   const fetchTransactions = async () => {
@@ -98,7 +99,6 @@ export function SchedulesManager({
 
   // Delete a transmission record from Firestore
   const handleDeleteTransaction = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this transmission record?")) return;
     try {
       setActionLoading(`delete-tx-${id}`);
       const docRef = doc(db, "report_transactions", id);
@@ -1307,19 +1307,41 @@ export function SchedulesManager({
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteTransaction(t.id)}
-                        disabled={actionLoading !== null}
-                        className="p-1 px-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center"
-                        title="Delete Transmission Record"
-                      >
-                        {actionLoading === `delete-tx-${t.id}` ? (
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-3.5 h-3.5" />
-                        )}
-                      </button>
+                      {deleteTxConfirmId === t.id ? (
+                        <div className="flex items-center justify-center gap-1 bg-rose-50 border border-rose-150 rounded-xl p-1 inline-flex">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteTxConfirmId(null);
+                              handleDeleteTransaction(t.id);
+                            }}
+                            className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[9px] font-black transition-colors cursor-pointer"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTxConfirmId(null)}
+                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[9px] font-black transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTxConfirmId(t.id)}
+                          disabled={actionLoading !== null}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center"
+                          title="Delete Transmission Record"
+                        >
+                          {actionLoading === `delete-tx-${t.id}` ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
