@@ -57,6 +57,7 @@ import { Vendor, AccountsPayable, AccountsReceivable, PettyCash,
   Supplier, Project, SystemUser, UserRole, ProjectedExpense, EverydayExpense 
 } from '../types';
 import { PrintModal, PrintOptions } from './PrintModal';
+import { GoogleDriveManager } from './GoogleDriveManager';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 
 /**
@@ -531,6 +532,36 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
             { key: 'email', label: 'Email' },
             { key: 'phone', label: 'Phone' },
             { key: 'category', label: 'Category', sortable: true },
+            {
+                key: 'driveFiles',
+                label: 'Documents (LPO/Agreements)',
+                render: (item) => {
+                    const count = item.driveFiles?.length || 0;
+                    if (count === 0) return <span className="text-slate-400 font-normal">None</span>;
+                    return (
+                        <div className="flex flex-col gap-1 max-w-[220px]">
+                            <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider inline-block w-fit">
+                                📂 {count} Doc{count > 1 ? 's' : ''}
+                            </span>
+                            <div className="flex flex-col gap-1 mt-1">
+                                {item.driveFiles?.slice(0, 2).map((f: any) => (
+                                    <a
+                                        key={f.id}
+                                        href={f.webViewLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-brand-600 hover:text-brand-700 hover:underline truncate block font-bold flex items-center gap-1"
+                                        title={f.name}
+                                    >
+                                        📄 <span className="truncate max-w-[170px]">{f.name}</span>
+                                    </a>
+                                ))}
+                                {count > 2 && <span className="text-[10px] text-slate-400 font-bold">+{count - 2} more</span>}
+                            </div>
+                        </div>
+                    );
+                }
+            }
         ]}
         onAdd={onAdd}
         onEdit={onEdit}
@@ -6186,15 +6217,27 @@ export const ProjectedExpenseView = ({ data, projects, onAdd, onEdit, onDelete, 
 
 // --- Modals ---
 
-export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
+export const VendorModal = ({ vendor, onSave, onCancel, openConfirm }: any) => {
     const [formData, setFormData] = useState(() => {
         if (vendor) {
             return {
                 ...vendor,
-                trn: vendor.trn || ''
+                trn: vendor.trn || '',
+                driveFiles: vendor.driveFiles || []
             };
         }
-        return { code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', trn: '' };
+        return { 
+            code: '', 
+            name: '', 
+            contactPerson: '', 
+            address: '', 
+            email: '', 
+            phone: '', 
+            category: '', 
+            notes: '', 
+            trn: '',
+            driveFiles: []
+        };
     });
 
     return (
@@ -6202,7 +6245,7 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
             <motion.div 
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white"
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden border border-white"
             >
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div>
@@ -6291,6 +6334,22 @@ export const VendorModal = ({ vendor, onSave, onCancel }: any) => {
                             value={formData.address || ''}
                             onChange={e => setFormData({ ...formData, address: e.target.value })}
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                        />
+                    </div>
+
+                    <div className="space-y-2 pt-6 border-t border-slate-100">
+                        <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Client Documents (Optional LPOs & Agreements)</h3>
+                        <p className="text-xs text-slate-400 font-medium">Add documents, purchase orders (LPOs), contracts, or agreements below.</p>
+                        <GoogleDriveManager 
+                            files={formData.driveFiles || []}
+                            onAddFile={(file) => setFormData({ ...formData, driveFiles: [...(formData.driveFiles || []), file] })}
+                            onRemoveFile={(fileId) => setFormData({ ...formData, driveFiles: (formData.driveFiles || []).filter(f => f.id !== fileId) })}
+                            onUpdateFile={(updatedFile) => setFormData({
+                                ...formData,
+                                driveFiles: (formData.driveFiles || []).map(f => f.id === updatedFile.id ? updatedFile : f)
+                            })}
+                            openConfirm={openConfirm}
+                            title="Client Documents"
                         />
                     </div>
                 </div>

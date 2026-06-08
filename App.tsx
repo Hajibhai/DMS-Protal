@@ -5231,6 +5231,7 @@ export default function App() {
             vendor={typeof showVendorModal === 'object' ? showVendorModal : null}
             onSave={handleSaveVendor}
             onCancel={() => setShowVendorModal(false)}
+            openConfirm={openConfirm}
           />
         )}
         {showAPModal && (
