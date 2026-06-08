@@ -101,7 +101,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     notes: '',
     status: 'Applied' as JobApplicant['status'],
     interviewType: 'F2F' as 'F2F' | 'Online',
-    interviewMeetLink: ''
+    interviewMeetLink: '',
+    interviewDate: ''
   });
 
   // Job Offer Draft Form
@@ -173,7 +174,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
 
     try {
       const applicantId = editingApplicant ? editingApplicant.id : doc(collection(db, 'job_applicants')).id;
-      const data: JobApplicant = {
+      const data: any = {
         id: applicantId,
         name: applicantForm.name,
         email: applicantForm.email,
@@ -185,8 +186,16 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         appliedDate: editingApplicant ? editingApplicant.appliedDate : new Date().toISOString().split('T')[0],
         notes: applicantForm.notes,
         interviewType: applicantForm.status === 'Interview Scheduled' ? applicantForm.interviewType : undefined,
-        interviewMeetLink: applicantForm.status === 'Interview Scheduled' && applicantForm.interviewType === 'Online' ? (applicantForm.interviewMeetLink || '') : undefined
+        interviewMeetLink: applicantForm.status === 'Interview Scheduled' && applicantForm.interviewType === 'Online' ? (applicantForm.interviewMeetLink || '') : undefined,
+        interviewDate: applicantForm.status === 'Interview Scheduled' ? (applicantForm.interviewDate || '') : undefined
       };
+
+      // Remove undefined fields to prevent Firestore setDoc errors
+      Object.keys(data).forEach(key => {
+        if (data[key] === undefined) {
+          delete data[key];
+        }
+      });
 
       await setDoc(doc(db, 'job_applicants', applicantId), data);
       setShowApplicantModal(false);
@@ -195,7 +204,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       setApplicantForm({
         name: '', email: '', mobileNumber: '', position: 'Cleaner', 
         passportNumber: '', salaryExpectation: 0, notes: '', status: 'Applied',
-        interviewType: 'F2F', interviewMeetLink: ''
+        interviewType: 'F2F', interviewMeetLink: '', interviewDate: ''
       });
     } catch (err) {
       console.error("Error saving applicant:", err);
@@ -216,7 +225,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       notes: app.notes || '',
       status: app.status,
       interviewType: app.interviewType || 'F2F',
-      interviewMeetLink: app.interviewMeetLink || ''
+      interviewMeetLink: app.interviewMeetLink || '',
+      interviewDate: app.interviewDate || ''
     });
     setShowApplicantModal(true);
   };
@@ -824,7 +834,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                 setApplicantForm({
                   name: '', email: '', mobileNumber: '', position: 'Cleaner', 
                   passportNumber: '', salaryExpectation: 0, notes: '', status: 'Applied',
-                  interviewType: 'F2F', interviewMeetLink: ''
+                  interviewType: 'F2F', interviewMeetLink: '', interviewDate: ''
                 });
                 setShowApplicantModal(true);
               }}
@@ -1040,7 +1050,20 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                                 <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse inline-block">
                                   Scheduled
                                 </span>
-                                <div className="flex flex-col gap-0.5 mt-1 text-[10px] text-slate-500 font-medium">
+                                {app.interviewDate && (
+                                  <div className="flex items-center gap-1.5 text-[10px] text-amber-800 bg-amber-50 rounded-lg px-2 py-0.5 border border-amber-100 w-max font-semibold shadow-2xs mt-1">
+                                    <Calendar className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>
+                                      {new Date(app.interviewDate).toLocaleDateString(undefined, {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="flex flex-col gap-0.5 mt-1.5 text-[10px] text-slate-500 font-medium">
                                   {app.interviewType === 'Online' ? (
                                     <>
                                       <span className="flex items-center gap-1 text-slate-600"><Video className="w-3.5 h-3.5 text-indigo-500" /> Online Interview</span>
@@ -1500,15 +1523,70 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
 
                   {applicantForm.interviewType === 'Online' && (
                     <div className="space-y-1 mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                        Google Meet Integration
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Google Meet Link Selection
                       </label>
+                      <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                        Generate an instant meeting link for this candidate.
+                      </p>
                       <GoogleMeetGenerator
                         meetLink={applicantForm.interviewMeetLink || undefined}
                         onChange={(link) => setApplicantForm({ ...applicantForm, interviewMeetLink: link || '' })}
                       />
                     </div>
                   )}
+
+                  {/* Interview Date & Time Selection (UPGRADE 1) */}
+                  <div className="pt-2 border-t border-slate-100/80 space-y-2">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Scheduled Date & Time *
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={applicantForm.interviewDate || ''}
+                      onChange={(e) => setApplicantForm({ ...applicantForm, interviewDate: e.target.value })}
+                      required={applicantForm.status === 'Interview Scheduled'}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none font-bold text-slate-800"
+                    />
+                  </div>
+
+                  {/* Dynamic Dispatch Invitation Copy-paste Segment (UPGRADE 1) */}
+                  <div className="p-3 bg-brand-50/50 border border-brand-100/60 rounded-xl space-y-2 text-[11px] text-slate-750 animate-in fade-in duration-200">
+                    <span className="font-extrabold text-brand-800 uppercase tracking-wider block text-[9px]">
+                      📤 Direct Dispatch Candidate Invitation Template
+                    </span>
+                    <p className="leading-snug text-slate-500 text-[10px]">
+                      Copy and send this invite to candidate <strong>{applicantForm.name || 'Candidate'}</strong>:
+                    </p>
+                    <div className="p-2.5 bg-white border border-slate-200/80 rounded-lg text-slate-600 font-mono text-[10px] leading-relaxed relative group select-all">
+                      <pre className="whitespace-pre-wrap bg-transparent w-full pr-12 font-mono scrollbar-thin">
+{`Dear ${applicantForm.name || 'Candidate'},
+
+We are pleased to invite you for an interview for the position of ${applicantForm.position || 'Employee'}.
+
+📅 Date & Time: ${applicantForm.interviewDate ? new Date(applicantForm.interviewDate).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'To Be Decided'}
+📍 Format: ${applicantForm.interviewType === 'Online' ? 'Online Interview Space (Google Meet)' : 'Face-to-Face (F2F) Interview'}
+${applicantForm.interviewType === 'Online' && applicantForm.interviewMeetLink ? `🔗 Join Access Link: ${applicantForm.interviewMeetLink}` : ''}
+
+Please confirm your availability.
+
+Warm regards,
+Recruitment Team
+Pioneer DMS`}
+                      </pre>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const text = `Dear ${applicantForm.name || 'Candidate'},\n\nWe are pleased to invite you for an interview for the position of ${applicantForm.position || 'Employee'}.\n\n📅 Date & Time: ${applicantForm.interviewDate ? new Date(applicantForm.interviewDate).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'To Be Decided'}\n📍 Format: ${applicantForm.interviewType === 'Online' ? 'Online Interview Space (Google Meet)' : 'Face-to-Face (F2F) Interview'}${applicantForm.interviewType === 'Online' && applicantForm.interviewMeetLink ? `\n🔗 Join Access Link: ${applicantForm.interviewMeetLink}` : ''}\n\nPlease confirm your availability.\n\nWarm regards,\nRecruitment Team\nPioneer DMS`;
+                          navigator.clipboard.writeText(text);
+                          alert('Invitation copied to clipboard successfully!');
+                        }}
+                        className="absolute right-2 top-2 px-2.5 py-1.5 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white rounded-lg text-[9px] font-bold shadow-xs transition-colors cursor-pointer"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
