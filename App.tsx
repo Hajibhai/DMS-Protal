@@ -12936,6 +12936,8 @@ const ReportsView = ({
         return allowedReports.includes('summary') ? 'summary' : (allowedReports[0] || 'attendance');
     });
 
+    const [vatViewMode, setVatViewMode] = useState<'summary' | 'detailed'>('summary');
+
     useEffect(() => {
         if (!allowedReports.includes(reportType)) {
             setReportType(allowedReports.includes('summary') ? 'summary' : (allowedReports[0] || 'attendance'));
@@ -14018,7 +14020,47 @@ const ReportsView = ({
                     transition={{ delay: 0.4 }}
                     className="space-y-8"
                 >
-                    {/* UAE FTA VAT201 Official Structure Draft Box */}
+                    {/* View Switcher Toggle */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white border border-slate-200/80 rounded-3xl p-4 shadow-sm">
+                        <div className="space-y-0.5">
+                            <h3 className="text-base font-black text-slate-900">UAE VAT Tools Explorer</h3>
+                            <p className="text-xs text-slate-500 font-medium">Verify official FTA VAT201 box metrics, aging liabilities, or audit individual transaction lines.</p>
+                        </div>
+                        <div className="inline-flex p-1 bg-slate-100/80 rounded-2xl self-start sm:self-center border border-slate-200/40">
+                            <button
+                                onClick={() => setVatViewMode('summary')}
+                                className={cn(
+                                    "px-4 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center gap-2",
+                                    vatViewMode === 'summary' 
+                                      ? "bg-white text-slate-900 shadow-sm" 
+                                      : "text-slate-500 hover:text-slate-800"
+                                )}
+                            >
+                                <LayoutDashboard className="w-3.5 h-3.5" />
+                                Summary Analysis
+                            </button>
+                            <button
+                                onClick={() => setVatViewMode('detailed')}
+                                className={cn(
+                                    "px-4 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center gap-2",
+                                    vatViewMode === 'detailed' 
+                                      ? "bg-white text-slate-900 shadow-sm" 
+                                      : "text-slate-500 hover:text-slate-800"
+                                )}
+                            >
+                                <FileText className="w-3.5 h-3.5" />
+                                Detailed Transaction Audit
+                            </button>
+                        </div>
+                    </div>
+
+                    {vatViewMode === 'summary' && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="space-y-8"
+                        >
+                            {/* UAE FTA VAT201 Official Structure Draft Box */}
                     <div className="border border-slate-200 bg-white rounded-3xl p-6 shadow-sm overflow-hidden">
                         <div className="bg-slate-900 -mx-6 -mt-6 p-4 mb-6 flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -14232,7 +14274,16 @@ const ReportsView = ({
                         </div>
                     </div>
 
-                    {/* Transaction Level Reconciliation Details */}
+                        </motion.div>
+                    )}
+
+                    {vatViewMode === 'detailed' && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="space-y-8"
+                        >
+                            {/* Transaction Level Reconciliation Details */}
                     <div className="border border-slate-200 bg-white rounded-3xl p-6 shadow-sm overflow-hidden">
                         <div className="mb-6">
                             <h4 className="text-[11px] font-black uppercase text-slate-400 tracking-wider">VAT Transaction Registry</h4>
@@ -14286,6 +14337,8 @@ const ReportsView = ({
                             </table>
                         </div>
                     </div>
+                        </motion.div>
+                    )}
                 </motion.div>
             )}
 
