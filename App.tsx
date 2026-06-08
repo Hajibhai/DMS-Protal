@@ -12898,12 +12898,12 @@ const ReportsView = ({
     const ROLE_REPORT_ACCESS = useMemo(() => ({
         [UserRole.CREATOR]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
-            'corporate_tax', 'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
+            'corporate_tax', 'uae_vat', 'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
             'finance', 'everyday', 'projected', 'schedules'
         ],
         [UserRole.ADMIN]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
-            'corporate_tax', 'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
+            'corporate_tax', 'uae_vat', 'staff', 'full_employee', 'attendance', 'payroll', 'payroll_comparison', 'projects', 
             'finance', 'everyday', 'projected', 'schedules'
         ],
         [UserRole.HR]: [
@@ -12917,7 +12917,7 @@ const ReportsView = ({
         ],
         [UserRole.ACCOUNTANT]: [
             'summary', 'pl', 'trial_balance', 'balance_sheet', 'cash_flow', 
-            'corporate_tax', 'payroll', 'payroll_comparison', 'projects', 'finance'
+            'corporate_tax', 'uae_vat', 'payroll', 'payroll_comparison', 'projects', 'finance'
         ],
         [UserRole.EMPLOYEE]: [
             'everyday'
@@ -13143,6 +13143,166 @@ const ReportsView = ({
             totalEveryday, totalProjected
         };
     }, [payrollData, monthlyAP, monthlyAR, monthlyPettyCash, monthlyEveryday, monthlyProjected]);
+
+    const uaeVatData = useMemo(() => {
+        // End date of selected month to calculate aging relative to this point
+        const reportDate = new Date(currentYear, currentMonth + 1, 0);
+        
+        // Output VAT Calculations
+        // All Standard Rated supplies in this month (monthlyAR)
+        let standardRatedSales = 0;
+        let outputVat = 0;
+        (monthlyAR || []).forEach((ar: any) => {
+            standardRatedSales += ar.amount || 0;
+            outputVat += ar.vatAmount || 0;
+        });
+
+        // Non-VAT / Zero Rated Income in this month (such as Petty Cash Income)
+        const zeroRatedSales = (monthlyPettyCash || []).filter((pc: any) => pc.type === 'Income').reduce((acc: number, pc: any) => acc + pc.amount, 0);
+
+        // Input VAT Calculations
+        // AP standard rated purchases
+        let apPurchases = 0;
+        let apInputVat = 0;
+        (monthlyAP || []).forEach((ap: any) => {
+            apPurchases += ap.amount || 0;
+            apInputVat += ap.vatAmount || 0;
+        });
+
+        // Everyday expenses standard rated purchases
+        let everydayExpensesPurchases = 0;
+        let everydayInputVat = 0;
+        (monthlyEveryday || []).forEach((ee: any) => {
+            everydayExpensesPurchases += ee.billAmount || 0;
+            everydayInputVat += ee.vatAmount || 0;
+        });
+
+        // Sum of all input VAT
+        const totalTaxableExpenses = apPurchases + everydayExpensesPurchases;
+        const totalInputVat = apInputVat + everydayInputVat;
+
+        // Zero Rated / Non-VAT Expenses (such as Payroll, Petty Cash Expense)
+        const payrollExpenses = stats.totalNet || 0;
+        const pettyCashExpenses = (monthlyPettyCash || []).filter((pc: any) => pc.type === 'Expense').reduce((acc: number, pc: any) => acc + pc.amount, 0);
+        const nonTaxableExpenses = payrollExpenses + pettyCashExpenses;
+
+        const netVatPayable = outputVat - totalInputVat;
+
+        // Aging Calculations - Relative to reportDate
+        const arPendingItems = (accountsReceivable || []).filter((ar: any) => {
+            const invoiceDate = new Date(ar.date);
+            return invoiceDate <= reportDate && (ar.status === 'Pending' || ar.status === 'Partially Received');
+        });
+
+        const apPendingItems = (accountsPayable || []).filter((ap: any) => {
+            const invoiceDate = new Date(ap.date);
+            return invoiceDate <= reportDate && (ap.status === 'Pending' || ap.status === 'Partially Paid');
+        });
+
+        const arAging = { bucket0_30: 0, bucket31_60: 0, bucket61_90: 0, bucket91_plus: 0, total: 0 };
+        const apAging = { bucket0_30: 0, bucket31_60: 0, bucket61_90: 0, bucket91_plus: 0, total: 0 };
+
+        arPendingItems.forEach((ar: any) => {
+            const invoiceDate = new Date(ar.date);
+            const diffTime = reportDate.getTime() - invoiceDate.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const amount = ar.totalAmount || ar.amount || 0;
+            
+            arAging.total += amount;
+            if (diffDays <= 30) arAging.bucket0_30 += amount;
+            else if (diffDays <= 60) arAging.bucket31_60 += amount;
+            else if (diffDays <= 90) arAging.bucket61_90 += amount;
+            else arAging.bucket91_plus += amount;
+        });
+
+        apPendingItems.forEach((ap: any) => {
+            const invoiceDate = new Date(ap.date);
+            const diffTime = reportDate.getTime() - invoiceDate.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const amount = ap.totalAmount || ap.amount || 0;
+            
+            apAging.total += amount;
+            if (diffDays <= 30) apAging.bucket0_30 += amount;
+            else if (diffDays <= 60) apAging.bucket31_60 += amount;
+            else if (diffDays <= 90) apAging.bucket61_90 += amount;
+            else apAging.bucket91_plus += amount;
+        });
+
+        // Gather all standard-rated transactions this month
+        const outputTransactions = (monthlyAR || []).map((ar: any) => {
+            let entityName = 'Unknown';
+            const type = ar.entityType || 'Project';
+            const id = ar.entityId || ar.projectId;
+            if (type === 'Project') entityName = (projects || []).find((p: any) => p.id === id)?.clientName || 'Unknown Client';
+            else if (type === 'Supplier') entityName = (suppliers || []).find((s: any) => s.id === id)?.name || 'Unknown Supplier';
+            else if (type === 'Vendor') entityName = (vendors || []).find((v: any) => v.id === id)?.name || 'Unknown Vendor';
+
+            return {
+                type: 'Output',
+                date: ar.date,
+                ref: ar.invoiceNumber,
+                entity: entityName,
+                trn: ar.clientTrn || '-',
+                taxable: ar.amount || 0,
+                vat: ar.vatAmount || 0,
+                total: ar.totalAmount || 0
+            };
+        });
+
+        const inputTransactions = [
+            ...(monthlyAP || []).map((ap: any) => {
+                let entityName = 'Unknown';
+                if (ap.vendorType === 'Supplier') {
+                    entityName = (suppliers || []).find((s: any) => s.id === ap.vendorId)?.name || 'Unknown Supplier';
+                } else {
+                    entityName = (vendors || []).find((v: any) => v.id === ap.vendorId)?.name || 'Unknown Vendor';
+                }
+                const vendorTrn = ap.vendorType === 'Supplier' 
+                    ? (suppliers || []).find((s: any) => s.id === ap.vendorId)?.trn 
+                    : (vendors || []).find((v: any) => v.id === ap.vendorId)?.trn;
+
+                return {
+                    type: 'Input (AP)',
+                    date: ap.date,
+                    ref: ap.invoiceNumber,
+                    entity: entityName,
+                    trn: vendorTrn || '-',
+                    taxable: ap.amount || 0,
+                    vat: ap.vatAmount || 0,
+                    total: ap.totalAmount || 0
+                };
+            }),
+            ...(monthlyEveryday || []).map((ee: any) => ({
+                type: 'Input (Everyday)',
+                date: ee.date,
+                ref: ee.invoiceNo,
+                entity: ee.shopName || ee.supplierName || 'Everyday Shop',
+                trn: ee.trnNo || '-',
+                taxable: ee.billAmount || 0,
+                vat: ee.vatAmount || 0,
+                total: ee.totalAmount || 0
+            }))
+        ];
+
+        return {
+            standardRatedSales,
+            zeroRatedSales,
+            outputVat,
+            apPurchases,
+            apInputVat,
+            everydayExpensesPurchases,
+            everydayInputVat,
+            totalTaxableExpenses,
+            totalInputVat,
+            nonTaxableExpenses,
+            netVatPayable,
+            arAging,
+            apAging,
+            outputTransactions,
+            inputTransactions,
+            allTransactions: [...outputTransactions, ...inputTransactions].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        };
+    }, [monthlyAR, monthlyAP, monthlyEveryday, monthlyProjected, monthlyPettyCash, accountsReceivable, accountsPayable, stats.totalNet, projects, suppliers, vendors, currentMonth, currentYear]);
 
     const filteredStaff = useMemo(() => {
         if (!searchQuery) return activeStaff;
@@ -13456,6 +13616,33 @@ const ReportsView = ({
                     'Total Amount': pe.totalAmount
                 }));
                 break;
+            case 'uae_vat':
+                data = [
+                    { 'Section / Description': 'UAE VAT RETURN FORM (VAT201) SUMMARY', 'Taxable Amount (AED)': '', 'VAT Amount (AED)': '', 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'Standard Rated Supplies (Sales - Box 1a)', 'Taxable Amount (AED)': uaeVatData.standardRatedSales, 'VAT Amount (AED)': uaeVatData.outputVat, 'Total Amount (AED)': uaeVatData.standardRatedSales + uaeVatData.outputVat },
+                    { 'Section / Description': 'Zero Rated Supplies / Non-VAT Income (Petty Cash Receipts - Box 3)', 'Taxable Amount (AED)': uaeVatData.zeroRatedSales, 'VAT Amount (AED)': 0, 'Total Amount (AED)': uaeVatData.zeroRatedSales },
+                    { 'Section / Description': 'Total Output VAT (VAT on Sales Summary)', 'Taxable Amount (AED)': '', 'VAT Amount (AED)': uaeVatData.outputVat, 'Total Amount (AED)': '' },
+                    { 'Section / Description': '', 'Taxable Amount (AED)': '', 'VAT Amount (AED)': '', 'Total Amount (AED)' : '' },
+                    { 'Section / Description': 'Standard Rated Expenses (Purchases/Bills/Everyday - Box 9)', 'Taxable Amount (AED)': uaeVatData.totalTaxableExpenses, 'VAT Amount (AED)': uaeVatData.totalInputVat, 'Total Amount (AED)': uaeVatData.totalTaxableExpenses + uaeVatData.totalInputVat },
+                    { 'Section / Description': 'Non-VAT Expenses & Payroll (Exempt Costs - Box 10)', 'Taxable Amount (AED)': uaeVatData.nonTaxableExpenses, 'VAT Amount (AED)': 0, 'Total Amount (AED)': uaeVatData.nonTaxableExpenses },
+                    { 'Section / Description': 'Total Input VAT (Total Recoverable Input VAT Summary)', 'Taxable Amount (AED)': '', 'VAT Amount (AED)': uaeVatData.totalInputVat, 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'NET VAT RECOVERABLE / (PAYABLE) to FTA', 'Taxable Amount (AED)': '', 'VAT Amount (AED)': uaeVatData.netVatPayable, 'Total Amount (AED)': '' },
+                    { 'Section / Description': '', 'Taxable Amount (AED)': '', 'VAT Amount (AED)': '', 'Total Amount (AED)' : '' },
+                    { 'Section / Description': 'ACCOUNTS RECEIVABLE (AR) AGING ANALYSIS', 'Taxable Amount (AED)': 'Age Bucket', 'VAT Amount (AED)': 'Amount Outstanding', 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'AR Outstanding 0 - 30 Days (Current)', 'Taxable Amount (AED)': '0 - 30 Days', 'VAT Amount (AED)': uaeVatData.arAging.bucket0_30, 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'AR Outstanding 31 - 60 Days', 'Taxable Amount (AED)': '31 - 60 Days', 'VAT Amount (AED)': uaeVatData.arAging.bucket31_60, 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'AR Outstanding 61 - 90 Days', 'Taxable Amount (AED)': '61 - 90 Days', 'VAT Amount (AED)': uaeVatData.arAging.bucket61_90, 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'AR Outstanding 90+ Days (Overdue)', 'Taxable Amount (AED)': '90+ Days', 'VAT Amount (AED)': uaeVatData.arAging.bucket91_plus, 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'Total Accounts Receivable Balance', 'Taxable Amount (AED)': 'Total Balance', 'VAT Amount (AED)': uaeVatData.arAging.total, 'Total Amount (AED)': '' },
+                    { 'Section / Description': '', 'Taxable Amount (AED)': '', 'VAT Amount (AED)': '', 'Total Amount (AED)' : '' },
+                    { 'Section / Description': 'ACCOUNTS PAYABLE (AP) AGING ANALYSIS', 'Taxable Amount (AED)': 'Age Bucket', 'VAT Amount (AED)': 'Amount Outstanding', 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'AP Outstanding 0 - 30 Days (Current)', 'Taxable Amount (AED)': '0 - 30 Days', 'VAT Amount (AED)': uaeVatData.apAging.bucket0_30, 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'AP Outstanding 31 - 60 Days', 'Taxable Amount (AED)': '31 - 60 Days', 'VAT Amount (AED)': uaeVatData.apAging.bucket31_60, 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'AP Outstanding 61 - 90 Days', 'Taxable Amount (AED)': '61 - 90 Days', 'VAT Amount (AED)': uaeVatData.apAging.bucket61_90, 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'AP Outstanding 90+ Days (Overdue)', 'Taxable Amount (AED)': '90+ Days', 'VAT Amount (AED)': uaeVatData.apAging.bucket91_plus, 'Total Amount (AED)': '' },
+                    { 'Section / Description': 'Total Accounts Payable Balance', 'Taxable Amount (AED)': 'Total Balance', 'VAT Amount (AED)': uaeVatData.apAging.total, 'Total Amount (AED)': '' }
+                ];
+                break;
             case 'summary':
                 data = [
                     { 'Category': 'TOTAL INCOME', 'Amount': stats.totalReceivable + stats.pettyCashIn, 'Description': 'Accounts Receivable + Petty Cash In' },
@@ -13567,6 +13754,7 @@ const ReportsView = ({
         { id: 'balance_sheet', label: 'Balance Sheet', icon: Landmark },
         { id: 'cash_flow', label: 'Cash Flow', icon: RefreshCw },
         { id: 'corporate_tax', label: 'Financial Statement (Corporate Tax)', icon: FileText },
+        { id: 'uae_vat', label: 'UAE VAT Report Analysis', icon: Calculator },
         { id: 'staff', label: 'Workforce', icon: Users },
         { id: 'full_employee', label: 'Full Employee Details', icon: FileSpreadsheet },
         { id: 'attendance', label: 'Attendance', icon: Calendar },
@@ -13822,13 +14010,292 @@ const ReportsView = ({
                 </motion.div>
             )}
 
+            {/* UAE VAT Report Analysis */}
+            {reportType === 'uae_vat' && (
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4 }}
+                    className="space-y-8"
+                >
+                    {/* UAE FTA VAT201 Official Structure Draft Box */}
+                    <div className="border border-slate-200 bg-white rounded-3xl p-6 shadow-sm overflow-hidden">
+                        <div className="bg-slate-900 -mx-6 -mt-6 p-4 mb-6 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <span className="p-2 bg-emerald-500 rounded-lg text-white font-black text-xs leading-none">VAT201</span>
+                                <span className="text-white font-black leading-none uppercase tracking-widest text-xs">Federal Tax Authority (FTA) VAT Return Form</span>
+                            </div>
+                            <span className="text-emerald-400 font-mono text-[10px] uppercase font-black">Draft Calculation Sheet</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* Output VAT Column */}
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Vat on Sales and other Outputs
+                                </h4>
+                                
+                                <div className="border border-slate-100 rounded-xl divide-y divide-slate-50 overflow-hidden">
+                                    <div className="p-4 bg-slate-50 flex justify-between items-center text-xs font-black text-slate-500 uppercase tracking-wider">
+                                        <span>Taxable Category / Box Number</span>
+                                        <div className="flex gap-12">
+                                            <span className="w-24 text-right">Taxable Amt (AED)</span>
+                                            <span className="w-24 text-right">Output VAT (AED)</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="p-4 flex justify-between items-center hover:bg-slate-50/30 transition-colors">
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800">Box 1: Standard Rated Supplies</div>
+                                            <p className="text-[10px] text-slate-400 font-medium">Standard 5% supplies (Client Accounts Receivable)</p>
+                                        </div>
+                                        <div className="flex gap-12 font-mono text-xs font-bold text-slate-700">
+                                            <span className="w-24 text-right">{uaeVatData.standardRatedSales.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                            <span className="w-24 text-right text-emerald-600">+{uaeVatData.outputVat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 flex justify-between items-center hover:bg-slate-50/30 transition-colors">
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800">Box 3: Zero-Rated / Exempt Goods</div>
+                                            <p className="text-[10px] text-slate-400 font-medium font-sans">Business receipts exempt or untaxed (e.g. Petty Cash Income)</p>
+                                        </div>
+                                        <div className="flex gap-12 font-mono text-xs font-bold text-slate-500">
+                                            <span className="w-24 text-right">{uaeVatData.zeroRatedSales.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                            <span className="w-24 text-right">0.00</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-emerald-50/30 flex justify-between items-center font-bold text-xs text-slate-800">
+                                        <div>
+                                            <div>Total Outputs Box Summary</div>
+                                            <p className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Sum of all Output VAT</p>
+                                        </div>
+                                        <div className="flex gap-12 font-mono text-xs">
+                                            <span className="w-24 text-right">{(uaeVatData.standardRatedSales + uaeVatData.zeroRatedSales).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                            <span className="w-24 text-right text-emerald-600 font-black">AED {uaeVatData.outputVat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Input VAT Column */}
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-rose-500"></span> Vat on Expenses and other Inputs
+                                </h4>
+
+                                <div className="border border-slate-100 rounded-xl divide-y divide-slate-50 overflow-hidden">
+                                    <div className="p-4 bg-slate-50 flex justify-between items-center text-xs font-black text-slate-500 uppercase tracking-wider">
+                                        <span>Taxable Category / Box Number</span>
+                                        <div className="flex gap-12">
+                                            <span className="w-24 text-right">Recoverable Amt (AED)</span>
+                                            <span className="w-24 text-right">Input VAT (AED)</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 flex justify-between items-center hover:bg-slate-50/30 transition-colors">
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800">Box 9: Standard Rated Expenses</div>
+                                            <p className="text-[10px] text-slate-400 font-medium">Standard 5% input (Accounts Payable + Everyday Expenses)</p>
+                                        </div>
+                                        <div className="flex gap-12 font-mono text-xs font-bold text-slate-700">
+                                            <span className="w-24 text-right">{uaeVatData.totalTaxableExpenses.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                            <span className="w-24 text-right text-rose-600 font-bold">-{uaeVatData.totalInputVat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 flex justify-between items-center hover:bg-slate-50/30 transition-colors">
+                                        <div>
+                                            <div className="text-xs font-bold text-slate-800">Box 10: Exempt / Non-Taxable Expenses</div>
+                                            <p className="text-[10px] text-slate-400 font-medium">Operational cost without VAT (e.g. Payroll, Petty Cash out)</p>
+                                        </div>
+                                        <div className="flex gap-12 font-mono text-xs font-bold text-slate-500">
+                                            <span className="w-24 text-right">{uaeVatData.nonTaxableExpenses.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                            <span className="w-24 text-right">0.00</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-rose-50/20 flex justify-between items-center font-bold text-xs text-slate-800">
+                                        <div>
+                                            <div>Total Inputs Box Summary</div>
+                                            <p className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Sum of all Recoverable Input VAT</p>
+                                        </div>
+                                        <div className="flex gap-12 font-mono text-xs">
+                                            <span className="w-24 text-right">{(uaeVatData.totalTaxableExpenses + uaeVatData.nonTaxableExpenses).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                            <span className="w-24 text-right text-rose-600 font-black">AED {uaeVatData.totalInputVat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Net VAT Position Section Banner */}
+                        <div className={cn(
+                            "mt-8 p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4 text-white shadow-lg",
+                            uaeVatData.netVatPayable >= 0 ? "bg-slate-950 shadow-slate-900/10" : "bg-emerald-800 shadow-emerald-900/10"
+                        )}>
+                            <div className="flex items-center gap-4 text-center md:text-left">
+                                <span className="text-3xl">🏦</span>
+                                <div>
+                                    <h4 className="text-sm font-black uppercase tracking-wider">
+                                        {uaeVatData.netVatPayable >= 0 ? "Net Tax Position: VAT Payable" : "Net Tax Position: VAT Refundable"}
+                                    </h4>
+                                    <p className="text-slate-300 text-xs font-medium max-w-md mt-0.5">
+                                        {uaeVatData.netVatPayable >= 0 
+                                          ? "Your business output VAT exceeds total input VAT. This amount is payable to the Federal Tax Authority (FTA)."
+                                          : "Your business input VAT on purchases exceeds output VAT on sales. This amount is refundable / claimable from FTA."}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="text-right font-mono text-center md:text-right">
+                                <div className="text-xs uppercase tracking-widest font-bold opacity-75">Net Payable amount</div>
+                                <div className="text-2xl font-black mt-1">
+                                    {uaeVatData.netVatPayable >= 0 ? "+" : "-"}AED {Math.abs(uaeVatData.netVatPayable).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Aging Analysis Block */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* Accounts Receivable (AR) Aging */}
+                        <div className="border border-slate-200 bg-white rounded-3xl p-6 shadow-sm">
+                            <div className="flex justify-between items-center mb-6">
+                                <div>
+                                    <h4 className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Sales Aging Analysis</h4>
+                                    <h3 className="text-lg font-black text-slate-900 leading-tight">Accounts Receivable (AR) Aging</h3>
+                                </div>
+                                <div className="text-right font-mono">
+                                    <span className="text-xs text-slate-400 font-bold uppercase block tracking-wider">Total Overdue</span>
+                                    <span className="text-md font-black text-emerald-600">AED {uaeVatData.arAging.total.toLocaleString(undefined, {maximumFractionDigits: 0})}</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                {[
+                                    { label: '0 - 30 Days (Current)', val: uaeVatData.arAging.bucket0_30, color: 'bg-emerald-500' },
+                                    { label: '31 - 60 Days', val: uaeVatData.arAging.bucket31_60, color: 'bg-indigo-500' },
+                                    { label: '61 - 90 Days', val: uaeVatData.arAging.bucket61_90, color: 'bg-amber-500' },
+                                    { label: '90+ Days (Overdue)', val: uaeVatData.arAging.bucket91_plus, color: 'bg-rose-500' }
+                                ].map((bucket, bIdx) => {
+                                    const pct = uaeVatData.arAging.total > 0 ? (bucket.val / uaeVatData.arAging.total) * 100 : 0;
+                                    return (
+                                        <div key={bIdx} className="space-y-1">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="font-bold text-slate-700">{bucket.label}</span>
+                                                <span className="font-mono font-black text-slate-900">AED {bucket.val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ({pct.toFixed(0)}%)</span>
+                                            </div>
+                                            <div className="w-full bg-slate-100 rounded-full h-2 rounded-full overflow-hidden">
+                                                <div className={cn("h-full rounded-full transition-all duration-500", bucket.color)} style={{ width: `${pct}%` }}></div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Accounts Payable (AP) Aging */}
+                        <div className="border border-slate-200 bg-white rounded-3xl p-6 shadow-sm">
+                            <div className="flex justify-between items-center mb-6">
+                                <div>
+                                    <h4 className="text-[11px] font-black uppercase text-slate-400 tracking-wider">Purchase Aging Analysis</h4>
+                                    <h3 className="text-lg font-black text-slate-900 leading-tight">Accounts Payable (AP) Aging</h3>
+                                </div>
+                                <div className="text-right font-mono">
+                                    <span className="text-xs text-slate-400 font-bold uppercase block tracking-wider">Total Outstanding</span>
+                                    <span className="text-md font-black text-rose-600">AED {uaeVatData.apAging.total.toLocaleString(undefined, {maximumFractionDigits: 0})}</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                {[
+                                    { label: '0 - 30 Days (Current)', val: uaeVatData.apAging.bucket0_30, color: 'bg-emerald-500' },
+                                    { label: '31 - 60 Days', val: uaeVatData.apAging.bucket31_60, color: 'bg-indigo-500' },
+                                    { label: '61 - 90 Days', val: uaeVatData.apAging.bucket61_90, color: 'bg-amber-500' },
+                                    { label: '90+ Days (Overdue)', val: uaeVatData.apAging.bucket91_plus, color: 'bg-rose-500' }
+                                ].map((bucket, bIdx) => {
+                                    const pct = uaeVatData.apAging.total > 0 ? (bucket.val / uaeVatData.apAging.total) * 100 : 0;
+                                    return (
+                                        <div key={bIdx} className="space-y-1">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <span className="font-bold text-slate-700">{bucket.label}</span>
+                                                <span className="font-mono font-black text-slate-900">AED {bucket.val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ({pct.toFixed(0)}%)</span>
+                                            </div>
+                                            <div className="w-full bg-slate-100 rounded-full h-2 rounded-full overflow-hidden">
+                                                <div className={cn("h-full rounded-full transition-all duration-400", bucket.color)} style={{ width: `${pct}%` }}></div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Transaction Level Reconciliation Details */}
+                    <div className="border border-slate-200 bg-white rounded-3xl p-6 shadow-sm overflow-hidden">
+                        <div className="mb-6">
+                            <h4 className="text-[11px] font-black uppercase text-slate-400 tracking-wider">VAT Transaction Registry</h4>
+                            <h3 className="text-lg font-black text-slate-900 leading-tight">VAT Filing Reconciliation Details</h3>
+                            <p className="text-slate-400 text-xs font-medium mt-0.5">List of standard rated items for {monthName} {currentYear} constituting Output & Input VAT calculations</p>
+                        </div>
+
+                        <div className="overflow-x-auto -mx-6">
+                            <table className="w-full border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-100">
+                                        <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Type</th>
+                                        <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Date</th>
+                                        <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Invoice/Ref</th>
+                                        <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Entity</th>
+                                        <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">TRN</th>
+                                        <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Taxable (AED)</th>
+                                        <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">VAT (5%) (AED)</th>
+                                        <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Total (AED)</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-sans text-xs font-bold text-slate-700">
+                                    {uaeVatData.allTransactions.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={8} className="px-6 py-12 text-center text-slate-400 font-medium">
+                                                No standard rated taxable transactions logged in {monthName} {currentYear}.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        uaeVatData.allTransactions.map((tx: any, txIdx: number) => (
+                                            <tr key={txIdx} className="hover:bg-slate-50/50 transition-colors">
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className={cn(
+                                                        "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest",
+                                                        tx.type === 'Output' ? 'bg-emerald-55 text-emerald-700 border border-emerald-100' : 'bg-rose-55 text-rose-700 border border-rose-100'
+                                                    )}>
+                                                        {tx.type}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-slate-500 font-medium font-mono">{new Date(tx.date).toLocaleDateString('en-GB')}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap font-mono text-slate-900">{tx.ref}</td>
+                                                <td className="px-6 py-4 max-w-xs truncate text-slate-800">{tx.entity}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap font-mono text-slate-500">{tx.trn}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-right font-mono">{tx.taxable.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                <td className={cn("px-6 py-4 whitespace-nowrap text-right font-mono", tx.type === 'Output' ? 'text-emerald-600' : 'text-rose-600')}>{tx.vat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-right font-mono text-slate-900 font-black">{tx.total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
             <motion.div 
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
                 className={cn(
                     "glass-card rounded-[2.5rem] border border-white shadow-2xl shadow-slate-200/50 overflow-hidden w-full max-w-full",
-                    reportType === 'schedules' && "hidden"
+                    (reportType === 'schedules' || reportType === 'uae_vat') && "hidden"
                 )}
             >
                 <div className="overflow-x-auto w-full max-w-full">
