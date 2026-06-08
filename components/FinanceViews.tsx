@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { 
   Search, Filter, Download, Plus, Edit, Trash2, 
-  ChevronDown, X, FileText, Globe, Truck, 
+  ChevronDown, X, FileText, Globe, Truck, Car,
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
   FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle,
@@ -8194,7 +8194,33 @@ export const EverydayExpenseView: React.FC<{
         { key: 'clientName', label: 'Client Name', sortable: true },
         { key: 'supplierName', label: 'Supplier Name', sortable: true },
         { key: 'shopName', label: 'Shop Name', sortable: true },
-        { key: 'description', label: 'Description' },
+        { 
+            key: 'description', 
+            label: 'Description',
+            render: (item: EverydayExpense) => (
+                <div className="space-y-1.5 my-1 text-left">
+                    <p className="text-slate-800 font-bold whitespace-pre-line leading-relaxed">{item.description || '-'}</p>
+                    {item.isVehicleFuel && (
+                        <div className="inline-flex flex-wrap items-center gap-1.5 px-2 py-0.5 bg-amber-50/70 border border-amber-200/50 rounded-lg text-[10px] text-amber-800 font-extrabold font-sans select-all">
+                            <span className="flex items-center gap-1 mr-0.5">
+                                <Car className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                <span className="bg-amber-100 px-1 py-0.5 rounded text-amber-950 font-mono tracking-wide">{item.vehicleNumber || 'N/A'}</span>
+                            </span>
+                            {item.kmStart !== undefined && item.kmEnd !== undefined && (
+                                <>
+                                    <span className="text-amber-300">|</span>
+                                    <span>Start: {item.kmStart} km</span>
+                                    <span className="text-amber-300">|</span>
+                                    <span>End: {item.kmEnd} km</span>
+                                    <span className="text-amber-300">|</span>
+                                    <span className="bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded font-black">Run: {item.kmEnd - item.kmStart} km</span>
+                                </>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )
+        },
         { key: 'billAmount', label: 'Bill Amount', sortable: true, render: (item: EverydayExpense) => item.billAmount.toLocaleString() },
         { key: 'vatAmount', label: 'VAT Amount', sortable: true, render: (item: EverydayExpense) => item.vatAmount.toLocaleString() },
         { key: 'totalAmount', label: 'Total Amount', sortable: true, render: (item: EverydayExpense) => item.totalAmount.toLocaleString() },
@@ -8370,7 +8396,7 @@ export const EverydayExpenseView: React.FC<{
                     onEdit={onEdit}
                     onDelete={onDelete}
                     onViewBill={(item) => setViewingBill(item.attachment || null)}
-                    searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date']}
+                    searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date', 'vehicleNumber']}
                     exportFileName="Everyday_Expenses"
                     user={user}
                     filterOptions={filterOptions}
@@ -8802,6 +8828,7 @@ export const EverydayExpenseModal: React.FC<{
     const [isScanning, setIsScanning] = useState(false);
     const [scanError, setScanError] = useState<string | null>(null);
     const [duplicateMatch, setDuplicateMatch] = useState<EverydayExpense | null>(null);
+    const [validationError, setValidationError] = useState<string | null>(null);
 
     const findDuplicateEntry = (newExpense: EverydayExpense) => {
         if (!everydayExpenses || everydayExpenses.length === 0) return null;
@@ -9265,6 +9292,115 @@ export const EverydayExpenseModal: React.FC<{
                         </select>
                     </div>
 
+                    {/* Fuel Expense Toggle & Inputs */}
+                    <div className="p-5 bg-amber-50/40 border border-amber-500/15 rounded-3xl space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-start gap-3">
+                                <div className="p-2.5 bg-amber-100 text-amber-700 rounded-2xl">
+                                    <Car className="w-5 h-5" />
+                                </div>
+                                <div className="text-left">
+                                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Vehicle Fuel / Petrol / Diesel / Gas</h4>
+                                    <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Toggle this if this is a vehicle fuel expense.</p>
+                                </div>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={!!formData.isVehicleFuel}
+                                    onChange={e => {
+                                        const checked = e.target.checked;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            isVehicleFuel: checked,
+                                            ...(!checked ? { vehicleNumber: '', kmStart: undefined, kmEnd: undefined, kmRun: undefined } : {})
+                                        }));
+                                        setValidationError(null);
+                                    }}
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:width-5 after:transition-all peer-checked:bg-amber-600"></div>
+                            </label>
+                        </div>
+
+                        {formData.isVehicleFuel && (
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-3 border-t border-amber-500/10 animate-in fade-in duration-200">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                        Vehicle No <span className="text-rose-500">*</span>
+                                    </label>
+                                    <input 
+                                        type="text"
+                                        placeholder="e.g. DXB 12345"
+                                        value={formData.vehicleNumber || ''}
+                                        onChange={e => {
+                                            setFormData({ ...formData, vehicleNumber: e.target.value });
+                                            setValidationError(null);
+                                        }}
+                                        className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all font-mono"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                        KM Start {formData.attachment && <span className="text-rose-500">*</span>}
+                                    </label>
+                                    <input 
+                                        type="number"
+                                        placeholder="Starting KM"
+                                        value={formData.kmStart !== undefined ? formData.kmStart : ''}
+                                        onChange={e => {
+                                            const startVal = e.target.value === '' ? undefined : Number(e.target.value);
+                                            const endVal = formData.kmEnd;
+                                            const runVal = (startVal !== undefined && endVal !== undefined) ? (endVal - startVal) : undefined;
+                                            setFormData({ 
+                                                ...formData, 
+                                                kmStart: startVal,
+                                                kmRun: runVal
+                                            });
+                                            setValidationError(null);
+                                        }}
+                                        className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                        KM End {formData.attachment && <span className="text-rose-500">*</span>}
+                                    </label>
+                                    <input 
+                                        type="number"
+                                        placeholder="Ending KM"
+                                        value={formData.kmEnd !== undefined ? formData.kmEnd : ''}
+                                        onChange={e => {
+                                            const endVal = e.target.value === '' ? undefined : Number(e.target.value);
+                                            const startVal = formData.kmStart;
+                                            const runVal = (startVal !== undefined && endVal !== undefined) ? (endVal - startVal) : undefined;
+                                            setFormData({ 
+                                                ...formData, 
+                                                kmEnd: endVal,
+                                                kmRun: runVal
+                                            });
+                                            setValidationError(null);
+                                        }}
+                                        className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+                                    />
+                                </div>
+
+                                <div className="space-y-1 font-sans">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                        Total Run
+                                    </label>
+                                    <div className="w-full px-3 py-2 bg-amber-500/10 border border-amber-500/15 rounded-xl text-xs font-black text-amber-900 font-mono text-center">
+                                        {(formData.kmStart !== undefined && formData.kmEnd !== undefined) 
+                                            ? `${formData.kmEnd - formData.kmStart} KM` 
+                                            : '--'}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="space-y-1">
                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1" id="uploader-label-everyday-uniq">Uploaded / Updated By (Your Name)</label>
                         <input 
@@ -9326,10 +9462,40 @@ export const EverydayExpenseModal: React.FC<{
                     </div>
                 </div>
 
+                {validationError && (
+                    <div className="mx-8 mt-2 p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl text-xs font-semibold flex items-center gap-2 animate-in slide-in-from-top-1 duration-150">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                        <span>{validationError}</span>
+                    </div>
+                )}
+
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
                     <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
                     <button 
                         onClick={() => {
+                            // Fuel Expense Custom Validations
+                            if (formData.isVehicleFuel) {
+                                if (!formData.vehicleNumber || !formData.vehicleNumber.trim()) {
+                                    setValidationError("Vehicle Number is required for fuel expenses.");
+                                    return;
+                                }
+                                if (formData.attachment) {
+                                    if (formData.kmStart === undefined || formData.kmStart === null || isNaN(formData.kmStart)) {
+                                        setValidationError("Kilometer Start is mandatory when a bill/receipt photo is uploaded.");
+                                        return;
+                                    }
+                                    if (formData.kmEnd === undefined || formData.kmEnd === null || isNaN(formData.kmEnd)) {
+                                        setValidationError("Kilometer End is mandatory when a bill/receipt photo is uploaded.");
+                                        return;
+                                    }
+                                    if (Number(formData.kmEnd) < Number(formData.kmStart)) {
+                                        setValidationError("Kilometer End cannot be less than Kilometer Start.");
+                                        return;
+                                    }
+                                }
+                            }
+
+                            setValidationError(null);
                             const duplicate = findDuplicateEntry(formData);
                             if (duplicate) {
                                 setDuplicateMatch(duplicate);

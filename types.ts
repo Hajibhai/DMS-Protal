@@ -320,6 +320,11 @@ export interface EverydayExpense {
     uploadedDate?: string;
     attachment?: string;
     employeeId?: string; // Associated employee for petty cash tallying
+    isVehicleFuel?: boolean;
+    vehicleNumber?: string;
+    kmStart?: number;
+    kmEnd?: number;
+    kmRun?: number;
 }
 
 export interface DashboardStats {
