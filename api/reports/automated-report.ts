@@ -624,30 +624,39 @@ export function generateAgingPdf(
   // Helper resolvers
   const resolvePartyNameLocal = (item: any, isAR: boolean) => {
     if (isAR) {
-      if (item.companyName) return item.companyName;
-      if (item.clientName) return item.clientName;
       if (item.entityId) {
-        if (item.entityType === 'Supplier') {
+        if (item.entityType === 'Project') {
+          const p = projects.find((x: any) => x.id === item.entityId);
+          if (p) {
+            const pClient = p.clientName || "General Customer";
+            const pCodeSuffix = p.code ? ` (${p.code})` : "";
+            return `${pClient}${pCodeSuffix}`;
+          }
+        } else if (item.entityType === 'Supplier') {
           const s = suppliers.find((x: any) => x.id === item.entityId);
-          if (s) return s.name;
+          if (s) {
+            const sCodeSuffix = s.code ? ` (${s.code})` : "";
+            return `${s.name}${sCodeSuffix}`;
+          }
         } else if (item.entityType === 'Vendor') {
           const v = vendors.find((x: any) => x.id === item.entityId);
-          if (v) return v.name;
-        } else if (item.entityType === 'Project') {
-          const p = projects.find((x: any) => x.id === item.entityId);
-          if (p) return p.name;
+          if (v) {
+            const vCodeSuffix = v.code ? ` (${v.code})` : "";
+            return `${v.name}${vCodeSuffix}`;
+          }
         }
       }
+      if (item.clientName) return item.clientName;
       return "General Customer";
     } else {
       const vId = item.vendorId;
       const vType = item.vendorType || 'Vendor';
       if (vType === 'Supplier') {
         const s = suppliers.find((x: any) => x.id === vId);
-        return s ? s.name : "Supplier (" + vId + ")";
+        return s ? (s.code ? `${s.name} (${s.code})` : s.name) : "Supplier (" + vId + ")";
       } else {
         const v = vendors.find((x: any) => x.id === vId);
-        return v ? v.name : "Vendor (" + vId + ")";
+        return v ? (v.code ? `${v.name} (${v.code})` : v.name) : "Vendor (" + vId + ")";
       }
     }
   };
@@ -764,10 +773,10 @@ export function generateAgingPdf(
   doc.setFontSize(7.5);
   doc.setTextColor(71, 85, 105);
   doc.text("PORTFOLIO TRACK", 18, currentY + 5.5);
-  doc.text("0-30 DAYS PAST DUE", 60, currentY + 5.5, { align: "right" });
-  doc.text("31-60 DAYS PAST DUE", 100, currentY + 5.5, { align: "right" });
-  doc.text("61-90 DAYS PAST DUE", 140, currentY + 5.5, { align: "right" });
-  doc.text("90+ DAYS OVERDUE", 185, currentY + 5.5, { align: "right" });
+  doc.text("0-30 DAYS PAST DUE", 90, currentY + 5.5, { align: "right" });
+  doc.text("31-60 DAYS PAST DUE", 122, currentY + 5.5, { align: "right" });
+  doc.text("61-90 DAYS PAST DUE", 154, currentY + 5.5, { align: "right" });
+  doc.text("90+ DAYS OVERDUE", 190, currentY + 5.5, { align: "right" });
 
   currentY += 8;
   
@@ -776,11 +785,11 @@ export function generateAgingPdf(
   doc.setFontSize(8);
   doc.setTextColor(30, 41, 59);
   doc.text("Accounts Receivable (AR Invoices)", 18, currentY + 5.5);
-  doc.text(`${arBuckets.b30.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 60, currentY + 5.5, { align: "right" });
-  doc.text(`${arBuckets.b60.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 100, currentY + 5.5, { align: "right" });
-  doc.text(`${arBuckets.b90.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 140, currentY + 5.5, { align: "right" });
+  doc.text(`${arBuckets.b30.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 90, currentY + 5.5, { align: "right" });
+  doc.text(`${arBuckets.b60.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 122, currentY + 5.5, { align: "right" });
+  doc.text(`${arBuckets.b90.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 154, currentY + 5.5, { align: "right" });
   doc.setTextColor(arBuckets.bOver > 0 ? 239 : 30, arBuckets.bOver > 0 ? 68 : 41, arBuckets.bOver > 0 ? 68 : 59);
-  doc.text(`${arBuckets.bOver.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 185, currentY + 5.5, { align: "right" });
+  doc.text(`${arBuckets.bOver.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 190, currentY + 5.5, { align: "right" });
 
   doc.setDrawColor(241, 245, 249);
   doc.line(15, currentY + 8, 195, currentY + 8);
@@ -793,11 +802,11 @@ export function generateAgingPdf(
   doc.setFont("helvetica", "normal");
   doc.setTextColor(30, 41, 59);
   doc.text("Accounts Payable (AP Bills)", 18, currentY + 5.5);
-  doc.text(`${apBuckets.b30.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 60, currentY + 5.5, { align: "right" });
-  doc.text(`${apBuckets.b60.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 100, currentY + 5.5, { align: "right" });
-  doc.text(`${apBuckets.b90.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 140, currentY + 5.5, { align: "right" });
+  doc.text(`${apBuckets.b30.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 90, currentY + 5.5, { align: "right" });
+  doc.text(`${apBuckets.b60.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 122, currentY + 5.5, { align: "right" });
+  doc.text(`${apBuckets.b90.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 154, currentY + 5.5, { align: "right" });
   doc.setTextColor(apBuckets.bOver > 0 ? 239 : 30, apBuckets.bOver > 0 ? 68 : 41, apBuckets.bOver > 0 ? 68 : 59);
-  doc.text(`${apBuckets.bOver.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 185, currentY + 5.5, { align: "right" });
+  doc.text(`${apBuckets.bOver.toLocaleString(undefined, {maximumFractionDigits: 2})}`, 190, currentY + 5.5, { align: "right" });
   
   doc.line(15, currentY + 8, 195, currentY + 8);
   currentY += 12;
@@ -843,8 +852,8 @@ export function generateAgingPdf(
       doc.text(row.invoiceNumber, 18, currentY + 5.5);
       
       let clientDisplayName = row.party;
-      if (clientDisplayName.length > 25) {
-        clientDisplayName = clientDisplayName.substring(0, 23) + "...";
+      if (clientDisplayName.length > 55) {
+        clientDisplayName = clientDisplayName.substring(0, 52) + "...";
       }
       doc.text(clientDisplayName, 45, currentY + 5.5);
       doc.text(row.dueDate, 110, currentY + 5.5);
@@ -913,8 +922,8 @@ export function generateAgingPdf(
       doc.text(row.invoiceNumber, 18, currentY + 5.5);
       
       let supplierDisplayName = row.party;
-      if (supplierDisplayName.length > 25) {
-        supplierDisplayName = supplierDisplayName.substring(0, 23) + "...";
+      if (supplierDisplayName.length > 55) {
+        supplierDisplayName = supplierDisplayName.substring(0, 52) + "...";
       }
       doc.text(supplierDisplayName, 45, currentY + 5.5);
       doc.text(row.dueDate, 110, currentY + 5.5);
