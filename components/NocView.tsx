@@ -8,6 +8,7 @@ import { Employee } from '../types';
 // Reusable NOC PDF generator
 export const downloadNocPDF = (employee: Employee, config: {
     targetCompany: string;
+    workNature: string; // 'Full-Time' or 'Part-Time'
     purpose: string;
     issueDate?: string;
     additionalTerms?: string;
@@ -21,7 +22,8 @@ export const downloadNocPDF = (employee: Employee, config: {
     });
 
     const issueDate = config.issueDate || new Date().toISOString().split('T')[0];
-    const targetCompany = config.targetCompany || "ANY REVENUE / LICENSING AUTHORITY";
+    const targetCompany = config.targetCompany.trim() || "ANY REGISTERED COMPANY (UNRESTRICTED)";
+    const workNature = config.workNature || "Part-Time";
     const purpose = config.purpose || "Work Association & Services Assignment";
     const signatoryName = config.signatoryName || "Authorized HR Director";
     const signatoryTitle = config.signatoryTitle || "Human Resources & Personnel Manager";
@@ -90,7 +92,7 @@ export const downloadNocPDF = (employee: Employee, config: {
     
     const formattedJoinDate = employee.joiningDate ? new Date(employee.joiningDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'N/A';
 
-    const p1 = `This is to certify that we, ${employee.company || 'Pioneer General Contracting LLC'}, have no objection whatsoever to our employee, Mr. / Ms. ${employee.name} (Employee Code: ${employee.code}, Nationality: ${employee.nationality || 'N/A'}), who is currently employed under our sponsorship as a ${employee.designation} since ${formattedJoinDate}, offering their professional work or services to:`;
+    const p1 = `This is to certify that we, ${employee.company || 'Pioneer General Contracting LLC'}, have no objection whatsoever to our employee, Mr. / Ms. ${employee.name} (Employee Code: ${employee.code}, Nationality: ${employee.nationality || 'N/A'}), who is currently employed under our sponsorship as a ${employee.designation} since ${formattedJoinDate}, offering their professional work or services on a ${workNature.toUpperCase()} basis to:`;
     const splitP1 = doc.splitTextToSize(p1, 170);
     doc.text(splitP1, 20, yPos);
     yPos += (splitP1.length * 5.2) + 6;
@@ -98,8 +100,8 @@ export const downloadNocPDF = (employee: Employee, config: {
     // Target Company highlighted card area
     doc.setFillColor(248, 250, 252); // Soft Gray background
     doc.setDrawColor(226, 232, 240); // Soft border
-    doc.rect(20, yPos, 170, 18, 'F');
-    doc.rect(20, yPos, 170, 18, 'D');
+    doc.rect(20, yPos, 170, 22, 'F');
+    doc.rect(20, yPos, 170, 22, 'D');
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(10);
@@ -109,15 +111,20 @@ export const downloadNocPDF = (employee: Employee, config: {
 
     doc.setTextColor(51, 65, 85);
     doc.setFont("Helvetica", "bold");
-    doc.text("APPROVED PURPOSE:", 25, yPos + 13);
+    doc.text("WORK NATURE:", 25, yPos + 13);
     doc.setFont("Helvetica", "normal");
-    doc.text(purpose, 64, yPos + 13);
+    doc.text(`${workNature.toUpperCase()} WORK / SERVICES`, 64, yPos + 13);
 
-    yPos += 26;
+    doc.setFont("Helvetica", "bold");
+    doc.text("APPROVED PURPOSE:", 25, yPos + 18);
+    doc.setFont("Helvetica", "normal");
+    doc.text(purpose, 64, yPos + 18);
+
+    yPos += 30;
 
     // Terms of NOC
     const p2 = config.additionalTerms || 
-        "This No Objection Certificate is issued upon the specific request of the employee to facilitate part-time, project association, or supplementary employment. This authorization does not release the employee from their primary job duties, schedule alignment, and corporate obligations with our organization. It represents that we have no conflict or restriction regarding their work with the specified entity.";
+        `This No Objection Certificate is issued upon the specific request of the employee to facilitate ${workNature.toLowerCase()} external work or project association. This authorization does not release the employee from their primary job duties, schedule alignment, and corporate obligations with our organization. It represents that we have no conflict or restriction regarding their work with the specified entity or entities.`;
     
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(10.5);
@@ -160,6 +167,7 @@ export const NocView = ({ employees }: { employees: Employee[] }) => {
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
     const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
     const [targetCompany, setTargetCompany] = useState('');
+    const [workNature, setWorkNature] = useState<'Part-Time' | 'Full-Time'>('Part-Time');
     const [purpose, setPurpose] = useState('Part-Time Work & External Employment');
     const [signatoryName, setSignatoryName] = useState('Authorized HR Director');
     const [signatoryTitle, setSignatoryTitle] = useState('Human Resources & Personnel Department');
@@ -188,6 +196,7 @@ export const NocView = ({ employees }: { employees: Employee[] }) => {
         if (!selectedEmployee) return;
         downloadNocPDF(selectedEmployee, {
             targetCompany,
+            workNature,
             purpose,
             issueDate,
             additionalTerms,
@@ -297,17 +306,54 @@ export const NocView = ({ employees }: { employees: Employee[] }) => {
                             </h3>
 
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Company Name</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Target Company Name (Optional)</label>
                                 <input 
                                     type="text"
                                     className="w-full px-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all text-slate-800 placeholder:text-slate-400"
                                     value={targetCompany}
                                     onChange={e => setTargetCompany(e.target.value)}
-                                    placeholder="e.g. Al Naboodah Contracting LLC"
+                                    placeholder="e.g. Al Naboodah Contracting LLC (Leave blank for ANY company)"
                                 />
+                                <p className="text-[10px] text-slate-400 font-bold italic">
+                                    Leave blank to state that the employee is authorized to offer services to **any company or companies** without restriction.
+                                </p>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2 border-t pt-4">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Work Nature Selection</label>
+                                <div className="grid grid-cols-2 gap-3 p-1 bg-slate-55 bg-slate-100 rounded-xl">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setWorkNature('Part-Time');
+                                            setPurpose('Part-Time Work & External Employment');
+                                        }}
+                                        className={`py-2 px-4 rounded-lg font-black text-xs transition-all uppercase tracking-wider cursor-pointer ${
+                                            workNature === 'Part-Time' 
+                                                ? 'bg-indigo-600 text-white shadow-sm' 
+                                                : 'text-slate-600 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        Part-Time Work
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setWorkNature('Full-Time');
+                                            setPurpose('External Full-Time Duty Assignment');
+                                        }}
+                                        className={`py-2 px-4 rounded-lg font-black text-xs transition-all uppercase tracking-wider cursor-pointer ${
+                                            workNature === 'Full-Time' 
+                                                ? 'bg-indigo-600 text-white shadow-sm' 
+                                                : 'text-slate-600 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        Full-Time Work
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Purpose of NOC</label>
                                     <input 
@@ -365,8 +411,7 @@ export const NocView = ({ employees }: { employees: Employee[] }) => {
 
                             <button
                                 onClick={handleGenerateNoc}
-                                disabled={!targetCompany.trim()}
-                                className="w-full py-4.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:cursor-not-allowed text-white rounded-2xl font-black text-sm transition-all shadow-md shadow-indigo-105/50 flex items-center justify-center gap-2 cursor-pointer mt-2"
+                                className="w-full py-4.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-sm transition-all shadow-md shadow-indigo-100 flex items-center justify-center gap-2 cursor-pointer mt-2"
                             >
                                 <FileDown className="w-5 h-5" />
                                 Generate & Download NOC PDF
