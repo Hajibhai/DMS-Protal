@@ -431,8 +431,10 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         ["Reporting To", "As assigned by the management"],
         ["Work Location", "UAE"],
         ["Basic Salary", formatAED(offer.salary || 0)],
+        ["Housing Allowance", formatAED(offer.housingAllowance || 0)],
+        ["Transport Allowance", formatAED(offer.transportAllowance || 0)],
+        ["Other Allowances", formatAED(offer.otherAllowance || 0)],
         ["Mobile Allowance", offer.otherAllowance > 0 ? "Provided/Covered" : "As per company policy"],
-        ["Allowances", formatAED((offer.housingAllowance || 0) + (offer.transportAllowance || 0) + (offer.otherAllowance || 0))],
         ["Total Monthly Salary", formatAED((offer.salary || 0) + (offer.housingAllowance || 0) + (offer.transportAllowance || 0) + (offer.otherAllowance || 0))],
         ["Probation Period", "6 months from the date of joining"],
         ["Working Hours", "As per UAE Labor Law and company policy"],
@@ -469,7 +471,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       });
 
       // Terms and Conditions Note Header
-      let clauseY = tableY + 8;
+      let clauseY = tableY + 5;
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(11);
       doc.setTextColor(29, 59, 132);
@@ -483,7 +485,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       doc.text(splitNote, 20, clauseY + 5);
 
       // Clause 1
-      let currentY = clauseY + 16;
+      let currentY = clauseY + 14;
       doc.setFont("Helvetica", "bold");
       doc.text("1. Probation Period", 20, currentY);
       doc.setFont("Helvetica", "normal");
@@ -492,7 +494,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       doc.text(splitC1, 20, currentY + 4.5);
 
       // Clause 2
-      currentY = currentY + 16;
+      currentY = currentY + 14;
       doc.setFont("Helvetica", "bold");
       doc.text("2. Benefits During Probation", 20, currentY);
       doc.setFont("Helvetica", "normal");
