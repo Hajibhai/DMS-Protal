@@ -307,10 +307,16 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         offerDate: offerForm.offerDate,
         expiryDate: offerForm.expiryDate,
         status: offerForm.status,
-        additionalDetails: offerForm.additionalDetails
+        additionalDetails: offerForm.additionalDetails,
+        ...(editingOffer ? {
+          signedOfferUrl: editingOffer.signedOfferUrl || '',
+          signedOfferName: editingOffer.signedOfferName || '',
+          signedAcceptanceUrl: editingOffer.signedAcceptanceUrl || '',
+          signedAcceptanceName: editingOffer.signedAcceptanceName || '',
+        } : {})
       };
 
-      await setDoc(doc(db, 'job_offers', offerId), data);
+      await setDoc(doc(db, 'job_offers', offerId), data, { merge: true });
 
       // If tied to an applicant, automatically mark them as "Hired"
       if (offerForm.applicantId) {
@@ -393,7 +399,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       };
 
       try {
-        await setDoc(doc(db, 'job_offers', offerId), { ...originalOffer, ...updateData }, { merge: true });
+        await setDoc(doc(db, 'job_offers', offerId), updateData, { merge: true });
       } catch (err) {
         console.error("Error setting signed document in Firestore:", err);
       }
@@ -422,7 +428,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         };
 
         try {
-          await setDoc(doc(db, 'job_offers', offerId), { ...originalOffer, ...updateData }, { merge: true });
+          await setDoc(doc(db, 'job_offers', offerId), updateData, { merge: true });
         } catch (err) {
           console.error("Error clearing signed document in Firestore:", err);
         }
@@ -1347,7 +1353,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                           onChange={async (e) => {
                             if (!canManage) return;
                             try {
-                              await setDoc(doc(db, 'job_offers', offer.id), { ...offer, status: e.target.value as any }, { merge: true });
+                              await setDoc(doc(db, 'job_offers', offer.id), { status: e.target.value as any }, { merge: true });
                             } catch (err) {
                               console.error(err);
                             }

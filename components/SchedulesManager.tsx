@@ -289,9 +289,10 @@ export function SchedulesManager({
       // Summation of financials
       const totalPayrollCost = payrollDataList.reduce((acc, p) => acc + p.grossSalary, 0);
       const totalAPAmount = monthlyAP.reduce((acc, ap) => acc + ap.amount, 0);
-      const totalARAmount = monthlyAR.reduce((acc, ar) => acc + ar.amount, 0);
+      // Receivables only show received amount (status === 'Received') as explicitly requested by user
+      const totalARAmount = monthlyAR.filter((ar: any) => ar.status === 'Received').reduce((acc, ar) => acc + ar.amount, 0);
       
-      const totalVatReceivable = monthlyAR.reduce((acc, ar) => acc + (ar.vatAmount || 0), 0);
+      const totalVatReceivable = monthlyAR.filter((ar: any) => ar.status === 'Received').reduce((acc, ar) => acc + (ar.vatAmount || 0), 0);
       const totalVatPayable = monthlyAP.reduce((acc, ap) => acc + (ap.vatAmount || 0), 0);
       const totalVatEveryday = monthlyEveryday.reduce((acc, ee) => acc + (ee.vatAmount || 0), 0);
 
@@ -338,7 +339,12 @@ export function SchedulesManager({
           monthName,
           year: currentYear,
           stats: reportStats,
-          attendanceData
+          attendanceData,
+          accounts_receivable: accountsReceivable,
+          accounts_payable: accountsPayable,
+          projects,
+          suppliers,
+          vendors
         })
       });
       const resData = await res.json();
@@ -440,9 +446,10 @@ export function SchedulesManager({
       // Summation of financials
       const totalPayrollCost = payrollDataList.reduce((acc, p) => acc + p.grossSalary, 0);
       const totalAPAmount = monthlyAP.reduce((acc, ap) => acc + ap.amount, 0);
-      const totalARAmount = monthlyAR.reduce((acc, ar) => acc + ar.amount, 0);
+      // Receivables only show received amount (status === 'Received') as explicitly requested by user
+      const totalARAmount = monthlyAR.filter((ar: any) => ar.status === 'Received').reduce((acc, ar) => acc + ar.amount, 0);
       
-      const totalVatReceivable = monthlyAR.reduce((acc, ar) => acc + (ar.vatAmount || 0), 0);
+      const totalVatReceivable = monthlyAR.filter((ar: any) => ar.status === 'Received').reduce((acc, ar) => acc + (ar.vatAmount || 0), 0);
       const totalVatPayable = monthlyAP.reduce((acc, ap) => acc + (ap.vatAmount || 0), 0);
       const totalVatEveryday = monthlyEveryday.reduce((acc, ee) => acc + (ee.vatAmount || 0), 0);
 
@@ -489,7 +496,12 @@ export function SchedulesManager({
           monthName,
           year: new Date(customToDate).getFullYear(),
           stats: reportStats,
-          attendanceData
+          attendanceData,
+          accounts_receivable: accountsReceivable,
+          accounts_payable: accountsPayable,
+          projects,
+          suppliers,
+          vendors
         })
       });
       const resData = await res.json();

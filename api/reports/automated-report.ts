@@ -147,9 +147,10 @@ function computeFinancialStats(data: any) {
 
   // Compute stats
   const totalPayable = monthlyAP.reduce((acc: number, ap: any) => acc + (ap.amount || 0), 0);
-  const totalReceivable = monthlyAR.reduce((acc: number, ar: any) => acc + (ar.amount || 0), 0);
+  // Receivables only show received amount (status === 'Received') as explicitly requested by user
+  const totalReceivable = monthlyAR.filter((ar: any) => ar.status === 'Received').reduce((acc: number, ar: any) => acc + (ar.amount || 0), 0);
 
-  const totalVatReceivable = monthlyAR.reduce((acc: number, ar: any) => acc + (ar.vatAmount || 0), 0);
+  const totalVatReceivable = monthlyAR.filter((ar: any) => ar.status === 'Received').reduce((acc: number, ar: any) => acc + (ar.vatAmount || 0), 0);
   const totalVatPayable = monthlyAP.reduce((acc: number, ap: any) => acc + (ap.vatAmount || 0), 0);
   const totalVatEveryday = monthlyEveryday.reduce((acc: number, ee: any) => acc + (ee.vatAmount || 0), 0);
 
@@ -663,8 +664,8 @@ export function generateAgingPdf(
   };
 
   // Extract open receivables & payables
-  const openAR = (arRecords || []).filter((r: any) => r.status && r.status !== 'Received' && r.status !== 'Settled');
-  const openAP = (apRecords || []).filter((p: any) => p.status && p.status !== 'Paid' && p.status !== 'Settled');
+  const openAR = (arRecords || []).filter((r: any) => !r.status || (r.status !== 'Received' && r.status !== 'Settled'));
+  const openAP = (apRecords || []).filter((p: any) => !p.status || (p.status !== 'Paid' && p.status !== 'Settled'));
 
   // Sum outstanding amounts by bucket
   let arBuckets = { b30: 0, b60: 0, b90: 0, bOver: 0 };
@@ -1138,7 +1139,19 @@ export const triggerSchedule = async (req: Request, res: Response) => {
 
 export const sendEmailReport = async (req: Request, res: Response) => {
   try {
-    const { stakeholders, reports, monthName, year, stats, attendanceData } = req.body;
+    const { 
+      stakeholders, 
+      reports, 
+      monthName, 
+      year, 
+      stats, 
+      attendanceData,
+      accounts_receivable,
+      accounts_payable,
+      projects,
+      suppliers,
+      vendors 
+    } = req.body;
     
     if (!stakeholders || stakeholders.length === 0) {
       res.status(400).json({ success: false, error: "Stakeholder recipients are required." });
@@ -1173,12 +1186,12 @@ export const sendEmailReport = async (req: Request, res: Response) => {
     }
 
     if (reportsList.includes("aging")) {
-      const allAR = await getCollectionData("accounts_receivable");
-      const allAP = await getCollectionData("accounts_payable");
-      const projects = await getCollectionData("projects");
-      const suppliers = await getCollectionData("suppliers");
-      const vendors = await getCollectionData("vendors");
-      const agingPdf = generateAgingPdf(monthName, targetYear, allAR, allAP, projects, suppliers, vendors);
+      const allAR = accounts_receivable || await getCollectionData("accounts_receivable");
+      const allAP = accounts_payable || await getCollectionData("accounts_payable");
+      const allProjects = projects || await getCollectionData("projects");
+      const allSuppliers = suppliers || await getCollectionData("suppliers");
+      const allVendors = vendors || await getCollectionData("vendors");
+      const agingPdf = generateAgingPdf(monthName, targetYear, allAR, allAP, allProjects, allSuppliers, allVendors);
       attachments.push({
         filename: `Accounts_Aging_Report_${monthName}_${targetYear}.pdf`,
         content: agingPdf
