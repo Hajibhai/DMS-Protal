@@ -493,8 +493,10 @@ export interface JobOffer {
   additionalDetails?: string;
   signedOfferUrl?: string;
   signedOfferName?: string;
+  signedOfferChunksCount?: number;
   signedAcceptanceUrl?: string;
   signedAcceptanceName?: string;
+  signedAcceptanceChunksCount?: number;
 }
 
 export interface DocumentItem {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy 
+  collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, orderBy 
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { JobApplicant, JobOffer, UserRole } from '../types';
@@ -126,6 +126,84 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
   // Signed document uploads state
   const [showSignedUploadsId, setShowSignedUploadsId] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<{ url: string; name: string } | null>(null);
+  const [fetchingFile, setFetchingFile] = useState<{ id: string, type: 'offer' | 'acceptance' } | null>(null);
+
+  // Fetch chunked base64 file from subcollection
+  const fetchChunkedFile = async (offerId: string, type: 'offer' | 'acceptance', chunksCount: number): Promise<string> => {
+    if (chunksCount <= 0) return '';
+    const promises = [];
+    for (let i = 0; i < chunksCount; i++) {
+      const chunkDocRef = doc(db, 'job_offers', offerId, 'chunks', `${type}_chunk_${i}`);
+      promises.push(getDoc(chunkDocRef).then(snap => {
+        if (!snap.exists()) {
+          throw new Error(`Chunk ${i} not found`);
+        }
+        return { index: i, chunk: snap.data().chunk };
+      }));
+    }
+    const results = await Promise.all(promises);
+    results.sort((a, b) => a.index - b.index);
+    return results.map(r => r.chunk).join('');
+  };
+
+  // Delete chunked file from subcollection
+  const deleteChunkedFile = async (offerId: string, type: 'offer' | 'acceptance', oldChunksCount?: number) => {
+    const limit = oldChunksCount && oldChunksCount > 0 ? oldChunksCount : 20;
+    const promises = [];
+    for (let i = 0; i < limit; i++) {
+      const chunkDocRef = doc(db, 'job_offers', offerId, 'chunks', `${type}_chunk_${i}`);
+      promises.push(deleteDoc(chunkDocRef).catch(() => {}));
+    }
+    await Promise.all(promises);
+  };
+
+  const handlePreviewLoadedFile = async (offer: JobOffer, type: 'offer' | 'acceptance') => {
+    const url = type === 'offer' ? offer.signedOfferUrl : offer.signedAcceptanceUrl;
+    const name = type === 'offer' ? offer.signedOfferName : offer.signedAcceptanceName;
+    if (!url) return;
+
+    if (url === 'chunked') {
+      setFetchingFile({ id: offer.id, type });
+      try {
+        const chunksCount = type === 'offer' ? (offer.signedOfferChunksCount || 0) : (offer.signedAcceptanceChunksCount || 0);
+        const fullBase64 = await fetchChunkedFile(offer.id, type, chunksCount);
+        setPreviewDoc({ url: fullBase64, name: name || (type === 'offer' ? 'Signed Offer Letter' : 'Signed Acceptance Letter') });
+      } catch (err: any) {
+        console.error("Error fetching chunked file:", err);
+        openConfirm('Load Error', 'Failed to retrieve document chunks from the server.', () => {}, 'danger');
+      } finally {
+        setFetchingFile(null);
+      }
+    } else {
+      setPreviewDoc({ url, name: name || (type === 'offer' ? 'Signed Offer Letter' : 'Signed Acceptance Letter') });
+    }
+  };
+
+  const handleDownloadLoadedFile = async (e: React.MouseEvent, offer: JobOffer, type: 'offer' | 'acceptance') => {
+    const url = type === 'offer' ? offer.signedOfferUrl : offer.signedAcceptanceUrl;
+    const name = type === 'offer' ? offer.signedOfferName : offer.signedAcceptanceName;
+    if (!url) return;
+
+    if (url === 'chunked') {
+      e.preventDefault();
+      setFetchingFile({ id: offer.id, type });
+      try {
+        const chunksCount = type === 'offer' ? (offer.signedOfferChunksCount || 0) : (offer.signedAcceptanceChunksCount || 0);
+        const fullBase64 = await fetchChunkedFile(offer.id, type, chunksCount);
+        const link = document.createElement('a');
+        link.href = fullBase64;
+        link.download = name || (type === 'offer' ? 'signed_offer.pdf' : 'signed_acceptance.pdf');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err: any) {
+        console.error("Error downloading chunked file:", err);
+        openConfirm('Download Error', 'Failed to retrieve document chunks for download.', () => {}, 'danger');
+      } finally {
+        setFetchingFile(null);
+      }
+    }
+  };
 
   // Listeners for Firestore Data
   useEffect(() => {
@@ -311,8 +389,10 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         ...(editingOffer ? {
           signedOfferUrl: editingOffer.signedOfferUrl || '',
           signedOfferName: editingOffer.signedOfferName || '',
+          signedOfferChunksCount: editingOffer.signedOfferChunksCount || 0,
           signedAcceptanceUrl: editingOffer.signedAcceptanceUrl || '',
           signedAcceptanceName: editingOffer.signedAcceptanceName || '',
+          signedAcceptanceChunksCount: editingOffer.signedAcceptanceChunksCount || 0,
         } : {})
       };
 
@@ -384,30 +464,145 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
   // Handle signed document upload
   const handleSignedUpload = (offerId: string, type: 'offer' | 'acceptance', file: File) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result as string;
-      const originalOffer = offers.find(o => o.id === offerId);
-      if (!originalOffer) return;
 
-      const updateData = type === 'offer' ? {
-        signedOfferUrl: base64,
-        signedOfferName: file.name
-      } : {
-        signedAcceptanceUrl: base64,
-        signedAcceptanceName: file.name
-      };
+    const originalOffer = offers.find(o => o.id === offerId);
+    if (!originalOffer) return;
 
-      try {
-        await setDoc(doc(db, 'job_offers', offerId), updateData, { merge: true });
-      } catch (err) {
-        console.error("Error setting signed document in Firestore:", err);
+    // Up to 5 MB as requested
+    const maxSafeSize = 5 * 1024 * 1024; 
+
+    const saveToFirestore = async (base64String: string) => {
+      // Delete old chunks first if any exist
+      const oldChunksCount = type === 'offer' 
+        ? (originalOffer.signedOfferChunksCount || 0) 
+        : (originalOffer.signedAcceptanceChunksCount || 0);
+      
+      if (oldChunksCount > 0) {
+        await deleteChunkedFile(offerId, type, oldChunksCount);
+      }
+
+      const maxDirectSize = 950 * 1024; // ~950KB max size for single document path to stay safe under 1MB Firestore limit
+      if (base64String.length <= maxDirectSize) {
+        const updateData = type === 'offer' ? {
+          signedOfferUrl: base64String,
+          signedOfferName: file.name,
+          signedOfferChunksCount: 0
+        } : {
+          signedAcceptanceUrl: base64String,
+          signedAcceptanceName: file.name,
+          signedAcceptanceChunksCount: 0
+        };
+
+        try {
+          await setDoc(doc(db, 'job_offers', offerId), updateData, { merge: true });
+        } catch (err: any) {
+          console.error("Error setting signed document in Firestore:", err);
+          openConfirm(
+            'Upload Error',
+            `Could not save the document. ${err?.message || 'Firestore storage limits exceeded.'}`,
+            () => {},
+            'danger'
+          );
+        }
+      } else {
+        // Chunk storage
+        try {
+          const CHUNK_SIZE = 800 * 1024;
+          const chunksCount = Math.ceil(base64String.length / CHUNK_SIZE);
+          
+          for (let i = 0; i < chunksCount; i++) {
+            const chunkData = base64String.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            const chunkDocRef = doc(db, 'job_offers', offerId, 'chunks', `${type}_chunk_${i}`);
+            await setDoc(chunkDocRef, { chunk: chunkData });
+          }
+
+          const updateData = type === 'offer' ? {
+            signedOfferUrl: 'chunked',
+            signedOfferName: file.name,
+            signedOfferChunksCount: chunksCount
+          } : {
+            signedAcceptanceUrl: 'chunked',
+            signedAcceptanceName: file.name,
+            signedAcceptanceChunksCount: chunksCount
+          };
+
+          await setDoc(doc(db, 'job_offers', offerId), updateData, { merge: true });
+        } catch (err: any) {
+          console.error("Error saving chunked document to Firestore:", err);
+          openConfirm(
+            'Storage Error',
+            `Could not save the large document. ${err?.message || 'Storage error.'}`,
+            () => {},
+            'danger'
+          );
+        }
       }
     };
-    reader.onerror = (e) => {
-      console.error("FileReader error:", e);
-    };
-    reader.readAsDataURL(file);
+
+    // Compress images automatically
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          // Max dimensions for readability and compact sizing
+          const maxDimension = 1200;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Export as JPEG with 0.65 quality (visually excellent but highly compact)
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.65);
+            saveToFirestore(compressedBase64);
+          } else {
+            saveToFirestore(reader.result as string);
+          }
+        };
+        img.onerror = () => {
+          saveToFirestore(reader.result as string);
+        };
+        img.src = reader.result as string;
+      };
+      reader.onerror = (e) => {
+        console.error("FileReader error:", e);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // Validate up to 5MB before reading
+      if (file.size > maxSafeSize) {
+        openConfirm(
+          'Document Too Large',
+          `The selected file "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)} MB). Please select a file under 5.0 MB.`,
+          () => {},
+          'warning'
+        );
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        saveToFirestore(reader.result as string);
+      };
+      reader.onerror = (e) => {
+        console.error("FileReader error:", e);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Handle deleting signed document
@@ -419,12 +614,23 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         const originalOffer = offers.find(o => o.id === offerId);
         if (!originalOffer) return;
 
+        // Clean up any existing chunks
+        const oldChunksCount = type === 'offer' 
+          ? (originalOffer.signedOfferChunksCount || 0) 
+          : (originalOffer.signedAcceptanceChunksCount || 0);
+
+        if (oldChunksCount > 0) {
+          await deleteChunkedFile(offerId, type, oldChunksCount);
+        }
+
         const updateData = type === 'offer' ? {
           signedOfferUrl: '',
-          signedOfferName: ''
+          signedOfferName: '',
+          signedOfferChunksCount: 0
         } : {
           signedAcceptanceUrl: '',
-          signedAcceptanceName: ''
+          signedAcceptanceName: '',
+          signedAcceptanceChunksCount: 0
         };
 
         try {
@@ -1443,30 +1649,37 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                                   <span className="text-[8px] text-emerald-800 font-bold truncate max-w-[120px]" title={offer.signedOfferName}>
                                     {offer.signedOfferName || 'signed_offer.pdf'}
                                   </span>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                      onClick={() => setPreviewDoc({ url: offer.signedOfferUrl!, name: offer.signedOfferName || 'Signed Offer Letter' })}
-                                      className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
-                                      title="Preview File"
-                                    >
-                                      <Eye className="w-3 h-3" />
-                                    </button>
-                                    <a
-                                      href={offer.signedOfferUrl}
-                                      download={offer.signedOfferName || 'signed_offer.pdf'}
-                                      className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
-                                      title="Download"
-                                    >
-                                      <Download className="w-3 h-3" />
-                                    </a>
-                                    <button
-                                      onClick={() => handleSignedDelete(offer.id, 'offer', offer.signedOfferName || 'Signed Offer Letter')}
-                                      className="p-0.5 text-rose-600 hover:text-rose-800 rounded cursor-pointer"
-                                      title="Delete File"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
+                                  {fetchingFile?.id === offer.id && fetchingFile?.type === 'offer' ? (
+                                    <span className="text-[8px] font-bold text-indigo-600 animate-pulse flex items-center gap-1">
+                                      <span>Retrieving Chunks...</span>
+                                    </span>
+                                  ) : (
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        onClick={() => handlePreviewLoadedFile(offer, 'offer')}
+                                        className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
+                                        title="Preview File"
+                                      >
+                                        <Eye className="w-3 h-3" />
+                                      </button>
+                                      <a
+                                        href={offer.signedOfferUrl}
+                                        onClick={(e) => handleDownloadLoadedFile(e, offer, 'offer')}
+                                        download={offer.signedOfferName || 'signed_offer.pdf'}
+                                        className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
+                                        title="Download"
+                                      >
+                                        <Download className="w-3 h-3" />
+                                      </a>
+                                      <button
+                                        onClick={() => handleSignedDelete(offer.id, 'offer', offer.signedOfferName || 'Signed Offer Letter')}
+                                        className="p-0.5 text-rose-600 hover:text-rose-800 rounded cursor-pointer"
+                                        title="Delete File"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
                                 <p className="text-[8px] text-slate-400 mt-1">Accepts PDF or images</p>
@@ -1501,30 +1714,37 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                                   <span className="text-[8px] text-emerald-800 font-bold truncate max-w-[120px]" title={offer.signedAcceptanceName}>
                                     {offer.signedAcceptanceName || 'signed_acceptance.pdf'}
                                   </span>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                      onClick={() => setPreviewDoc({ url: offer.signedAcceptanceUrl!, name: offer.signedAcceptanceName || 'Signed Acceptance Letter' })}
-                                      className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
-                                      title="Preview File"
-                                    >
-                                      <Eye className="w-3 h-3" />
-                                    </button>
-                                    <a
-                                      href={offer.signedAcceptanceUrl}
-                                      download={offer.signedAcceptanceName || 'signed_acceptance.pdf'}
-                                      className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
-                                      title="Download"
-                                    >
-                                      <Download className="w-3 h-3" />
-                                    </a>
-                                    <button
-                                      onClick={() => handleSignedDelete(offer.id, 'acceptance', offer.signedAcceptanceName || 'Signed Acceptance Letter')}
-                                      className="p-0.5 text-rose-600 hover:text-rose-800 rounded cursor-pointer"
-                                      title="Delete File"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
+                                  {fetchingFile?.id === offer.id && fetchingFile?.type === 'acceptance' ? (
+                                    <span className="text-[8px] font-bold text-indigo-600 animate-pulse flex items-center gap-1">
+                                      <span>Retrieving Chunks...</span>
+                                    </span>
+                                  ) : (
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        onClick={() => handlePreviewLoadedFile(offer, 'acceptance')}
+                                        className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
+                                        title="Preview File"
+                                      >
+                                        <Eye className="w-3 h-3" />
+                                      </button>
+                                      <a
+                                        href={offer.signedAcceptanceUrl}
+                                        onClick={(e) => handleDownloadLoadedFile(e, offer, 'acceptance')}
+                                        download={offer.signedAcceptanceName || 'signed_acceptance.pdf'}
+                                        className="p-0.5 text-emerald-700 hover:text-emerald-950 rounded cursor-pointer"
+                                        title="Download"
+                                      >
+                                        <Download className="w-3 h-3" />
+                                      </a>
+                                      <button
+                                        onClick={() => handleSignedDelete(offer.id, 'acceptance', offer.signedAcceptanceName || 'Signed Acceptance Letter')}
+                                        className="p-0.5 text-rose-600 hover:text-rose-800 rounded cursor-pointer"
+                                        title="Delete File"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
                                 <p className="text-[8px] text-slate-400 mt-1">Accepts PDF or images</p>
