@@ -9945,6 +9945,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
     const daysInMonth = new Date(year, month, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
     const [searchTerm, setSearchTerm] = useState('');
+    const [timesheetStatusFilter, setTimesheetStatusFilter] = useState<string | null>(null);
     const [editingCell, setEditingCell] = useState<{empId: string, date: string} | null>(null);
     const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -10109,11 +10110,44 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
     const filteredEmployees = useMemo(() => {
         return employees.filter((e: Employee) => {
             const company = companies.find((c: Company) => c.name === e.company);
-            return (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
+            const matchesSearch = (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                    (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                    (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+            
+            if (!matchesSearch) return false;
+
+            if (timesheetStatusFilter) {
+                // If seeking WEEK_OFF, check explicit record of WEEK_OFF or default Sunday with no other status
+                if (timesheetStatusFilter === AttendanceStatus.WEEK_OFF) {
+                    const hasExplicitW = attendance.some((r: AttendanceRecord) => 
+                        r.employeeId === e.id && 
+                        r.date.startsWith(selectedMonth) && 
+                        r.status === AttendanceStatus.WEEK_OFF
+                    );
+                    if (hasExplicitW) return true;
+
+                    // Check implicit Sundays of this month
+                    const hasSundayOff = days.some(d => {
+                        const dateStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+                        const isSunday = new Date(year, month - 1, d).getDay() === 0;
+                        if (!isSunday) return false;
+                        
+                        const record = attendance.find((r: AttendanceRecord) => r.employeeId === e.id && r.date === dateStr);
+                        return !record || record.status === AttendanceStatus.WEEK_OFF;
+                    });
+                    return hasSundayOff;
+                }
+
+                // Check other statuses explicitly
+                return attendance.some((r: AttendanceRecord) => 
+                    r.employeeId === e.id && 
+                    r.date.startsWith(selectedMonth) && 
+                    r.status === timesheetStatusFilter
+                );
+            }
+            return true;
         });
-    }, [employees, searchTerm, companies]);
+    }, [employees, searchTerm, companies, timesheetStatusFilter, attendance, selectedMonth, days, year, month]);
 
     const editingEmployee = useMemo(() => {
         if (!editingCell) return null;
@@ -10328,16 +10362,43 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                         </button>
                     </div>
 
-                    <div className="hidden xl:flex flex-wrap gap-2">
-                        {Object.entries(LEGEND).map(([status, meta]: any) => (
-                            <div key={status} className={cn(
-                                "px-3 py-1 rounded-full text-[10px] font-bold border transition-all hover:scale-105 cursor-default",
-                                meta.color.replace('text-', 'text-').replace('bg-', 'bg-'),
-                                "border-slate-100"
-                            )}>
-                                {meta.code}: {meta.label}
-                            </div>
-                        ))}
+                    <div className="flex flex-wrap gap-2 items-center max-w-[500px]">
+                        {Object.entries(LEGEND).map(([status, meta]: any) => {
+                            const isSelected = timesheetStatusFilter === status;
+                            return (
+                                <button 
+                                    key={status} 
+                                    onClick={() => setTimesheetStatusFilter(prev => prev === status ? null : status)}
+                                    className={cn(
+                                        "px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all active:scale-95 flex items-center gap-1 shadow-xs cursor-pointer select-none",
+                                        isSelected 
+                                            ? `${meta.color} border-transparent scale-105 ring-2 ring-slate-450 ring-offset-1` 
+                                            : "bg-slate-50 border-slate-250 hover:bg-slate-100 text-slate-700 hover:border-slate-400"
+                                    )}
+                                    title={`Click to filter timesheet by ${meta.label}`}
+                                >
+                                    <span className={cn(
+                                        "w-1.5 h-1.5 rounded-full shrink-0",
+                                        isSelected ? "bg-white" : meta.color.split(' ')[0]
+                                    )} />
+                                    <span>{meta.code}: {meta.label}</span>
+                                    {isSelected && (
+                                        <span className="text-[8px] px-1 bg-black/15 text-white rounded-full font-black ml-0.5 animate-pulse uppercase">
+                                            Active
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                        {timesheetStatusFilter && (
+                            <button
+                                onClick={() => setTimesheetStatusFilter(null)}
+                                className="px-2.5 py-1 text-[9px] font-black uppercase text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 rounded-full transition-all cursor-pointer active:scale-95 ml-1"
+                                title="Clear status filter"
+                            >
+                                Clear
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -10626,10 +10687,14 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                         const record = attendance.find((r: AttendanceRecord) => r.employeeId === e.id && r.date === dateStr);
                                         const meta = LEGEND[record?.status] || {};
                                         const isSunday = new Date(year, month - 1, d).getDay() === 0;
+                                        const isSelectedDayStatus = timesheetStatusFilter 
+                                            ? (record?.status === timesheetStatusFilter || (timesheetStatusFilter === AttendanceStatus.WEEK_OFF && !record?.status && isSunday))
+                                            : true;
                                         return (
                                             <td key={d} className={cn(
                                                 "border-r border-slate-50 p-1 font-bold transition-all relative text-center align-middle hover:bg-slate-50/40",
-                                                record?.status ? (STATUS_CELL_BG[record.status] || 'bg-slate-50') : isSunday ? 'bg-red-50/15 text-red-300' : 'text-slate-200 group-hover:text-slate-300 bg-white'
+                                                record?.status ? (STATUS_CELL_BG[record.status] || 'bg-slate-50') : isSunday ? 'bg-red-50/15 text-red-300' : 'text-slate-200 group-hover:text-slate-300 bg-white',
+                                                timesheetStatusFilter && !isSelectedDayStatus ? "opacity-20 hover:opacity-100 grayscale-[40%]" : ""
                                             )}>
                                                 <div className="flex flex-col items-center justify-center gap-1.5 min-h-[50px] py-1">
                                                     <button 
