@@ -9963,6 +9963,27 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
         }
         return 1;
     });
+    const [bulkSelectionMode, setBulkSelectionMode] = useState<'single' | 'range'>('single');
+    const [bulkStartDay, setBulkStartDay] = useState<number>(() => {
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonthNum = today.getMonth() + 1;
+        const currentMonthStr = `${currentYear}-${String(currentMonthNum).padStart(2, '0')}`;
+        if (selectedMonth === currentMonthStr) {
+            return today.getDate();
+        }
+        return 1;
+    });
+    const [bulkEndDay, setBulkEndDay] = useState<number>(() => {
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonthNum = today.getMonth() + 1;
+        const currentMonthStr = `${currentYear}-${String(currentMonthNum).padStart(2, '0')}`;
+        if (selectedMonth === currentMonthStr) {
+            return today.getDate();
+        }
+        return 1;
+    });
 
     useEffect(() => {
         setSelectedEmployeeIds([]);
@@ -9970,11 +9991,10 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
         const currentYear = today.getFullYear();
         const currentMonthNum = today.getMonth() + 1;
         const currentMonthStr = `${currentYear}-${String(currentMonthNum).padStart(2, '0')}`;
-        if (selectedMonth === currentMonthStr) {
-            setBulkDay(today.getDate());
-        } else {
-            setBulkDay(1);
-        }
+        const dayVal = selectedMonth === currentMonthStr ? today.getDate() : 1;
+        setBulkDay(dayVal);
+        setBulkStartDay(dayVal);
+        setBulkEndDay(dayVal);
     }, [selectedMonth]);
 
     const handleDownloadSampleFile = () => {
@@ -10489,105 +10509,268 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                 </div>
             </div>
 
-            {selectedEmployeeIds.length > 0 && (
-                <div id="timesheet-bulk-toolbar" className="bg-slate-900 text-white p-5 rounded-3xl shadow-lg border border-slate-800 animate-in fade-in slide-in-from-top-4 duration-300 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-brand-500/10 text-brand-400 rounded-xl border border-brand-500/20">
-                            <CheckSquare className="w-5 h-5 text-brand-400" />
-                        </div>
-                        <div>
-                            <h3 className="font-extrabold text-sm uppercase tracking-wider flex items-center gap-2">
-                                Bulk Status Entry Desk
-                                <span className="bg-brand-500 text-white text-[9px] px-2 py-0.5 rounded-full font-black">
-                                    {selectedEmployeeIds.length} Staff Selected
-                                </span>
-                            </h3>
-                            <p className="text-[10px] text-slate-400 mt-0.5">
-                                Mark attendance of checked personnel in a single click for your selected day.
-                            </p>
-                        </div>
-                    </div>
-                    
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className="flex items-center gap-2 bg-slate-800 p-1.5 rounded-2xl border border-slate-700">
-                            <span className="text-[10px] font-black uppercase text-slate-400 px-2">Select Day:</span>
-                            <select 
-                                value={bulkDay} 
-                                onChange={(e) => setBulkDay(Number(e.target.value))}
-                                className="bg-slate-900 border border-slate-700 text-white font-extrabold text-xs px-3 py-1.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer text-center"
-                            >
-                                {days.map((d) => {
-                                    const date = new Date(year, month - 1, d);
-                                    const dayName = date.toLocaleString('default', { weekday: 'short' });
-                                    return (
-                                        <option key={d} value={d} className="bg-slate-900 text-white font-bold">
-                                            Day {d} ({dayName})
-                                        </option>
-                                    );
-                                })}
-                            </select>
-                        </div>
+            {selectedEmployeeIds.length > 0 && (() => {
+                const getBulkDays = () => {
+                    if (bulkSelectionMode === 'single') {
+                        return [bulkDay];
+                    } else {
+                        const start = Math.min(bulkStartDay, bulkEndDay);
+                        const end = Math.max(bulkStartDay, bulkEndDay);
+                        const list = [];
+                        for (let i = start; i <= end; i++) {
+                            list.push(i);
+                        }
+                        return list;
+                    }
+                };
 
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                if (!canManageAttendance) return;
-                                const dateStr = `${selectedMonth}-${String(bulkDay).padStart(2, '0')}`;
-                                for (const empId of selectedEmployeeIds) {
+                const handleBulkAction = async (status: AttendanceStatus | 'clear') => {
+                    if (!canManageAttendance) return;
+                    const targetDaysList = getBulkDays();
+                    if (targetDaysList.length === 0) return;
+
+                    const executeAction = async () => {
+                        for (const empId of selectedEmployeeIds) {
+                            for (const d of targetDaysList) {
+                                const dateStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+                                if (status === 'clear') {
+                                    await onDeleteAttendance(empId, dateStr);
+                                } else {
+                                    const mappedHoursWorked = status === AttendanceStatus.PRESENT ? 8 : 0;
                                     await onLogAttendance(
                                         empId,
-                                        AttendanceStatus.PRESENT,
+                                        status,
                                         dateStr,
-                                        0, 
+                                        0,
                                         undefined,
-                                        user?.username || 'System',
-                                        'Bulk Operation PRESENT',
-                                        8 
+                                        user?.name || user?.username || 'System',
+                                        `Bulk Operation ${status}`,
+                                        mappedHoursWorked
                                     );
                                 }
-                                setSelectedEmployeeIds([]);
-                            }}
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-600/10 border border-emerald-500"
-                        >
-                            <CheckCircle className="w-4 h-4" />
-                            <span>Mark Present (P)</span>
-                        </button>
+                            }
+                        }
+                        setSelectedEmployeeIds([]);
+                    };
 
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                if (!canManageAttendance) return;
-                                const dateStr = `${selectedMonth}-${String(bulkDay).padStart(2, '0')}`;
-                                for (const empId of selectedEmployeeIds) {
-                                    await onLogAttendance(
-                                        empId,
-                                        AttendanceStatus.ABSENT,
-                                        dateStr,
-                                        0, 
-                                        undefined,
-                                        user?.username || 'System',
-                                        'Bulk Operation ABSENT',
-                                        0 
-                                    );
-                                }
-                                setSelectedEmployeeIds([]);
-                            }}
-                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-rose-600/10 border border-rose-500"
-                        >
-                            <XCircle className="w-4 h-4" />
-                            <span>Mark Absent (A)</span>
-                        </button>
+                    if (status === 'clear') {
+                        const rangeStr = bulkSelectionMode === 'single' 
+                            ? `Day ${bulkDay}` 
+                            : `Days ${Math.min(bulkStartDay, bulkEndDay)} to ${Math.max(bulkStartDay, bulkEndDay)}`;
+                        openConfirm(
+                            "Clear Bulk Attendance",
+                            `Are you sure you want to clear the attendance records for the selected ${selectedEmployeeIds.length} employees on ${rangeStr}? This action cannot be undone.`,
+                            executeAction,
+                            'danger'
+                        );
+                    } else {
+                        await executeAction();
+                    }
+                };
 
-                        <button
-                            type="button"
-                            onClick={() => setSelectedEmployeeIds([])}
-                            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 text-xs font-bold rounded-xl border border-slate-700 transition-all cursor-pointer"
-                        >
-                            Cancel
-                        </button>
+                return (
+                    <div id="timesheet-bulk-toolbar" className="bg-slate-900 border border-slate-800 text-white p-6 rounded-[2rem] shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300 flex flex-col gap-4">
+                        {/* Header Row */}
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-brand-500/10 text-brand-400 rounded-xl border border-brand-500/20">
+                                    <CheckSquare className="w-5 h-5 text-brand-400" />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-sm uppercase tracking-wider flex items-center gap-2">
+                                        Bulk Status Entry Desk
+                                        <span className="bg-brand-500 text-white text-[9px] px-2.5 py-0.5 rounded-full font-black animate-pulse">
+                                            {selectedEmployeeIds.length} Staff Selected
+                                        </span>
+                                    </h3>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">
+                                        Set any status or clear logs for either a single day or a specified range of dates.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Mode toggle */}
+                            <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkSelectionMode('single')}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer",
+                                        bulkSelectionMode === 'single'
+                                            ? "bg-brand-600 text-white font-extrabold shadow-md shadow-brand-600/10"
+                                            : "text-slate-400 hover:text-slate-250 hover:bg-slate-900"
+                                    )}
+                                >
+                                    Single Day
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkSelectionMode('range')}
+                                    className={cn(
+                                        "px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer",
+                                        bulkSelectionMode === 'range'
+                                            ? "bg-brand-600 text-white font-extrabold shadow-md shadow-brand-600/10"
+                                            : "text-slate-400 hover:text-slate-250 hover:bg-slate-900"
+                                    )}
+                                >
+                                    Date Range
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Controls & Action Buttons Row */}
+                        <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+                            {/* Day Selector */}
+                            <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                {bulkSelectionMode === 'single' ? (
+                                    <div className="flex items-center gap-2 bg-slate-800 p-1.5 rounded-2xl border border-slate-700">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 px-2">Select Day:</span>
+                                        <select 
+                                            value={bulkDay} 
+                                            onChange={(e) => setBulkDay(Number(e.target.value))}
+                                            className="bg-slate-900 border border-slate-700 text-white font-extrabold text-xs px-3 py-1.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer text-center"
+                                        >
+                                            {days.map((d) => {
+                                                const date = new Date(year, month - 1, d);
+                                                const dayName = date.toLocaleString('default', { weekday: 'short' });
+                                                return (
+                                                    <option key={d} value={d} className="bg-slate-900 text-white font-bold">
+                                                        Day {d} ({dayName})
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-2 bg-slate-800 p-1.5 rounded-2xl border border-slate-700">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 px-1">From:</span>
+                                        <select 
+                                            value={bulkStartDay} 
+                                            onChange={(e) => setBulkStartDay(Number(e.target.value))}
+                                            className="bg-slate-900 border border-slate-700 text-white font-extrabold text-xs px-2.5 py-1.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer text-center"
+                                        >
+                                            {days.map((d) => (
+                                                <option key={d} value={d} className="bg-slate-900 text-white font-bold">Day {d}</option>
+                                            ))}
+                                        </select>
+                                        <span className="text-[10px] font-black uppercase text-slate-405 px-1">To:</span>
+                                        <select 
+                                            value={bulkEndDay} 
+                                            onChange={(e) => setBulkEndDay(Number(e.target.value))}
+                                            className="bg-slate-900 border border-slate-700 text-white font-extrabold text-xs px-2.5 py-1.5 rounded-xl outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer text-center"
+                                        >
+                                            {days.map((d) => (
+                                                <option key={d} value={d} className="bg-slate-900 text-white font-bold">Day {d}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Options Buttons */}
+                            <div className="flex flex-wrap items-center gap-2 grow justify-start lg:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => handleBulkAction(AttendanceStatus.PRESENT)}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-lg border border-emerald-500"
+                                    title="Mark Present"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                                    <span>P</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleBulkAction(AttendanceStatus.ABSENT)}
+                                    className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-lg border border-rose-500"
+                                    title="Mark Absent"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                                    <span>A</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleBulkAction(AttendanceStatus.WEEK_OFF)}
+                                    className="px-3 py-1.5 bg-slate-600 hover:bg-slate-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-slate-500"
+                                    title="Mark Week Off"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                                    <span>W</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleBulkAction(AttendanceStatus.PUBLIC_HOLIDAY)}
+                                    className="px-3 py-1.5 bg-violet-600 hover:bg-violet-750 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-violet-500"
+                                    title="Mark Public Holiday"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                                    <span>PH</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleBulkAction(AttendanceStatus.SICK_LEAVE)}
+                                    className="px-3 py-1.5 bg-orange-550 hover:bg-orange-655 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-orange-500"
+                                    title="Mark Sick Leave"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                                    <span>SL</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleBulkAction(AttendanceStatus.ANNUAL_LEAVE)}
+                                    className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-brand-500"
+                                    title="Mark Annual Leave"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                                    <span>AL</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleBulkAction(AttendanceStatus.UNPAID_LEAVE)}
+                                    className="px-3 py-1.5 bg-rose-500 hover:bg-rose-600 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-rose-400"
+                                    title="Mark Unpaid Leave"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                                    <span>UL</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleBulkAction(AttendanceStatus.EMERGENCY_LEAVE)}
+                                    className="px-3 py-1.5 bg-pink-550 hover:bg-pink-650 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-pink-500"
+                                    title="Mark Emergency Leave"
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                                    <span>EL</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleBulkAction('clear')}
+                                    className="px-3 py-1.5 bg-amber-550 hover:bg-amber-650 active:scale-95 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-amber-600"
+                                    title="Clear / Delete Attendance Records"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Clear Logs</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedEmployeeIds([])}
+                                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 text-xs font-bold rounded-xl border border-slate-700 transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
 
             <div className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-xl shadow-slate-200/50 timesheet-print-wrapper">
                 <div ref={scrollContainerRef} id="timesheet-table-container" className="max-h-[calc(100vh-280px)] overflow-auto scrollbar-thin">
