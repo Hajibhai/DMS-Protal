@@ -69,7 +69,8 @@ import {
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle, LayoutDashboard,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator,
-  Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home, Mail
+  Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home, Mail,
+  Database, HardDrive
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -6050,6 +6051,132 @@ const SettingsView = ({
     const userRoleLower = user?.role?.toLowerCase() || '';
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
     
+    // Storage space states
+    const [allTasks, setAllTasks] = useState<Task[]>([]);
+    const [allNotes, setAllNotes] = useState<Note[]>([]);
+    const [allExpenses, setAllExpenses] = useState<EverydayExpense[]>([]);
+    const [allUsers, setAllUsers] = useState<SystemUser[]>([]);
+    const [loadingStorage, setLoadingStorage] = useState(true);
+    const [storageSearchQuery, setStorageSearchQuery] = useState('');
+
+    useEffect(() => {
+        if (!user) return;
+
+        const unsubTasks = onSnapshot(collection(db, 'tasks'), (snap) => {
+            setAllTasks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Task));
+        }, (err) => console.error("Error loading tasks for stats:", err));
+
+        const unsubNotes = onSnapshot(collection(db, 'notes'), (snap) => {
+            setAllNotes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Note));
+        }, (err) => console.error("Error loading notes for stats:", err));
+
+        const unsubExpenses = onSnapshot(collection(db, 'everyday_expenses'), (snap) => {
+            setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as EverydayExpense));
+        }, (err) => console.error("Error loading expenses for stats:", err));
+
+        const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+            setAllUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as SystemUser));
+            setLoadingStorage(false);
+        }, (err) => {
+            console.error("Error loading users for stats:", err);
+            setLoadingStorage(false);
+        });
+
+        return () => {
+            unsubTasks();
+            unsubNotes();
+            unsubExpenses();
+            unsubUsers();
+        };
+    }, [user]);
+
+    // Helper functions
+    const formatStorageSize = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1014; // Approximate for visual sizing
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        if (i < 0) return '0 B';
+        return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    const getUserStorageStats = useCallback((uid: string, name: string) => {
+        // 1. Expenses / Bills
+        const userExpenses = allExpenses.filter(e => e.uploadedByUid === uid || (e.uploadedBy && e.uploadedBy.toLowerCase() === name.toLowerCase()));
+        let expensesSize = 0;
+        let expensesFilesSize = 0;
+        let expensesFilesCount = 0;
+        userExpenses.forEach(e => {
+            const sz = JSON.stringify(e).length;
+            expensesSize += sz;
+            if (e.attachment) {
+                expensesFilesCount++;
+                expensesFilesSize += e.attachment.length;
+            }
+        });
+
+        // 2. Tasks
+        const userTasks = allTasks.filter(t => t.createdById === uid || (t.createdBy && t.createdBy.toLowerCase() === name.toLowerCase()));
+        let tasksSize = 0;
+        let tasksFilesSize = 0;
+        let tasksFilesCount = 0;
+        userTasks.forEach(t => {
+            const sz = JSON.stringify(t).length;
+            tasksSize += sz;
+            if (t.audioUrl) {
+                tasksFilesCount++;
+                tasksFilesSize += t.audioUrl.length;
+            }
+            if (t.mediaUrl) {
+                tasksFilesCount++;
+                tasksFilesSize += t.mediaUrl.length;
+            }
+        });
+
+        // 3. Notes / Memos
+        const userNotes = allNotes.filter(n => n.createdById === uid || (n.createdBy && n.createdBy.toLowerCase() === name.toLowerCase()));
+        let notesSize = 0;
+        let notesFilesSize = 0;
+        let notesFilesCount = 0;
+        userNotes.forEach(n => {
+            const sz = JSON.stringify(n).length;
+            notesSize += sz;
+            if (n.audioUrl) {
+                notesFilesCount++;
+                notesFilesSize += n.audioUrl.length;
+            }
+            if (n.mediaUrl) {
+                notesFilesCount++;
+                notesFilesSize += n.mediaUrl.length;
+            }
+        });
+
+        const totalSize = expensesSize + tasksSize + notesSize;
+        const totalFilesSize = expensesFilesSize + tasksFilesSize + notesFilesSize;
+        const totalFilesCount = expensesFilesCount + tasksFilesCount + notesFilesCount;
+
+        return {
+            expensesCount: userExpenses.length,
+            expensesSize,
+            expensesFilesCount,
+            expensesFilesSize,
+
+            tasksCount: userTasks.length,
+            tasksSize,
+            tasksFilesCount,
+            tasksFilesSize,
+
+            notesCount: userNotes.length,
+            notesSize,
+            notesFilesCount,
+            notesFilesSize,
+
+            totalSize,
+            totalFilesCount,
+            totalFilesSize
+        };
+    }, [allExpenses, allTasks, allNotes]);
+
     // Corporate Bank Account component local states
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<CorporateBankAccount | null>(null);
@@ -6374,8 +6501,352 @@ const SettingsView = ({
                     </div>
                 )}
 
+                {/* 🖳 Data Storage and Quota Usage Panel */}
+                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm animate-in fade-in duration-300">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-6 mb-6">
+                        <div className="flex items-center gap-3.5">
+                            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl shadow-sm border border-indigo-100 flex-shrink-0">
+                                <HardDrive className="w-5 h-5 animate-pulse" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                                    Data Storage & Account Footprint
+                                    <span className="px-2.5 py-0.5 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                        {isAdmin ? 'System Live Auditing' : 'Personal Storage'}
+                                    </span>
+                                </h3>
+                                <p className="text-xs text-slate-500 font-medium mt-1">Real-time usage tracking of uploaded bills, task check-ins, meetings, and memos.</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                setLoadingStorage(true);
+                                setTimeout(() => setLoadingStorage(false), 500);
+                            }}
+                            className="px-3.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-[11px] font-bold transition-all border border-slate-200/60 flex items-center gap-1.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-100"
+                        >
+                            <RefreshCw className={`w-3.5 h-3.5 ${loadingStorage ? 'animate-spin' : ''}`} />
+                            Refresh Space
+                        </button>
+                    </div>
+
+                    {/* Personal usage progress */}
+                    {(() => {
+                        const myStats = getUserStorageStats(user.uid || user.id || '', user.name);
+                        const QUOTA_LIMIT = 100 * 1024 * 1024; // 100 MB quota
+                        const usagePercent = Math.min((myStats.totalSize / QUOTA_LIMIT) * 100, 100);
+
+                        return (
+                            <div className="space-y-6">
+                                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100/70">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <div>
+                                            <span className="text-xs font-black text-slate-400 uppercase tracking-wider block">Your Storage Footprint</span>
+                                            <span className="text-lg font-black text-slate-850 mt-1 inline-block">
+                                                {formatStorageSize(myStats.totalSize)} <span className="text-slate-400 font-bold text-sm">/ {formatStorageSize(QUOTA_LIMIT)} used</span>
+                                            </span>
+                                        </div>
+                                        <span className={`text-xs font-black px-2.5 py-1 rounded-lg ${
+                                            usagePercent > 80 ? 'bg-rose-50 text-rose-700' :
+                                            usagePercent > 50 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+                                        }`}>
+                                            {usagePercent.toFixed(2)}% Used
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden relative">
+                                        <div
+                                            style={{ width: `${Math.max(usagePercent, 1.5)}%` }}
+                                            className={`h-full bg-gradient-to-r rounded-full transition-all duration-500 ${
+                                                usagePercent > 80 ? 'from-amber-500 to-rose-600' :
+                                                usagePercent > 50 ? 'from-indigo-500 to-amber-500' : 'from-indigo-500 to-brand-600'
+                                            }`}
+                                        />
+                                    </div>
+                                    <div className="flex justify-between text-[10px] text-slate-400 font-bold mt-2 uppercase tracking-wider">
+                                        <span>0 MB</span>
+                                        <span>50 MB (Balanced)</span>
+                                        <span>100 MB Limit</span>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-xs space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">💵 Bills Entered</span>
+                                            <span className="w-2 h-2 rounded-full bg-brand-500" />
+                                        </div>
+                                        <div>
+                                            <p className="text-lg font-black text-slate-800">{myStats.expensesCount} item(s)</p>
+                                            <p className="text-xs font-semibold text-slate-500">{formatStorageSize(myStats.expensesSize)} database footprint</p>
+                                        </div>
+                                        {myStats.expensesFilesCount > 0 && (
+                                            <p className="text-[10px] text-slate-400 font-medium border-t border-slate-50 pt-1.5 mt-1">
+                                                📎 {myStats.expensesFilesCount} uploaded receipt(s) ({formatStorageSize(myStats.expensesFilesSize)})
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-xs space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">📋 Tasks & Notes</span>
+                                            <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                                        </div>
+                                        <div>
+                                            <p className="text-lg font-black text-slate-800">{myStats.tasksCount} item(s)</p>
+                                            <p className="text-xs font-semibold text-slate-500">{formatStorageSize(myStats.tasksSize)} database footprint</p>
+                                        </div>
+                                        {myStats.tasksFilesCount > 0 && (
+                                            <p className="text-[10px] text-slate-400 font-medium border-t border-slate-50 pt-1.5 mt-1">
+                                                📎 {myStats.tasksFilesCount} media/voice file(s) ({formatStorageSize(myStats.tasksFilesSize)})
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-xs space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">📝 Pinned Memos</span>
+                                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                        </div>
+                                        <div>
+                                            <p className="text-lg font-black text-slate-800">{myStats.notesCount} item(s)</p>
+                                            <p className="text-xs font-semibold text-slate-500">{formatStorageSize(myStats.notesSize)} database footprint</p>
+                                        </div>
+                                        {myStats.notesFilesCount > 0 && (
+                                            <p className="text-[10px] text-slate-400 font-medium border-t border-slate-50 pt-1.5 mt-1">
+                                                📎 {myStats.notesFilesCount} media/voice file(s) ({formatStorageSize(myStats.notesFilesSize)})
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Admin Specific system-wide viewing */}
+                    {isAdmin && (
+                        <div className="mt-8 pt-8 border-t border-slate-100 space-y-5">
+                            <div>
+                                <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                                    <Database className="w-4 h-4 text-brand-600" />
+                                    Team-Wide Storage Consumption Audit
+                                </h4>
+                                <p className="text-[11px] text-slate-500 font-medium mt-0.5">Auditing of disk and cloud file allocations per individual system user.</p>
+                            </div>
+
+                            {/* Aggregations */}
+                            {(() => {
+                                const isCurrentCreator = user?.role?.toLowerCase() === 'creator' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
+                                
+                                const creatorEmails = ['abdulkaderp3010@gmail.com', CREATOR_USER.username.toLowerCase()];
+                                const creatorUids = allUsers
+                                    .filter(u => u.role?.toLowerCase() === 'creator' || creatorEmails.includes(u.email?.toLowerCase() || ''))
+                                    .map(u => u.uid || u.id || '');
+
+                                const filteredExpenses = allExpenses.filter(e => {
+                                    if (isCurrentCreator) return true;
+                                    const isCreatorUid = creatorUids.includes(e.uploadedByUid || '');
+                                    const isCreatorEmailOrName = e.uploadedBy && (
+                                        creatorEmails.includes(e.uploadedBy.toLowerCase()) || 
+                                        e.uploadedBy.toLowerCase() === 'mohamed abdul kader'
+                                    );
+                                    return !(isCreatorUid || isCreatorEmailOrName);
+                                });
+
+                                const filteredTasks = allTasks.filter(t => {
+                                    if (isCurrentCreator) return true;
+                                    const isCreatorUid = creatorUids.includes(t.createdById || '');
+                                    const isCreatorEmail = t.createdBy && (
+                                        creatorEmails.includes(t.createdBy.toLowerCase()) || 
+                                        t.createdBy.toLowerCase() === 'mohamed abdul kader'
+                                    );
+                                    return !(isCreatorUid || isCreatorEmail);
+                                });
+
+                                const filteredNotes = allNotes.filter(n => {
+                                    if (isCurrentCreator) return true;
+                                    const isCreatorUid = creatorUids.includes(n.createdById || '');
+                                    const isCreatorEmail = n.createdBy && (
+                                        creatorEmails.includes(n.createdBy.toLowerCase()) || 
+                                        n.createdBy.toLowerCase() === 'mohamed abdul kader'
+                                    );
+                                    return !(isCreatorUid || isCreatorEmail);
+                                });
+
+                                const totalSystemSize = filteredExpenses.reduce((sum, e) => sum + JSON.stringify(e).length, 0) +
+                                                       filteredTasks.reduce((sum, t) => sum + JSON.stringify(t).length, 0) +
+                                                       filteredNotes.reduce((sum, n) => sum + JSON.stringify(n).length, 0);
+
+                                const totalSystemFilesSize = filteredExpenses.reduce((sum, e) => sum + (e.attachment?.length || 0), 0) +
+                                                            filteredTasks.reduce((sum, t) => sum + (t.audioUrl?.length || 0) + (t.mediaUrl?.length || 0), 0) +
+                                                            filteredNotes.reduce((sum, n) => sum + (n.audioUrl?.length || 0) + (n.mediaUrl?.length || 0), 0);
+
+                                return (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="p-3 bg-slate-50/50 rounded-xl border border-slate-100 flex items-center justify-between">
+                                            <div>
+                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Total System Database Size</span>
+                                                <span className="text-sm font-black text-slate-800 mt-0.5 inline-block">{formatStorageSize(totalSystemSize)}</span>
+                                            </div>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase">Tracked Records</span>
+                                        </div>
+                                        <div className="p-3 bg-slate-50/50 rounded-xl border border-slate-100 flex items-center justify-between">
+                                            <div>
+                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Base64 File Attachments Size</span>
+                                                <span className="text-sm font-black text-brand-600 mt-0.5 inline-block">{formatStorageSize(totalSystemFilesSize)}</span>
+                                            </div>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase">Documents & Voice Memos</span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* User Filter & Table */}
+                            <div className="space-y-3">
+                                <div className="relative">
+                                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search system user storage by name, email, or role..."
+                                        value={storageSearchQuery}
+                                        onChange={(e) => setStorageSearchQuery(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-850 outline-none focus:ring-2 focus:ring-brand-500 transition-all font-sans placeholder-slate-400"
+                                    />
+                                    {storageSearchQuery && (
+                                        <button 
+                                            onClick={() => setStorageSearchQuery('')}
+                                            className="text-slate-400 hover:text-slate-600 absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold cursor-pointer"
+                                        >
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
+
+                                {loadingStorage ? (
+                                    <div className="flex flex-col items-center justify-center p-8 space-y-2 border border-slate-100 rounded-2xl bg-slate-50/30">
+                                        <RefreshCw className="w-6 h-6 text-brand-500 animate-spin" />
+                                        <span className="text-xs text-slate-400 font-bold">Querying user-specific storage data...</span>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto border border-slate-200/60 rounded-2xl">
+                                        <table className="min-w-full divide-y divide-slate-100 text-left">
+                                            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest col-header">
+                                                <tr>
+                                                    <th className="px-4 py-3">System User</th>
+                                                    <th className="px-4 py-3">Role</th>
+                                                    <th className="px-4 py-3">Entity Metrics</th>
+                                                    <th className="px-4 py-3">Space Footprint</th>
+                                                    <th className="px-4 py-3 text-right">Quota (100MB)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 text-xs bg-white text-slate-750">
+                                                {(() => {
+                                                    const isCurrentCreator = user?.role?.toLowerCase() === 'creator' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
+
+                                                    const usersToRender = (allUsers.length > 0 ? allUsers : systemUsers).filter(u => {
+                                                        const isThisUserCreator = u.role?.toLowerCase() === 'creator' || u.email === 'abdulkaderp3010@gmail.com' || u.email === CREATOR_USER.username;
+                                                        if (isThisUserCreator && !isCurrentCreator) {
+                                                            return false;
+                                                        }
+
+                                                        const q = storageSearchQuery.toLowerCase();
+                                                        return (
+                                                            (u.name || '').toLowerCase().includes(q) ||
+                                                            (u.email || '').toLowerCase().includes(q) ||
+                                                            (u.role || '').toLowerCase().includes(q)
+                                                        );
+                                                    });
+
+                                                    if (usersToRender.length === 0) {
+                                                        return (
+                                                            <tr>
+                                                                <td colSpan={5} className="text-center py-6 italic text-slate-400 font-medium">
+                                                                    No system users match your storage search criteria.
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    }
+
+                                                    // Sort users so that users using the most storage appear first
+                                                    const sortedUsers = [...usersToRender].sort((a, b) => {
+                                                        const statA = getUserStorageStats(a.uid || a.id || '', a.name);
+                                                        const statB = getUserStorageStats(b.uid || b.id || '', b.name);
+                                                        return statB.totalSize - statA.totalSize;
+                                                    });
+
+                                                    return sortedUsers.map((u) => {
+                                                        const uid = u.uid || u.id || '';
+                                                        const stats = getUserStorageStats(uid, u.name);
+                                                        const limitBytes = 100 * 1024 * 1024;
+                                                        const pct = Math.min((stats.totalSize / limitBytes) * 105, 100);
+
+                                                        return (
+                                                            <tr key={uid} className="hover:bg-slate-50/50 transition-colors">
+                                                                <td className="px-4 py-2.5">
+                                                                    <div>
+                                                                        <span className="font-extrabold text-slate-900 block">{u.name}</span>
+                                                                        <span className="text-[10px] text-slate-400 font-medium block">{u.email}</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-2.5">
+                                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide border ${
+                                                                        u.role?.toLowerCase() === 'admin' ? 'bg-indigo-50 border-indigo-100 text-indigo-700' :
+                                                                        u.role?.toLowerCase() === 'creator' ? 'bg-fuchsia-50 border-fuchsia-100 text-fuchsia-700' :
+                                                                        'bg-slate-100 border-slate-200 text-slate-600'
+                                                                    }`}>
+                                                                        {u.role || 'Employee'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-4 py-2.5">
+                                                                    <div className="flex flex-wrap gap-1.5 font-bold text-[10px]">
+                                                                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                                                                            💵 {stats.expensesCount} bills
+                                                                        </span>
+                                                                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                                                                            📋 {stats.tasksCount} tasks
+                                                                        </span>
+                                                                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
+                                                                            📝 {stats.notesCount} memos
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-2.5 font-semibold">
+                                                                    <div>
+                                                                        <span className="text-slate-800 font-bold block">{formatStorageSize(stats.totalSize)}</span>
+                                                                        <span className="text-[9px] text-slate-400 font-semibold block">
+                                                                            📎 {stats.totalFilesCount} base64 files ({formatStorageSize(stats.totalFilesSize)})
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-2.5 text-right w-36">
+                                                                    <div className="flex items-center justify-end gap-2 text-right">
+                                                                        <div className="w-16 bg-slate-150 bg-slate-200 h-1.5 rounded-full overflow-hidden shrink-0 border border-slate-200/40 relative">
+                                                                            <div 
+                                                                                style={{ width: `${Math.max(pct, 2)}%` }}
+                                                                                className={`h-full rounded-full ${
+                                                                                    pct > 80 ? 'bg-rose-500' : pct > 40 ? 'bg-amber-500' : 'bg-brand-500'
+                                                                                }`}
+                                                                            />
+                                                                        </div>
+                                                                        <span className="font-extrabold text-[10px] text-slate-400">
+                                                                            {pct.toFixed(2)}%
+                                                                        </span>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    });
+                                                })()}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
                 <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm">
-                    <h3 className="text-lg font-black text-slate-900 mb-6">Security</h3>
+                    <h3 className="text-lg font-black text-slate-900 mb-6 font-sans">Security</h3>
                     <div className="space-y-4">
                         <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100">
                             <div>
