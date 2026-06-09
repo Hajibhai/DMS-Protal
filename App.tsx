@@ -9459,7 +9459,488 @@ const STATUS_CELL_BG: Record<string, string> = {
     [AttendanceStatus.EMERGENCY_LEAVE]: 'bg-pink-50/40 text-pink-800 hover:bg-pink-100/60',
 };
 
+const BatchAttendanceModal = ({ 
+    isOpen, 
+    onClose, 
+    selectedEmployeeIds, 
+    employees, 
+    filteredEmployees,
+    selectedMonth, 
+    onLogAttendance, 
+    user 
+}: any) => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+    const [targetType, setTargetType] = useState<'selected' | 'all'>('selected');
+    const [daySelectionMode, setDaySelectionMode] = useState<'all' | 'range' | 'weekdays' | 'specific'>('all');
+    const [startDay, setStartDay] = useState(1);
+    const [endDay, setEndDay] = useState(daysInMonth);
+    const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>([1, 2, 3, 4, 6]); // defaults (Mon-Thu, Sat)
+    const [selectedDaysList, setSelectedDaysList] = useState<number[]>([]);
+    
+    const [status, setStatus] = useState<AttendanceStatus>(AttendanceStatus.PRESENT);
+    const [hoursWorked, setHoursWorked] = useState<number>(8);
+    const [overtimeHours, setOvertimeHours] = useState<number>(0);
+    const [note, setNote] = useState<string>('Batch entry updates');
+
+    const [isSaving, setIsSaving] = useState(false);
+    const [progress, setProgress] = useState({ current: 0, total: 0 });
+
+    useEffect(() => {
+        if (!selectedEmployeeIds || selectedEmployeeIds.length === 0) {
+            setTargetType('all');
+        } else {
+            setTargetType('selected');
+        }
+    }, [selectedEmployeeIds, isOpen]);
+
+    if (!isOpen) return null;
+
+    const weekdaysList = [
+        { value: 0, label: 'Sunday' },
+        { value: 1, label: 'Monday' },
+        { value: 2, label: 'Tuesday' },
+        { value: 3, label: 'Wednesday' },
+        { value: 4, label: 'Thursday' },
+        { value: 5, label: 'Friday' },
+        { value: 6, label: 'Saturday' },
+    ];
+
+    const targetEmployees = targetType === 'selected' 
+        ? employees.filter((e: any) => selectedEmployeeIds.includes(e.id))
+        : filteredEmployees;
+
+    const getSelectedDays = () => {
+        if (daySelectionMode === 'all') {
+            return days;
+        }
+        if (daySelectionMode === 'range') {
+            const start = Math.min(startDay, endDay);
+            const end = Math.max(startDay, endDay);
+            return days.filter(d => d >= start && d <= end);
+        }
+        if (daySelectionMode === 'weekdays') {
+            return days.filter(d => {
+                const date = new Date(year, month - 1, d);
+                return selectedWeekdays.includes(date.getDay());
+            });
+        }
+        if (daySelectionMode === 'specific') {
+            return selectedDaysList.sort((a, b) => a - b);
+        }
+        return [];
+    };
+
+    const targetDays = getSelectedDays();
+
+    const handleApply = async () => {
+        if (targetEmployees.length === 0) {
+            alert("No employees selected for batch operation.");
+            return;
+        }
+        if (targetDays.length === 0) {
+            alert("Please select at least one day for batch operation.");
+            return;
+        }
+
+        setIsSaving(true);
+        const totalCount = targetEmployees.length * targetDays.length;
+        setProgress({ current: 0, total: totalCount });
+
+        let currentCount = 0;
+        try {
+            for (const emp of targetEmployees) {
+                for (const d of targetDays) {
+                    const dateStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+                    const mappedHoursWorked = status === AttendanceStatus.PRESENT ? hoursWorked : 0;
+                    const mappedOT = status === AttendanceStatus.PRESENT ? overtimeHours : 0;
+
+                    await onLogAttendance(
+                        emp.id,
+                        status,
+                        dateStr,
+                        mappedOT,
+                        undefined,
+                        user?.name || user?.username || 'System',
+                        note || 'Batch Operation Entry',
+                        mappedHoursWorked
+                    );
+                    currentCount++;
+                    setProgress({ current: currentCount, total: totalCount });
+                }
+            }
+        } catch (error: any) {
+            console.error("Batch update failed:", error);
+            alert(`Error during batch saving: ${error.message || error}`);
+        } finally {
+            setIsSaving(false);
+            onClose();
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[80] p-4">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh] relative"
+            >
+                {isSaving && (
+                    <div className="absolute inset-0 bg-white/95 backdrop-blur-sm flex flex-col items-center justify-center z-[90] p-6 text-center animate-in fade-in duration-200">
+                        <div className="relative w-20 h-20 mb-4 flex items-center justify-center">
+                            <div className="absolute inset-0 rounded-full border-4 border-slate-100"></div>
+                            <div className="absolute inset-0 rounded-full border-4 border-t-brand-600 animate-spin"></div>
+                            <Calendar className="w-8 h-8 text-brand-600 animate-bounce" />
+                        </div>
+                        <h3 className="text-lg font-black text-slate-900">Executing Batch Updates</h3>
+                        <p className="text-xs text-slate-500 mt-1 max-w-xs leading-relaxed">
+                            Please wait while we log attendance records. Do not close this window.
+                        </p>
+                        
+                        <div className="w-full max-w-xs bg-slate-100 rounded-full h-2.5 mt-6 overflow-hidden">
+                            <div 
+                                className="bg-brand-600 h-full transition-all duration-300"
+                                style={{ width: `${(progress.current / Math.max(1, progress.total)) * 100}%` }}
+                            ></div>
+                        </div>
+                        <div className="text-xs font-black text-slate-700 mt-2">
+                            Verifying: {progress.current} / {progress.total} entries
+                        </div>
+                    </div>
+                )}
+
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div>
+                        <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                            <CheckSquare className="w-5 h-5 text-brand-600" />
+                            Batch Attendance Desk
+                        </h2>
+                        <p className="text-slate-500 text-xs font-semibold mt-0.5">Apply multi-employee & multi-day log updates simultaneously</p>
+                    </div>
+                    <button onClick={onClose} className="p-2.5 hover:bg-white rounded-xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-4 h-4" /></button>
+                </div>
+
+                <div className="p-6 space-y-5 overflow-y-auto max-h-[calc(90vh-150px)]">
+                    {/* Target Employees Selector */}
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Apply To Which Staff?
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                disabled={!selectedEmployeeIds || selectedEmployeeIds.length === 0}
+                                onClick={() => setTargetType('selected')}
+                                className={cn(
+                                    "p-3 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center gap-1 cursor-pointer",
+                                    targetType === 'selected'
+                                        ? "border-brand-600 bg-brand-50/30 text-brand-700"
+                                        : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                )}
+                            >
+                                <span className="font-extrabold text-sm">{selectedEmployeeIds?.length || 0} selected</span>
+                                <span className="text-[10px] opacity-85">Checked from table list</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setTargetType('all')}
+                                className={cn(
+                                    "p-3 rounded-2xl border text-xs font-bold transition-all text-center flex flex-col items-center justify-center gap-1 cursor-pointer",
+                                    targetType === 'all'
+                                        ? "border-brand-600 bg-brand-50/30 text-brand-700"
+                                        : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                                )}
+                            >
+                                <span className="font-extrabold text-sm">{filteredEmployees?.length || 0} employees</span>
+                                <span className="text-[10px] opacity-85">All visible/filtered staff</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Day Selection */}
+                    <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Choose Days to Apply
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {(['all', 'range', 'weekdays', 'specific'] as const).map((mode) => {
+                                const labelMap = {
+                                    all: 'All Month Days',
+                                    range: 'Day Range',
+                                    weekdays: 'Weekdays Only',
+                                    specific: 'Specific Days'
+                                };
+                                const isSelected = daySelectionMode === mode;
+                                return (
+                                    <button
+                                        key={mode}
+                                        type="button"
+                                        onClick={() => setDaySelectionMode(mode)}
+                                        className={cn(
+                                            "py-2 px-2.5 rounded-xl border text-[11px] font-bold text-center transition-all active:scale-95 cursor-pointer",
+                                            isSelected 
+                                                ? "bg-slate-800 border-slate-800 text-white shadow-sm" 
+                                                : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                        )}
+                                    >
+                                        {labelMap[mode]}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {daySelectionMode === 'range' && (
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="flex-1">
+                                    <label className="text-[9px] font-bold text-slate-400 block mb-1">Start Day</label>
+                                    <select
+                                        value={startDay}
+                                        onChange={(e) => setStartDay(Number(e.target.value))}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer"
+                                    >
+                                        {days.map(d => (
+                                            <option key={d} value={d}>Day {d}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-[9px] font-bold text-slate-400 block mb-1">End Day</label>
+                                    <select
+                                        value={endDay}
+                                        onChange={(e) => setEndDay(Number(e.target.value))}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer"
+                                    >
+                                        {days.map(d => (
+                                            <option key={d} value={d}>Day {d}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        )}
+
+                        {daySelectionMode === 'weekdays' && (
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="text-[9px] font-bold text-slate-400 block">Select Weekdays to Include</div>
+                                <div className="flex flex-wrap gap-2">
+                                    {weekdaysList.map((wd) => {
+                                        const isChecked = selectedWeekdays.includes(wd.value);
+                                        return (
+                                            <button
+                                                key={wd.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (isChecked) {
+                                                        setSelectedWeekdays(prev => prev.filter(v => v !== wd.value));
+                                                    } else {
+                                                        setSelectedWeekdays(prev => [...prev, wd.value]);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all active:scale-95 cursor-pointer border",
+                                                    isChecked 
+                                                        ? "bg-brand-50 border-brand-200 text-brand-700 font-bold" 
+                                                        : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100"
+                                                )}
+                                            >
+                                                {wd.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {daySelectionMode === 'specific' && (
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[9px] font-bold text-slate-400">Click to Select/Deselect Days</span>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedDaysList(days)}
+                                            className="text-[9px] font-black text-brand-600 hover:underline hover:text-brand-700 cursor-pointer"
+                                        >
+                                            Select All
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedDaysList([])}
+                                            className="text-[9px] font-black text-rose-600 hover:underline hover:text-rose-700 cursor-pointer"
+                                        >
+                                            Clear All
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-7 gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                                    {days.map((d) => {
+                                        const isChecked = selectedDaysList.includes(d);
+                                        const isSunday = new Date(year, month - 1, d).getDay() === 0;
+                                        return (
+                                            <button
+                                                key={d}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (isChecked) {
+                                                        setSelectedDaysList(prev => prev.filter(v => v !== d));
+                                                    } else {
+                                                        setSelectedDaysList(prev => [...prev, d]);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    "aspect-square flex items-center justify-center rounded-lg text-xs font-bold transition-all active:scale-95 cursor-pointer border",
+                                                    isChecked 
+                                                        ? "bg-brand-600 border-brand-600 text-white shadow-xs" 
+                                                        : isSunday 
+                                                            ? "bg-red-50/50 border-red-100 text-red-500 hover:bg-red-100" 
+                                                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                                                )}
+                                            >
+                                                {d}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Attendance Status Selector */}
+                    <div className="space-y-3">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Select Status to Apply
+                        </label>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {Object.entries(LEGEND).map(([statusKey, meta]: any) => {
+                                const isSelected = status === statusKey;
+                                return (
+                                    <button
+                                        key={statusKey}
+                                        type="button"
+                                        onClick={() => {
+                                            setStatus(statusKey as AttendanceStatus);
+                                            if (statusKey !== AttendanceStatus.PRESENT) {
+                                                setHoursWorked(0);
+                                                setOvertimeHours(0);
+                                            } else {
+                                                setHoursWorked(8);
+                                            }
+                                        }}
+                                        className={cn(
+                                            "p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-2 cursor-pointer active:scale-95",
+                                            isSelected 
+                                                ? "border-brand-600 bg-brand-50/30 ring-2 ring-brand-500/15" 
+                                                : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                                        )}
+                                    >
+                                        <span className={cn(
+                                            "w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs shadow-xs",
+                                            meta.color
+                                        )}>
+                                            {meta.code}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-slate-850 leading-tight">{meta.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Conditionally render Hours Worked & Overtime */}
+                    {status === AttendanceStatus.PRESENT && (
+                        <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200/60 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                    Hours Worked
+                                </label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={24}
+                                    value={hoursWorked}
+                                    onChange={(e) => setHoursWorked(Number(e.target.value))}
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">
+                                    Overtime Hours
+                                </label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={24}
+                                    value={overtimeHours}
+                                    onChange={(e) => setOvertimeHours(Number(e.target.value))}
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Custom Remark Note */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Remark / Custom Note
+                        </label>
+                        <input
+                            type="text"
+                            placeholder="e.g. Regular Duty logs, System Overrides"
+                            value={note}
+                            onChange={(e) => setNote(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500"
+                        />
+                    </div>
+
+                    {/* Operational Summary */}
+                    <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-3xl space-y-2">
+                        <div className="flex justify-between items-center text-[11px]">
+                            <span className="font-bold text-slate-500">Employees affected:</span>
+                            <span className="font-extrabold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-150">
+                                {targetEmployees.length}
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center text-[11px] border-t border-slate-100 pt-1.5">
+                            <span className="font-bold text-slate-500">Days targeted:</span>
+                            <span className="font-extrabold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-150">
+                                {targetDays.length}
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center text-[11px] border-t border-slate-100 pt-1.5 font-bold text-slate-900">
+                            <span>Total operations sequence:</span>
+                            <span className="text-brand-650 font-black bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                                {targetEmployees.length * targetDays.length} updates
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 rounded-b-[2.5rem]">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 active:scale-95 text-slate-600 text-xs font-black rounded-xl transition-all cursor-pointer"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleApply}
+                        disabled={targetEmployees.length === 0 || targetDays.length === 0}
+                        className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-brand-600/15 border border-brand-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Save className="w-4 h-4" />
+                        Execute Batch Update
+                    </button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
 const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, user, onLogAttendance, onDeleteAttendance, companies, openConfirm, selectedId, onSelect, onOpenHolidayManagement }: any) => {
+    const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
     const [year, month] = selectedMonth.split('-').map(Number);
     const daysInMonth = new Date(year, month, 0).getDate();
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -9644,6 +10125,12 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
         return attendance.find((r: AttendanceRecord) => r.employeeId === editingCell.empId && r.date === editingCell.date);
     }, [editingCell, attendance]);
 
+    const filteredEmpIdsSet = useMemo(() => new Set(filteredEmployees.map((e: Employee) => e.id)), [filteredEmployees]);
+
+    const filteredAttendanceThisMonth = useMemo(() => {
+        return attendance.filter((r: AttendanceRecord) => r.date.startsWith(selectedMonth) && filteredEmpIdsSet.has(r.employeeId));
+    }, [attendance, selectedMonth, filteredEmpIdsSet]);
+
     const handleCopyAttendance = async (sourceDate: string, targetStartDate: string, targetEndDate: string) => {
         const start = new Date(targetStartDate);
         const end = new Date(targetEndDate);
@@ -9785,6 +10272,16 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
 
     return (
         <div className="space-y-6">
+            <BatchAttendanceModal 
+                isOpen={isBatchModalOpen}
+                onClose={() => setIsBatchModalOpen(false)}
+                selectedEmployeeIds={selectedEmployeeIds}
+                employees={employees}
+                filteredEmployees={filteredEmployees}
+                selectedMonth={selectedMonth}
+                onLogAttendance={onLogAttendance}
+                user={user}
+            />
             <CopyAttendanceModal 
                 isOpen={isCopyModalOpen}
                 onClose={() => setIsCopyModalOpen(false)}
@@ -10037,7 +10534,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                         <thead>
                             <tr className="bg-slate-50/50 border-b border-slate-100">
                                 <th className="p-4 text-left bg-slate-50 sticky top-0 left-0 z-30 border-r border-b border-slate-100 min-w-[200px] shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
                                         <input 
                                             type="checkbox"
                                             checked={filteredEmployees.length > 0 && filteredEmployees.every((e: Employee) => selectedEmployeeIds.includes(e.id))}
@@ -10051,8 +10548,17 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                                 }
                                             }}
                                             className="w-4 h-4 rounded text-brand-650 accent-brand-600 focus:ring-brand-500 border-slate-300 cursor-pointer"
+                                            title="Select all page employees"
                                         />
-                                        <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Employee Name</span>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setIsBatchModalOpen(true)}
+                                            className="p-1 px-2 bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 rounded-lg transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                                            title="Trigger batch attendance update for multiple employees & days simultaneously"
+                                        >
+                                            <Calendar className="w-3.5 h-3.5 text-brand-600" />
+                                            <span className="text-[9px] font-black tracking-tight text-brand-700 uppercase">Batch</span>
+                                        </button>
                                     </div>
                                 </th>
                                 <th className="p-4 font-bold text-slate-500 border-r border-b border-slate-100 uppercase tracking-widest text-[10px] sticky top-0 z-20 bg-slate-50 shadow-[inset_0_-1px_0_rgba(226,232,240,1)]">Leave</th>
@@ -10179,6 +10685,73 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
                                 </tr>
                             ))}
                         </tbody>
+                        <tfoot className="border-t-2 border-slate-200">
+                            <tr className="bg-slate-100 font-bold">
+                                <td className="p-3 text-left bg-slate-100 sticky bottom-0 left-0 z-30 border-r border-slate-200 min-w-[200px] shadow-[inset_0_1px_0_rgba(226,232,240,1)] hover:bg-slate-200 transition-colors">
+                                    <div className="flex items-center gap-2 pl-1.5">
+                                        <div className="w-6 h-6 bg-brand-100 rounded-lg flex items-center justify-center text-[10px] font-black text-brand-700 border border-brand-200 shadow-sm">
+                                            📊
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-800 block leading-tight">Total Metrics</span>
+                                            <span className="text-[8px] font-bold text-slate-400 block tracking-tight">Across All Staff</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="p-3 bg-slate-100 sticky bottom-0 border-r border-slate-200 font-black text-slate-400 text-center z-20 shadow-[inset_0_1px_0_rgba(226,232,240,1)]">
+                                    -
+                                </td>
+                                <td className="p-3 bg-slate-100/95 sticky bottom-0 border-r border-slate-200 font-black text-brand-650 text-center z-20 shadow-[inset_0_1px_0_rgba(226,232,240,1)]">
+                                    {filteredAttendanceThisMonth.reduce((sum: number, r: AttendanceRecord) => sum + (r.overtimeHours || 0), 0)}h
+                                </td>
+                                {days.map(d => {
+                                    const dateStr = `${selectedMonth}-${String(d).padStart(2, '0')}`;
+                                    const isSunday = new Date(year, month - 1, d).getDay() === 0;
+
+                                    const dayRecords = filteredAttendanceThisMonth.filter((r: AttendanceRecord) => r.date === dateStr);
+                                    const presentCount = dayRecords.filter((r: AttendanceRecord) => r.status === AttendanceStatus.PRESENT).length;
+                                    const otHoursSum = dayRecords.reduce((sum: number, r: AttendanceRecord) => sum + (r.overtimeHours || 0), 0);
+
+                                    return (
+                                        <td 
+                                            key={d} 
+                                            className={cn(
+                                                "p-1.5 sticky bottom-0 border-r border-slate-150 font-bold z-20 shadow-[inset_0_1px_0_rgba(226,232,240,1)] text-center text-[10px]",
+                                                isSunday ? "bg-red-50/75 text-red-600" : "bg-slate-50/95 text-slate-700"
+                                            )}
+                                        >
+                                            <div className="flex flex-col items-center justify-center -space-y-0.5">
+                                                <span className="text-emerald-700 font-extrabold" title="Present Staff Count">
+                                                    P: {presentCount}
+                                                </span>
+                                                {otHoursSum > 0 ? (
+                                                    <span className="text-brand-600 font-black text-[9px]" title="Total Overtime Hours">
+                                                        +{otHoursSum}h
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-350 text-[9px] font-medium">-</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                    );
+                                })}
+                                <td className="p-3 font-bold text-slate-900 bg-slate-100 sticky bottom-0 right-0 z-30 border-l border-slate-200 shadow-[inset_0_1px_0_rgba(226,232,240,1)]">
+                                    <div className="flex flex-col items-center justify-center -space-y-0.5">
+                                        <span className="text-brand-700 font-black" title="Grand Total Present Days">
+                                            {filteredAttendanceThisMonth.filter((r: AttendanceRecord) => r.status === AttendanceStatus.PRESENT).length} P
+                                        </span>
+                                        {(() => {
+                                            const totalOTSum = filteredAttendanceThisMonth.reduce((sum: number, r: AttendanceRecord) => sum + (r.overtimeHours || 0), 0);
+                                            return totalOTSum > 0 ? (
+                                                <span className="text-amber-600 text-[9px] font-bold" title="Grand Total Overtime Hours">
+                                                    {totalOTSum}h OT
+                                                </span>
+                                            ) : null;
+                                        })()}
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
                 {filteredEmployees.length === 0 && (
@@ -12721,8 +13294,21 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                  const presentDays = calculatePresentDays();
 
                                  return (
-                                     <tr key={e.id} className="hover:bg-slate-50/50 transition-colors group">
-                                         <td className="p-5 sticky left-0 bg-white group-hover:bg-slate-50/50 transition-colors z-10 border-r border-slate-100">
+                                     <tr 
+                                         key={e.id} 
+                                         className={cn(
+                                             "transition-colors group",
+                                             p.netSalary <= 0 
+                                                 ? "bg-red-50/90 hover:bg-red-100/80 text-slate-900 border-red-100" 
+                                                  : "hover:bg-slate-50/50"
+                                         )}
+                                     >
+                                         <td className={cn(
+                                             "p-5 sticky left-0 transition-colors z-10 border-r border-slate-100",
+                                             p.netSalary <= 0 
+                                                 ? "bg-red-50/95 group-hover:bg-red-100/90" 
+                                                 : "bg-white group-hover:bg-slate-50/50"
+                                         )}>
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center text-[10px] font-bold text-brand-600 overflow-hidden">
                                                     {e.profileImage ? (
@@ -12732,8 +13318,19 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                                     )}
                                                 </div>
                                                 <div>
-                                                    <div className="text-sm font-bold text-slate-900">{e.name}</div>
-                                                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{isFixedSalary ? 'Fixed Salary' : 'Hourly Rate'}</div>
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <div className={cn("text-sm font-bold", p.netSalary <= 0 ? "text-red-950 font-extrabold" : "text-slate-900")}>
+                                                            {e.name}
+                                                        </div>
+                                                        {p.netSalary <= 0 && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[8px] font-black uppercase tracking-wider border border-red-200">
+                                                                ⚠️ REVIEW SIF
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className={cn("text-[9px] font-bold uppercase tracking-wider", p.netSalary <= 0 ? "text-red-650" : "text-slate-400")}>
+                                                        {isFixedSalary ? 'Fixed Salary' : 'Hourly Rate'}
+                                                    </div>
                                                 </div>
                                             </div>
                                          </td>
@@ -12756,14 +13353,29 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
                                          <td className="p-5 text-right text-sm font-bold text-violet-600">{p.totalOtHours}h</td>
                                          <td className="p-5 text-right text-sm font-bold text-emerald-600">+{p.otAmount.toFixed(0)}</td>
                                          <td className="p-5 text-right">
-                                            <div className="inline-block px-4 py-1.5 bg-brand-50 text-brand-700 rounded-xl text-sm font-black border border-brand-100">
+                                            <div className={cn(
+                                                "inline-block px-4 py-1.5 rounded-xl text-sm font-black border",
+                                                p.netSalary <= 0 
+                                                    ? "bg-red-600 text-white border-red-700 shadow-sm" 
+                                                    : "bg-brand-50 text-brand-700 border-brand-100"
+                                            )}>
                                                 {p.netSalary.toFixed(0)}
                                             </div>
                                          </td>
-                                         <td className="p-5 text-center sticky right-0 bg-white group-hover:bg-slate-50/50 transition-colors z-10 border-l border-slate-100">
+                                         <td className={cn(
+                                             "p-5 text-center sticky right-0 transition-colors z-10 border-l border-slate-100",
+                                             p.netSalary <= 0 
+                                                 ? "bg-red-50/95 group-hover:bg-red-100/90" 
+                                                 : "bg-white group-hover:bg-slate-50/50"
+                                         )}>
                                              <button 
                                                  onClick={() => handlePrintPayslip(e)}
-                                                 className="p-2 text-brand-600 hover:text-brand-800 hover:bg-brand-50 rounded-xl transition-all inline-flex items-center gap-1.5 font-bold text-xs"
+                                                 className={cn(
+                                                     "p-2 rounded-xl transition-all inline-flex items-center gap-1.5 font-bold text-xs",
+                                                     p.netSalary <= 0
+                                                         ? "text-red-700 hover:text-red-900 hover:bg-red-100/50"
+                                                         : "text-brand-600 hover:text-brand-800 hover:bg-brand-50"
+                                                 )}
                                                  title="Download Pay Slip"
                                              >
                                                  <Printer className="w-4 h-4" />
