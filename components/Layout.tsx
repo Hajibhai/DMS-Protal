@@ -4,8 +4,10 @@ import {
   Menu, X, ChevronDown, 
   LogOut, Settings, User, Bell, Search,
   Building2, Globe, HelpCircle, FileText, LayoutGrid,
-  Briefcase, Truck, Wallet, Check
+  Briefcase, Truck, Wallet, Check, Video, ExternalLink, Sparkles, Calendar
 } from 'lucide-react';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -151,6 +153,46 @@ export const Layout: React.FC<LayoutProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
+
+  const [layoutMeetings, setLayoutMeetings] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'meetings'), orderBy('dateTime', 'asc'));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLayoutMeetings(list);
+    }, (err) => {
+      console.error("Error loading layout meetings:", err);
+    });
+    return () => unsub();
+  }, [user]);
+
+  const activeMeetingAlert = useMemo(() => {
+    if (!user) return null;
+    const now = new Date();
+    
+    // Find any meeting where the user is an attendee or creator, and is active now or starting in the next 1 hour
+    const active = layoutMeetings.find(m => {
+      const isAttendee = (m.assignedToMultiple || []).some((u: any) => u.uid === user.uid) || m.assignedTo === user.uid;
+      const isCreator = m.createdById === user.uid;
+      if (!isAttendee && !isCreator) return false;
+
+      const meetingDate = m.dateTime ? new Date(m.dateTime) : null;
+      if (!meetingDate || isNaN(meetingDate.getTime())) return false;
+      
+      const durationMin = m.duration || 30;
+      const meetingEnd = new Date(meetingDate.getTime() + durationMin * 60 * 1000);
+      const timeDiffMs = meetingDate.getTime() - now.getTime();
+      
+      const isActiveNow = now >= meetingDate && now <= meetingEnd;
+      const isStartingSoon = timeDiffMs > 0 && timeDiffMs <= 60 * 60 * 1000; // in next 1 hour
+      
+      return isActiveNow || isStartingSoon;
+    });
+
+    return active || null;
+  }, [layoutMeetings, user]);
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -900,6 +942,56 @@ export const Layout: React.FC<LayoutProps> = ({
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 max-w-full">
         <div className="w-full p-4 sm:p-6 lg:p-10 max-w-full">
+          {/* Active / Upcoming Meeting Alert Banner */}
+          <AnimatePresence>
+            {activeMeetingAlert && (
+              <motion.div
+                initial={{ opacity: 0, y: -15, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -15, scale: 0.98 }}
+                className="bg-gradient-to-r from-indigo-50 to-brand-50 border border-indigo-100/80 rounded-3xl p-5 mb-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 text-left"
+              >
+                <div className="flex items-start gap-3.5">
+                  <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-md ring-4 ring-indigo-100 flex-shrink-0">
+                    <Video className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 px-2.2 py-0.5 rounded-full text-[9px] font-black bg-rose-100 text-rose-500 uppercase tracking-widest leading-none">
+                      {new Date() >= new Date(activeMeetingAlert.dateTime) && new Date() <= new Date(new Date(activeMeetingAlert.dateTime).getTime() + (activeMeetingAlert.duration || 30) * 60 * 1000)
+                        ? '🔴 Active Meeting Now'
+                        : '⏰ Meeting Starting Soon'}
+                    </span>
+                    <h4 className="text-sm font-bold text-slate-900 mt-1.5 leading-tight">{activeMeetingAlert.title}</h4>
+                    <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                      Scheduled for {new Date(activeMeetingAlert.dateTime).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} at{' '}
+                      {new Date(activeMeetingAlert.dateTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({activeMeetingAlert.duration} min)
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2.5 self-end md:self-auto">
+                  <button
+                    onClick={() => setActiveTab('tasks-notes')}
+                    className="px-4 py-2 text-indigo-600 hover:text-indigo-800 text-xs font-black uppercase tracking-wider transition-all hover:bg-white rounded-xl cursor-pointer"
+                  >
+                    View Workspace
+                  </button>
+                  {activeMeetingAlert.meetLink ? (
+                    <a
+                      href={activeMeetingAlert.meetLink}
+                      target="_blank"
+                      rel="referrer noopener"
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 active:scale-95 transition-all text-center"
+                    >
+                      Join Meeting <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  ) : (
+                    <span className="text-xs text-slate-400 italic font-semibold px-3 py-2 bg-slate-100/50 border border-slate-200/60 rounded-xl">No Link</span>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}

@@ -78,6 +78,14 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   const [meetingSearch, setMeetingSearch] = useState('');
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
   const [showAssigneesDropdown, setShowAssigneesDropdown] = useState(false);
+  const [meetingAttendeeSearch, setMeetingAttendeeSearch] = useState('');
+
+  // Automatically reset meeting attendee search when modal changes
+  useEffect(() => {
+    if (!showMeetingForm) {
+      setMeetingAttendeeSearch('');
+    }
+  }, [showMeetingForm]);
 
   // loading states
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -646,22 +654,34 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                             (t.assignedToName || '').toLowerCase().includes(taskSearch.toLowerCase());
       const matchesStatus = taskStatusFilter === 'all' || t.status === taskStatusFilter;
       const matchesPriority = taskPriorityFilter === 'all' || t.priority === taskPriorityFilter;
-      return matchesSearch && matchesStatus && matchesPriority;
+
+      const belongsToUser = !isEmployee || 
+                            t.assignedTo === systemUser?.uid || 
+                            (t.assignedToMultiple || []).some(u => u.uid === systemUser?.uid) ||
+                            t.createdById === systemUser?.uid;
+
+      return matchesSearch && matchesStatus && matchesPriority && belongsToUser;
     });
-  }, [tasks, taskSearch, taskStatusFilter, taskPriorityFilter]);
+  }, [tasks, taskSearch, taskStatusFilter, taskPriorityFilter, isEmployee, systemUser]);
 
   const sortedNotes = useMemo(() => {
-    const list = notes.filter(n => 
-      n.title.toLowerCase().includes(noteSearch.toLowerCase()) ||
-      n.content.toLowerCase().includes(noteSearch.toLowerCase())
-    );
+    const list = notes.filter(n => {
+      const matchesSearch = n.title.toLowerCase().includes(noteSearch.toLowerCase()) ||
+                            n.content.toLowerCase().includes(noteSearch.toLowerCase());
+      
+      const belongsToUser = !isEmployee || 
+                            n.createdById === systemUser?.uid || 
+                            n.pinned === true;
+
+      return matchesSearch && belongsToUser;
+    });
     // Pin at the top, rest order by createdAt desc
     return [...list].sort((a, b) => {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }, [notes, noteSearch]);
+  }, [notes, noteSearch, isEmployee, systemUser]);
 
   const filteredMeetings = useMemo(() => {
     return meetings.filter(m => {
@@ -670,9 +690,15 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                             (m.description || '').toLowerCase().includes(queryStr) ||
                             (m.createdBy || '').toLowerCase().includes(queryStr) ||
                             (m.assignedToMultiple || []).some(u => u.name.toLowerCase().includes(queryStr));
-      return matchesSearch;
+      
+      const belongsToUser = !isEmployee || 
+                            m.createdById === systemUser?.uid || 
+                            m.assignedTo === systemUser?.uid || 
+                            (m.assignedToMultiple || []).some(u => u.uid === systemUser?.uid);
+
+      return matchesSearch && belongsToUser;
     });
-  }, [meetings, meetingSearch]);
+  }, [meetings, meetingSearch, isEmployee, systemUser]);
 
   const handleShareMedia = async (
     title: string,
@@ -1866,7 +1892,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                   <select
                     value={showMeetingForm.duration || 30}
                     onChange={(e) => setShowMeetingForm({ ...showMeetingForm, duration: Number(e.target.value) })}
-                    className="w-full p-3 border border-slate-200 rounded-2xl text-xs font-semibold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    className="w-full p-3 border border-slate-200 rounded-2xl text-xs font-semibold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-sans"
                   >
                     <option value="15">15 Minutes</option>
                     <option value="30">30 Minutes</option>
@@ -1882,8 +1908,34 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block text-left">Assign Session Attendees</label>
                 <div className="text-[10px] text-slate-400 mb-1">Select team members to include in this scheduled meeting:</div>
+                
+                {/* Search input for easy filtering */}
+                <div className="relative mb-2">
+                  <input
+                    type="text"
+                    placeholder="Search name or role..."
+                    value={meetingAttendeeSearch}
+                    onChange={(e) => setMeetingAttendeeSearch(e.target.value)}
+                    className="w-full pl-8 pr-8 py-2 border border-slate-200 rounded-xl text-xs font-semibold bg-white text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-xs font-sans"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  {meetingAttendeeSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setMeetingAttendeeSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600 px-1 py-1"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
                 <div className="border border-slate-100 rounded-2xl bg-slate-50/50 p-2 max-h-40 overflow-y-auto space-y-1 pr-1.5 shadow-inner">
-                  {systemUsers.map((user) => {
+                  {systemUsers.filter(user => {
+                    if (!meetingAttendeeSearch.trim()) return true;
+                    const q = meetingAttendeeSearch.toLowerCase();
+                    return (user.name || '').toLowerCase().includes(q) || (user.role || '').toLowerCase().includes(q);
+                  }).map((user) => {
                     const isSelected = (showMeetingForm.assignedToMultiple || []).some(sel => sel.uid === user.uid);
                     return (
                       <label 
@@ -1912,9 +1964,15 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
                       </label>
                     );
                   })}
-                  {systemUsers.length === 0 && (
+                  {systemUsers.length === 0 ? (
                     <div className="text-center text-slate-400 py-4 italic text-xs">No active team members registered on portal.</div>
-                  )}
+                  ) : systemUsers.filter(user => {
+                    if (!meetingAttendeeSearch.trim()) return true;
+                    const q = meetingAttendeeSearch.toLowerCase();
+                    return (user.name || '').toLowerCase().includes(q) || (user.role || '').toLowerCase().includes(q);
+                  }).length === 0 ? (
+                    <div className="text-center text-slate-400 py-4 italic text-xs">No team members match "{meetingAttendeeSearch}".</div>
+                  ) : null}
                 </div>
               </div>
 

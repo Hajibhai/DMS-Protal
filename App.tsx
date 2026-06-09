@@ -4525,7 +4525,8 @@ export default function App() {
     
     if (systemUser.role === UserRole.EMPLOYEE || systemUser.role?.toLowerCase() === 'employee') {
         return [
-            { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet }
+            { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet },
+            { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote }
         ];
     }
     
@@ -4580,7 +4581,7 @@ export default function App() {
 
   useEffect(() => {
     const isEmployee = systemUser?.role === UserRole.EMPLOYEE || systemUser?.role?.toLowerCase() === 'employee';
-    if (isEmployee && activeTab !== 'everyday-expenses') {
+    if (isEmployee && activeTab !== 'everyday-expenses' && activeTab !== 'tasks-notes') {
       setActiveTab('everyday-expenses');
     }
   }, [systemUser, activeTab]);
@@ -16525,7 +16526,7 @@ const ReportsView = ({
                                             )}
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className="flex items-center justify-end gap-2 transition-opacity">
                                                 <button 
                                                     onClick={() => {
                                                         setViewMode(true);
