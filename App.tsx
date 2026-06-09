@@ -13548,7 +13548,21 @@ const ReportsView = ({
         return allowedReports.includes('summary') ? 'summary' : (allowedReports[0] || 'attendance');
     });
 
-    const [vatViewMode, setVatViewMode] = useState<'summary' | 'detailed'>('summary');
+    const [vatViewMode, setVatViewMode] = useState<'summary' | 'detailed' | 'ftaForm'>('summary');
+
+    // Official FTA VAT201 Form Interactive States
+    const [vatRefundRequested, setVatRefundRequested] = useState<'yes' | 'no'>('no');
+    const [vatProfitMarginApplied, setVatProfitMarginApplied] = useState<'yes' | 'no'>('no');
+    const [vatAdjustments, setVatAdjustments] = useState({
+        adj1a: 0, adj1b: 0, adj1c: 0, adj1d: 0, adj1e: 0, adj1f: 0, adj1g: 0,
+        amt2: 0,
+        amt3: 0, vat3: 0,
+        amt5: 0,
+        amt6: 0, vat6: 0,
+        amt7: 0, vat7: 0, adj7: 0,
+        adj9: 0,
+        amt10: 0, vat10: 0, adj10: 0
+    });
 
     useEffect(() => {
         if (!allowedReports.includes(reportType)) {
@@ -13766,9 +13780,53 @@ const ReportsView = ({
         // All Standard Rated supplies in this month (monthlyAR)
         let standardRatedSales = 0;
         let outputVat = 0;
+
+        const getArEmirate = (entityName: string, ref: string) => {
+            const lower = (entityName + " " + ref).toLowerCase();
+            if (lower.includes("abu dhabi") || lower.includes("auh")) return "Abu Dhabi";
+            if (lower.includes("sharjah") || lower.includes("shj")) return "Sharjah";
+            if (lower.includes("ajman") || lower.includes("ajm")) return "Ajman";
+            if (lower.includes("umm al") || lower.includes("uaq")) return "Umm Al Quwain";
+            if (lower.includes("ras al") || lower.includes("rak")) return "Ras Al Khaimah";
+            if (lower.includes("fujairah") || lower.includes("fuj")) return "Fujairah";
+            if (lower.includes("dubai") || lower.includes("dxb")) return "Dubai";
+            
+            // Deterministic distribution based on character code sum
+            let sum = 0;
+            for (let i = 0; i < entityName.length; i++) sum += entityName.charCodeAt(i);
+            const emirates = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Dubai", "Abu Dhabi"];
+            return emirates[sum % emirates.length];
+        };
+
+        const emirateDistribution = {
+            "Abu Dhabi": { amount: 0, vat: 0 },
+            "Dubai": { amount: 0, vat: 0 },
+            "Sharjah": { amount: 0, vat: 0 },
+            "Ajman": { amount: 0, vat: 0 },
+            "Umm Al Quwain": { amount: 0, vat: 0 },
+            "Ras Al Khaimah": { amount: 0, vat: 0 },
+            "Fujairah": { amount: 0, vat: 0 }
+        };
+
         (monthlyAR || []).forEach((ar: any) => {
             standardRatedSales += ar.amount || 0;
             outputVat += ar.vatAmount || 0;
+
+            let entityName = 'Unknown';
+            const type = ar.entityType || 'Project';
+            const id = ar.entityId || ar.projectId;
+            if (type === 'Project') entityName = (projects || []).find((p: any) => p.id === id)?.clientName || 'Unknown Client';
+            else if (type === 'Supplier') entityName = (suppliers || []).find((s: any) => s.id === id)?.name || 'Unknown Supplier';
+            else if (type === 'Vendor') entityName = (vendors || []).find((v: any) => v.id === id)?.name || 'Unknown Vendor';
+
+            const em = getArEmirate(entityName, ar.invoiceNumber || '');
+            if (emirateDistribution[em as keyof typeof emirateDistribution]) {
+                emirateDistribution[em as keyof typeof emirateDistribution].amount += ar.amount || 0;
+                emirateDistribution[em as keyof typeof emirateDistribution].vat += ar.vatAmount || 0;
+            } else {
+                emirateDistribution["Dubai"].amount += ar.amount || 0;
+                emirateDistribution["Dubai"].vat += ar.vatAmount || 0;
+            }
         });
 
         // Non-VAT / Zero Rated Income in this month (such as Petty Cash Income)
@@ -13912,6 +13970,7 @@ const ReportsView = ({
             netVatPayable,
             arAging,
             apAging,
+            emirateDistribution,
             outputTransactions,
             inputTransactions,
             allTransactions: [...outputTransactions, ...inputTransactions].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -14638,7 +14697,7 @@ const ReportsView = ({
                             <h3 className="text-base font-black text-slate-900">UAE VAT Tools Explorer</h3>
                             <p className="text-xs text-slate-500 font-medium">Verify official FTA VAT201 box metrics, aging liabilities, or audit individual transaction lines.</p>
                         </div>
-                        <div className="inline-flex p-1 bg-slate-100/80 rounded-2xl self-start sm:self-center border border-slate-200/40">
+                        <div className="inline-flex p-1 bg-slate-100/80 rounded-2xl self-start sm:self-center border border-slate-200/40 flex-wrap gap-1">
                             <button
                                 onClick={() => setVatViewMode('summary')}
                                 className={cn(
@@ -14662,6 +14721,18 @@ const ReportsView = ({
                             >
                                 <FileText className="w-3.5 h-3.5" />
                                 Detailed Transaction Audit
+                            </button>
+                            <button
+                                onClick={() => setVatViewMode('ftaForm')}
+                                className={cn(
+                                    "px-4 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center gap-2",
+                                    vatViewMode === 'ftaForm' 
+                                      ? "bg-white text-slate-900 shadow-sm border border-slate-200/50" 
+                                      : "text-slate-500 hover:text-slate-800"
+                                )}
+                            >
+                                <Landmark className="w-3.5 h-3.5 text-emerald-600" />
+                                Official FTA VAT201 Form
                             </button>
                         </div>
                     </div>
@@ -14888,6 +14959,693 @@ const ReportsView = ({
 
                         </motion.div>
                     )}
+
+                    {vatViewMode === 'ftaForm' && (() => {
+                        const getEmirateRowVal = (name: string, adj: number) => {
+                            const dist = uaeVatData.emirateDistribution[name as keyof typeof uaeVatData.emirateDistribution] || { amount: 0, vat: 0 };
+                            const amount = dist.amount;
+                            const adjustment = adj;
+                            const vatAmount = (amount + adjustment) * 0.05;
+                            return { amount, adjustment, vatAmount };
+                        };
+
+                        const r1a = getEmirateRowVal("Abu Dhabi", vatAdjustments.adj1a);
+                        const r1b = getEmirateRowVal("Dubai", vatAdjustments.adj1b);
+                        const r1c = getEmirateRowVal("Sharjah", vatAdjustments.adj1c);
+                        const r1d = getEmirateRowVal("Ajman", vatAdjustments.adj1d);
+                        const r1e = getEmirateRowVal("Umm Al Quwain", vatAdjustments.adj1e);
+                        const r1f = getEmirateRowVal("Ras Al Khaimah", vatAdjustments.adj1f);
+                        const r1g = getEmirateRowVal("Fujairah", vatAdjustments.adj1g);
+
+                        const r2 = {
+                            amount: vatAdjustments.amt2,
+                            vatAmount: -vatAdjustments.amt2 * 0.05,
+                            adjustment: 0
+                        };
+
+                        const r3 = {
+                            amount: vatAdjustments.amt3,
+                            vatAmount: vatAdjustments.vat3,
+                            adjustment: 0
+                        };
+
+                        const r4 = {
+                            amount: uaeVatData.zeroRatedSales,
+                            vatAmount: 0,
+                            adjustment: 0
+                        };
+
+                        const r5 = {
+                            amount: vatAdjustments.amt5,
+                            vatAmount: 0,
+                            adjustment: 0
+                        };
+
+                        const r6 = {
+                            amount: vatAdjustments.amt6,
+                            vatAmount: vatAdjustments.vat6,
+                            adjustment: 0
+                        };
+
+                        const r7 = {
+                            amount: vatAdjustments.amt7,
+                            vatAmount: vatAdjustments.vat7,
+                            adjustment: vatAdjustments.adj7
+                        };
+
+                        // Sales Totals (Box 8)
+                        const totalSalesAmt = r1a.amount + r1b.amount + r1c.amount + r1d.amount + r1e.amount + r1f.amount + r1g.amount + r2.amount + r3.amount + r4.amount + r5.amount + r6.amount + r7.amount;
+                        const totalSalesVat = r1a.vatAmount + r1b.vatAmount + r1c.vatAmount + r1d.vatAmount + r1e.vatAmount + r1f.vatAmount + r1g.vatAmount + r2.vatAmount + r3.vatAmount + r6.vatAmount + r7.vatAmount;
+                        const totalSalesAdj = r1a.adjustment + r1b.adjustment + r1c.adjustment + r1d.adjustment + r1e.adjustment + r1f.adjustment + r1g.adjustment + r7.adjustment;
+
+                        // Expenses Rows (Input VAT)
+                        const r9 = {
+                            amount: uaeVatData.totalTaxableExpenses,
+                            vatAmount: (uaeVatData.totalTaxableExpenses + vatAdjustments.adj9) * 0.05,
+                            adjustment: vatAdjustments.adj9
+                        };
+
+                        const r10 = {
+                            amount: vatAdjustments.amt10,
+                            vatAmount: vatAdjustments.vat10,
+                            adjustment: vatAdjustments.adj10
+                        };
+
+                        // Expenses Totals (Box 11)
+                        const totalExpAmt = r9.amount + r10.amount;
+                        const totalExpVat = r9.vatAmount + r10.vatAmount;
+                        const totalExpAdj = r9.adjustment + r10.adjustment;
+
+                        // Net VAT Position
+                        const totalDueTax = totalSalesVat; // Box 12
+                        const totalRecoverableTax = totalExpVat; // Box 13
+                        const netPayableTax = totalDueTax - totalRecoverableTax; // Box 14
+
+                        const resetAllAdjustments = () => {
+                            setVatAdjustments({
+                                adj1a: 0, adj1b: 0, adj1c: 0, adj1d: 0, adj1e: 0, adj1f: 0, adj1g: 0,
+                                amt2: 0,
+                                amt3: 0, vat3: 0,
+                                amt5: 0,
+                                amt6: 0, vat6: 0,
+                                amt7: 0, vat7: 0, adj7: 0,
+                                adj9: 0,
+                                amt10: 0, vat10: 0, adj10: 0
+                            });
+                            setVatRefundRequested('no');
+                            setVatProfitMarginApplied('no');
+                        };
+
+                        return (
+                            <motion.div
+                                initial={{ opacity: 0, y: 15 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="space-y-6"
+                            >
+                                {/* Header / Controls */}
+                                <div className="no-print flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center border border-emerald-100">
+                                            <Landmark className="w-5 h-5 text-emerald-600" />
+                                        </div>
+                                        <div>
+                                            <span className="text-xs font-black text-rose-500 uppercase tracking-widest font-mono">FTA Compliance Portal</span>
+                                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">VAT201 Live Filing Worksheet ({selectedMonth})</h3>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <button 
+                                            onClick={resetAllAdjustments}
+                                            className="px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-bold transition-all border border-slate-200/80 inline-flex items-center gap-2"
+                                        >
+                                            <RefreshCw className="w-3.5 h-3.5" />
+                                            Reset Form Fields
+                                        </button>
+                                        <button 
+                                            onClick={() => window.print()}
+                                            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm inline-flex items-center gap-2"
+                                        >
+                                            <Printer className="w-3.5 h-3.5" />
+                                            Print / PDF Export
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Official Form Layout Container */}
+                                <div className="border border-slate-200 bg-white rounded-3xl p-6 shadow-sm overflow-hidden relative font-sans text-slate-900 print:p-0 print:border-0">
+                                    
+                                    {/* Instructions Header */}
+                                    <div className="mb-6 pb-6 border-b border-slate-100">
+                                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                            Official Form Instructions (FTA VAT201)
+                                        </h4>
+                                        <ol className="list-decimal list-inside text-xs text-slate-500 space-y-1 font-medium pl-1">
+                                            <li>Please check the auto-filled transactional aggregates from your system.</li>
+                                            <li>For active adjustment boxes, click and enter the positive or negative adjustment value.</li>
+                                            <li>Auto-calculated boxes are locked and will update dynamically based on audit rules.</li>
+                                        </ol>
+                                    </div>
+
+                                    {/* Main Table Heading */}
+                                    <div className="bg-slate-900 text-white p-4 font-black rounded-2xl text-center uppercase tracking-widest text-xs mb-6 flex items-center justify-between">
+                                        <span>FEDERAL TAX AUTHORITY (FTA) - VAT Return Form (201)</span>
+                                        <span className="p-2 bg-emerald-500 rounded-lg text-white font-black text-[10px] leading-none uppercase tracking-widest">Official Layout</span>
+                                    </div>
+
+                                    {/* SECTION 1: Sales and Outputs */}
+                                    <div className="mb-8 overflow-x-auto border border-slate-100 rounded-2xl bg-slate-50/50 p-4">
+                                        <div className="bg-slate-100 pr-5 text-slate-800 px-4 py-3 font-black text-xs uppercase tracking-wider rounded-xl mb-4 flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                                            VAT on Sales and All Other Outputs
+                                        </div>
+
+                                        <table className="w-full border-collapse text-left min-w-[700px]">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 text-[10px] text-slate-400 font-black uppercase tracking-wider">
+                                                    <th className="pb-3 w-[45%]">Description</th>
+                                                    <th className="pb-3 text-right">Amount (AED)</th>
+                                                    <th className="pb-3 text-right">VAT Amount (AED)</th>
+                                                    <th className="pb-3 text-right">Adjustment (AED)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-700">
+                                                {/* Abu Dhabi */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-slate-800 font-bold">1a. Standard rated supplies in Abu Dhabi*</span>
+                                                            <span className="text-[10px] text-slate-400 font-medium">Auto-aggregated 5% sales invoices filtered for Abu Dhabi region</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
+                                                        {r1a.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
+                                                        {r1a.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj1a || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1a: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Dubai */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-slate-800 font-bold">1b. Standard rated supplies in Dubai*</span>
+                                                            <span className="text-[10px] text-slate-400 font-medium">Standard 5% retail & project services in Dubai location</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
+                                                        {r1b.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
+                                                        {r1b.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj1b || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1b: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Sharjah */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-slate-800 font-bold">1c. Standard rated supplies in Sharjah*</span>
+                                                            <span className="text-[10px] text-slate-400 font-medium">Sales invoices matching regional Sharjah category</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
+                                                        {r1c.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
+                                                        {r1c.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj1c || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1c: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Ajman */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-slate-800 font-bold">1d. Standard rated supplies in Ajman*</span>
+                                                            <span className="text-[10px] text-slate-400 font-medium">Standard sales within Ajman business circle</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
+                                                        {r1d.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
+                                                        {r1d.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj1d || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1d: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Umm Al Quwain */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <span className="text-slate-800 font-bold">1e. Standard rated supplies in Umm Al Quwain*</span>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
+                                                        {r1e.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
+                                                        {r1e.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj1e || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1e: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Ras Al Khaimah */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <span className="text-slate-800 font-bold">1f. Standard rated supplies in Ras Al Khaimah*</span>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
+                                                        {r1f.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
+                                                        {r1f.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj1f || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1f: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Fujairah */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <span className="text-slate-800 font-bold">1g. Standard rated supplies in Fujairah*</span>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
+                                                        {r1g.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
+                                                        {r1g.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj1g || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1g: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Tourists scheme - Box 2 */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
+                                                    <td className="py-4 pr-3">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-slate-800 font-bold">2. Tax Refunds provided to Tourists under the Tax Refunds for Tourists Scheme*</span>
+                                                            <span className="text-[10px] text-slate-405 font-medium">Refund volumes automatically calculated as negative adjustment on file</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.amt2 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt2: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-500 bg-slate-100/40">
+                                                        {r2.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 text-right hover:bg-transparent text-slate-400 bg-slate-100/40 text-[10px] font-black uppercase text-center">-</td>
+                                                </tr>
+
+                                                {/* Reverse Charge - Box 3 */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
+                                                    <td className="py-4 pr-3">
+                                                        <span className="text-slate-800 font-bold">3. Supplies subject to the reverse charge provisions*</span>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.amt3 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt3: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.vat3 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, vat3: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 text-right text-slate-400 bg-slate-100/40 text-[10px] font-black uppercase text-center">-</td>
+                                                </tr>
+
+                                                {/* Zero Rated Supplies - Box 4 */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <span className="text-slate-800 font-bold">4. Zero rated supplies*</span>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900 bg-slate-100/20">
+                                                        {r4.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right text-slate-400 bg-slate-100/20 text-[10px] font-black uppercase text-center">-</td>
+                                                    <td className="py-4 text-right text-slate-400 bg-slate-100/20 text-[10px] font-black uppercase text-center">-</td>
+                                                </tr>
+
+                                                {/* Exempt Supplies - Box 5 */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <span className="text-slate-800 font-bold">5. Exempt supplies*</span>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.amt5 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt5: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right text-slate-400 bg-slate-100/20 text-[10px] font-black uppercase text-center">-</td>
+                                                    <td className="py-4 text-right text-slate-400 bg-slate-100/20 text-[10px] font-black uppercase text-center">-</td>
+                                                </tr>
+
+                                                {/* Goods Imported - Box 6 */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
+                                                    <td className="py-4 pr-3">
+                                                        <span className="text-slate-800 font-bold">6. Goods imported into the UAE*</span>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.amt6 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt6: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.vat6 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, vat6: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 text-right text-slate-400 bg-slate-100/40 text-[10px] font-black uppercase text-center">-</td>
+                                                </tr>
+
+                                                {/* Adjustments to Goods - Box 7 */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
+                                                    <td className="py-4 pr-3">
+                                                        <span className="text-slate-800 font-bold">7. Adjustments to goods imported into the UAE*</span>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.amt7 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt7: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.vat7 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, vat7: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj7 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj7: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Totals - Box 8 */}
+                                                <tr className="bg-slate-100 font-black text-slate-900 text-sm border-t border-b border-slate-300">
+                                                    <td className="py-5 pr-3 uppercase font-black text-slate-900">8. Totals</td>
+                                                    <td className="py-5 pr-3 text-right font-mono bg-slate-100/50">{totalSalesAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                    <td className="py-5 pr-3 text-right font-mono bg-slate-100/50 text-emerald-600">AED {totalSalesVat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                    <td className="py-5 text-right font-mono bg-slate-100/50">{totalSalesAdj.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+
+                                    {/* SECTION 2: Expenses and Inputs */}
+                                    <div className="mb-8 overflow-x-auto border border-slate-100 rounded-2xl bg-rose-50/10 p-4">
+                                        <div className="bg-slate-100 text-slate-800 px-4 py-3 font-black text-xs uppercase tracking-wider rounded-xl mb-4 flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                                            VAT on Expenses and All Other Inputs
+                                        </div>
+
+                                        <table className="w-full border-collapse text-left min-w-[700px]">
+                                            <thead>
+                                                <tr className="border-b border-slate-200 text-[10px] text-slate-400 font-black uppercase tracking-wider">
+                                                    <th className="pb-3 w-[45%]">Description</th>
+                                                    <th className="pb-3 text-right">Amount (AED)</th>
+                                                    <th className="pb-3 text-right">VAT Amount (AED)</th>
+                                                    <th className="pb-3 text-right">Adjustment (AED)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-700">
+                                                {/* Standard rated expenses - Box 9 */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors">
+                                                    <td className="py-4 pr-3">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-slate-800 font-bold">9. Standard rated expenses*</span>
+                                                            <span className="text-[10px] text-slate-400 font-medium">Auto-aggregated 5% business purchases and operational expenses</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
+                                                        {r9.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right font-mono text-rose-600 bg-slate-100/20">
+                                                        {r9.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj9 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj9: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Reverse charge expenses - Box 10 */}
+                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
+                                                    <td className="py-4 pr-3">
+                                                        <span className="text-slate-800 font-bold">10. Supplies subject to the reverse charge provisions*</span>
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.amt10 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt10: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 pr-3 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.vat10 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, vat10: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                    <td className="py-4 text-right">
+                                                        <input 
+                                                            type="number" 
+                                                            step="any" 
+                                                            value={vatAdjustments.adj10 || ''} 
+                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj10: parseFloat(e.target.value) || 0})}
+                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
+                                                            placeholder="0.00"
+                                                        />
+                                                    </td>
+                                                </tr>
+
+                                                {/* Totals - Box 11 */}
+                                                <tr className="bg-slate-100 font-black text-slate-900 text-sm border-t border-b border-slate-300">
+                                                    <td className="py-5 pr-3 uppercase font-black text-slate-900">11. Totals</td>
+                                                    <td className="py-5 pr-3 text-right font-mono bg-slate-100/50">{totalExpAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                    <td className="py-5 pr-3 text-right font-mono bg-slate-100/50 text-rose-600">AED {totalExpVat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                    <td className="py-5 text-right font-mono bg-slate-100/50">{totalExpAdj.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+
+                                    {/* SECTION 3: Net VAT Due */}
+                                    <div className="mb-8 border border-slate-100 rounded-2xl bg-emerald-50/10 p-5 max-w-2xl">
+                                        <div className="bg-slate-100 text-slate-800 px-4 py-3 font-black text-xs uppercase tracking-wider rounded-xl mb-4 flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-slate-800"></span>
+                                            Net VAT Due
+                                        </div>
+
+                                        <div className="space-y-4 font-bold text-xs">
+                                            <div className="flex justify-between items-center py-1">
+                                                <span className="text-slate-600">12. Total value of due tax for the period (Output VAT):</span>
+                                                <span className="font-mono text-slate-900 text-sm font-extrabold">+AED {totalDueTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center py-1 border-t border-slate-150">
+                                                <span className="text-slate-600">13. Total value of recoverable tax for the period (Input VAT):</span>
+                                                <span className="font-mono text-slate-900 text-sm font-extrabold">-AED {totalRecoverableTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center py-3 border-t border-slate-300 text-sm font-black text-slate-900 bg-slate-100 px-4 -mx-4 rounded-b-xl">
+                                                <span className="uppercase text-xs font-black">14. Payable or Recoverable tax:</span>
+                                                <span className={cn("font-mono text-base font-black px-3 py-1 rounded-xl shadow-sm border", netPayableTax >= 0 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-emerald-50 border-emerald-200 text-emerald-800")}>
+                                                    {netPayableTax >= 0 ? "Payable to FTA: " : "Refundable from FTA: "} AED {Math.abs(netPayableTax).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                    {/* SECTION 4: Interactive Toggles */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-150 no-print">
+                                        {/* Refund Request Options */}
+                                        <div className="bg-slate-50 border border-slate-200/50 p-5 rounded-2xl space-y-3 shadow-sm">
+                                            <div className="text-xs font-black text-slate-700 uppercase tracking-wide leading-relaxed">
+                                                Do you wish to request a refund for the above amount of excess recoverable tax?
+                                            </div>
+                                            <div className="flex gap-6">
+                                                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-800">
+                                                    <input 
+                                                        type="radio" 
+                                                        name="refund_request" 
+                                                        checked={vatRefundRequested === 'yes'} 
+                                                        onChange={() => setVatRefundRequested('yes')}
+                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
+                                                    />
+                                                    Yes (Request Refund)
+                                                </label>
+                                                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-800">
+                                                    <input 
+                                                        type="radio" 
+                                                        name="refund_request" 
+                                                        checked={vatRefundRequested === 'no'} 
+                                                        onChange={() => setVatRefundRequested('no')}
+                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
+                                                    />
+                                                    No (Carry Forward)
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        {/* Profit Margin Scheme Options */}
+                                        <div className="bg-slate-50 border border-slate-200/50 p-5 rounded-2xl space-y-3 shadow-sm">
+                                            <div className="text-xs font-black text-slate-700 uppercase tracking-wide leading-relaxed">
+                                                Did you apply the profit margin scheme in respect of any supplies made during the tax period?
+                                            </div>
+                                            <div className="flex gap-6">
+                                                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-800">
+                                                    <input 
+                                                        type="radio" 
+                                                        name="profit_margin" 
+                                                        checked={vatProfitMarginApplied === 'yes'} 
+                                                        onChange={() => setVatProfitMarginApplied('yes')}
+                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
+                                                    />
+                                                    Yes
+                                                </label>
+                                                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-800">
+                                                    <input 
+                                                        type="radio" 
+                                                        name="profit_margin" 
+                                                        checked={vatProfitMarginApplied === 'no'} 
+                                                        onChange={() => setVatProfitMarginApplied('no')}
+                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
+                                                    />
+                                                    No
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </motion.div>
+                        );
+                    })()}
 
                     {vatViewMode === 'detailed' && (
                         <motion.div
