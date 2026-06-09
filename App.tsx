@@ -14524,7 +14524,7 @@ const ReportsView = ({
             </motion.div>
 
             {/* Print Header (Only visible in print) */}
-            <div className="hidden print:block mb-8 border-b-2 border-slate-900 pb-4">
+            <div className={cn("hidden print:block mb-8 border-b-2 border-slate-900 pb-4", vatViewMode === 'ftaForm' && "print:hidden")}>
                 <div className="flex justify-between items-end">
                     <div>
                         <h1 className="text-4xl font-black text-slate-900">PIONEER DMS</h1>
@@ -14961,6 +14961,56 @@ const ReportsView = ({
                     )}
 
                     {vatViewMode === 'ftaForm' && (() => {
+                        const renderFormCell = (value: number | string, isEditable: boolean, onChange?: (val: number) => void, isHyphen: boolean = false) => {
+                            if (isHyphen) {
+                                return (
+                                    <div className="w-[100px] h-[26px] bg-slate-100 border border-slate-300 text-center text-slate-400 font-extrabold text-[11px] leading-[24px] select-none rounded-[1px] font-mono">
+                                        -
+                                    </div>
+                                );
+                            }
+                            
+                            const formattedVal = typeof value === 'number'
+                                ? value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})
+                                : value;
+
+                            if (isEditable && onChange) {
+                                return (
+                                    <input 
+                                        type="number" 
+                                        step="any"
+                                        value={value === 0 ? '' : value}
+                                        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+                                        placeholder="0.00"
+                                        className="w-[100px] h-[26px] px-2 text-right font-mono font-bold text-[11px] bg-white text-slate-900 border border-slate-400 focus:outline-none focus:border-blue-500 rounded-[1px] select-all shadow-inner print:shadow-none print:border-slate-500"
+                                    />
+                                );
+                            } else {
+                                return (
+                                    <input 
+                                        type="text" 
+                                        readOnly
+                                        value={formattedVal}
+                                        className="w-[100px] h-[26px] px-2 text-right font-mono font-bold text-[11px] bg-slate-100/80 text-slate-700 border border-slate-300 rounded-[1px] cursor-not-allowed select-none print:bg-slate-200/50 print:border-slate-400 print:text-black"
+                                    />
+                                );
+                            }
+                        };
+
+                        const renderDescCell = (num: string, title: string, hasIcon: boolean = true) => {
+                            return (
+                                <div className="flex items-center gap-1.5 text-left py-0.5">
+                                    <span className="text-slate-900 font-black text-[11px] min-w-[20px]">{num}</span>
+                                    <span className="text-slate-800 font-medium text-[10.5px] leading-tight flex-1">{title}</span>
+                                    {hasIcon && (
+                                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 text-[8.5px] font-black border border-slate-400 bg-slate-100 rounded-[1px] text-slate-500 select-none cursor-default print:border-slate-500 print:text-black print:bg-slate-200/50" title="Information Icon">
+                                            i
+                                        </span>
+                                    )}
+                                </div>
+                            );
+                        };
+
                         const getEmirateRowVal = (name: string, adj: number) => {
                             const dist = uaeVatData.emirateDistribution[name as keyof typeof uaeVatData.emirateDistribution] || { amount: 0, vat: 0 };
                             const amount = dist.amount;
@@ -15062,6 +15112,86 @@ const ReportsView = ({
                                 animate={{ opacity: 1, y: 0 }}
                                 className="space-y-6"
                             >
+                                {/* Print-oriented Stylesheet to force perfect Portrait A4 page-fit & hide website chrome */}
+                                <style dangerouslySetInnerHTML={{ __html: `
+                                    @media print {
+                                        @page {
+                                            size: portrait !important;
+                                            margin: 8mm 10mm 8mm 11mm !important;
+                                        }
+                                        body {
+                                            background: #ffffff !important;
+                                            color: #000000 !important;
+                                            margin: 0 !important;
+                                            padding: 0 !important;
+                                            -webkit-print-color-adjust: exact !important;
+                                            print-color-adjust: exact !important;
+                                        }
+                                        /* Hide all website layout wraps and headers/footers */
+                                        body * {
+                                            visibility: hidden !important;
+                                            height: 0 !important;
+                                            margin: 0 !important;
+                                            padding: 0 !important;
+                                            overflow: visible !important;
+                                        }
+                                        /* Display ONLY the styled form wrap */
+                                        #fta-vat-201-print-content,
+                                        #fta-vat-201-print-content * {
+                                            visibility: visible !important;
+                                            height: auto !important;
+                                        }
+                                        #fta-vat-201-print-content {
+                                            position: absolute !important;
+                                            left: 0 !important;
+                                            top: 0 !important;
+                                            right: 0 !important;
+                                            width: 100% !important;
+                                            max-width: 100% !important;
+                                            display: block !important;
+                                            background: #ffffff !important;
+                                            border: none !important;
+                                            box-shadow: none !important;
+                                            transform: none !important;
+                                            padding: 0 !important;
+                                            margin: 0 !important;
+                                        }
+                                        
+                                        /* Revert hide constraints on nested children of printable form */
+                                        #fta-vat-201-print-content div,
+                                        #fta-vat-201-print-content table,
+                                        #fta-vat-201-print-content tr,
+                                        #fta-vat-201-print-content th,
+                                        #fta-vat-201-print-content td,
+                                        #fta-vat-201-print-content span,
+                                        #fta-vat-201-print-content label,
+                                        #fta-vat-201-print-content h1,
+                                        #fta-vat-201-print-content h2,
+                                        #fta-vat-201-print-content h3,
+                                        #fta-vat-201-print-content h4,
+                                        #fta-vat-201-print-content p,
+                                        #fta-vat-201-print-content ol,
+                                        #fta-vat-201-print-content li,
+                                        #fta-vat-201-print-content input {
+                                            height: auto !important;
+                                            margin: revert !important;
+                                            padding: revert !important;
+                                            display: revert !important;
+                                        }
+                                        
+                                        /* Compact line sizes under print format */
+                                        .fta-print-p-adjust td {
+                                            padding: 3.5px 6px !important;
+                                        }
+                                        .fta-print-p-adjust th {
+                                            padding: 4px 6px !important;
+                                        }
+                                        .fta-form-box-adjusted {
+                                            margin-bottom: 8px !important;
+                                        }
+                                    }
+                                ` }} />
+
                                 {/* Header / Controls */}
                                 <div className="no-print flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200/80 rounded-3xl p-5 shadow-sm">
                                     <div className="flex items-center gap-3">
@@ -15091,375 +15221,158 @@ const ReportsView = ({
                                     </div>
                                 </div>
 
-                                {/* Official Form Layout Container */}
-                                <div className="border border-slate-200 bg-white rounded-3xl p-6 shadow-sm overflow-hidden relative font-sans text-slate-900 print:p-0 print:border-0">
+                                {/* Printable Form Area Wrapper */}
+                                <div id="fta-vat-201-print-content" className="w-full max-w-4xl mx-auto font-sans text-slate-900 bg-white">
                                     
-                                    {/* Instructions Header */}
-                                    <div className="mb-6 pb-6 border-b border-slate-100">
-                                        <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                            Official Form Instructions (FTA VAT201)
-                                        </h4>
-                                        <ol className="list-decimal list-inside text-xs text-slate-500 space-y-1 font-medium pl-1">
-                                            <li>Please check the auto-filled transactional aggregates from your system.</li>
-                                            <li>For active adjustment boxes, click and enter the positive or negative adjustment value.</li>
-                                            <li>Auto-calculated boxes are locked and will update dynamically based on audit rules.</li>
-                                        </ol>
+                                    {/* Instructions Header - Structured with low-case letters like PDF */}
+                                    <div className="mb-4 text-slate-900 text-xs text-left max-w-full">
+                                        <span className="font-extrabold block text-[13px] text-slate-900 mb-1">Instructions</span>
+                                        <ul className="space-y-0.5 text-[11px] font-semibold text-slate-800 list-none pl-0">
+                                            <li>a. Please fill the requested information for each field.</li>
+                                            <li>b. Please enter the details in the fields which are enabled for input.</li>
+                                            <li>c. The disabled / grayed out field will be auto calculated.</li>
+                                        </ul>
                                     </div>
 
-                                    {/* Main Table Heading */}
-                                    <div className="bg-slate-900 text-white p-4 font-black rounded-2xl text-center uppercase tracking-widest text-xs mb-6 flex items-center justify-between">
-                                        <span>FEDERAL TAX AUTHORITY (FTA) - VAT Return Form (201)</span>
-                                        <span className="p-2 bg-emerald-500 rounded-lg text-white font-black text-[10px] leading-none uppercase tracking-widest">Official Layout</span>
-                                    </div>
-
-                                    {/* SECTION 1: Sales and Outputs */}
-                                    <div className="mb-8 overflow-x-auto border border-slate-100 rounded-2xl bg-slate-50/50 p-4">
-                                        <div className="bg-slate-100 pr-5 text-slate-800 px-4 py-3 font-black text-xs uppercase tracking-wider rounded-xl mb-4 flex items-center gap-2">
-                                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                                            VAT on Sales and All Other Outputs
+                                    {/* Double/Thick Gray Outline Border representing the official form container */}
+                                    <div className="border-[3px] border-slate-400 p-5 md:p-6 bg-white rounded-none shadow-sm">
+                                        
+                                        {/* Centered official "VAT Return" Title Banner */}
+                                        <div className="border border-slate-400 bg-slate-100/90 py-2 text-center font-black text-sm text-slate-900 tracking-widest uppercase mb-6 rounded-none shadow-sm">
+                                            VAT Return
                                         </div>
 
-                                        <table className="w-full border-collapse text-left min-w-[700px]">
-                                            <thead>
-                                                <tr className="border-b border-slate-200 text-[10px] text-slate-400 font-black uppercase tracking-wider">
-                                                    <th className="pb-3 w-[45%]">Description</th>
-                                                    <th className="pb-3 text-right">Amount (AED)</th>
-                                                    <th className="pb-3 text-right">VAT Amount (AED)</th>
-                                                    <th className="pb-3 text-right">Adjustment (AED)</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-700">
+                                        {/* SECTION 1: Sales and Outputs */}
+                                        <div className="mb-6 fta-form-box-adjusted">
+                                            <div className="bg-slate-100/95 border border-slate-400 text-slate-900 px-3 py-1.5 font-extrabold text-[11px] uppercase tracking-wider flex items-center gap-2 border-b-0">
+                                                VAT on Sales and All Other Outputs
+                                            </div>
+
+                                            <div className="overflow-x-auto print:overflow-visible">
+                                                <table className="w-full border-collapse text-left min-w-[700px] border border-slate-400 fta-print-p-adjust">
+                                                    <thead>
+                                                        <tr className="bg-slate-100/50 text-[10px] text-slate-900 font-extrabold uppercase tracking-wide border-b border-slate-400">
+                                                            <th className="py-1.5 px-3 w-[45%] border-r border-slate-300">Description</th>
+                                                            <th className="py-1.5 px-2 text-right w-[115px] border-r border-slate-300">Amount (AED)</th>
+                                                            <th className="py-1.5 px-2 text-right w-[115px] border-r border-slate-300">VAT Amount (AED)</th>
+                                                            <th className="py-1.5 px-2 text-right w-[115px]">Adjustment (AED)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-200 text-[11px] text-slate-800">
                                                 {/* Abu Dhabi */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-slate-800 font-bold">1a. Standard rated supplies in Abu Dhabi*</span>
-                                                            <span className="text-[10px] text-slate-400 font-medium">Auto-aggregated 5% sales invoices filtered for Abu Dhabi region</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
-                                                        {r1a.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
-                                                        {r1a.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj1a || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1a: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("1a", "Standard rated supplies in Abu Dhabi*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1a.amount, false)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1a.vatAmount, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj1a, true, (val) => setVatAdjustments({...vatAdjustments, adj1a: val}))}</td>
                                                 </tr>
 
                                                 {/* Dubai */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-slate-800 font-bold">1b. Standard rated supplies in Dubai*</span>
-                                                            <span className="text-[10px] text-slate-400 font-medium">Standard 5% retail & project services in Dubai location</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
-                                                        {r1b.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
-                                                        {r1b.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj1b || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1b: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("1b", "Standard rated supplies in Dubai*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1b.amount, false)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1b.vatAmount, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj1b, true, (val) => setVatAdjustments({...vatAdjustments, adj1b: val}))}</td>
                                                 </tr>
 
                                                 {/* Sharjah */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-slate-800 font-bold">1c. Standard rated supplies in Sharjah*</span>
-                                                            <span className="text-[10px] text-slate-400 font-medium">Sales invoices matching regional Sharjah category</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
-                                                        {r1c.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
-                                                        {r1c.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj1c || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1c: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("1c", "Standard rated supplies in Sharjah*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1c.amount, false)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1c.vatAmount, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj1c, true, (val) => setVatAdjustments({...vatAdjustments, adj1c: val}))}</td>
                                                 </tr>
 
                                                 {/* Ajman */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-slate-800 font-bold">1d. Standard rated supplies in Ajman*</span>
-                                                            <span className="text-[10px] text-slate-400 font-medium">Standard sales within Ajman business circle</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
-                                                        {r1d.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
-                                                        {r1d.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj1d || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1d: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("1d", "Standard rated supplies in Ajman*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1d.amount, false)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1d.vatAmount, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj1d, true, (val) => setVatAdjustments({...vatAdjustments, adj1d: val}))}</td>
                                                 </tr>
 
                                                 {/* Umm Al Quwain */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <span className="text-slate-800 font-bold">1e. Standard rated supplies in Umm Al Quwain*</span>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
-                                                        {r1e.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
-                                                        {r1e.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj1e || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1e: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("1e", "Standard rated supplies in Umm Al Quwain*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1e.amount, false)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1e.vatAmount, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj1e, true, (val) => setVatAdjustments({...vatAdjustments, adj1e: val}))}</td>
                                                 </tr>
 
                                                 {/* Ras Al Khaimah */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <span className="text-slate-800 font-bold">1f. Standard rated supplies in Ras Al Khaimah*</span>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
-                                                        {r1f.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
-                                                        {r1f.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj1f || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1f: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("1f", "Standard rated supplies in Ras Al Khaimah*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1f.amount, false)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1f.vatAmount, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj1f, true, (val) => setVatAdjustments({...vatAdjustments, adj1f: val}))}</td>
                                                 </tr>
 
                                                 {/* Fujairah */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <span className="text-slate-800 font-bold">1g. Standard rated supplies in Fujairah*</span>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
-                                                        {r1g.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-emerald-600 bg-slate-100/20">
-                                                        {r1g.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj1g || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj1g: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("1g", "Standard rated supplies in Fujairah*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1g.amount, false)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r1g.vatAmount, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj1g, true, (val) => setVatAdjustments({...vatAdjustments, adj1g: val}))}</td>
                                                 </tr>
 
-                                                {/* Tourists scheme - Box 2 */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
-                                                    <td className="py-4 pr-3">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-slate-800 font-bold">2. Tax Refunds provided to Tourists under the Tax Refunds for Tourists Scheme*</span>
-                                                            <span className="text-[10px] text-slate-405 font-medium">Refund volumes automatically calculated as negative adjustment on file</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.amt2 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt2: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-500 bg-slate-100/40">
-                                                        {r2.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 text-right hover:bg-transparent text-slate-400 bg-slate-100/40 text-[10px] font-black uppercase text-center">-</td>
+                                                {/* Box 2: Tourist Refund */}
+                                                <tr className="hover:bg-slate-50 text-[11px] bg-slate-50/40">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("2", "Tax Refunds provided to Tourists under the Tax Refunds for Tourists Scheme*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.amt2, true, (val) => setVatAdjustments({...vatAdjustments, amt2: val}))}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r2.vatAmount, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(0, false, undefined, true)}</td>
                                                 </tr>
 
-                                                {/* Reverse Charge - Box 3 */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
-                                                    <td className="py-4 pr-3">
-                                                        <span className="text-slate-800 font-bold">3. Supplies subject to the reverse charge provisions*</span>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.amt3 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt3: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.vat3 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, vat3: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 text-right text-slate-400 bg-slate-100/40 text-[10px] font-black uppercase text-center">-</td>
+                                                {/* Box 3: Reverse Charge */}
+                                                <tr className="hover:bg-slate-50 text-[11px] bg-slate-50/40">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("3", "Supplies subject to the reverse charge provisions*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.amt3, true, (val) => setVatAdjustments({...vatAdjustments, amt3: val}))}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.vat3, true, (val) => setVatAdjustments({...vatAdjustments, vat3: val}))}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(0, false, undefined, true)}</td>
                                                 </tr>
 
-                                                {/* Zero Rated Supplies - Box 4 */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <span className="text-slate-800 font-bold">4. Zero rated supplies*</span>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900 bg-slate-100/20">
-                                                        {r4.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right text-slate-400 bg-slate-100/20 text-[10px] font-black uppercase text-center">-</td>
-                                                    <td className="py-4 text-right text-slate-400 bg-slate-100/20 text-[10px] font-black uppercase text-center">-</td>
+                                                {/* Box 4: Zero Rated */}
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("4", "Zero rated supplies*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r4.amount, false)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(0, false, undefined, true)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(0, false, undefined, true)}</td>
                                                 </tr>
 
-                                                {/* Exempt Supplies - Box 5 */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <span className="text-slate-800 font-bold">5. Exempt supplies*</span>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.amt5 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt5: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right text-slate-400 bg-slate-100/20 text-[10px] font-black uppercase text-center">-</td>
-                                                    <td className="py-4 text-right text-slate-400 bg-slate-100/20 text-[10px] font-black uppercase text-center">-</td>
+                                                {/* Box 5: Exempt */}
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("5", "Exempt supplies*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.amt5, true, (val) => setVatAdjustments({...vatAdjustments, amt5: val}))}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(0, false, undefined, true)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(0, false, undefined, true)}</td>
                                                 </tr>
 
-                                                {/* Goods Imported - Box 6 */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
-                                                    <td className="py-4 pr-3">
-                                                        <span className="text-slate-800 font-bold">6. Goods imported into the UAE*</span>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.amt6 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt6: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.vat6 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, vat6: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 text-right text-slate-400 bg-slate-100/40 text-[10px] font-black uppercase text-center">-</td>
+                                                {/* Box 6: Import Supplies */}
+                                                <tr className="hover:bg-slate-50 text-[11px] bg-slate-50/40">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("6", "Goods imported into the UAE*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.amt6, true, (val) => setVatAdjustments({...vatAdjustments, amt6: val}))}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.vat6, true, (val) => setVatAdjustments({...vatAdjustments, vat6: val}))}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(0, false, undefined, true)}</td>
                                                 </tr>
 
-                                                {/* Adjustments to Goods - Box 7 */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
-                                                    <td className="py-4 pr-3">
-                                                        <span className="text-slate-800 font-bold">7. Adjustments to goods imported into the UAE*</span>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.amt7 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt7: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.vat7 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, vat7: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj7 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj7: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                {/* Box 7: Adjustments to Imports */}
+                                                <tr className="hover:bg-slate-50 text-[11px] bg-slate-50/40">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("7", "Adjustments to goods imported into the UAE*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.amt7, true, (val) => setVatAdjustments({...vatAdjustments, amt7: val}))}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.vat7, true, (val) => setVatAdjustments({...vatAdjustments, vat7: val}))}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj7, true, (val) => setVatAdjustments({...vatAdjustments, adj7: val}))}</td>
                                                 </tr>
 
-                                                {/* Totals - Box 8 */}
-                                                <tr className="bg-slate-100 font-black text-slate-900 text-sm border-t border-b border-slate-300">
-                                                    <td className="py-5 pr-3 uppercase font-black text-slate-900">8. Totals</td>
-                                                    <td className="py-5 pr-3 text-right font-mono bg-slate-100/50">{totalSalesAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                                    <td className="py-5 pr-3 text-right font-mono bg-slate-100/50 text-emerald-600">AED {totalSalesVat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                                    <td className="py-5 text-right font-mono bg-slate-100/50">{totalSalesAdj.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                {/* Box 8: Sales Totals */}
+                                                <tr className="bg-slate-250 font-black text-slate-900 border-t border-slate-400">
+                                                    <td className="py-2 px-3 border-r border-slate-300 font-extrabold uppercase text-[11px]">8. Totals</td>
+                                                    <td className="py-2 px-2 border-r border-slate-300 text-right">{renderFormCell(totalSalesAmt, false)}</td>
+                                                    <td className="py-2 px-2 border-r border-slate-300 text-right">{renderFormCell(totalSalesVat, false)}</td>
+                                                    <td className="py-2 px-2 text-right">{renderFormCell(totalSalesAdj, false)}</td>
                                                 </tr>
                                             </tbody>
                                         </table>
+                                    </div>
                                     </div>
 
 
@@ -15481,167 +15394,139 @@ const ReportsView = ({
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-700">
                                                 {/* Standard rated expenses - Box 9 */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors">
-                                                    <td className="py-4 pr-3">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-slate-800 font-bold">9. Standard rated expenses*</span>
-                                                            <span className="text-[10px] text-slate-400 font-medium">Auto-aggregated 5% business purchases and operational expenses</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-slate-900">
-                                                        {r9.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right font-mono text-rose-600 bg-slate-100/20">
-                                                        {r9.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj9 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj9: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold shadow-sm" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("9", "Standard rated expenses*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r9.amount, false)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(r9.vatAmount, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj9, true, (val) => setVatAdjustments({...vatAdjustments, adj9: val}))}</td>
                                                 </tr>
 
                                                 {/* Reverse charge expenses - Box 10 */}
-                                                <tr className="hover:bg-slate-100/50 transition-colors bg-[#f8fafc]">
-                                                    <td className="py-4 pr-3">
-                                                        <span className="text-slate-800 font-bold">10. Supplies subject to the reverse charge provisions*</span>
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.amt10 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, amt10: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 pr-3 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.vat10 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, vat10: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
-                                                    <td className="py-4 text-right">
-                                                        <input 
-                                                            type="number" 
-                                                            step="any" 
-                                                            value={vatAdjustments.adj10 || ''} 
-                                                            onChange={(e) => setVatAdjustments({...vatAdjustments, adj10: parseFloat(e.target.value) || 0})}
-                                                            className="w-32 p-1.5 border border-slate-200 rounded-xl text-right font-mono bg-white focus:outline-none focus:border-slate-400 text-slate-900 font-bold" 
-                                                            placeholder="0.00"
-                                                        />
-                                                    </td>
+                                                <tr className="hover:bg-slate-50 text-[11px] bg-slate-50/40">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("10", "Supplies subject to the reverse charge provisions*", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.amt10, true, (val) => setVatAdjustments({...vatAdjustments, amt10: val}))}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(vatAdjustments.vat10, true, (val) => setVatAdjustments({...vatAdjustments, vat10: val}))}</td>
+                                                    <td className="py-1.5 px-2 text-right">{renderFormCell(vatAdjustments.adj10, true, (val) => setVatAdjustments({...vatAdjustments, adj10: val}))}</td>
                                                 </tr>
 
                                                 {/* Totals - Box 11 */}
-                                                <tr className="bg-slate-100 font-black text-slate-900 text-sm border-t border-b border-slate-300">
-                                                    <td className="py-5 pr-3 uppercase font-black text-slate-900">11. Totals</td>
-                                                    <td className="py-5 pr-3 text-right font-mono bg-slate-100/50">{totalExpAmt.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                                    <td className="py-5 pr-3 text-right font-mono bg-slate-100/50 text-rose-600">AED {totalExpVat.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                                    <td className="py-5 text-right font-mono bg-slate-100/50">{totalExpAdj.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                <tr className="bg-slate-250 font-black text-slate-900 border-t border-slate-400">
+                                                    <td className="py-2 px-3 border-r border-slate-300 font-extrabold uppercase text-[11px]">11. Totals</td>
+                                                    <td className="py-2 px-2 border-r border-slate-300 text-right">{renderFormCell(totalExpAmt, false)}</td>
+                                                    <td className="py-2 px-2 border-r border-slate-300 text-right">{renderFormCell(totalExpVat, false)}</td>
+                                                    <td className="py-2 px-2 text-right">{renderFormCell(totalExpAdj, false)}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                             {/* SECTION 3: Net VAT Due */}
+                                    <div className="mb-4 overflow-x-auto border border-slate-300 rounded-2xl bg-emerald-50/5 p-2">
+                                        <div className="bg-slate-100 text-slate-800 px-3 py-1.5 font-black text-[11px] uppercase tracking-wider rounded-xl mb-2 flex items-center gap-2 border border-slate-200">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                                            SECTION 3: Net VAT Due
+                                        </div>
+
+                                        <table className="w-full border-collapse text-left min-w-[700px]">
+                                            <thead>
+                                                <tr className="border-b border-slate-300 text-[10px] text-slate-400 font-extrabold uppercase tracking-wider bg-slate-50">
+                                                    <th className="py-1 px-3 w-[45%] border-r border-slate-300">Description</th>
+                                                    <th className="py-1 px-2 text-right border-r border-slate-300">Calculation Source</th>
+                                                    <th className="py-1 px-2 text-right border-r border-slate-300">Total Due / Recoverable (AED)</th>
+                                                    <th className="py-1 px-2 text-right">Net Position</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-200 font-bold text-slate-800">
+                                                {/* Box 12 */}
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("12", "Total value of due tax for the period (Output VAT)", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right text-[10px] text-slate-400 font-semibold font-mono">Box 8 VAT + Adj</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(totalDueTax, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right text-[10px] text-slate-400 font-black">-</td>
+                                                </tr>
+
+                                                {/* Box 13 */}
+                                                <tr className="hover:bg-slate-50 text-[11px]">
+                                                    <td className="py-1.5 px-3 border-r border-slate-300">{renderDescCell("13", "Total value of recoverable tax for the period (Input VAT)", true)}</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right text-[10px] text-slate-400 font-semibold font-mono">Box 11 VAT + Adj</td>
+                                                    <td className="py-1.5 px-2 border-r border-slate-300 text-right">{renderFormCell(totalRecoverableTax, false)}</td>
+                                                    <td className="py-1.5 px-2 text-right text-[10px] text-slate-400 font-black">-</td>
+                                                </tr>
+
+                                                {/* Box 14 */}
+                                                <tr className={cn("font-black border-t-2 border-slate-400 text-xs", netPayableTax >= 0 ? "bg-amber-100/30" : "bg-emerald-100/30")}>
+                                                    <td className="py-2 px-3 border-r border-slate-300 uppercase">{renderDescCell("14", "Net Payable or Recoverable tax", true)}</td>
+                                                    <td className="py-2 px-2 border-r border-slate-300 text-right text-[10px] text-slate-500 font-mono">Box 12 - Box 13</td>
+                                                    <td className="py-2 px-2 border-r border-slate-300 text-right font-semibold text-slate-500 font-mono">-</td>
+                                                    <td className="py-2 px-2 text-right font-extrabold text-slate-900 font-mono">
+                                                        <span className={cn("px-2 py-0.5 rounded text-[11px] font-black leading-none inline-block", netPayableTax >= 0 ? "bg-amber-100 text-amber-900 border border-amber-300" : "bg-emerald-250 text-emerald-900 border border-emerald-400")}>
+                                                            {netPayableTax >= 0 ? "PAYABLE: " : "RECOVERABLE: "} AED {Math.abs(netPayableTax).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                                        </span>
+                                                    </td>
                                                 </tr>
                                             </tbody>
                                         </table>
                                     </div>
 
-
-                                    {/* SECTION 3: Net VAT Due */}
-                                    <div className="mb-8 border border-slate-100 rounded-2xl bg-emerald-50/10 p-5 max-w-2xl">
-                                        <div className="bg-slate-100 text-slate-800 px-4 py-3 font-black text-xs uppercase tracking-wider rounded-xl mb-4 flex items-center gap-2">
-                                            <span className="w-2.5 h-2.5 rounded-full bg-slate-800"></span>
-                                            Net VAT Due
-                                        </div>
-
-                                        <div className="space-y-4 font-bold text-xs">
-                                            <div className="flex justify-between items-center py-1">
-                                                <span className="text-slate-600">12. Total value of due tax for the period (Output VAT):</span>
-                                                <span className="font-mono text-slate-900 text-sm font-extrabold">+AED {totalDueTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center py-1 border-t border-slate-150">
-                                                <span className="text-slate-600">13. Total value of recoverable tax for the period (Input VAT):</span>
-                                                <span className="font-mono text-slate-900 text-sm font-extrabold">-AED {totalRecoverableTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center py-3 border-t border-slate-300 text-sm font-black text-slate-900 bg-slate-100 px-4 -mx-4 rounded-b-xl">
-                                                <span className="uppercase text-xs font-black">14. Payable or Recoverable tax:</span>
-                                                <span className={cn("font-mono text-base font-black px-3 py-1 rounded-xl shadow-sm border", netPayableTax >= 0 ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-emerald-50 border-emerald-200 text-emerald-800")}>
-                                                    {netPayableTax >= 0 ? "Payable to FTA: " : "Refundable from FTA: "} AED {Math.abs(netPayableTax).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-
-                                    {/* SECTION 4: Interactive Toggles */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-slate-150 no-print">
-                                        {/* Refund Request Options */}
-                                        <div className="bg-slate-50 border border-slate-200/50 p-5 rounded-2xl space-y-3 shadow-sm">
-                                            <div className="text-xs font-black text-slate-700 uppercase tracking-wide leading-relaxed">
-                                                Do you wish to request a refund for the above amount of excess recoverable tax?
-                                            </div>
-                                            <div className="flex gap-6">
-                                                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-800">
+                                    {/* SECTION 4: Refund & Profit Margin Declarations */}
+                                    <div className="grid grid-cols-2 gap-4 text-[11.5px] font-bold text-slate-800">
+                                        {/* Refund Request */}
+                                        <div className="border border-slate-300 rounded-xl p-2.5 bg-slate-50/40">
+                                            <div className="text-[9.5px] font-extrabold uppercase text-slate-400 mb-1.5 tracking-wider">Refund Request</div>
+                                            <div className="mb-2 leading-tight">Do you wish to request a refund for the excess recoverable tax?</div>
+                                            <div className="flex gap-4">
+                                                <label className="flex items-center gap-1.5 cursor-pointer">
                                                     <input 
                                                         type="radio" 
-                                                        name="refund_request" 
+                                                        name="refund_request"
                                                         checked={vatRefundRequested === 'yes'} 
                                                         onChange={() => setVatRefundRequested('yes')}
-                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
+                                                        className="w-3.5 h-3.5 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
                                                     />
-                                                    Yes (Request Refund)
+                                                    <span className={vatRefundRequested === 'yes' ? 'font-black text-slate-900' : 'text-slate-500'}>Yes (Request Refund)</span>
                                                 </label>
-                                                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-800">
+                                                <label className="flex items-center gap-1.5 cursor-pointer">
                                                     <input 
                                                         type="radio" 
-                                                        name="refund_request" 
+                                                        name="refund_request"
                                                         checked={vatRefundRequested === 'no'} 
                                                         onChange={() => setVatRefundRequested('no')}
-                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
+                                                        className="w-3.5 h-3.5 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
                                                     />
-                                                    No (Carry Forward)
+                                                    <span className={vatRefundRequested === 'no' ? 'font-black text-slate-900' : 'text-slate-500'}>No (Carry Forward)</span>
                                                 </label>
                                             </div>
                                         </div>
 
-                                        {/* Profit Margin Scheme Options */}
-                                        <div className="bg-slate-50 border border-slate-200/50 p-5 rounded-2xl space-y-3 shadow-sm">
-                                            <div className="text-xs font-black text-slate-700 uppercase tracking-wide leading-relaxed">
-                                                Did you apply the profit margin scheme in respect of any supplies made during the tax period?
-                                            </div>
-                                            <div className="flex gap-6">
-                                                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-800">
+                                        {/* Profit Margin Scheme */}
+                                        <div className="border border-slate-300 rounded-xl p-2.5 bg-slate-50/40">
+                                            <div className="text-[9.5px] font-extrabold uppercase text-slate-400 mb-1.5 tracking-wider">Profit Margin Scheme</div>
+                                            <div className="mb-2 leading-tight">Did you apply the profit margin scheme to any supplies in the period?</div>
+                                            <div className="flex gap-4">
+                                                <label className="flex items-center gap-1.5 cursor-pointer">
                                                     <input 
                                                         type="radio" 
-                                                        name="profit_margin" 
+                                                        name="profit_margin"
                                                         checked={vatProfitMarginApplied === 'yes'} 
                                                         onChange={() => setVatProfitMarginApplied('yes')}
-                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
+                                                        className="w-3.5 h-3.5 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
                                                     />
-                                                    Yes
+                                                    <span className={vatProfitMarginApplied === 'yes' ? 'font-black text-slate-900' : 'text-slate-500'}>Yes</span>
                                                 </label>
-                                                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer text-slate-800">
+                                                <label className="flex items-center gap-1.5 cursor-pointer">
                                                     <input 
                                                         type="radio" 
-                                                        name="profit_margin" 
+                                                        name="profit_margin"
                                                         checked={vatProfitMarginApplied === 'no'} 
                                                         onChange={() => setVatProfitMarginApplied('no')}
-                                                        className="w-4 h-4 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
+                                                        className="w-3.5 h-3.5 text-emerald-600 border-slate-300 focus:ring-emerald-500 cursor-pointer" 
                                                     />
-                                                    No
+                                                    <span className={vatProfitMarginApplied === 'no' ? 'font-black text-slate-900' : 'text-slate-500'}>No</span>
                                                 </label>
                                             </div>
                                         </div>
                                     </div>
 
+                                </div>
                                 </div>
                             </motion.div>
                         );
