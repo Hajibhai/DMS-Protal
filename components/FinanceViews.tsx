@@ -310,6 +310,59 @@ export function DataTable<T extends { id: string }>({
             }, 0);
         });
 
+        // Robust, well-organized helper to build clean widths and alignments for elements
+        const getColumnStyle = (key: string, forHeader = false) => {
+            const isCurrency = currencyColumns.includes(key);
+            const isNumberCol = isCurrency || key === 'hours';
+            
+            let align = 'left';
+            if (isNumberCol) {
+                align = 'right';
+            } else if (key === 'srNo' || key === 'supplierCode') {
+                align = 'center';
+            }
+            
+            let widthStyle = '';
+            if (key === 'srNo') {
+                widthStyle = 'width: 45px; min-width: 45px; max-width: 45px;';
+            } else if (key === 'supplierName') {
+                widthStyle = 'width: 180px; min-width: 180px; max-width: 180px; word-break: break-word; white-space: normal;';
+            } else if (key === 'supplierCode') {
+                widthStyle = 'width: 60px; min-width: 60px; max-width: 60px;';
+            } else if (key === 'invoiceNumber') {
+                widthStyle = 'width: 80px; min-width: 80px;';
+            } else if (key === 'date') {
+                widthStyle = 'width: 80px; min-width: 80px;';
+            } else if (key === 'hours') {
+                widthStyle = 'width: 50px; min-width: 50px;';
+            } else if (isCurrency) {
+                widthStyle = 'width: 95px; min-width: 95px;';
+            } else if (key === 'paymentDate' || key === 'clearDate') {
+                widthStyle = 'width: 85px; min-width: 85px;';
+            } else if (key === 'description' || key === 'notes') {
+                widthStyle = 'width: 200px; min-width: 200px; max-width: 200px; word-break: break-word; white-space: normal;';
+            }
+            
+            let extraStyles = '';
+            if (!forHeader) {
+                if (key === 'paid') {
+                    extraStyles = 'color: #16a34a; font-weight: bold; font-family: monospace;';
+                } else if (key === 'deduction') {
+                    extraStyles = 'color: #dc2626; font-weight: bold; font-family: monospace;';
+                } else if (key === 'payableAmount') {
+                    extraStyles = 'color: #1d4ed8; font-weight: 800; background-color: #f0f7ff; font-family: monospace;';
+                } else if (isCurrency || key === 'hours') {
+                    extraStyles = 'font-family: monospace; font-weight: 600;';
+                } else if (key === 'srNo') {
+                    extraStyles = 'font-family: monospace; font-weight: bold; color: #475569;';
+                } else if (key === 'status') {
+                    extraStyles = 'font-weight: bold;';
+                }
+            }
+            
+            return `text-align: ${align}; ${widthStyle} ${extraStyles}`;
+        };
+
         const html = `
             <html>
                 <head>
@@ -338,9 +391,9 @@ export function DataTable<T extends { id: string }>({
                         ` : ''}
                         h1 { text-align: left; color: #0f172a; margin-bottom: 4px; font-weight: 800; font-size: 24px; font-family: sans-serif; }
                         p { text-align: left; color: #64748b; margin-top: 0; margin-bottom: 24px; font-size: 11px; font-weight: 500; font-family: sans-serif; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 12px; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                        th { background-color: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 7px 8px; font-weight: 700; text-transform: uppercase; font-size: 9px; }
-                        td { border: 1px solid #e2e8f0; padding: 7px 8px; font-size: 10px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
+                        th { background-color: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 7px 8px; font-weight: 700; text-transform: uppercase; font-size: 8px; }
+                        td { border: 1px solid #e2e8f0; padding: 6px 8px; font-size: 9px; line-height: 1.3; }
                         tr:nth-child(even) { background-color: #f8fafc; }
                     </style>
                 </head>
@@ -351,9 +404,9 @@ export function DataTable<T extends { id: string }>({
                         <thead>
                             <tr>
                                 ${columns.map(col => {
-                                    const isNumberCol = currencyColumns.includes(String(col.key)) || col.key === 'hours';
-                                    const align = isNumberCol ? 'right' : (col.key === 'srNo' || col.key === 'supplierCode' ? 'center' : 'left');
-                                    return `<th style="text-align: ${align};">${col.label}</th>`;
+                                    const colKey = String(col.key);
+                                    const colStyle = getColumnStyle(colKey, true);
+                                    return `<th style="${colStyle}">${col.label}</th>`;
                                 }).join('')}
                             </tr>
                         </thead>
@@ -361,20 +414,22 @@ export function DataTable<T extends { id: string }>({
                             ${filteredData.map((item, itemIdx) => `
                                 <tr>
                                     ${columns.map(col => {
+                                        const colKey = String(col.key);
+                                        const isCurrency = currencyColumns.includes(colKey);
+                                        
                                         let val: any = '';
-                                        if (col.key === 'srNo') {
+                                        if (colKey === 'srNo' || String(col.label).toLowerCase().includes('sr')) {
                                             val = itemIdx + 1;
                                         } else if (col.exportText) {
                                             val = col.exportText(item, itemIdx);
                                         } else {
-                                            val = (item as any)[col.key];
+                                            val = (item as any)[colKey];
                                         }
 
-                                        const isCurrency = currencyColumns.includes(String(col.key));
-                                        const isNumberCol = isCurrency || col.key === 'hours';
-
                                         let formattedVal = '';
-                                        if (val === undefined || val === null || val === '') {
+                                        if (colKey === 'srNo' || String(col.label).toLowerCase().includes('sr')) {
+                                            formattedVal = String(itemIdx + 1);
+                                        } else if (val === undefined || val === null || val === '') {
                                             formattedVal = '-';
                                         } else if (typeof val === 'number') {
                                             if (isCurrency) {
@@ -386,25 +441,20 @@ export function DataTable<T extends { id: string }>({
                                             formattedVal = String(val);
                                         }
 
-                                        const alignStyle = isNumberCol ? 'text-align: right;' : (col.key === 'srNo' || col.key === 'supplierCode' ? 'text-align: center;' : 'text-align: left;');
-                                        let tdStyle = `font-size: 9.5px; padding: 6px 8px; border: 1px solid #cbd5e1; font-family: monospace; ${alignStyle}`;
-                                        if (!isNumberCol) {
+                                        const colStyle = getColumnStyle(colKey, false);
+                                        let tdStyle = `border: 1px solid #cbd5e1; ${colStyle}`;
+                                        if (!isCurrency && colKey !== 'hours' && colKey !== 'srNo') {
                                             tdStyle += ' font-family: system-ui, sans-serif;';
                                         }
 
-                                        if (col.key === 'paid') {
-                                            tdStyle += ' color: #16a34a; font-weight: bold;';
-                                        } else if (col.key === 'deduction') {
-                                            tdStyle += ' color: #dc2626; font-weight: bold;';
-                                        } else if (col.key === 'payableAmount') {
-                                            tdStyle += ' color: #1d4ed8; font-weight: 800; background-color: #f0f7ff;';
-                                        } else if (col.key === 'status') {
-                                            const isReceivedOrPaid = String(val).toLowerCase().includes('received') || String(val).toLowerCase().includes('paid');
-                                            const isPending = String(val).toLowerCase().includes('pending');
+                                        if (colKey === 'status') {
+                                            const statusStr = String(val).toLowerCase();
+                                            const isReceivedOrPaid = statusStr.includes('received') || statusStr.includes('paid');
+                                            const isPending = statusStr.includes('pending');
                                             if (isReceivedOrPaid) {
-                                                tdStyle += ' color: #16a34a; font-weight: bold;';
+                                                tdStyle += ' color: #16a34a; font-weight: bold; background-color: #f0fdf4;';
                                             } else if (isPending) {
-                                                tdStyle += ' color: #ea580c; font-weight: bold;';
+                                                tdStyle += ' color: #ea580c; font-weight: bold; background-color: #fff7ed;';
                                             }
                                         }
 
@@ -416,27 +466,22 @@ export function DataTable<T extends { id: string }>({
                             <!-- Professional Styled Grand Totals Row -->
                             <tr style="background-color: #f1f5f9; font-weight: bold; border-top: 2px solid #94a3b8; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
                                 ${columns.map((col, idx) => {
+                                    const colKey = String(col.key);
+                                    const colStyle = getColumnStyle(colKey, false);
+                                    
                                     if (idx === 0) {
-                                        return `<td style="font-size: 9.5px; padding: 8px; border: 1px solid #cbd5e1; font-family: system-ui, sans-serif; font-weight: 800; text-transform: uppercase;">TOTALS</td>`;
+                                        return `<td style="font-size: 9px; padding: 7px 8px; border: 1px solid #cbd5e1; font-family: system-ui, sans-serif; font-weight: 800; text-transform: uppercase; text-align: center;">TOTALS</td>`;
                                     }
-                                    if (sumKeys.includes(String(col.key))) {
-                                        const val = totalSums[col.key] || 0;
-                                        const isCurrencyCol = currencyColumns.includes(String(col.key));
+                                    if (sumKeys.includes(colKey)) {
+                                        const val = totalSums[colKey] || 0;
+                                        const isCurrencyCol = currencyColumns.includes(colKey);
                                         const formattedVal = !isCurrencyCol 
                                             ? val.toLocaleString() 
                                             : 'AED ' + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                         
-                                        let tdStyle = `font-size: 9.5px; padding: 8px; border: 1px solid #cbd5e1; font-family: monospace; text-align: right; font-weight: bold;`;
-                                        if (col.key === 'paid') {
-                                            tdStyle += ' color: #16a34a;';
-                                        } else if (col.key === 'deduction') {
-                                            tdStyle += ' color: #dc2626;';
-                                        } else if (col.key === 'payableAmount') {
-                                            tdStyle += ' color: #1d4ed8; background-color: #e0f2fe;';
-                                        }
-                                        return `<td style="${tdStyle}">${formattedVal}</td>`;
+                                        return `<td style="font-size: 9px; padding: 7px 8px; border: 1px solid #cbd5e1; font-weight: bold; ${colStyle}">${formattedVal}</td>`;
                                     }
-                                    return `<td style="font-size: 9.5px; padding: 8px; border: 1px solid #cbd5e1; font-family: system-ui, sans-serif; text-align: left; font-weight: bold; color: #475569;">-</td>`;
+                                    return `<td style="font-size: 9px; padding: 7px 8px; border: 1px solid #cbd5e1; font-family: system-ui, sans-serif; text-align: left; font-weight: bold; color: #475569; ${colStyle}">-</td>`;
                                 }).join('')}
                             </tr>
                         </tbody>
