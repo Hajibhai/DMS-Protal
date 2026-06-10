@@ -672,15 +672,17 @@ export const Layout: React.FC<LayoutProps> = ({
                           >
                             <Settings className="w-4 h-4" /> Account Settings
                           </button>
-                          <button 
-                            onClick={() => {
-                                (window as any).openShortcuts?.();
-                                setIsUserDropdownOpen(false);
-                            }}
-                            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-all"
-                          >
-                            <LayoutGrid className="w-4 h-4" /> Keyboard Shortcuts
-                          </button>
+                          {!isEmployee && (
+                            <button 
+                              onClick={() => {
+                                  (window as any).openShortcuts?.();
+                                  setIsUserDropdownOpen(false);
+                              }}
+                              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-all"
+                            >
+                              <LayoutGrid className="w-4 h-4" /> Keyboard Shortcuts
+                            </button>
+                          )}
                           <button 
                             onClick={() => {
                                 setActiveTab('help');

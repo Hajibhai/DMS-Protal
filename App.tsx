@@ -3987,15 +3987,18 @@ export default function App() {
       delete (window as any)._shiftsyncShowDownload;
     };
   }, []);
-  
-  useEffect(() => {
-    (window as any).openShortcuts = () => setShowShortcuts(true);
-  }, []);
 
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [systemUser, setSystemUser] = useState<SystemUser | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   
+  useEffect(() => {
+    (window as any).openShortcuts = () => {
+      if (systemUser?.role?.toLowerCase() === 'employee') return;
+      setShowShortcuts(true);
+    };
+  }, [systemUser]);
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
@@ -4793,6 +4796,8 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (!systemUser || systemUser?.role?.toLowerCase() === 'employee') return;
+
     const handleGlobalShortcuts = (e: KeyboardEvent) => {
       if (!e.altKey) return;
 
