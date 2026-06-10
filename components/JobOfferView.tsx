@@ -836,32 +836,15 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       const splitNoteHeight = splitNote.length * 4.5;
       let currentY = clauseY + 5 + splitNoteHeight + 5;
 
-      // Clause 1
-      doc.setFont("Helvetica", "bold");
-      doc.text("1. Probation Period", 20, currentY);
-      doc.setFont("Helvetica", "normal");
-      const c1Text = `You will be on probation for a period of six (6) months from your date of joining. The probation period may be extended at the sole discretion of the Company, subject to applicable law and performance review.`;
-      const splitC1 = doc.splitTextToSize(c1Text, 170);
-      doc.text(splitC1, 20, currentY + 4.5);
-
-      // Dynamically calculate the next Y position for Clause 2 based on splitC1 length to prevent overlapping
-      const splitC1Height = splitC1.length * 4.5;
-      currentY = currentY + 4.5 + splitC1Height + 5;
-
-      // Clause 2
-      doc.setFont("Helvetica", "bold");
-      doc.text("2. Benefits During Probation", 20, currentY);
-      doc.setFont("Helvetica", "normal");
-      const c2Text = `You will not be entitled to additional allowances, leave benefits, or other employment benefits during the probation period, except for those expressly stated in the offer letter or required under applicable law.`;
-      const splitC2 = doc.splitTextToSize(c2Text, 170);
-      doc.text(splitC2, 20, currentY + 4.5);
-
-
-      // ----------------- PAGE 2 -----------------
-      doc.addPage();
-      currentY = 52;
-
-      const itemsPage2 = [
+      const allClauses = [
+        {
+          title: "1. Probation Period",
+          text: `You will be on probation for a period of six (6) months from your date of joining. The probation period may be extended at the sole discretion of the Company, subject to applicable law and performance review.`
+        },
+        {
+          title: "2. Benefits During Probation",
+          text: `You will not be entitled to additional allowances, leave benefits, or other employment benefits during the probation period, except for those expressly stated in the offer letter or required under applicable law.`
+        },
         {
           title: "3. Continuation of Employment",
           text: "Your performance will be reviewed periodically during the probation period. The Company may confirm, extend, or discontinue your employment based on performance, conduct, and business requirements."
@@ -889,25 +872,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         {
           title: "9. Document Submission for Visa Processing",
           text: "You are required to submit all documents necessary for visa and employment processing, including but not limited to: signed acceptance of this offer letter, emirates id copy, passport copy, attested educational certificates, updated CV, and passport-size photographs, along with any other documents requested by the Company."
-        }
-      ];
-
-      itemsPage2.forEach(item => {
-        doc.setFont("Helvetica", "bold");
-        doc.setFontSize(9);
-        doc.text(item.title, 20, currentY);
-        doc.setFont("Helvetica", "normal");
-        const splitText = doc.splitTextToSize(item.text, 170);
-        doc.text(splitText, 20, currentY + 4);
-        currentY += (splitText.length * 4) + 8;
-      });
-
-
-      // ----------------- PAGE 3 -----------------
-      doc.addPage();
-      currentY = 52;
-
-      const itemsPage3 = [
+        },
         {
           title: "10. Leave Entitlement",
           text: "You will be eligible for annual leave after completion of eleven (11) months of service, in accordance with company policy and applicable law. Air ticket entitlement, if any, shall be provided as per company policy."
@@ -934,15 +899,39 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         }
       ];
 
-      itemsPage3.forEach(item => {
+      let pageCount = 1;
+
+      allClauses.forEach(item => {
+        const splitText = doc.splitTextToSize(item.text, 170);
+        // Calculate needed vertical height for this block:
+        // Spacing before (5) + Title (4) + Text (splitText.length * 4) + spacing after (6)
+        const itemNeededHeight = 5 + 4 + (splitText.length * 4) + 6;
+
+        if (currentY + itemNeededHeight > 275) {
+          doc.addPage();
+          pageCount += 1;
+          currentY = 52;
+        }
+
         doc.setFont("Helvetica", "bold");
         doc.setFontSize(9);
+        doc.setTextColor(30, 41, 59);
         doc.text(item.title, 20, currentY);
+
         doc.setFont("Helvetica", "normal");
-        const splitText = doc.splitTextToSize(item.text, 170);
+        doc.setTextColor(51, 65, 85);
         doc.text(splitText, 20, currentY + 4);
-        currentY += (splitText.length * 4) + 7;
+
+        currentY += 4 + (splitText.length * 4) + 6;
       });
+
+      // Check if both the Acceptance Segment and double-box signature matrix can fit on the current page
+      const acceptanceBlockHeight = 55;
+      if (currentY + acceptanceBlockHeight > 275) {
+        doc.addPage();
+        pageCount += 1;
+        currentY = 52;
+      }
 
       // Acceptance Segment
       currentY += 2;
@@ -991,8 +980,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       doc.setTextColor(71, 85, 105); // slate 600
       doc.text("Employee Signature", 126, sigY + 29);
 
-      // Apply Pioneer high-res dynamic Letterheads, Watermarks, and Footers across the 3 A4 pages
-      applyPioneerLetterheadDoc(doc, 3);
+      // Apply Pioneer high-res dynamic Letterheads, Watermarks, and Footers across the pages
+      applyPioneerLetterheadDoc(doc, pageCount);
 
       doc.save(`Offer_Letter_${offer.employeeName.replace(/\s+/g, '_')}.pdf`);
     } catch (err) {
