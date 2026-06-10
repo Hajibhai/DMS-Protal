@@ -4684,6 +4684,110 @@ export default function App() {
     );
   };
 
+  const handleUpdateAPMultipleDate = async (items: AccountsPayable[], newDate: string) => {
+    const userRoleLower = (systemUser?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
+    
+    if (!isAdmin) {
+      alert("Access Denied: Only portal Admins can perform bulk updates.");
+      return;
+    }
+
+    if (items.length === 0) {
+      alert("No data records selected.");
+      return;
+    }
+
+    openConfirm(
+      "Bulk Update Dates", 
+      `Are you sure you want to change the Invoice Date of these ${items.length} selected accounts payable entries to ${newDate}?`, 
+      async () => {
+        try {
+          for (const item of items) {
+            const updatedItem = {
+              ...item,
+              date: newDate
+            };
+            await saveAccountsPayable(updatedItem);
+          }
+          handleLogAction('Payables Bulk Updated', `Updated date of ${items.length} chosen ledger entries to ${newDate}.`, 'update');
+          alert(`Successfully updated dates for the selected ${items.length} entries.`);
+        } catch (err) {
+          console.error("Failed to bulk update selected items: ", err);
+          alert("An error occurred during bulk update.");
+        }
+      }
+    );
+  };
+
+  const handleDeleteARMultiple = async (items: AccountsReceivable[]) => {
+    const userRoleLower = (systemUser?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
+    
+    if (!isAdmin) {
+      alert("Access Denied: Only portal Admins can perform bulk deletions.");
+      return;
+    }
+
+    if (items.length === 0) {
+      alert("No data records selected.");
+      return;
+    }
+
+    openConfirm(
+      "Bulk Delete Entries", 
+      `Are you sure you want to permanently delete these ${items.length} selected accounts receivable entries? This action is irreversible.`, 
+      async () => {
+        try {
+          for (const item of items) {
+            await deleteAccountsReceivable(item.id);
+          }
+          handleLogAction('Receivables Bulk Deleted', `Permanently deleted ${items.length} chosen ledger entries.`, 'delete');
+          alert(`Successfully deleted the selected ${items.length} entries.`);
+        } catch (err) {
+          console.error("Failed to delete selected items: ", err);
+          alert("An error occurred during bulk deletion.");
+        }
+      }
+    );
+  };
+
+  const handleUpdateARMultipleDate = async (items: AccountsReceivable[], newDate: string) => {
+    const userRoleLower = (systemUser?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
+    
+    if (!isAdmin) {
+      alert("Access Denied: Only portal Admins can perform bulk updates.");
+      return;
+    }
+
+    if (items.length === 0) {
+      alert("No data records selected.");
+      return;
+    }
+
+    openConfirm(
+      "Bulk Update Dates", 
+      `Are you sure you want to change the Date of these ${items.length} selected accounts receivable entries to ${newDate}?`, 
+      async () => {
+        try {
+          for (const item of items) {
+            const updatedItem = {
+              ...item,
+              date: newDate
+            };
+            await saveAccountsReceivable(updatedItem);
+          }
+          handleLogAction('Receivables Bulk Updated', `Updated date of ${items.length} chosen ledger entries to ${newDate}.`, 'update');
+          alert(`Successfully updated dates for the selected ${items.length} entries.`);
+        } catch (err) {
+          console.error("Failed to bulk update selected items: ", err);
+          alert("An error occurred during bulk update.");
+        }
+      }
+    );
+  };
+
   const handleDeleteAPBatch = async (batchId: string) => {
     const userRoleLower = (systemUser?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
@@ -5587,6 +5691,7 @@ export default function App() {
           onDelete={handleDeleteAP}
           onDeleteMultiple={handleDeleteAPMultiple}
           onDeleteBatch={handleDeleteAPBatch}
+          onBulkUpdateDate={handleUpdateAPMultipleDate}
           onUploadExcel={handleUploadExcelPayable}
           user={systemUser}
           companies={companies}
@@ -5602,6 +5707,8 @@ export default function App() {
           onAdd={() => setShowARModal(true)}
           onEdit={(ar: AccountsReceivable) => setShowARModal(ar)}
           onDelete={handleDeleteAR}
+          onDeleteMultiple={handleDeleteARMultiple}
+          onBulkUpdateDate={handleUpdateARMultipleDate}
           onSave={handleSaveAR}
           user={systemUser}
           bankAccounts={bankAccounts}

@@ -159,6 +159,7 @@ interface DataTableProps<T> {
     customSearch?: (item: T, query: string) => boolean;
     enableMultiSelect?: boolean;
     onBulkDelete?: (items: T[]) => void | Promise<void>;
+    onBulkUpdateDate?: (items: T[], newDate: string) => void | Promise<void>;
     renderFooter?: (filteredData: T[]) => React.ReactNode;
 }
 
@@ -181,6 +182,7 @@ export function DataTable<T extends { id: string }>({
     customSearch,
     enableMultiSelect,
     onBulkDelete,
+    onBulkUpdateDate,
     renderFooter
 }: DataTableProps<T>) {
     const [searchTerm, setSearchTerm] = useState('');
@@ -188,6 +190,7 @@ export function DataTable<T extends { id: string }>({
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
+    const [bulkTargetDate, setBulkTargetDate] = useState('');
 
     const userRoleLower = (user?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
@@ -470,42 +473,104 @@ export function DataTable<T extends { id: string }>({
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            className="px-6 py-4 bg-rose-50 border-b border-rose-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 overflow-hidden animate-fadeIn"
+                            className="px-6 py-5 bg-indigo-50/60 border-b border-indigo-100 flex flex-col gap-4 overflow-hidden animate-fadeIn"
                         >
-                            <div className="flex items-center gap-2.5">
-                                <div className="p-2 bg-rose-100 rounded-xl text-rose-700 shrink-0">
-                                    <AlertTriangle className="w-4 h-4" />
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl shrink-0 shadow-sm border border-indigo-200">
+                                        <FileSpreadsheet className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <span className="text-xs font-black text-slate-900 block">
+                                            Bulk Action Panel <span className="bg-brand-600 font-bold text-[10px] text-white px-2 py-0.5 rounded-full ml-1.5 inline-block">Selected: {selectedIds.length}</span>
+                                        </span>
+                                        <p className="text-[11px] text-slate-500 font-medium leading-normal mt-0.5">
+                                            Choose to bulk update the invoice posting date / month, or perform double-confirmed deletion.
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <span className="text-xs font-black text-rose-900 block">
-                                        Selected <strong className="text-sm font-black text-rose-600 bg-white border border-rose-250/70 px-2 py-0.5 rounded-md">{selectedIds.length}</strong> {selectedIds.length === 1 ? 'record' : 'records'} for deletion
-                                    </span>
-                                    <p className="text-[11px] text-rose-550 font-bold leading-normal mt-0.5">
-                                        Bulk deletion is irreversible. Erase selected records from your Database and Logs.
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2 self-end sm:self-center">
-                                <button
-                                    onClick={() => setSelectedIds([])}
-                                    className="px-4 py-2 hover:bg-rose-100/60 border border-transparent rounded-xl text-xs font-black text-rose-700 transition-all cursor-pointer"
-                                >
-                                    Cancel Selection
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        if (onBulkDelete) {
-                                            const selectedItems = data.filter(item => selectedIds.includes(item.id));
-                                            onBulkDelete(selectedItems);
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        onClick={() => {
                                             setSelectedIds([]);
-                                        }
-                                    }}
-                                    className="flex items-center gap-1.5 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-rose-600/15 cursor-pointer"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                    Delete Selected
-                                </button>
+                                            setBulkTargetDate('');
+                                        }}
+                                        className="px-4 py-2 hover:bg-slate-200/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 transition-all cursor-pointer bg-white"
+                                    >
+                                        Cancel Selection
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (onBulkDelete) {
+                                                const selectedItems = data.filter(item => selectedIds.includes(item.id));
+                                                onBulkDelete(selectedItems);
+                                                setSelectedIds([]);
+                                            }
+                                        }}
+                                        className="flex items-center gap-1.5 px-4 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        Delete Selected
+                                    </button>
+                                </div>
                             </div>
+
+                            {onBulkUpdateDate && (
+                                <div className="p-4 bg-white/75 border border-indigo-100 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fadeIn">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-indigo-950 font-black flex items-center gap-1.5">
+                                            <Calendar className="w-4 h-4 text-indigo-600" />
+                                            Bulk Update Posting Date / Month
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <input 
+                                                type="date"
+                                                value={bulkTargetDate}
+                                                onChange={e => setBulkTargetDate(e.target.value)}
+                                                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-700"
+                                            />
+                                            <span className="text-[11px] text-slate-400 font-medium">or</span>
+                                            <select
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    if (val) {
+                                                        // Default to first day of that month
+                                                        setBulkTargetDate(`${val}-01`);
+                                                    }
+                                                }}
+                                                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-705"
+                                                value={bulkTargetDate ? bulkTargetDate.substring(0, 7) : ''}
+                                            >
+                                                <option value="">-- Quick Month Selector --</option>
+                                                {Array.from({ length: 12 }, (_, i) => {
+                                                    const d = new Date();
+                                                    d.setMonth(d.getMonth() - i);
+                                                    const mKey = d.toISOString().substring(0, 7);
+                                                    const mLabel = d.toLocaleDateString('default', { month: 'short', year: 'numeric' });
+                                                    return <option key={mKey} value={mKey}>{mLabel}</option>;
+                                                })}
+                                            </select>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                if (!bulkTargetDate) {
+                                                    alert("Please select or type a new posting date.");
+                                                    return;
+                                                }
+                                                const selectedItems = data.filter(item => selectedIds.includes(item.id));
+                                                onBulkUpdateDate(selectedItems, bulkTargetDate);
+                                                setSelectedIds([]);
+                                                setBulkTargetDate('');
+                                            }}
+                                            className="px-4.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md shadow-indigo-600/10 transition-all cursor-pointer active:scale-95"
+                                        >
+                                            Apply Date to Selected
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -707,7 +772,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
     />
 );
 
-export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, user, companies, onUploadExcel }: any) => {
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, user, companies, onUploadExcel }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
 
@@ -1873,9 +1938,9 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 label: 'Payment Clear Date', 
                                 sortable: true,
                                 render: (item) => (
-                                    <span className="font-mono text-xs text-slate-500 block whitespace-nowrap">{item.paymentDate || item.clearDate || '-'}</span>
+                                    <span className="font-mono text-xs text-slate-500 block whitespace-nowrap">{item.paymentDate || (item as any).clearDate || '-'}</span>
                                 ),
-                                exportText: (item) => item.paymentDate || item.clearDate || ''
+                                exportText: (item) => item.paymentDate || (item as any).clearDate || ''
                             },
                             { 
                                 key: 'description', 
@@ -1892,6 +1957,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         onEdit={onEdit}
                         onDelete={onDelete}
                         onBulkDelete={onDeleteMultiple}
+                        onBulkUpdateDate={onBulkUpdateDate}
                         enableMultiSelect={true}
                         onUploadExcel={onUploadExcel}
                         customSearch={(item, query) => {
@@ -3689,7 +3755,7 @@ export const downloadSOAExcel = (
     XLSX.writeFile(wb, `${isReceivable ? 'Receivable' : 'Payable'}_SOA_${partnerName.replace(/\s+/g, '_')}.xlsx`);
 };
 
-export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, user, companies, bankAccounts = [] }: any) => {
+export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, onDeleteMultiple, onBulkUpdateDate, user, companies, bankAccounts = [] }: any) => {
     const [previewInvoiceItem, setPreviewInvoiceItem] = useState<{ item: any; comp: any; client: any } | null>(null);
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
@@ -4758,6 +4824,9 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     onAdd={onAdd}
                     onEdit={onEdit}
                     onDelete={onDelete}
+                    onBulkDelete={onDeleteMultiple}
+                    onBulkUpdateDate={onBulkUpdateDate}
+                    enableMultiSelect={true}
                     searchFields={['invoiceNumber']}
                     exportFileName="Accounts_Receivable"
                     user={user}
