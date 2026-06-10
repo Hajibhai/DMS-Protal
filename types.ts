@@ -249,6 +249,8 @@ export interface AccountsPayable {
     payableAmount?: number;
     supplierName?: string;
     supplierCode?: string;
+    excelBatchId?: string;
+    excelFileName?: string;
 }
 
 export interface AccountsReceivable {

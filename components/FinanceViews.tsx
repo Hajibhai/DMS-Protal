@@ -139,6 +139,7 @@ interface DataTableProps<T> {
         key: keyof T | string;
         label: string;
         render?: (item: T, index: number) => React.ReactNode;
+        exportText?: (item: T, index: number) => string | number;
         sortable?: boolean;
     }[];
     onAdd?: () => void;
@@ -228,11 +229,15 @@ export function DataTable<T extends { id: string }>({
     }, [data, searchTerm, searchFields, activeFilters, sortConfig]);
 
     const handleExport = () => {
-        const exportData = filteredData.map(item => {
+        const exportData = filteredData.map((item, index) => {
             const row: any = {};
             columns.forEach(col => {
                 if (typeof col.key === 'string') {
-                    row[col.label] = (item as any)[col.key];
+                    if (col.exportText) {
+                        row[col.label] = col.exportText(item, index);
+                    } else {
+                        row[col.label] = (item as any)[col.key];
+                    }
                 }
             });
             return row;
@@ -591,7 +596,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
     />
 );
 
-export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, user, companies, onUploadExcel }: any) => {
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteBatch, user, companies, onUploadExcel }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
 
@@ -828,6 +833,38 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const totalAgingAmount = Object.values(agingBuckets).reduce((acc, curr) => acc + curr.amount, 0);
     const activeAgingList = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.items || [] : [];
     const activeAgingLabel = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.label : '';
+
+    const userRoleLower = (user?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
+
+    // Excel Batch Derivation
+    const excelBatches = useMemo(() => {
+        const batchesMap = new Map<string, { fileName: string; count: number; date: string; totalAmount: number; itemIds: string[] }>();
+        (data || []).forEach((item: any) => {
+            if (item.excelFileName || item.excelBatchId) {
+                const batchKey = item.excelBatchId || item.excelFileName;
+                const existing = batchesMap.get(batchKey);
+                const amount = item.totalAmount || item.amount || 0;
+                if (existing) {
+                    existing.count += 1;
+                    existing.totalAmount += amount;
+                    existing.itemIds.push(item.id);
+                } else {
+                    batchesMap.set(batchKey, {
+                        fileName: item.excelFileName || item.excelBatchId || 'Unknown File',
+                        count: 1,
+                        date: item.date || new Date().toISOString().split('T')[0],
+                        totalAmount: amount,
+                        itemIds: [item.id]
+                    });
+                }
+            }
+        });
+        return Array.from(batchesMap.entries()).map(([batchId, info]) => ({
+            batchId,
+            ...info
+        })).sort((a, b) => b.batchId.localeCompare(a.batchId));
+    }, [data]);
 
     // Monthly Trends Calculation
     const monthlyTrends = useMemo(() => {
@@ -1383,66 +1420,226 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         )}
                     </div>
 
+                    {/* Excel Import Batches Section for Admins */}
+                    {isAdmin && excelBatches.length > 0 && (
+                        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xs space-y-3 animate-fadeIn">
+                            <div className="flex items-center gap-2">
+                                <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
+                                <span className="font-extrabold text-sm text-slate-800">Admin Panel: Excel Upload History Logs</span>
+                                <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 font-mono font-bold text-[10px] px-2 py-0.5 rounded-full">
+                                    {excelBatches.length} imported files
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                                If some Excel data was uploaded incorrectly, you can permanently delete the file record and its associated data rows from your Ledger here.
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+                                {excelBatches.map((batch) => (
+                                    <div key={batch.batchId} className="flex justify-between items-center bg-slate-50 hover:bg-slate-100/70 p-3.5 border border-slate-200/50 rounded-2xl transition-all">
+                                        <div className="space-y-1 pr-3 overflow-hidden">
+                                            <p className="text-xs font-black text-slate-800 truncate" title={batch.fileName}>{batch.fileName}</p>
+                                            <div className="flex gap-2 items-center text-[10px] text-slate-400 font-medium font-mono">
+                                                <span>Records: <strong className="text-slate-700 font-extrabold">{batch.count}</strong></span>
+                                                <span>•</span>
+                                                <span>Sum: <strong className="text-indigo-600 font-extrabold">AED {batch.totalAmount.toLocaleString()}</strong></span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => onDeleteBatch && onDeleteBatch(batch.batchId)}
+                                            className="p-2 text-rose-500 hover:text-white hover:bg-rose-500 border border-rose-200/50 hover:border-transparent rounded-xl transition-all cursor-pointer shadow-2xs grow-0 shrink-0"
+                                            title="Delete imported Excel data batch"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <DataTable<AccountsPayable>
                         title="Accounts Payable Ledger"
                         description="Filtered list of supplier billings and payments matching specified constraints."
                         icon={TrendingDown}
                         data={filteredData}
                         columns={[
-                            { key: 'date', label: 'Date', sortable: true },
-                            { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
                             { 
-                                key: 'vendorId', 
-                                label: 'Client/Supplier',
-                                render: (item) => (
-                                    <div className="flex flex-col">
-                                        <span className="font-bold text-slate-900">{getVendorName(item.vendorId, item.vendorType)}</span>
-                                        <span className="text-[10px] text-slate-400 uppercase tracking-wider">{item.vendorType === 'Vendor' ? 'Client' : item.vendorType}</span>
-                                    </div>
-                                )
+                                key: 'srNo', 
+                                label: 'Sr. #', 
+                                render: (_, index) => (
+                                    <span className="text-xs font-mono text-slate-400 font-bold font-mono">{(index + 1)}</span>
+                                ),
+                                exportText: (_, index) => index + 1
                             },
                             { 
-                                key: 'projectId', 
-                                label: 'Project',
-                                render: (item) => getProjectName(item.projectId)
+                                key: 'supplierName', 
+                                label: 'Name of Supplier',
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="font-bold text-slate-800 block min-w-[200px]">
+                                        {item.supplierName || getVendorName(item.vendorId, item.vendorType) || '-'}
+                                    </span>
+                                ),
+                                exportText: (item) => item.supplierName || getVendorName(item.vendorId, item.vendorType) || ''
+                            },
+                            { 
+                                key: 'supplierCode', 
+                                label: 'Supplier',
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="font-mono text-xs text-indigo-700 bg-indigo-50 border border-indigo-100/60 px-2 py-0.5 rounded-md font-black tracking-wide block max-w-[80px] text-center">
+                                        {item.supplierCode || '-'}
+                                    </span>
+                                ),
+                                exportText: (item) => item.supplierCode || ''
+                            },
+                            { 
+                                key: 'invoiceNumber', 
+                                label: 'Invoice Number', 
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="font-mono font-black text-slate-900 block whitespace-nowrap">{item.invoiceNumber || '-'}</span>
+                                ),
+                                exportText: (item) => item.invoiceNumber || ''
+                            },
+                            { 
+                                key: 'hours', 
+                                label: 'Hours', 
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="text-slate-600 font-bold font-mono text-center block">{item.hours !== undefined ? item.hours : 0}</span>
+                                ),
+                                exportText: (item) => item.hours !== undefined ? item.hours : 0
                             },
                             { 
                                 key: 'amount', 
-                                label: 'Amount',
+                                label: 'Bill Amount', 
                                 sortable: true,
                                 render: (item) => (
-                                    <span className="font-bold text-slate-600">AED {item.amount.toLocaleString()}</span>
-                                )
+                                    <span className="font-bold text-slate-500 font-mono block whitespace-nowrap">AED {(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                ),
+                                exportText: (item) => item.amount || 0
+                            },
+                            { 
+                                key: 'actualAmount', 
+                                label: 'Actual Amount', 
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="font-bold text-slate-700 font-mono block whitespace-nowrap">AED {(item.actualAmount !== undefined ? item.actualAmount : item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                ),
+                                exportText: (item) => item.actualAmount !== undefined ? item.actualAmount : (item.amount || 0)
                             },
                             { 
                                 key: 'vatAmount', 
-                                label: 'VAT (5%)',
+                                label: 'VAT', 
+                                sortable: true,
                                 render: (item) => (
-                                    <span className="text-slate-400">AED {(item.vatAmount || 0).toLocaleString()}</span>
-                                )
+                                    <span className="text-slate-400 font-bold font-mono block whitespace-nowrap">AED {(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                ),
+                                exportText: (item) => item.vatAmount || 0
                             },
                             { 
                                 key: 'totalAmount', 
-                                label: 'Total',
+                                label: 'Total', 
                                 sortable: true,
-                                render: (item) => (
-                                    <span className="font-black text-slate-900">AED {(item.totalAmount || item.amount).toLocaleString()}</span>
-                                )
+                                render: (item) => {
+                                    const actual = item.actualAmount !== undefined ? item.actualAmount : item.amount || 0;
+                                    const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+                                    const total = item.totalAmount !== undefined ? item.totalAmount : Number((actual + vat).toFixed(2));
+                                    return (
+                                        <span className="font-black text-slate-900 font-mono block whitespace-nowrap">
+                                            AED {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                    );
+                                },
+                                exportText: (item) => {
+                                    const actual = item.actualAmount !== undefined ? item.actualAmount : item.amount || 0;
+                                    const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+                                    return item.totalAmount !== undefined ? item.totalAmount : Number((actual + vat).toFixed(2));
+                                }
                             },
                             { 
-                                key: 'status', 
-                                label: 'Status',
+                                key: 'advance', 
+                                label: 'Advance', 
+                                sortable: true,
                                 render: (item) => (
-                                    <span className={cn(
-                                        "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
-                                        item.status === 'Paid' ? "bg-emerald-100 text-emerald-600" :
-                                        item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
-                                        "bg-blue-100 text-blue-600"
-                                    )}>
-                                        {item.status}
-                                    </span>
-                                )
+                                    <span className="text-indigo-600 font-bold font-mono block whitespace-nowrap">AED {(item.advance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                ),
+                                exportText: (item) => item.advance || 0
                             },
+                            { 
+                                key: 'deduction', 
+                                label: 'Deduction', 
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="text-rose-600 font-bold font-mono block whitespace-nowrap">AED {(item.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                ),
+                                exportText: (item) => item.deduction || 0
+                            },
+                            { 
+                                key: 'paid', 
+                                label: 'Paid', 
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="text-emerald-600 font-black font-mono block whitespace-nowrap">AED {(item.paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                ),
+                                exportText: (item) => item.paid || 0
+                            },
+                            { 
+                                key: 'payableAmount', 
+                                label: 'Payable Amount', 
+                                sortable: true,
+                                render: (item) => {
+                                    const actual = item.actualAmount !== undefined ? item.actualAmount : item.amount || 0;
+                                    const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+                                    const total = item.totalAmount !== undefined ? item.totalAmount : Number((actual + vat).toFixed(2));
+                                    
+                                    const advance = item.advance || 0;
+                                    const deduction = item.deduction || 0;
+                                    const paid = item.paid || 0;
+                                    
+                                    const computedPayable = item.payableAmount !== undefined ? item.payableAmount : Number((total - paid - advance - deduction).toFixed(2));
+                                    
+                                    return (
+                                        <span className={cn(
+                                            "font-black px-2 py-1 rounded-lg font-mono text-xs block whitespace-nowrap",
+                                            computedPayable > 0 ? "text-amber-800 bg-amber-55" : "text-emerald-800 bg-emerald-55"
+                                        )}>
+                                            AED {computedPayable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </span>
+                                    );
+                                },
+                                exportText: (item) => {
+                                    const actual = item.actualAmount !== undefined ? item.actualAmount : item.amount || 0;
+                                    const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+                                    const total = item.totalAmount !== undefined ? item.totalAmount : Number((actual + vat).toFixed(2));
+                                    
+                                    const advance = item.advance || 0;
+                                    const deduction = item.deduction || 0;
+                                    const paid = item.paid || 0;
+                                    
+                                    return item.payableAmount !== undefined ? item.payableAmount : Number((total - paid - advance - deduction).toFixed(2));
+                                }
+                            },
+                            { 
+                                key: 'paymentDate', 
+                                label: 'Payment Clear Date', 
+                                sortable: true,
+                                render: (item) => (
+                                    <span className="font-mono text-xs text-slate-500 block whitespace-nowrap">{item.paymentDate || item.clearDate || '-'}</span>
+                                ),
+                                exportText: (item) => item.paymentDate || item.clearDate || ''
+                            },
+                            { 
+                                key: 'description', 
+                                label: 'Notes / Remarks', 
+                                render: (item) => (
+                                    <span className="text-xs text-slate-500 line-clamp-2 max-w-[220px] font-normal block whitespace-pre-line" title={item.description}>
+                                        {item.description || '-'}
+                                    </span>
+                                ),
+                                exportText: (item) => item.description || ''
+                            }
                         ]}
                         onAdd={onAdd}
                         onEdit={onEdit}

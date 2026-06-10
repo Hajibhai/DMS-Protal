@@ -4652,6 +4652,42 @@ export default function App() {
     });
   };
 
+  const handleDeleteAPBatch = async (batchId: string) => {
+    const userRoleLower = (systemUser?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
+    
+    if (!isAdmin) {
+      alert("Access Denied: Only portal Admins can delete Excel import batches.");
+      return;
+    }
+
+    const toDelete = accountsPayable.filter((ap: AccountsPayable) => ap.excelBatchId === batchId || ap.excelFileName === batchId);
+    if (toDelete.length === 0) {
+      alert("No data records found in this batch.");
+      return;
+    }
+
+    const firstItem = toDelete[0];
+    const displayFilename = firstItem.excelFileName || batchId;
+
+    openConfirm(
+      "Delete Excel Data", 
+      `Are you sure you want to delete the imported excel file "${displayFilename}" and completely erase all its ${toDelete.length} associated data records? This option is irreversible and only available for super-admins.`, 
+      async () => {
+        try {
+          for (const item of toDelete) {
+            await deleteAccountsPayable(item.id);
+          }
+          handleLogAction('Payables Batch Deleted', `Permanently deleted import file ${displayFilename} and ${toDelete.length} ledger rows.`, 'delete');
+          alert(`Successfully deleted the imported Excel file "${displayFilename}" and erased all associated ${toDelete.length} entries.`);
+        } catch (err) {
+          console.error("Failed to delete imported batch: ", err);
+          alert("An error occurred while deleting the imported batch.");
+        }
+      }
+    );
+  };
+
   const handleUploadExcelPayable = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -4702,6 +4738,8 @@ export default function App() {
         }
 
         const importedList: AccountsPayable[] = [];
+        const batchId = `${file.name}_${Date.now()}`;
+        const fileNameToUse = file.name;
 
         for (let r = headerRowIndex + 1; r < rawData.length; r++) {
           const row = rawData[r];
@@ -4779,7 +4817,9 @@ export default function App() {
             paid: paidVal,
             payableAmount: payableAmountVal,
             supplierName: nameToUse,
-            supplierCode: codeToUse
+            supplierCode: codeToUse,
+            excelBatchId: batchId,
+            excelFileName: fileNameToUse
           };
 
           if (idxClearDate !== -1 && row[idxClearDate]) {
@@ -5494,6 +5534,7 @@ export default function App() {
           onAdd={() => setShowAPModal(true)}
           onEdit={(ap: AccountsPayable) => setShowAPModal(ap)}
           onDelete={handleDeleteAP}
+          onDeleteBatch={handleDeleteAPBatch}
           onUploadExcel={handleUploadExcelPayable}
           user={systemUser}
           companies={companies}
