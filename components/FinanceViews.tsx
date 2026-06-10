@@ -2028,6 +2028,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     </td>
                                     <td className="px-6 py-4 text-left font-bold text-slate-400">-</td>
                                     <td className="px-6 py-4 text-left font-bold text-slate-400">-</td>
+                                    <td className="px-6 py-4 text-left font-bold text-slate-400">-</td>
                                     <td className="px-6 py-4 text-center font-mono font-extrabold text-slate-800">
                                         <div className="flex flex-col items-center">
                                             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hours</span>
