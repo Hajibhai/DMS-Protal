@@ -282,6 +282,34 @@ export function DataTable<T extends { id: string }>({
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
 
+        const currencyColumns = ['amount', 'actualAmount', 'vatAmount', 'totalAmount', 'advance', 'deduction', 'paid', 'payableAmount'];
+        
+        // Sum totals for the bottom of print ledger
+        const totalSums: any = {};
+        const sumKeys = ['amount', 'actualAmount', 'vatAmount', 'totalAmount', 'advance', 'deduction', 'paid', 'payableAmount', 'hours'];
+        sumKeys.forEach(key => {
+            totalSums[key] = filteredData.reduce((sum, item) => {
+                let val = (item as any)[key];
+                if (key === 'totalAmount' && val === undefined) {
+                    const actual = item.actualAmount !== undefined ? item.actualAmount : (item as any).amount || 0;
+                    const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+                    val = Number((actual + vat).toFixed(2));
+                } else if (key === 'payableAmount' && val === undefined) {
+                    const actual = item.actualAmount !== undefined ? item.actualAmount : (item as any).amount || 0;
+                    const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+                    const total = Number((actual + vat).toFixed(2));
+                    const advance = (item as any).advance || 0;
+                    const deduction = (item as any).deduction || 0;
+                    const paid = (item as any).paid || 0;
+                    val = Number((total - paid - advance - deduction).toFixed(2));
+                } else if (key === 'actualAmount' && val === undefined) {
+                    val = (item as any).amount || 0;
+                }
+                const n = Number(val || 0);
+                return sum + (isNaN(n) ? 0 : n);
+            }, 0);
+        });
+
         const html = `
             <html>
                 <head>
@@ -289,13 +317,15 @@ export function DataTable<T extends { id: string }>({
                     <style>
                         @page { 
                             size: ${options.orientation}; 
-                            margin: ${options.margins === 'none' ? '0' : options.margins === 'minimum' ? '5mm' : '20mm'}; 
+                            margin: ${options.margins === 'none' ? '0' : options.margins === 'minimum' ? '5mm' : '15mm'}; 
                         }
                         body { 
-                            font-family: sans-serif; 
-                            color: #333; 
+                            font-family: system-ui, -apple-system, sans-serif; 
+                            color: #1e293b; 
+                            background-color: #ffffff;
+                            margin: 10px;
                             filter: ${options.colorMode === 'mono' ? 'grayscale(100%) !important' : 'none'};
-                            ${options.fitToPaper ? 'zoom: 92%; max-width: 100%;' : ''}
+                            ${options.fitToPaper ? 'zoom: 90%; max-width: 100%;' : ''}
                             -webkit-print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
                             print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
                         }
@@ -306,12 +336,12 @@ export function DataTable<T extends { id: string }>({
                                 border-color: #000000 !important;
                             }
                         ` : ''}
-                        h1 { text-align: center; color: #000; margin-bottom: 5px; }
-                        p { text-align: center; color: #666; margin-bottom: 20px; font-size: 12px; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 10px; }
-                        th { background-color: #f2f2f2; font-weight: bold; text-transform: uppercase; }
-                        tr:nth-child(even) { background-color: #fafafa; }
+                        h1 { text-align: left; color: #0f172a; margin-bottom: 4px; font-weight: 800; font-size: 24px; font-family: sans-serif; }
+                        p { text-align: left; color: #64748b; margin-top: 0; margin-bottom: 24px; font-size: 11px; font-weight: 500; font-family: sans-serif; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 12px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                        th { background-color: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 7px 8px; font-weight: 700; text-transform: uppercase; font-size: 9px; }
+                        td { border: 1px solid #e2e8f0; padding: 7px 8px; font-size: 10px; }
+                        tr:nth-child(even) { background-color: #f8fafc; }
                     </style>
                 </head>
                 <body>
@@ -320,18 +350,95 @@ export function DataTable<T extends { id: string }>({
                     <table>
                         <thead>
                             <tr>
-                                ${columns.map(col => `<th>${col.label}</th>`).join('')}
+                                ${columns.map(col => {
+                                    const isNumberCol = currencyColumns.includes(String(col.key)) || col.key === 'hours';
+                                    const align = isNumberCol ? 'right' : (col.key === 'srNo' || col.key === 'supplierCode' ? 'center' : 'left');
+                                    return `<th style="text-align: ${align};">${col.label}</th>`;
+                                }).join('')}
                             </tr>
                         </thead>
                         <tbody>
-                            ${filteredData.map(item => `
+                            ${filteredData.map((item, itemIdx) => `
                                 <tr>
                                     ${columns.map(col => {
-                                        const val = (item as any)[col.key];
-                                        return `<td>${val !== undefined && val !== null ? val : ''}</td>`;
+                                        let val: any = '';
+                                        if (col.key === 'srNo') {
+                                            val = itemIdx + 1;
+                                        } else if (col.exportText) {
+                                            val = col.exportText(item, itemIdx);
+                                        } else {
+                                            val = (item as any)[col.key];
+                                        }
+
+                                        const isCurrency = currencyColumns.includes(String(col.key));
+                                        const isNumberCol = isCurrency || col.key === 'hours';
+
+                                        let formattedVal = '';
+                                        if (val === undefined || val === null || val === '') {
+                                            formattedVal = '-';
+                                        } else if (typeof val === 'number') {
+                                            if (isCurrency) {
+                                                formattedVal = 'AED ' + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                            } else {
+                                                formattedVal = val.toLocaleString();
+                                            }
+                                        } else {
+                                            formattedVal = String(val);
+                                        }
+
+                                        const alignStyle = isNumberCol ? 'text-align: right;' : (col.key === 'srNo' || col.key === 'supplierCode' ? 'text-align: center;' : 'text-align: left;');
+                                        let tdStyle = `font-size: 9.5px; padding: 6px 8px; border: 1px solid #cbd5e1; font-family: monospace; ${alignStyle}`;
+                                        if (!isNumberCol) {
+                                            tdStyle += ' font-family: system-ui, sans-serif;';
+                                        }
+
+                                        if (col.key === 'paid') {
+                                            tdStyle += ' color: #16a34a; font-weight: bold;';
+                                        } else if (col.key === 'deduction') {
+                                            tdStyle += ' color: #dc2626; font-weight: bold;';
+                                        } else if (col.key === 'payableAmount') {
+                                            tdStyle += ' color: #1d4ed8; font-weight: 800; background-color: #f0f7ff;';
+                                        } else if (col.key === 'status') {
+                                            const isReceivedOrPaid = String(val).toLowerCase().includes('received') || String(val).toLowerCase().includes('paid');
+                                            const isPending = String(val).toLowerCase().includes('pending');
+                                            if (isReceivedOrPaid) {
+                                                tdStyle += ' color: #16a34a; font-weight: bold;';
+                                            } else if (isPending) {
+                                                tdStyle += ' color: #ea580c; font-weight: bold;';
+                                            }
+                                        }
+
+                                        return `<td style="${tdStyle}">${formattedVal}</td>`;
                                     }).join('')}
                                 </tr>
                             `).join('')}
+                            
+                            <!-- Professional Styled Grand Totals Row -->
+                            <tr style="background-color: #f1f5f9; font-weight: bold; border-top: 2px solid #94a3b8; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                                ${columns.map((col, idx) => {
+                                    if (idx === 0) {
+                                        return `<td style="font-size: 9.5px; padding: 8px; border: 1px solid #cbd5e1; font-family: system-ui, sans-serif; font-weight: 800; text-transform: uppercase;">TOTALS</td>`;
+                                    }
+                                    if (sumKeys.includes(String(col.key))) {
+                                        const val = totalSums[col.key] || 0;
+                                        const isCurrencyCol = currencyColumns.includes(String(col.key));
+                                        const formattedVal = !isCurrencyCol 
+                                            ? val.toLocaleString() 
+                                            : 'AED ' + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                        
+                                        let tdStyle = `font-size: 9.5px; padding: 8px; border: 1px solid #cbd5e1; font-family: monospace; text-align: right; font-weight: bold;`;
+                                        if (col.key === 'paid') {
+                                            tdStyle += ' color: #16a34a;';
+                                        } else if (col.key === 'deduction') {
+                                            tdStyle += ' color: #dc2626;';
+                                        } else if (col.key === 'payableAmount') {
+                                            tdStyle += ' color: #1d4ed8; background-color: #e0f2fe;';
+                                        }
+                                        return `<td style="${tdStyle}">${formattedVal}</td>`;
+                                    }
+                                    return `<td style="font-size: 9.5px; padding: 8px; border: 1px solid #cbd5e1; font-family: system-ui, sans-serif; text-align: left; font-weight: bold; color: #475569;">-</td>`;
+                                }).join('')}
+                            </tr>
                         </tbody>
                     </table>
                 </body>
