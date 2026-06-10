@@ -70,7 +70,7 @@ import {
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator,
   Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home, Mail,
-  Database, HardDrive
+  Database, HardDrive, Sparkles
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -112,7 +112,9 @@ import {
   PublicHoliday,
   EngineerDocument,
   CorporateBankAccount,
-  CampExpense
+  CampExpense,
+  Task,
+  Note
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -3822,6 +3824,143 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+
+  // Dynamic UI Theme & Personalization Redesign states
+  const [activeTheme, setActiveTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('shiftsync_theme') || 'indigo';
+    }
+    return 'indigo';
+  });
+  const [typographyScale, setTypographyScale] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('shiftsync_typography') || 'classic';
+    }
+    return 'classic';
+  });
+  const [ambianceMode, setAmbianceMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('shiftsync_ambiance') || 'flat';
+    }
+    return 'flat';
+  });
+  const [animationIntensity, setAnimationIntensity] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('shiftsync_animations') || 'smooth';
+    }
+    return 'smooth';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('shiftsync_theme', activeTheme);
+    localStorage.setItem('shiftsync_typography', typographyScale);
+    localStorage.setItem('shiftsync_ambiance', ambianceMode);
+    localStorage.setItem('shiftsync_animations', animationIntensity);
+
+    const root = document.documentElement;
+
+    const palettes: Record<string, Record<string, string>> = {
+      indigo: {
+        '--color-brand-50': '#f0f9ff',
+        '--color-brand-100': '#e0f2fe',
+        '--color-brand-200': '#bae6fd',
+        '--color-brand-300': '#7dd3fc',
+        '--color-brand-400': '#38bdf8',
+        '--color-brand-500': '#0ea5e9',
+        '--color-brand-600': '#0284c7',
+        '--color-brand-700': '#0369a1',
+        '--color-brand-800': '#075985',
+        '--color-brand-900': '#0c4a6e',
+        '--color-brand-950': '#082f49',
+      },
+      emerald: {
+        '--color-brand-50': '#f0fdf4',
+        '--color-brand-100': '#dcfce7',
+        '--color-brand-200': '#bbf7d0',
+        '--color-brand-300': '#86efac',
+        '--color-brand-400': '#4ade80',
+        '--color-brand-500': '#22c55e',
+        '--color-brand-600': '#16a34a',
+        '--color-brand-700': '#15803d',
+        '--color-brand-800': '#166534',
+        '--color-brand-900': '#14532d',
+        '--color-brand-950': '#052e16',
+      },
+      crimson: {
+        '--color-brand-50': '#fff1f2',
+        '--color-brand-100': '#ffe4e6',
+        '--color-brand-200': '#fecdd3',
+        '--color-brand-300': '#fda4af',
+        '--color-brand-400': '#fb7185',
+        '--color-brand-500': '#f43f5e',
+        '--color-brand-600': '#e11d48',
+        '--color-brand-700': '#be123c',
+        '--color-brand-800': '#9f1239',
+        '--color-brand-900': '#881337',
+        '--color-brand-950': '#4c0519',
+      },
+      violet: {
+        '--color-brand-50': '#faf5ff',
+        '--color-brand-100': '#f3e8ff',
+        '--color-brand-200': '#e9d5ff',
+        '--color-brand-300': '#d8b4fe',
+        '--color-brand-400': '#c084fc',
+        '--color-brand-500': '#a855f7',
+        '--color-brand-600': '#9333ea',
+        '--color-brand-700': '#7e22ce',
+        '--color-brand-800': '#6b21a8',
+        '--color-brand-900': '#581c87',
+        '--color-brand-950': '#3b0764',
+      },
+      amber: {
+        '--color-brand-50': '#fffbeb',
+        '--color-brand-100': '#fef3c7',
+        '--color-brand-200': '#fde68a',
+        '--color-brand-300': '#fcd34d',
+        '--color-brand-400': '#fbbf24',
+        '--color-brand-500': '#f59e0b',
+        '--color-brand-600': '#d97706',
+        '--color-brand-700': '#b45309',
+        '--color-brand-800': '#92400e',
+        '--color-brand-900': '#78350f',
+        '--color-brand-950': '#451a03',
+      },
+      cyberpunk: {
+        '--color-brand-50': '#f5f3ff',
+        '--color-brand-100': '#ede9fe',
+        '--color-brand-200': '#ddd6fe',
+        '--color-brand-300': '#c4b5fd',
+        '--color-brand-400': '#a78bfa',
+        '--color-brand-500': '#8b5cf6',
+        '--color-brand-600': '#7c3aed',
+        '--color-brand-700': '#6d28d9',
+        '--color-brand-800': '#5b21b6',
+        '--color-brand-900': '#4c1d95',
+        '--color-brand-950': '#2e1065',
+      }
+    };
+
+    const selected = palettes[activeTheme] || palettes.indigo;
+    Object.entries(selected).forEach(([key, val]) => {
+      root.style.setProperty(key, val);
+    });
+
+    const fonts: Record<string, string> = {
+      classic: '"Inter", system-ui, sans-serif',
+      modern: '"Outfit", "Space Grotesk", sans-serif',
+      mono: '"JetBrains Mono", monospace'
+    };
+    root.style.setProperty('--font-sans', fonts[typographyScale] || fonts.classic);
+
+    if (typographyScale === 'modern' && !document.getElementById('outfit-font-import')) {
+      const link = document.createElement('link');
+      link.id = 'outfit-font-import';
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=Outfit:wght@350;400;500;600;700;800;900&family=Space+Grotesk:wght@355;400;500;600;700&display=swap';
+      document.head.appendChild(link);
+    }
+  }, [activeTheme, typographyScale, ambianceMode, animationIntensity]);
   
   // Custom global download popup state and listener
   const [downloadPopup, setDownloadPopup] = useState<{
@@ -3883,6 +4022,21 @@ export default function App() {
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [showAuditModal, setShowAuditModal] = useState(false);
+  const [portalBranding, setPortalBranding] = useState<{ logoUrl?: string; logoText?: string; logoSubtext?: string }>({
+    logoUrl: '',
+    logoText: 'PIONEER',
+    logoSubtext: 'DMS PORTAL'
+  });
+
+  const handleUpdatePortalBranding = async (branding: { logoUrl?: string; logoText?: string; logoSubtext?: string }) => {
+    try {
+      await setDoc(doc(db, 'settings', 'branding'), branding, { merge: true });
+      await handleLogAction('Update Branding', `Updated system branding with custom logo: ${branding.logoText}`, 'update');
+    } catch (error: any) {
+      console.error("Error updating portal branding settings:", error);
+      throw error;
+    }
+  };
   
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
 
@@ -4292,6 +4446,25 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'users');
     }) : () => {};
 
+    const unsubBranding = onSnapshot(doc(db, 'settings', 'branding'), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setPortalBranding({
+          logoUrl: data.logoUrl || '',
+          logoText: data.logoText || 'PIONEER',
+          logoSubtext: data.logoSubtext || 'DMS PORTAL'
+        });
+      } else {
+        setPortalBranding({
+          logoUrl: '',
+          logoText: 'PIONEER',
+          logoSubtext: 'DMS PORTAL'
+        });
+      }
+    }, (error) => {
+      console.warn("Error subscribing to branding document, fallback values will be used:", error);
+    });
+
     return () => {
       unsubEmployees();
       unsubAttendance();
@@ -4313,6 +4486,7 @@ export default function App() {
       unsubSafety();
       unsubHolidays();
       unsubUsers();
+      unsubBranding();
     };
   }, [isAuthReady, user, systemUser]);
 
@@ -4876,6 +5050,11 @@ export default function App() {
       accountsReceivable={accountsReceivable}
       pettyCash={pettyCash}
       onNotificationClick={handleNotificationClick}
+      activeTheme={activeTheme}
+      typographyScale={typographyScale}
+      ambianceMode={ambianceMode}
+      animationIntensity={animationIntensity}
+      portalBranding={portalBranding}
     >
       {activeTab === 'dashboard' && (
         <DashboardView 
@@ -4898,6 +5077,8 @@ export default function App() {
           pettyCash={pettyCash}
           everydayExpenses={everydayExpenses}
           projectedExpenses={projectedExpenses}
+          activeTheme={activeTheme}
+          animationIntensity={animationIntensity}
         />
       )}
       {activeTab === 'company' && (
@@ -5200,6 +5381,16 @@ export default function App() {
           onUpdateBankAccount={handleUpdateBankAccount}
           onDeleteBankAccount={handleDeleteBankAccount}
           onSetDefaultBankAccount={handleSetDefaultBankAccount}
+          activeTheme={activeTheme}
+          setActiveTheme={setActiveTheme}
+          typographyScale={typographyScale}
+          setTypographyScale={setTypographyScale}
+          ambianceMode={ambianceMode}
+          setAmbianceMode={setAmbianceMode}
+          animationIntensity={animationIntensity}
+          setAnimationIntensity={setAnimationIntensity}
+          portalBranding={portalBranding}
+          onUpdatePortalBranding={handleUpdatePortalBranding}
         />
       )}
       {activeTab === 'help' && (
@@ -5409,7 +5600,9 @@ const DashboardView = ({
     accountsReceivable = [],
     pettyCash = [],
     everydayExpenses = [],
-    projectedExpenses = []
+    projectedExpenses = [],
+    activeTheme = 'indigo',
+    animationIntensity = 'smooth'
 }: any) => {
     const [showQuickAdminMenu, setShowQuickAdminMenu] = useState(false);
     
@@ -5505,7 +5698,17 @@ const DashboardView = ({
         { month: 'Mar', count: activeStaff.length },
     ];
 
-    const COLORS = ['#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b'];
+    const COLORS = useMemo(() => {
+        const themeMap: Record<string, string[]> = {
+            indigo: ['#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#10b981'],
+            emerald: ['#10b981', '#0ea5e9', '#8b5cf6', '#ec4899', '#f59e0b', '#f43f5e'],
+            crimson: ['#f43f5e', '#ec4899', '#6366f1', '#8b5cf6', '#0ea5e9', '#10b981'],
+            violet: ['#a855f7', '#8b5cf6', '#ec4899', '#0ea5e9', '#10b981', '#f59e0b'],
+            amber: ['#f59e0b', '#f97316', '#eab308', '#6366f1', '#10b981', '#8b5cf6'],
+            cyberpunk: ['#8b5cf6', '#a855f7', '#06b6d4', '#ec4899', '#10b981', '#f59e0b']
+        };
+        return themeMap[activeTheme] || themeMap.indigo;
+    }, [activeTheme]);
 
     const handleExport = () => {
         const data = employees.map((e: any) => ({
@@ -5527,38 +5730,58 @@ const DashboardView = ({
         <div className="space-y-8 pb-12">
             {/* Header Section */}
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-                {user.role === UserRole.CREATOR && (
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-brand-600 font-bold text-xs uppercase tracking-[0.2em]">
-                            <Activity className="w-4 h-4" />
-                            System Intelligence
-                        </div>
-                        <h1 className="text-4xl font-black text-slate-900 tracking-tight">Executive Dashboard</h1>
-                        <p className="text-slate-500 font-medium max-w-xl">
-                            Welcome back, <span className="text-slate-900 font-bold">{user.name}</span>. 
-                            The system is currently monitoring <span className="text-brand-600 font-bold">{activeStaff.length} active personnel</span> across {Object.keys(deptStats).length} departments.
-                        </p>
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-brand-600 font-bold text-xs uppercase tracking-[0.2em] font-sans">
+                        <Activity className="w-4 h-4 animate-pulse shrink-0" />
+                        Portal Intelligence & Diagnostics
                     </div>
-                )}
-                {user.role !== UserRole.CREATOR && <div className="flex-1"></div>}
+                    {(() => {
+                        const hour = new Date().getHours();
+                        let greeting = "Welcome";
+                        if (hour < 12) greeting = "Good morning";
+                        else if (hour < 17) greeting = "Good afternoon";
+                        else greeting = "Good evening";
+                        
+                        const isSystemOwner = user.email === 'abdulkaderp3010@gmail.com' || user.email === CREATOR_USER.username || user.role === UserRole.CREATOR;
+                        
+                        return (
+                            <>
+                                <h1 className="text-4xl font-black text-slate-900 tracking-tight font-sans">
+                                    {greeting}, <span className="text-brand-600">{user.name}</span>
+                                </h1>
+                                <p className="text-slate-500 font-medium max-w-xl text-xs sm:text-sm">
+                                    {isSystemOwner ? (
+                                        <>
+                                            The dashboard is currently monitoring <span className="text-brand-600 font-extrabold">{activeStaff.length} active personnel</span> across <span className="text-slate-800 font-bold">{deptStats.length} departments</span> with workspace syncing enabled.
+                                        </>
+                                    ) : (
+                                        <>
+                                            Your team portal session is active. Ready to coordinate workflow shifts, timesheets, and accounts. Always stay synced!
+                                        </>
+                                    )}
+                                </p>
+                            </>
+                        );
+                    })()}
+                </div>
                 
                 <div className="flex flex-wrap items-center gap-3">
                     {(user.role === UserRole.CREATOR || user.role === UserRole.ADMIN || user.role === UserRole.HR) && (
                         <button 
                             onClick={onOpenOnboarding}
-                            className="flex-1 sm:flex-none bg-white text-slate-900 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-xl shadow-slate-900/10 active:scale-95"
+                            className="flex-1 sm:flex-none bg-white text-slate-900 border border-slate-200 px-6 py-3 rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-md active:scale-95 cursor-pointer"
                         >
-                            <UserPlus className="w-4 h-4" /> Onboard Staff
+                            <UserPlus className="w-4 h-4 text-brand-500" /> Onboard Staff
                         </button>
                     )}
                     {(user.role === UserRole.CREATOR || user.role === UserRole.ADMIN || canManageSettings) && (
                         <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
-                            <button onClick={onOpenManageCompanies} className="p-2 hover:bg-slate-50 rounded-xl text-slate-600 transition-all" title="Manage Companies">
-                                <Building2 className="w-5 h-5" />
+                            <button onClick={onOpenManageCompanies} className="p-2 hover:bg-slate-50 rounded-xl text-slate-600 transition-all cursor-pointer" title="Manage Companies">
+                                <Building2 className="w-5 h-5 text-brand-500" />
                             </button>
                             <div className="w-px h-4 bg-slate-200"></div>
-                            <button onClick={onOpenUserManagement} className="p-2 hover:bg-slate-50 rounded-xl text-slate-600 transition-all" title="System Users">
-                                <UserCog className="w-5 h-5" />
+                            <button onClick={onOpenUserManagement} className="p-2 hover:bg-slate-50 rounded-xl text-slate-600 transition-all cursor-pointer" title="System Users">
+                                <UserCog className="w-5 h-5 text-brand-500" />
                             </button>
                         </div>
                     )}
@@ -5571,52 +5794,52 @@ const DashboardView = ({
                 <BentoStatCard 
                     title="Current Active Employees" 
                     value={activeStaff.length} 
-                    trend="+12.5%" 
-                    isUp={true}
                     icon={Users} 
                     color="brand"
                     className="lg:col-span-2"
                     onClick={() => setActiveTab && setActiveTab('staff')}
+                    index={0}
+                    animationIntensity={animationIntensity}
                 />
                 <BentoStatCard 
                     title="Clients" 
                     value={vendors.length} 
-                    trend="+1.2%" 
-                    isUp={true}
                     icon={Globe} 
                     color="brand"
                     className="lg:col-span-2"
                     onClick={() => setActiveTab && setActiveTab('vendors')}
+                    index={1}
+                    animationIntensity={animationIntensity}
                 />
                 <BentoStatCard 
                     title="Suppliers" 
                     value={suppliers.length} 
-                    trend="+4.2%" 
-                    isUp={true}
                     icon={Truck} 
                     color="indigo"
                     className="lg:col-span-2"
                     onClick={() => setActiveTab && setActiveTab('suppliers')}
+                    index={2}
+                    animationIntensity={animationIntensity}
                 />
                 <BentoStatCard 
                     title="Active Projects" 
                     value={activeProjects} 
-                    trend="+2.5%" 
-                    isUp={true}
                     icon={Briefcase} 
                     color="orange"
                     className="lg:col-span-2"
                     onClick={() => setActiveTab && setActiveTab('projects')}
+                    index={3}
+                    animationIntensity={animationIntensity}
                 />
                 <BentoStatCard 
                     title="Ex Employees" 
                     value={exEmployees} 
-                    trend="+8.0%" 
-                    isUp={true}
                     icon={UserMinus} 
                     color="emerald"
                     className="lg:col-span-2"
                     onClick={() => setActiveTab && setActiveTab('ex-employees')}
+                    index={4}
+                    animationIntensity={animationIntensity}
                 />
 
 
@@ -5654,7 +5877,7 @@ const DashboardView = ({
                                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                                 ))}
                                             </Pie>
-                                            <Tooltip formatter={(value) => [`${value} Personnel`, 'Count']} />
+                                            <Tooltip formatter={(value, name) => [`${value}`, `${name}`]} contentStyle={{ borderRadius: '12px', borderColor: '#e2e8f0', fontFamily: 'sans-serif' }} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -6036,7 +6259,17 @@ const SettingsView = ({
     onAddBankAccount,
     onUpdateBankAccount,
     onDeleteBankAccount,
-    onSetDefaultBankAccount
+    onSetDefaultBankAccount,
+    activeTheme = 'indigo',
+    setActiveTheme = () => {},
+    typographyScale = 'classic',
+    setTypographyScale = () => {},
+    ambianceMode = 'flat',
+    setAmbianceMode = () => {},
+    animationIntensity = 'smooth',
+    setAnimationIntensity = () => {},
+    portalBranding = { logoUrl: '', logoText: 'PIONEER', logoSubtext: 'DMS PORTAL' },
+    onUpdatePortalBranding = async () => {}
 }: { 
     user: SystemUser, 
     onPasswordReset: () => void,
@@ -6045,12 +6278,102 @@ const SettingsView = ({
     onAddBankAccount: (acc: Omit<CorporateBankAccount, 'id'>) => Promise<void>,
     onUpdateBankAccount: (acc: CorporateBankAccount) => Promise<void>,
     onDeleteBankAccount: (id: string) => Promise<void>,
-    onSetDefaultBankAccount: (id: string) => Promise<void>
+    onSetDefaultBankAccount: (id: string) => Promise<void>,
+    activeTheme?: string,
+    setActiveTheme?: (val: string) => void,
+    typographyScale?: string,
+    setTypographyScale?: (val: string) => void,
+    ambianceMode?: string,
+    setAmbianceMode?: (val: string) => void,
+    animationIntensity?: string,
+    setAnimationIntensity?: (val: string) => void,
+    portalBranding?: { logoUrl?: string; logoText?: string; logoSubtext?: string },
+    onUpdatePortalBranding?: (branding: { logoUrl?: string; logoText?: string; logoSubtext?: string }) => Promise<void>
 }) => {
     const canManageSettings = user?.permissions?.canManageSettings;
     const userRoleLower = user?.role?.toLowerCase() || '';
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
     
+    // Portal branding states
+    const [logoUrl, setLogoUrl] = useState(portalBranding?.logoUrl || '');
+    const [logoText, setLogoText] = useState(portalBranding?.logoText || 'PIONEER');
+    const [logoSubtext, setLogoSubtext] = useState(portalBranding?.logoSubtext || 'DMS PORTAL');
+    const [isSavingBranding, setIsSavingBranding] = useState(false);
+    const [brandingSuccess, setBrandingSuccess] = useState(false);
+
+    // Sync state with props
+    useEffect(() => {
+        if (portalBranding) {
+            setLogoUrl(portalBranding.logoUrl || '');
+            setLogoText(portalBranding.logoText || 'PIONEER');
+            setLogoSubtext(portalBranding.logoSubtext || 'DMS PORTAL');
+        }
+    }, [portalBranding]);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Verify image status
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file (PNG, JPG, SVG, WebP, etc.)');
+            return;
+        }
+
+        // Keep it lightweight for Firestore (250KB limit)
+        if (file.size > 256 * 1024) {
+            alert('Branding logos should be optimized and under 250 KB.');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+                setLogoUrl(reader.result);
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleSaveBranding = async () => {
+        setIsSavingBranding(true);
+        setBrandingSuccess(false);
+        try {
+            await onUpdatePortalBranding({
+                logoUrl,
+                logoText: logoText.trim() || 'PIONEER',
+                logoSubtext: logoSubtext.trim() || 'DMS PORTAL'
+            });
+            setBrandingSuccess(true);
+            setTimeout(() => setBrandingSuccess(false), 3000);
+        } catch (err) {
+            console.error("Failed to update branding settings:", err);
+            alert('Failed to save public brand settings.');
+        } finally {
+            setIsSavingBranding(false);
+        }
+    };
+
+    const handleResetBranding = async () => {
+        if (window.confirm('Are you sure you want to reset the company identity settings to the default "PIONEER" branding?')) {
+            setIsSavingBranding(true);
+            try {
+                await onUpdatePortalBranding({
+                    logoUrl: '',
+                    logoText: 'PIONEER',
+                    logoSubtext: 'DMS PORTAL'
+                });
+                setLogoUrl('');
+                setLogoText('PIONEER');
+                setLogoSubtext('DMS PORTAL');
+            } catch (err) {
+                console.error("Failed to reset branding:", err);
+            } finally {
+                setIsSavingBranding(false);
+            }
+        }
+    };
+
     // Storage space states
     const [allTasks, setAllTasks] = useState<Task[]>([]);
     const [allNotes, setAllNotes] = useState<Note[]>([]);
@@ -6075,7 +6398,7 @@ const SettingsView = ({
         }, (err) => console.error("Error loading expenses for stats:", err));
 
         const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
-            setAllUsers(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as SystemUser));
+            setAllUsers(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as unknown as SystemUser)));
             setLoadingStorage(false);
         }, (err) => {
             console.error("Error loading users for stats:", err);
@@ -6532,7 +6855,7 @@ const SettingsView = ({
 
                     {/* Personal usage progress */}
                     {(() => {
-                        const myStats = getUserStorageStats(user.uid || user.id || '', user.name);
+                        const myStats = getUserStorageStats(user.uid || '', user.name);
                         const QUOTA_LIMIT = 100 * 1024 * 1024; // 100 MB quota
                         const usagePercent = Math.min((myStats.totalSize / QUOTA_LIMIT) * 100, 100);
 
@@ -6640,7 +6963,7 @@ const SettingsView = ({
                                 const creatorEmails = ['abdulkaderp3010@gmail.com', CREATOR_USER.username.toLowerCase()];
                                 const creatorUids = allUsers
                                     .filter(u => u.role?.toLowerCase() === 'creator' || creatorEmails.includes(u.email?.toLowerCase() || ''))
-                                    .map(u => u.uid || u.id || '');
+                                    .map(u => u.uid || '');
 
                                 const filteredExpenses = allExpenses.filter(e => {
                                     if (isCurrentCreator) return true;
@@ -6742,7 +7065,7 @@ const SettingsView = ({
                                                 {(() => {
                                                     const isCurrentCreator = user?.role?.toLowerCase() === 'creator' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
-                                                    const usersToRender = (allUsers.length > 0 ? allUsers : systemUsers).filter(u => {
+                                                    const usersToRender = allUsers.filter(u => {
                                                         const isThisUserCreator = u.role?.toLowerCase() === 'creator' || u.email === 'abdulkaderp3010@gmail.com' || u.email === CREATOR_USER.username;
                                                         if (isThisUserCreator && !isCurrentCreator) {
                                                             return false;
@@ -6768,13 +7091,13 @@ const SettingsView = ({
 
                                                     // Sort users so that users using the most storage appear first
                                                     const sortedUsers = [...usersToRender].sort((a, b) => {
-                                                        const statA = getUserStorageStats(a.uid || a.id || '', a.name);
-                                                        const statB = getUserStorageStats(b.uid || b.id || '', b.name);
+                                                        const statA = getUserStorageStats(a.uid || '', a.name);
+                                                        const statB = getUserStorageStats(b.uid || '', b.name);
                                                         return statB.totalSize - statA.totalSize;
                                                     });
 
                                                     return sortedUsers.map((u) => {
-                                                        const uid = u.uid || u.id || '';
+                                                        const uid = u.uid || '';
                                                         const stats = getUserStorageStats(uid, u.name);
                                                         const limitBytes = 100 * 1024 * 1024;
                                                         const pct = Math.min((stats.totalSize / limitBytes) * 105, 100);
@@ -6845,6 +7168,150 @@ const SettingsView = ({
                     )}
                 </div>
 
+                {isAdmin && (
+                    <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm animate-in fade-in duration-300 space-y-8">
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-brand-50 text-brand-600 rounded-2xl border border-brand-100/50">
+                                    <Sparkles className="w-5 h-5 text-brand-500" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900 font-sans">Corporate Portal Identity</h3>
+                                    <p className="text-slate-500 text-xs mt-1">Customize the portal's core identity—including the custom logo image, corporate title, and branding subtext visible across all headers.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-slate-100">
+                            {/* Live Header Branding Preview */}
+                            <div className="flex flex-col justify-between p-6 rounded-[2rem] border border-slate-150/80 bg-slate-50/50 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-brand-500/5 rounded-full blur-3xl animate-pulse" />
+                                <div>
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-4">Live Layout Header Preview</span>
+                                    <div className="p-4 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200/40 shadow-sm flex items-center justify-between relative z-10">
+                                        <div className="flex items-center gap-3">
+                                            {logoUrl ? (
+                                                <div className="rounded-xl border border-slate-200/50 bg-white shadow-sm flex items-center justify-center w-10 h-10 overflow-hidden shrink-0">
+                                                    <img src={logoUrl} alt="Logo Preview" referrerPolicy="no-referrer" className="w-full h-full object-contain" />
+                                                </div>
+                                            ) : (
+                                                <div className="bg-brand-600 p-2 rounded-xl text-white w-10 h-10 flex items-center justify-center shrink-0">
+                                                    <Building2 className="w-5 h-5" />
+                                                </div>
+                                            )}
+                                            <div className="flex flex-col">
+                                                <span className="font-sans font-black text-sm text-slate-900 leading-none tracking-tight">
+                                                    {logoText || 'PIONEER'}
+                                                </span>
+                                                <span className="text-[8px] font-bold text-brand-600 tracking-[0.2em] mt-0.5 uppercase">
+                                                    {logoSubtext || 'DMS PORTAL'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1.5 shrink-0">
+                                            <div className="w-4 h-1.5 rounded-full bg-slate-200" />
+                                            <div className="w-4 h-1.5 rounded-full bg-slate-200" />
+                                            <div className="w-8 h-1.5 rounded-full bg-brand-500" />
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-semibold mt-4 italic relative z-101 select-none">
+                                        This module updates your custom administrative branding instantly across all user screens without page reloads.
+                                    </p>
+                                </div>
+
+                                <div className="mt-6 pt-4 border-t border-slate-200/40 flex items-center justify-between relative z-10">
+                                    <span className="text-[10px] font-bold text-slate-400">Branding Source</span>
+                                    <span className={`px-2 py-0.5 text-[9px] font-black tracking-wider uppercase rounded-md border ${
+                                        logoUrl ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-slate-100 text-slate-500 border-slate-200"
+                                    }`}>
+                                        {logoUrl ? "Custom Image Logo" : "Default Icon Model"}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Identity Input Configuration Details */}
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">Upload Custom Logo File</label>
+                                    <div className="flex items-center gap-4">
+                                        <label className="flex flex-col items-center justify-center w-24 h-24 rounded-2xl border-2 border-dashed border-slate-200 hover:border-brand-500 bg-slate-50/50 hover:bg-brand-50/10 cursor-pointer transition-all shrink-0">
+                                            <div className="flex flex-col items-center justify-center py-2 text-center">
+                                                <Upload className="w-6 h-6 text-slate-400 mb-1" />
+                                                <span className="text-[9px] font-black text-brand-600">Choose File</span>
+                                                <span className="text-[7px] text-slate-400 font-bold mt-0.5 font-sans">PNG / SVG / JPG</span>
+                                            </div>
+                                            <input 
+                                                type="file" 
+                                                accept="image/*" 
+                                                onChange={handleFileChange} 
+                                                className="hidden" 
+                                            />
+                                        </label>
+                                        
+                                        <div className="flex-1 space-y-1.5">
+                                            <div className="text-[11px] text-slate-500 font-bold leading-normal">
+                                                Drop or select your corporate logo. High contrast PNG or SVGs with transparent backgrounds perform best. (Maximum file boundary safe size is 250 KB).
+                                            </div>
+                                            {logoUrl && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLogoUrl('')}
+                                                    className="px-3 py-1 bg-rose-50 hover:bg-rose-100/80 border border-rose-100 rounded-lg text-[10px] font-extrabold text-rose-600 transition-all cursor-pointer"
+                                                >
+                                                    Remove Image
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Core Company Name Label</label>
+                                    <input 
+                                        type="text"
+                                        value={logoText}
+                                        onChange={(e) => setLogoText(e.target.value.slice(0, 24))}
+                                        placeholder="e.g. PIONEER"
+                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500 transition-all font-sans"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Portal Identity Subtext</label>
+                                    <input 
+                                        type="text"
+                                        value={logoSubtext}
+                                        onChange={(e) => setLogoSubtext(e.target.value.slice(0, 32))}
+                                        placeholder="e.g. DMS PORTAL"
+                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500 transition-all font-sans"
+                                    />
+                                </div>
+
+                                <div className="flex gap-2 pt-2">
+                                    <button
+                                        type="button"
+                                        disabled={isSavingBranding}
+                                        onClick={handleSaveBranding}
+                                        className="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-brand-500/10 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                                    >
+                                        {isSavingBranding ? 'Saving...' : brandingSuccess ? 'Saved Custom Identity! ✓' : 'Save Corporate Branding'}
+                                    </button>
+                                    
+                                    {(logoUrl || logoText !== 'PIONEER' || logoSubtext !== 'DMS PORTAL') && (
+                                        <button
+                                            type="button"
+                                            onClick={handleResetBranding}
+                                            className="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                        >
+                                            Reset Defaults
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm">
                     <h3 className="text-lg font-black text-slate-900 mb-6 font-sans">Security</h3>
                     <div className="space-y-4">
@@ -6872,16 +7339,130 @@ const SettingsView = ({
                     </div>
                 </div>
 
-                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm">
-                    <h3 className="text-lg font-black text-slate-900 mb-6">System Preferences</h3>
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100">
-                            <div>
-                                <p className="text-sm font-bold text-slate-900">Email Notifications</p>
-                                <p className="text-xs text-slate-500">Receive system alerts via email</p>
+                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm space-y-8">
+                    <div>
+                        <h3 className="text-lg font-black text-slate-900 font-sans">🎨 Design System Redesign & Theme Customizer</h3>
+                        <p className="text-slate-500 text-xs mt-1">Rebuild and personalize the Pioneer DMS Portal in real-time with responsive styling, custom typography, backgrounds, and animations.</p>
+                    </div>
+
+                    <div className="space-y-6">
+                        {/* Themes Grid */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-700 uppercase tracking-wider">Brand Color Accent Theme</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                {[
+                                    { id: 'indigo', name: 'Indigo Oceanic', colors: ['bg-sky-400', 'bg-indigo-600'] },
+                                    { id: 'emerald', name: 'Emerald Oasis', colors: ['bg-green-400', 'bg-emerald-600'] },
+                                    { id: 'crimson', name: 'Sunset Crimson', colors: ['bg-rose-400', 'bg-rose-600'] },
+                                    { id: 'violet', name: 'Royal Violet', colors: ['bg-purple-400', 'bg-violet-600'] },
+                                    { id: 'amber', name: 'Burnt Amber', colors: ['bg-amber-400', 'bg-amber-600'] },
+                                    { id: 'cyberpunk', name: 'Cyberpunk Neon', colors: ['bg-violet-500', 'bg-cyan-500'] },
+                                ].map((t) => (
+                                    <button
+                                        key={t.id}
+                                        onClick={() => setActiveTheme(t.id)}
+                                        className={`flex items-center gap-3 p-3 rounded-2xl border text-left cursor-pointer transition-all ${
+                                            activeTheme === t.id 
+                                                ? 'border-brand-500 bg-brand-50/40 ring-2 ring-brand-500/15' 
+                                                : 'border-slate-100 hover:border-slate-300 bg-slate-50/20'
+                                        }`}
+                                    >
+                                        <div className="flex -space-x-1 shrink-0">
+                                            <span className={`w-3.5 h-3.5 rounded-full ${t.colors[0]}`} />
+                                            <span className={`w-3.5 h-3.5 rounded-full ${t.colors[1]}`} />
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-800 truncate">{t.name}</span>
+                                    </button>
+                                ))}
                             </div>
-                            <div className="w-12 h-6 bg-brand-600 rounded-full relative cursor-pointer">
-                                <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm"></div>
+                        </div>
+
+                        {/* Typography selection */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-700 uppercase tracking-wider">Typography Scale Style</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {[
+                                    { id: 'classic', title: 'Sleek Corporate', desc: 'Inter Clean Humanist Sans-Serif' },
+                                    { id: 'modern', title: 'Aperture Modern', desc: 'Space Grotesk & Outfit displays' },
+                                    { id: 'mono', title: 'Tech Minimalist', desc: 'JetBrains Mono System Typeface' }
+                                ].map((f) => (
+                                    <button
+                                        key={f.id}
+                                        onClick={() => setTypographyScale(f.id)}
+                                        className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
+                                            typographyScale === f.id 
+                                                ? 'border-brand-500 bg-brand-50/40 ring-2 ring-brand-500/15' 
+                                                : 'border-slate-100 hover:border-slate-300 bg-slate-50/20'
+                                        }`}
+                                    >
+                                        <p className="text-xs font-black text-slate-800">{f.title}</p>
+                                        <p className="text-[10px] text-slate-500 mt-1 leading-normal font-medium">{f.desc}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Background Ambiance selection */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-700 uppercase tracking-wider">App Space Background Ambiance</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {[
+                                    { id: 'flat', title: 'Solid Soft Grey', desc: 'Minimal clean flat background format' },
+                                    { id: 'matrix', title: 'Precision Grid Matrix', desc: 'Dotted align reference engineering view' },
+                                    { id: 'luminous', title: 'Luminous Glow Fountain', desc: 'Ethereal premium linear color gradient flow' }
+                                ].map((ab) => (
+                                    <button
+                                        key={ab.id}
+                                        onClick={() => setAmbianceMode(ab.id)}
+                                        className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
+                                            ambianceMode === ab.id 
+                                                ? 'border-brand-500 bg-brand-50/40 ring-2 ring-brand-500/15' 
+                                                : 'border-slate-100 hover:border-slate-300 bg-slate-50/20'
+                                        }`}
+                                    >
+                                        <p className="text-xs font-black text-slate-800">{ab.title}</p>
+                                        <p className="text-[10px] text-slate-500 mt-1 leading-normal font-medium">{ab.desc}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Transitions Dynamic */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-700 uppercase tracking-wider">Layout Motion Animations Dynamics</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {[
+                                    { id: 'smooth', title: 'Ethereal Spring Bounce', desc: 'Beautiful high-fidelity bouncy animations' },
+                                    { id: 'snappy', title: 'Snappy Performance Slide', desc: 'Quick slide-fades optimized for speeds' },
+                                    { id: 'none', title: 'Static Instant Toggle', desc: 'Zero delay toggles for high-frequency work' }
+                                ].map((ai) => (
+                                    <button
+                                        key={ai.id}
+                                        onClick={() => setAnimationIntensity(ai.id)}
+                                        className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
+                                            animationIntensity === ai.id 
+                                                ? 'border-brand-500 bg-brand-50/40 ring-2 ring-brand-500/15' 
+                                                : 'border-slate-100 hover:border-slate-300 bg-slate-50/20'
+                                        }`}
+                                    >
+                                        <p className="text-xs font-black text-slate-800">{ai.title}</p>
+                                        <p className="text-[10px] text-slate-500 mt-1 leading-normal font-medium">{ai.desc}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Standard Preferences */}
+                        <div className="pt-4 border-t border-slate-100 space-y-4">
+                            <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">Standard Alerts</label>
+                            <div className="flex items-center justify-between p-4 bg-slate-50/20 rounded-2xl border border-slate-100">
+                                <div>
+                                    <p className="text-xs font-bold text-slate-900">Email Notifications</p>
+                                    <p className="text-[10px] text-slate-500 mt-0.5">Receive system Alerts and activity audits via email</p>
+                                </div>
+                                <div className="w-12 h-6 bg-brand-600 rounded-full relative cursor-pointer">
+                                    <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -6938,32 +7519,52 @@ const HelpCenterView = () => {
     );
 };
 
-const BentoStatCard = ({ title, value, trend, isUp, icon: Icon, color, className, onClick }: any) => {
+const BentoStatCard = ({ title, value, icon: Icon, color, className, onClick, index = 0, animationIntensity = 'smooth' }: any) => {
     const colors: any = {
-        brand: "bg-brand-50 text-brand-600 border-brand-100 shadow-brand-500/5",
-        emerald: "bg-emerald-50 text-emerald-600 border-emerald-100 shadow-emerald-500/5",
-        orange: "bg-orange-50 text-orange-600 border-orange-100 shadow-orange-500/5",
-        indigo: "bg-indigo-50 text-indigo-600 border-indigo-100 shadow-indigo-500/5",
+        brand: "bg-brand-50/70 text-brand-600 border-brand-100/40 shadow-brand-500/5",
+        emerald: "bg-emerald-50/70 text-emerald-600 border-emerald-100/40 shadow-emerald-500/5",
+        orange: "bg-orange-50/70 text-orange-600 border-orange-100/40 shadow-orange-500/5",
+        indigo: "bg-indigo-50/70 text-indigo-600 border-indigo-150/40 shadow-indigo-500/5",
     };
+
+    const gradientOverlay = {
+        brand: "from-brand-50/10 to-transparent",
+        emerald: "from-emerald-50/10 to-transparent",
+        orange: "from-orange-50/10 to-transparent",
+        indigo: "from-indigo-50/10 to-transparent",
+    }[color] || "from-brand-50/10 to-transparent";
 
     return (
         <motion.div 
-            whileHover={{ y: -5 }}
+            whileHover={animationIntensity === 'none' ? {} : { y: -6, scale: 1.01 }}
+            initial={animationIntensity === 'none' ? {} : { opacity: 0, y: 25 }}
+            animate={animationIntensity === 'none' ? {} : { opacity: 1, y: 0 }}
+            transition={
+                animationIntensity === 'none' ? { duration: 0 } :
+                animationIntensity === 'snappy' ? { duration: 0.2, ease: "easeOut", delay: index * 0.04 } :
+                { type: "spring", stiffness: 140, damping: 18, delay: index * 0.05 }
+            }
             onClick={onClick}
             className={cn(
-                "bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[200px] transition-all duration-300 hover:shadow-xl hover:shadow-slate-200/50 group",
+                "relative overflow-hidden bg-white hover:bg-white/95 p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm flex flex-col justify-between min-h-[220px] transition-all duration-300 hover:shadow-xl hover:shadow-slate-300/30 group",
                 onClick && "cursor-pointer select-none",
                 className
             )}
         >
-            <div className="flex justify-between items-start">
-                <div className={cn("p-3.5 rounded-2xl transition-all duration-500 group-hover:rotate-6", colors[color])}>
+            {/* Background dynamic gradient flare */}
+            <div className={cn("absolute inset-0 bg-gradient-to-tr opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none", gradientOverlay)} />
+
+            <div className="flex justify-between items-start relative z-10">
+                <div className={cn("p-3.5 rounded-2xl border transition-all duration-500 group-hover:rotate-6 shadow-sm", colors[color] || colors.brand)}>
                     <Icon className="w-6 h-6" />
                 </div>
             </div>
-            <div>
-                <span className="text-4xl font-black text-slate-900 tracking-tighter">{value}</span>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">{title}</p>
+            
+            <div className="relative z-10 mt-6 md:mt-8">
+                <span className="text-4xl font-extrabold text-slate-900 tracking-tighter block group-hover:scale-105 origin-left transition-transform duration-300 leading-none">
+                    {typeof value === 'number' ? value.toLocaleString() : value}
+                </span>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.14em] mt-2 group-hover:text-slate-700 transition-colors duration-300 ">{title}</p>
             </div>
         </motion.div>
     );

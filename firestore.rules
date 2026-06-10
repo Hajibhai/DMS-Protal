@@ -8,13 +8,14 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
           (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin' ||
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' ||
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Creator' ||
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'CREATOR' ||
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'creator')) ||
-         (request.auth.token.email == "abdulkaderp3010@gmail.com"));
+         isCreator());
     }
 
     function isOwner(userId) {
@@ -23,7 +24,13 @@ service cloud.firestore {
 
     function isCreator() {
       return isAuthenticated() && 
-        (request.auth.token.email == "abdulkaderp3010@gmail.com");
+        (('email' in request.auth.token && 
+          (request.auth.token.email == "abdulkaderp3010@gmail.com" || 
+           request.auth.token.email.matches('(?i)abdulkaderp3010@gmail\\.com'))) ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          'email' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == "abdulkaderp3010@gmail.com" ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email.matches('(?i)abdulkaderp3010@gmail\\.com'))));
     }
 
     function hasPermission(permission) {
@@ -31,6 +38,8 @@ service cloud.firestore {
         (isCreator() || 
          isAdmin() ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          'permissions' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+          permission in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions &&
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions[permission] == true));
     }
 
@@ -149,9 +158,9 @@ service cloud.firestore {
       allow write: if hasPermission('canManageProjects');
     }
 
-    match /settings/about {
+    match /settings/{document} {
       allow read: if true;
-      allow write: if hasPermission('canManageSettings');
+      allow write: if hasPermission('canManageSettings') || isAdmin();
     }
 
     match /holidays/{holidayId} {

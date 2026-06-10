@@ -603,9 +603,9 @@
       "schema": "SafetyRecord",
       "description": "Safety credentials and training certificates for employees"
     },
-    "/settings/about": {
+    "/settings/{document}": {
       "schema": "object",
-      "description": "General application about data"
+      "description": "General application settings documents (including branding configuration)"
     },
     "/audit_logs/{logId}": {
       "schema": "AuditLog",

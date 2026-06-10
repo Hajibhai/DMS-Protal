@@ -32,6 +32,15 @@ interface LayoutProps {
   accountsReceivable: any[];
   pettyCash: any[];
   onNotificationClick?: (doc: any) => void;
+  activeTheme?: string;
+  typographyScale?: string;
+  ambianceMode?: string;
+  animationIntensity?: string;
+  portalBranding?: {
+    logoUrl?: string;
+    logoText?: string;
+    logoSubtext?: string;
+  };
 }
 
 const SupportModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
@@ -141,7 +150,12 @@ export const Layout: React.FC<LayoutProps> = ({
   accountsPayable,
   accountsReceivable,
   pettyCash,
-  onNotificationClick
+  onNotificationClick,
+  activeTheme = 'indigo',
+  typographyScale = 'classic',
+  ambianceMode = 'flat',
+  animationIntensity = 'smooth',
+  portalBranding = { logoUrl: '', logoText: 'PIONEER', logoSubtext: 'DMS PORTAL' }
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
@@ -365,21 +379,45 @@ export const Layout: React.FC<LayoutProps> = ({
     }
   }, [isSearchOpen]);
 
+  const mainBgClass = useMemo(() => {
+    if (ambianceMode === 'matrix') {
+      return "flex-1 overflow-y-auto overflow-x-hidden min-w-0 max-w-full bg-[#f8fafc] bg-[radial-gradient(#cbd5e1_1.2px,transparent_1.2px)] [background-size:20px_20px] transition-all duration-500";
+    } else if (ambianceMode === 'luminous') {
+      return "flex-1 overflow-y-auto overflow-x-hidden min-w-0 max-w-full bg-gradient-to-tr from-[#f8fafc] via-white to-brand-50/20 transition-all duration-500";
+    }
+    return "flex-1 overflow-y-auto overflow-x-hidden min-w-0 max-w-full bg-slate-50/50 transition-all duration-500";
+  }, [ambianceMode]);
+
   return (
-    <div className="min-h-screen bg-white flex flex-col transition-colors duration-300">
+    <div className="min-h-screen bg-slate-50/20 flex flex-col transition-colors duration-300">
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             {/* Logo and Desktop Nav */}
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3 shrink-0 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
-                <div className="bg-brand-600 p-2 rounded-xl shadow-lg shadow-brand-600/20 rotate-3">
-                  <Building2 className="text-white w-5 h-5" />
-                </div>
+              <div className="flex items-center gap-3 shrink-0 cursor-pointer select-none" onClick={() => setActiveTab('dashboard')}>
+                {portalBranding?.logoUrl ? (
+                  <div className="rounded-xl border border-slate-200/50 bg-white shadow-md shadow-slate-100 flex items-center justify-center w-10 h-10 overflow-hidden shrink-0">
+                    <img 
+                      src={portalBranding.logoUrl} 
+                      alt="Portal Logo" 
+                      referrerPolicy="no-referrer" 
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="bg-brand-600 p-2 rounded-xl shadow-lg shadow-brand-600/20 rotate-3 flex items-center justify-center w-10 h-10 shrink-0">
+                    <Building2 className="text-white w-5 h-5" />
+                  </div>
+                )}
                 <div className="flex flex-col">
-                  <span className="font-black text-lg text-slate-900 leading-none tracking-tight">PIONEER</span>
-                  <span className="text-[9px] font-bold text-brand-600 tracking-[0.2em] mt-0.5">DMS PORTAL</span>
+                  <span className="font-sans font-black text-lg text-slate-900 leading-none tracking-tight">
+                    {portalBranding?.logoText || 'PIONEER'}
+                  </span>
+                  <span className="text-[9px] font-bold text-brand-600 tracking-[0.2em] mt-0.5 uppercase">
+                    {portalBranding?.logoSubtext || 'DMS PORTAL'}
+                  </span>
                 </div>
               </div>
 
@@ -940,7 +978,7 @@ export const Layout: React.FC<LayoutProps> = ({
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 max-w-full">
+      <main className={mainBgClass}>
         <div className="w-full p-4 sm:p-6 lg:p-10 max-w-full">
           {/* Active / Upcoming Meeting Alert Banner */}
           <AnimatePresence>
@@ -995,10 +1033,14 @@ export const Layout: React.FC<LayoutProps> = ({
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
+              initial={animationIntensity === 'none' ? { opacity: 1 } : { opacity: 0, y: 15, scale: 0.99 }}
+              animate={animationIntensity === 'none' ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+              exit={animationIntensity === 'none' ? { opacity: 1 } : { opacity: 0, y: -15, scale: 0.99 }}
+              transition={
+                animationIntensity === 'none' ? { duration: 0 } :
+                animationIntensity === 'snappy' ? { duration: 0.12, ease: "easeOut" } :
+                { type: "spring", stiffness: 170, damping: 20 }
+              }
               className="w-full max-w-full"
             >
               {children}
