@@ -4491,7 +4491,20 @@ export default function App() {
     });
 
     const unsubAP = onSnapshot(collection(db, 'accounts_payable'), (snap) => {
-      setAccountsPayable(snap.docs.map(d => d.data() as AccountsPayable));
+      setAccountsPayable(snap.docs.map(d => {
+        const item = d.data() as AccountsPayable;
+        let dueDate = item.dueDate;
+        if (item.date) {
+          try {
+            const dVal = new Date(item.date);
+            if (!isNaN(dVal.getTime())) {
+              dVal.setDate(dVal.getDate() + 30);
+              dueDate = dVal.toISOString().split('T')[0];
+            }
+          } catch (e) {}
+        }
+        return { ...item, dueDate };
+      }));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'accounts_payable');
     });
@@ -4706,7 +4719,17 @@ export default function App() {
           for (const item of items) {
             const updatedItem = {
               ...item,
-              date: newDate
+              date: newDate,
+              dueDate: (() => {
+                try {
+                  const d = new Date(newDate);
+                  if (!isNaN(d.getTime())) {
+                    d.setDate(d.getDate() + 30);
+                    return d.toISOString().split('T')[0];
+                  }
+                } catch (e) {}
+                return item.dueDate; // fallback
+              })()
             };
             await saveAccountsPayable(updatedItem);
           }
@@ -4964,7 +4987,16 @@ export default function App() {
             totalAmount: totalVal,
             status,
             description: notes || `Imported via Ledger Excel list`,
-            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            dueDate: (() => {
+              try {
+                const d = new Date(apDate);
+                if (!isNaN(d.getTime())) {
+                  d.setDate(d.getDate() + 30);
+                  return d.toISOString().split('T')[0];
+                }
+              } catch (e) {}
+              return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            })(),
             hours: hoursVal,
             actualAmount: actualAmountVal,
             advance: advanceVal,

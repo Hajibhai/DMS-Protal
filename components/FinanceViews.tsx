@@ -7366,9 +7366,22 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         const deduction = base.deduction || 0;
         const payableAmount = base.payableAmount !== undefined ? base.payableAmount : Number((totalAmount - paid - advance - deduction).toFixed(2));
 
+        const initialDate = base.date || new Date().toISOString().split('T')[0];
+        const initialDueDate = base.dueDate || (() => {
+            try {
+                const d = new Date(initialDate);
+                if (!isNaN(d.getTime())) {
+                    d.setDate(d.getDate() + 30);
+                    return d.toISOString().split('T')[0];
+                }
+            } catch (e) {}
+            return initialDate;
+        })();
+
         return {
             id: base.id || 'ap_' + Math.random().toString(36).substr(2, 9),
-            date: base.date || new Date().toISOString().split('T')[0],
+            date: initialDate,
+            dueDate: initialDueDate,
             vendorId: base.vendorId || '',
             vendorType: base.vendorType || 'Supplier',
             projectId: base.projectId || '',
@@ -7441,6 +7454,18 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             }
         }
 
+        // Dynamic 30-day offset generation on manual date updates
+        let dueDate = next.dueDate;
+        if (updates.date !== undefined && updates.dueDate === undefined) {
+            try {
+                const d = new Date(updates.date);
+                if (!isNaN(d.getTime())) {
+                    d.setDate(d.getDate() + 30);
+                    dueDate = d.toISOString().split('T')[0];
+                }
+            } catch (err) {}
+        }
+
         setFormData({
             ...next,
             amount,
@@ -7454,7 +7479,8 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             payableAmount,
             status,
             supplierName,
-            supplierCode
+            supplierCode,
+            dueDate
         });
     };
 
@@ -7463,7 +7489,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             <motion.div 
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-white"
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl overflow-hidden border border-white"
             >
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div>
@@ -7474,7 +7500,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                 </div>
 
                 <div className="p-8 space-y-5 max-h-[70vh] overflow-y-auto">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice Date</label>
                             <input 
@@ -7506,6 +7532,18 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                         return <option key={mKey} value={mKey}>{mLabel}</option>;
                                     })}
                                 </select>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Due Date (30 Days Rule)</label>
+                            <input 
+                                type="date"
+                                value={formData.dueDate || ''}
+                                onChange={e => handleRecalculate({ dueDate: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-700 font-mono"
+                            />
+                            <div className="mt-1.5 text-[9px] text-slate-400 font-bold ml-1">
+                                Auto-offsets to 30 days of standard credit term
                             </div>
                         </div>
                         <div className="space-y-1">
@@ -7795,10 +7833,21 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                 ]
             };
         }
+        const initialDate = new Date().toISOString().split('T')[0];
+        const initialDueDate = (() => {
+            try {
+                const d = new Date(initialDate);
+                if (!isNaN(d.getTime())) {
+                    d.setDate(d.getDate() + 30);
+                    return d.toISOString().split('T')[0];
+                }
+            } catch (err) {}
+            return initialDate;
+        })();
         return { 
             id: Math.random().toString(36).substr(2, 9),
-            date: new Date().toISOString().split('T')[0],
-            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 30 days credit
+            date: initialDate,
+            dueDate: initialDueDate, // Default 30 days credit based on invoice date
             entityId: '',
             entityType: 'Project',
             invoiceNumber: 'INV-' + Math.floor(100000 + Math.random() * 900000),
@@ -7966,7 +8015,18 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             <input 
                                 type="date"
                                 value={formData.date}
-                                onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                onChange={e => {
+                                    const nextDate = e.target.value;
+                                    let calcDueDate = formData.dueDate;
+                                    try {
+                                        const d = new Date(nextDate);
+                                        if (!isNaN(d.getTime())) {
+                                            d.setDate(d.getDate() + 30);
+                                            calcDueDate = d.toISOString().split('T')[0];
+                                        }
+                                    } catch (err) {}
+                                    setFormData({ ...formData, date: nextDate, dueDate: calcDueDate });
+                                }}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                             />
                         </div>
