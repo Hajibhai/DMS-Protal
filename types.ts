@@ -495,6 +495,7 @@ export interface JobOffer {
   expiryDate?: string;
   status: 'Offered' | 'Accepted' | 'Declined';
   additionalDetails?: string;
+  company?: string;
   signedOfferUrl?: string;
   signedOfferName?: string;
   signedOfferChunksCount?: number;

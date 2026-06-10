@@ -154,6 +154,8 @@ interface DataTableProps<T> {
         label: string;
         options: { label: string; value: string }[];
     }[];
+    onUploadExcel?: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    customSearch?: (item: T, query: string) => boolean;
 }
 
 export function DataTable<T extends { id: string }>({
@@ -170,7 +172,9 @@ export function DataTable<T extends { id: string }>({
     searchFields,
     exportFileName,
     user,
-    filterOptions = []
+    filterOptions = [],
+    onUploadExcel,
+    customSearch
 }: DataTableProps<T>) {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -191,12 +195,15 @@ export function DataTable<T extends { id: string }>({
         // Search
         if (searchTerm.trim()) {
             const query = searchTerm.toLowerCase();
-            result = result.filter(item => 
-                searchFields.some(field => {
+            result = result.filter(item => {
+                const matchesFields = searchFields.some(field => {
                     const value = item[field];
                     return value && String(value).toLowerCase().includes(query);
-                })
-            );
+                });
+                if (matchesFields) return true;
+                if (customSearch) return customSearch(item, query);
+                return false;
+            });
         }
 
         // Filters
@@ -339,6 +346,18 @@ export function DataTable<T extends { id: string }>({
                         <Printer className="w-4 h-4" />
                         Print A4
                     </button>
+                    {onUploadExcel && (
+                        <label className="flex items-center gap-2 px-5 py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-2xl text-sm font-bold transition-all active:scale-95 shadow-sm cursor-pointer whitespace-nowrap">
+                            <Upload className="w-4 h-4 text-indigo-600" />
+                            <span>Upload Excel</span>
+                            <input
+                                type="file"
+                                accept=".xlsx, .xls, .csv"
+                                className="hidden"
+                                onChange={onUploadExcel}
+                            />
+                        </label>
+                    )}
                     {onAdd && (
                         <button 
                             onClick={onAdd}
@@ -572,7 +591,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
     />
 );
 
-export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, user, companies }: any) => {
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, user, companies, onUploadExcel }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
 
@@ -1428,6 +1447,12 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         onAdd={onAdd}
                         onEdit={onEdit}
                         onDelete={onDelete}
+                        onUploadExcel={onUploadExcel}
+                        customSearch={(item, query) => {
+                            const vName = getVendorName(item.vendorId, item.vendorType).toLowerCase();
+                            const pName = getProjectName(item.projectId).toLowerCase();
+                            return vName.includes(query) || pName.includes(query);
+                        }}
                         searchFields={['invoiceNumber', 'description']}
                         exportFileName="Accounts_Payable"
                         user={user}
@@ -6378,6 +6403,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         status: 'Pending',
         companyId: companies && companies.length > 0 ? companies[0].id : ''
     });
+    const [payeeSearch, setPayeeSearch] = useState('');
 
     const handleAmountChange = (val: number) => {
         const vat = val * 0.05;
@@ -6440,15 +6466,25 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Select {formData.vendorType === 'Vendor' ? 'Client' : formData.vendorType}</label>
+                            <input
+                                type="text"
+                                placeholder={`🔎 Search ${formData.vendorType === 'Vendor' ? 'client' : 'supplier'}...`}
+                                value={payeeSearch}
+                                onChange={e => setPayeeSearch(e.target.value)}
+                                className="w-full px-3 py-1.5 mb-1 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-1 focus:ring-brand-500 placeholder:text-slate-400 text-brand-700"
+                            />
                             <select 
                                 value={formData.vendorId}
                                 onChange={e => setFormData({ ...formData, vendorId: e.target.value })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             >
                                 <option value="">Select...</option>
-                                {(formData.vendorType === 'Supplier' ? suppliers : vendors).map((v: any) => (
-                                    <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>
-                                ))}
+                                {(formData.vendorType === 'Supplier' ? suppliers : vendors)
+                                    .filter((v: any) => !payeeSearch || v.name?.toLowerCase().includes(payeeSearch.toLowerCase()) || v.code?.toLowerCase().includes(payeeSearch.toLowerCase()))
+                                    .map((v: any) => (
+                                        <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>
+                                    ))
+                                }
                             </select>
                         </div>
                     </div>

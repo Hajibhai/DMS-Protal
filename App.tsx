@@ -101,7 +101,7 @@ import { SchedulesManager } from './components/SchedulesManager';
 import { 
   Employee, AttendanceRecord, AttendanceStatus, StaffType, 
   LeaveRequest, LeaveStatus, OffboardingDetails, 
-  SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, Supplier, Project, 
+  SystemUser, DeductionRecord, UserRole, SalaryStructure, Company, Supplier, Project, JobOffer, 
   Vendor, AccountsPayable, AccountsReceivable, PettyCash,
   ProjectedExpense,
   EverydayExpense,
@@ -1528,6 +1528,22 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
 
 const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { onComplete: (data: Employee) => void, onCancel: () => void, companies: Company[], openConfirm: any }) => {
     const [step, setStep] = useState(1);
+    const [offers, setOffers] = useState<JobOffer[]>([]);
+    const [selectedOfferId, setSelectedOfferId] = useState<string>('');
+    const [onboardingSearch, setOnboardingSearch] = useState('');
+
+    useEffect(() => {
+        const unsub = onSnapshot(collection(db, 'job_offers'), (snap) => {
+            const list: JobOffer[] = [];
+            snap.forEach((doc) => {
+                const offer = doc.data() as JobOffer;
+                list.push(offer);
+            });
+            setOffers(list);
+        });
+        return () => unsub();
+    }, []);
+
     const [data, setData] = useState<Partial<Employee>>({
         salary: { basic: 0, housing: 0, transport: 0, other: 0, airTicket: 0, leaveSalary: 0, hourlyRate: 0 },
         status: 'Active', 
@@ -1614,6 +1630,108 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                         <div className="space-y-6">
                             <h3 className="text-lg font-bold text-gray-900">Personal Information</h3>
                             <div className="grid grid-cols-2 gap-6">
+                                {/* Candidate Auto-Fetch Option */}
+                                {offers.length > 0 && (
+                                    <div className="col-span-2 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h4 className="text-xs font-black text-indigo-950 uppercase tracking-wide">Auto-Fetch Candidate Offer Data</h4>
+                                                <p className="text-[10px] text-indigo-600 font-medium font-bold">Select an accepted or offered candidate to populate their details instantly.</p>
+                                            </div>
+                                            <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse" />
+                                        </div>
+                                        <div className="flex flex-col gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="🔎 Search candidates by name, position, company..."
+                                                value={onboardingSearch}
+                                                onChange={e => setOnboardingSearch(e.target.value)}
+                                                className="w-full p-2.5 bg-white border border-indigo-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500 text-gray-900 font-medium"
+                                            />
+                                            <div className="flex gap-2">
+                                                <select
+                                                    id="candidate-offer-autofetch-select"
+                                                    value={selectedOfferId}
+                                                    onChange={(e) => {
+                                                        const offerId = e.target.value;
+                                                        setSelectedOfferId(offerId);
+                                                        if (offerId) {
+                                                            const selected = offers.find(o => o.id === offerId);
+                                                            if (selected) {
+                                                                setData(prev => {
+                                                                    const newData = { ...prev };
+                                                                    newData.name = selected.employeeName || '';
+                                                                    newData.mobileNumber = selected.mobileNumber || '';
+                                                                    newData.joiningDate = selected.joiningDate || '';
+                                                                    newData.company = selected.company || '';
+                                                                    newData.designation = selected.position || '';
+                                                                    newData.email = selected.email || '';
+                                                                    newData.documents = {
+                                                                        ...(prev.documents || {}),
+                                                                        passportNumber: selected.passportNumber || '',
+                                                                        emiratesId: selected.emiratesIdNumber || ''
+                                                                    };
+                                                                    newData.salary = {
+                                                                        basic: selected.salary || 0,
+                                                                        housing: selected.housingAllowance || 0,
+                                                                        transport: selected.transportAllowance || 0,
+                                                                        other: selected.otherAllowance || 0,
+                                                                        airTicket: 0,
+                                                                        leaveSalary: 0,
+                                                                        hourlyRate: 0
+                                                                    };
+                                                                    return newData;
+                                                                });
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="flex-1 p-2.5 bg-white border border-indigo-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500 outline-none text-gray-900 font-bold"
+                                                >
+                                                    <option value="">-- Choose Offered / Hired Candidate --</option>
+                                                    {offers
+                                                        .filter(o => !onboardingSearch || 
+                                                            o.employeeName?.toLowerCase().includes(onboardingSearch.toLowerCase()) || 
+                                                            o.position?.toLowerCase().includes(onboardingSearch.toLowerCase()) ||
+                                                            o.company?.toLowerCase().includes(onboardingSearch.toLowerCase())
+                                                        )
+                                                        .map(o => (
+                                                            <option key={o.id} value={o.id}>
+                                                                {o.employeeName} ({o.position}) - {o.status} {o.company ? `[${o.company}]` : ''}
+                                                            </option>
+                                                        ))
+                                                    }
+                                                </select>
+                                            {selectedOfferId && (
+                                                <button
+                                                    id="btn-clear-autofetch"
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedOfferId('');
+                                                        setData(prev => ({
+                                                            ...prev,
+                                                            name: '',
+                                                            mobileNumber: '',
+                                                            joiningDate: '',
+                                                            company: '',
+                                                            designation: '',
+                                                            email: '',
+                                                            documents: {
+                                                                ...(prev.documents || {}),
+                                                                passportNumber: '',
+                                                                emiratesId: ''
+                                                            },
+                                                            salary: { basic: 0, housing: 0, transport: 0, other: 0, airTicket: 0, leaveSalary: 0, hourlyRate: 0 }
+                                                        }));
+                                                    }}
+                                                    className="px-3 py-2 bg-indigo-150 text-indigo-750 hover:bg-indigo-200 font-bold text-xs rounded-xl border border-indigo-200"
+                                                >
+                                                    Clear
+                                                </button>
+                                            )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="space-y-1.5 col-span-2">
                                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Profile Image</label>
                                     <div className="flex items-center gap-4">
@@ -4534,6 +4652,152 @@ export default function App() {
     });
   };
 
+  const handleUploadExcelPayable = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        
+        const rawData: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        if (!rawData || rawData.length < 2) {
+          alert("No data found or columns missing in Excel sheet.");
+          return;
+        }
+
+        let headerRowIndex = 0;
+        for (let i = 0; i < Math.min(rawData.length, 5); i++) {
+          const row = rawData[i];
+          if (row && row.some((cell: any) => String(cell).toLowerCase().trim() === 'name of supplier' || String(cell).toLowerCase().trim() === 'supplier')) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+
+        const headers = rawData[headerRowIndex].map((h: any) => String(h || '').trim());
+        
+        const idxNameOfSupplier = headers.findIndex((h: string) => h.toLowerCase().includes('name of supplier') || h.toLowerCase() === 'supplier name');
+        const idxSupplierCode = headers.findIndex((h: string) => h === 'Supplier' || h.toLowerCase() === 'supplier code');
+        const idxInvoiceNumber = headers.findIndex((h: string) => h.toLowerCase().includes('invoice number') || h.toLowerCase().includes('invoice #'));
+        const idxBillAmount = headers.findIndex((h: string) => h.toLowerCase().includes('bill amount') || h.toLowerCase().includes('taxable amount') || h.toLowerCase().includes('amount'));
+        const idxVat = headers.findIndex((h: string) => h.toLowerCase() === 'vat' || h.toLowerCase().includes('vat'));
+        const idxTotal = headers.findIndex((h: string) => h.toLowerCase() === 'total' || h.toLowerCase().includes('total amount'));
+        const idxPaid = headers.findIndex((h: string) => h.toLowerCase() === 'paid');
+        const idxClearDate = headers.findIndex((h: string) => h.toLowerCase().includes('clear date') || h.toLowerCase().includes('payment date'));
+        const idxNotes = headers.findIndex((h: string) => h.toLowerCase().includes('notes') || h.toLowerCase().includes('remarks'));
+
+        if (idxNameOfSupplier === -1 && idxSupplierCode === -1) {
+          alert("Could not identify 'Name of Supplier' or 'Supplier' column of the excel sheet. Please check column headers.");
+          return;
+        }
+
+        const importedList: AccountsPayable[] = [];
+
+        for (let r = headerRowIndex + 1; r < rawData.length; r++) {
+          const row = rawData[r];
+          if (!row || row.length === 0) continue;
+
+          const rawName = String(row[idxNameOfSupplier] || row[idxSupplierCode] || '').trim();
+          if (!rawName || rawName === 'undefined' || rawName === '') continue; // Skip empty rows
+
+          const cleanRawName = rawName.toLowerCase();
+          const matchedSup = (suppliers || []).find((s: any) => 
+            s.name?.toLowerCase().trim() === cleanRawName || 
+            s.code?.toLowerCase().trim() === cleanRawName ||
+            cleanRawName.includes(s.name?.toLowerCase().trim()) ||
+            s.name?.toLowerCase().trim().includes(cleanRawName)
+          );
+
+          let finalVendorId = '';
+          let finalVendorType: 'Supplier' | 'Vendor' = 'Supplier';
+
+          if (matchedSup) {
+            finalVendorId = matchedSup.id;
+          } else {
+            const codeSuffix = rawName.substring(0, 3).toUpperCase();
+            const newSup = {
+              id: 'sup_' + Math.random().toString(36).substr(2, 9),
+              name: rawName,
+              code: codeSuffix,
+              createdAt: new Date().toISOString()
+            };
+            finalVendorId = newSup.id;
+            await addSupplier(newSup as any); 
+          }
+
+          const rawInvoice = row[idxInvoiceNumber] !== undefined ? String(row[idxInvoiceNumber]).trim() : '';
+          const invoiceNumber = rawInvoice || 'INV-' + Math.random().toString(36).substr(2, 5).toUpperCase();
+
+          const billAmountVal = Number(String(row[idxBillAmount] || '0').replace(/[^0-9.-]/g, '')) || 0;
+          const vatVal = Number(String(row[idxVat] || '0').replace(/[^0-9.-]/g, '')) || Number((billAmountVal * 0.05).toFixed(2));
+          const totalVal = Number(String(row[idxTotal] || '0').replace(/[^0-9.-]/g, '')) || (billAmountVal + vatVal);
+          const paidVal = Number(String(row[idxPaid] || '0').replace(/[^0-9.-]/g, '')) || 0;
+
+          let status: 'Pending' | 'Paid' | 'Partially Paid' = 'Pending';
+          if (paidVal >= totalVal && totalVal > 0) {
+            status = 'Paid';
+          } else if (paidVal > 0) {
+            status = 'Partially Paid';
+          }
+
+          const notes = row[idxNotes] !== undefined ? String(row[idxNotes]).trim() : '';
+
+          const newAp: AccountsPayable = {
+            id: 'ap_' + Math.random().toString(36).substr(2, 9),
+            date: new Date().toISOString().split('T')[0],
+            vendorId: finalVendorId,
+            vendorType: finalVendorType,
+            invoiceNumber,
+            amount: billAmountVal,
+            vatAmount: vatVal,
+            totalAmount: totalVal,
+            status,
+            description: `Imported via Ledger Excel list: ${notes}`.trim(),
+            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          };
+
+          if (row[idxClearDate]) {
+            try {
+              let rawDate = String(row[idxClearDate]).trim();
+              if (!isNaN(Number(rawDate))) {
+                const serial = Number(rawDate);
+                const dateObj = new Date((serial - 25569) * 86400 * 1000);
+                newAp.paymentDate = dateObj.toISOString().split('T')[0];
+              } else {
+                newAp.paymentDate = new Date(rawDate).toISOString().split('T')[0];
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          importedList.push(newAp);
+        }
+
+        if (importedList.length === 0) {
+          alert("No valid rows imported from the selected Excel sheet.");
+          return;
+        }
+
+        for (const apItem of importedList) {
+          await saveAccountsPayable(apItem);
+        }
+
+        handleLogAction('Payables Imported', `Imported ${importedList.length} Accounts Payable entries via Excel sheet.`, 'create');
+        alert(`Successfully parsed & imported ${importedList.length} Accounts Payable entries into your Ledger!`);
+      } catch (err: any) {
+        console.error("Error parsing the excel file: ", err);
+        alert("Could not process the Excel sheet. Ensure headers match columns exactly.");
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const handleSaveAR = async (data: AccountsReceivable) => {
     const isDuplicate = accountsReceivable.some(
       ar => ar.id !== data.id && 
@@ -5176,6 +5440,7 @@ export default function App() {
         <JobOfferView 
           user={systemUser} 
           openConfirm={openConfirm} 
+          companies={companies}
         />
       )}
       {activeTab === 'experience' && (
@@ -5206,6 +5471,7 @@ export default function App() {
           onAdd={() => setShowAPModal(true)}
           onEdit={(ap: AccountsPayable) => setShowAPModal(ap)}
           onDelete={handleDeleteAP}
+          onUploadExcel={handleUploadExcelPayable}
           user={systemUser}
           companies={companies}
         />
@@ -12109,6 +12375,7 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
     const [newItem, setNewItem] = useState<Partial<DeductionRecord>>({ type: 'Salary Advance', date: new Date().toISOString().split('T')[0] });
     const [editingItem, setEditingItem] = useState<Partial<DeductionRecord> | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [staffSearchText, setStaffSearchText] = useState('');
     const [previewAttachment, setPreviewAttachment] = useState<{ data: string; name: string } | null>(null);
     const canManagePayroll = user?.permissions?.canManagePayroll;
 
@@ -12325,13 +12592,23 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 items-end">
                         <div className="space-y-2">
                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Staff Member</label>
+                            <input
+                                type="text"
+                                placeholder="🔎 Search staff..."
+                                value={staffSearchText}
+                                onChange={e => setStaffSearchText(e.target.value)}
+                                className="w-full px-3 py-1.5 mb-1 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand-500 font-semibold"
+                            />
                             <select 
-                                className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
+                                className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all font-sans font-bold" 
                                 value={newItem.employeeId || ''} 
                                 onChange={e => setNewItem({...newItem, employeeId: e.target.value})}
                             >
                                 <option value="">Select Employee</option>
-                                {employees.map((e:any)=><option key={e.id} value={e.id}>{e.name}</option>)}
+                                {employees
+                                    .filter((e: any) => !staffSearchText || e.name?.toLowerCase().includes(staffSearchText.toLowerCase()) || e.code?.toLowerCase().includes(staffSearchText.toLowerCase()))
+                                    .map((e:any)=><option key={e.id} value={e.id}>{e.name}{e.code ? ` (${e.code})` : ''}</option>)
+                                }
                             </select>
                         </div>
                         <div className="space-y-2">
@@ -12816,6 +13093,7 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
     const [editingReq, setEditingReq] = useState<LeaveRequest | null>(null);
     const [newReq, setNewReq] = useState({ employeeId: '', type: AttendanceStatus.ANNUAL_LEAVE, startDate: '', endDate: '', reason: '' });
     const [searchTerm, setSearchTerm] = useState('');
+    const [empSearchText, setEmpSearchText] = useState('');
     const canManageLeaves = user?.permissions?.canManageLeaves || user?.role === 'Creator' || user?.role === 'Admin';
 
     // Search and Base State
@@ -13013,13 +13291,23 @@ const LeaveManagementView = ({ employees, leaveRequests, user, companies, openCo
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Employee</label>
+                                    <input
+                                        type="text"
+                                        placeholder="🔎 Search employee..."
+                                        value={empSearchText}
+                                        onChange={e => setEmpSearchText(e.target.value)}
+                                        className="w-full px-3 py-1.5 mb-1 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-1 focus:ring-brand-500 font-semibold text-slate-700"
+                                    />
                                     <select 
-                                        className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all" 
+                                        className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-brand-500/20 focus:bg-white transition-all font-sans font-bold text-slate-800" 
                                         value={newReq.employeeId} 
                                         onChange={e=>setNewReq({...newReq, employeeId:e.target.value})}
                                     >
                                         <option value="">Select Staff Member</option>
-                                        {employees.map((e:any)=><option key={e.id} value={e.id}>{e.name} ({e.leaveBalance !== undefined ? `${e.leaveBalance}d left` : '30d left'}) {e.leaveBalance !== undefined && e.leaveBalance <= 0 ? '⚠️ EXHAUSTED' : ''}</option>)}
+                                        {employees
+                                            .filter((e: any) => !empSearchText || e.name?.toLowerCase().includes(empSearchText.toLowerCase()) || e.code?.toLowerCase().includes(empSearchText.toLowerCase()))
+                                            .map((e:any)=><option key={e.id} value={e.id}>{e.name} ({e.leaveBalance !== undefined ? `${e.leaveBalance}d left` : '30d left'}) {e.leaveBalance !== undefined && e.leaveBalance <= 0 ? '⚠️ EXHAUSTED' : ''}</option>)
+                                        }
                                     </select>
                                     {(() => {
                                         const selectedEmp = employees.find((e: any) => e.id === newReq.employeeId);

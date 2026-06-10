@@ -3,7 +3,7 @@ import {
   collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, orderBy 
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { JobApplicant, JobOffer, UserRole } from '../types';
+import { Company, JobApplicant, JobOffer, UserRole } from '../types';
 import { jsPDF } from 'jspdf';
 
 // --- CUSTOM GLOBAL INTERCEPT FOR ALL PDF DOWNLOADS / SAVES Across Entire Codebase ---
@@ -59,9 +59,10 @@ import {
 interface JobOfferViewProps {
   user: any;
   openConfirm: (title: string, message: string, onConfirm: () => void, type?: 'danger' | 'warning') => void;
+  companies?: Company[];
 }
 
-export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm }) => {
+export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, companies }) => {
   // Auth details
   const isAdminOrCreator = user?.role === UserRole.CREATOR || 
                            user?.role?.toLowerCase() === 'admin' || 
@@ -123,7 +124,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     status: 'Offered' as JobOffer['status'],
     additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.',
-    applicantId: ''
+    applicantId: '',
+    company: ''
   });
 
   // Signed document uploads state
@@ -304,7 +306,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
           offerDate: new Date().toISOString().split('T')[0],
           expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           status: newStatus,
-          additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.'
+          additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.',
+          company: ''
         };
         await setDoc(doc(db, 'job_offers', offerId), newOffer);
       }
@@ -453,7 +456,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       status: 'Offered',
       additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.',
-      applicantId: app.id
+      applicantId: app.id,
+      company: ''
     });
     setEditingOffer(null);
     setActiveTab('offers');
@@ -485,6 +489,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         expiryDate: offerForm.expiryDate,
         status: offerForm.status,
         additionalDetails: offerForm.additionalDetails,
+        company: offerForm.company || '',
         ...(editingOffer ? {
           signedOfferUrl: editingOffer.signedOfferUrl || '',
           signedOfferName: editingOffer.signedOfferName || '',
@@ -515,7 +520,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         email: '', emiratesIdNumber: '',
         joiningDate: new Date().toISOString().split('T')[0], offerDate: new Date().toISOString().split('T')[0],
         expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: 'Offered',
-        additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.', applicantId: ''
+        additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.', applicantId: '',
+        company: ''
       });
     } catch (err) {
       console.error("Error saving job offer:", err);
@@ -542,7 +548,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       expiryDate: offer.expiryDate || '',
       status: offer.status,
       additionalDetails: offer.additionalDetails || '',
-      applicantId: offer.applicantId || ''
+      applicantId: offer.applicantId || '',
+      company: offer.company || ''
     });
     setShowOfferModal(true);
   };
@@ -1735,6 +1742,10 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                           </div>
                         )}
                         <div>
+                          <span className="font-bold text-slate-400 block uppercase text-[8px]">Offered Company</span>
+                          <span className="text-brand-900 font-extrabold">{offer.company || 'Not Specified'}</span>
+                        </div>
+                        <div>
                           <span className="font-bold text-slate-400 block uppercase text-[8px]">Salary Breakdown</span>
                           <span className="text-brand-600 font-extrabold">{formatAED(grossTotal)} / mo</span>
                         </div>
@@ -2442,6 +2453,23 @@ Pioneer DMS`}
                   <span className="font-black text-indigo-900 text-sm">
                     {formatAED(offerForm.salary + offerForm.housingAllowance + offerForm.transportAllowance + offerForm.otherAllowance)}
                   </span>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Offered Company *
+                  </label>
+                  <select
+                    required
+                    value={offerForm.company}
+                    onChange={(e) => setOfferForm({ ...offerForm, company: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none bg-white text-slate-900 font-bold"
+                  >
+                    <option value="">Select Company</option>
+                    {(companies || []).map(c => (
+                      <option key={c.id} value={c.name}>{c.code} - {c.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
