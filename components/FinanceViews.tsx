@@ -157,6 +157,8 @@ interface DataTableProps<T> {
     }[];
     onUploadExcel?: (event: React.ChangeEvent<HTMLInputElement>) => void;
     customSearch?: (item: T, query: string) => boolean;
+    enableMultiSelect?: boolean;
+    onBulkDelete?: (items: T[]) => void | Promise<void>;
 }
 
 export function DataTable<T extends { id: string }>({
@@ -175,20 +177,24 @@ export function DataTable<T extends { id: string }>({
     user,
     filterOptions = [],
     onUploadExcel,
-    customSearch
+    customSearch,
+    enableMultiSelect,
+    onBulkDelete
 }: DataTableProps<T>) {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
 
-    const handleSort = (key: string) => {
-        let direction: 'asc' | 'desc' = 'asc';
-        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
-            direction = 'desc';
+    const userRoleLower = (user?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
+
+    useEffect(() => {
+        if (selectedIds.length > 0) {
+            setSelectedIds(prev => prev.filter(id => data.some(item => item.id === id)));
         }
-        setSortConfig({ key, direction });
-    };
+    }, [data]);
 
     const filteredData = useMemo(() => {
         let result = [...data];
@@ -227,6 +233,18 @@ export function DataTable<T extends { id: string }>({
 
         return result;
     }, [data, searchTerm, searchFields, activeFilters, sortConfig]);
+
+    const isAllSelected = useMemo(() => {
+        return filteredData.length > 0 && filteredData.every(item => selectedIds.includes(item.id));
+    }, [filteredData, selectedIds]);
+
+    const handleSort = (key: string) => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
 
     const handleExport = () => {
         const exportData = filteredData.map((item, index) => {
@@ -444,10 +462,80 @@ export function DataTable<T extends { id: string }>({
                     )}
                 </AnimatePresence>
 
+                <AnimatePresence>
+                    {enableMultiSelect && isAdmin && selectedIds.length > 0 && (
+                        <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="px-6 py-4 bg-rose-50 border-b border-rose-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 overflow-hidden animate-fadeIn"
+                        >
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 bg-rose-100 rounded-xl text-rose-700 shrink-0">
+                                    <AlertTriangle className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <span className="text-xs font-black text-rose-900 block">
+                                        Selected <strong className="text-sm font-black text-rose-600 bg-white border border-rose-250/70 px-2 py-0.5 rounded-md">{selectedIds.length}</strong> {selectedIds.length === 1 ? 'record' : 'records'} for deletion
+                                    </span>
+                                    <p className="text-[11px] text-rose-550 font-bold leading-normal mt-0.5">
+                                        Bulk deletion is irreversible. Erase selected records from your Database and Logs.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-center">
+                                <button
+                                    onClick={() => setSelectedIds([])}
+                                    className="px-4 py-2 hover:bg-rose-100/60 border border-transparent rounded-xl text-xs font-black text-rose-700 transition-all cursor-pointer"
+                                >
+                                    Cancel Selection
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (onBulkDelete) {
+                                            const selectedItems = data.filter(item => selectedIds.includes(item.id));
+                                            onBulkDelete(selectedItems);
+                                            setSelectedIds([]);
+                                        }
+                                    }}
+                                    className="flex items-center gap-1.5 px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition-all shadow-md shadow-rose-600/15 cursor-pointer"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    Delete Selected
+                                </button>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <div className="overflow-x-auto">
                     <table className="w-full border-collapse">
                         <thead>
                             <tr className="bg-slate-50/50">
+                                {enableMultiSelect && isAdmin && (
+                                    <th className="px-6 py-4 text-left w-12 border-b border-slate-100">
+                                        <input 
+                                            type="checkbox"
+                                            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                                            checked={isAllSelected}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setSelectedIds(prev => {
+                                                        const newIds = [...prev];
+                                                        filteredData.forEach(item => {
+                                                            if (!newIds.includes(item.id)) {
+                                                                newIds.push(item.id);
+                                                            }
+                                                        });
+                                                        return newIds;
+                                                    });
+                                                } else {
+                                                    setSelectedIds(prev => prev.filter(id => !filteredData.some(fd => fd.id === id)));
+                                                }
+                                            }}
+                                        />
+                                    </th>
+                                )}
                                 {columns.map((col) => (
                                     <th 
                                         key={String(col.key)}
@@ -475,6 +563,22 @@ export function DataTable<T extends { id: string }>({
                         <tbody className="divide-y divide-slate-50">
                             {filteredData.map((item, index) => (
                                 <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                                    {enableMultiSelect && isAdmin && (
+                                        <td className="px-6 py-5 text-left w-12 text-sm font-bold text-slate-600">
+                                            <input 
+                                                type="checkbox"
+                                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                                                checked={selectedIds.includes(item.id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedIds(prev => [...prev, item.id]);
+                                                    } else {
+                                                        setSelectedIds(prev => prev.filter(id => id !== item.id));
+                                                    }
+                                                }}
+                                            />
+                                        </td>
+                                    )}
                                     {columns.map((col) => (
                                         <td key={String(col.key)} className="px-6 py-5 text-sm font-bold text-slate-600">
                                             {col.render ? col.render(item, index) : String((item as any)[col.key] || '-')}
@@ -515,7 +619,7 @@ export function DataTable<T extends { id: string }>({
                             ))}
                             {filteredData.length === 0 && (
                                 <tr>
-                                    <td colSpan={columns.length + 1} className="px-6 py-20 text-center">
+                                    <td colSpan={columns.length + (onEdit || onDelete || onViewBill ? 1 : 0) + (enableMultiSelect && isAdmin ? 1 : 0)} className="px-6 py-20 text-center">
                                         <div className="flex flex-col items-center gap-3">
                                             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
                                                 <Search className="w-8 h-8 text-slate-200" />
@@ -596,7 +700,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
     />
 );
 
-export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteBatch, user, companies, onUploadExcel }: any) => {
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, user, companies, onUploadExcel }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
 
@@ -1644,6 +1748,8 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         onAdd={onAdd}
                         onEdit={onEdit}
                         onDelete={onDelete}
+                        onBulkDelete={onDeleteMultiple}
+                        enableMultiSelect={true}
                         onUploadExcel={onUploadExcel}
                         customSearch={(item, query) => {
                             const vName = getVendorName(item.vendorId, item.vendorType).toLowerCase();

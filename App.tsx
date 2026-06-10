@@ -4652,6 +4652,38 @@ export default function App() {
     });
   };
 
+  const handleDeleteAPMultiple = async (items: AccountsPayable[]) => {
+    const userRoleLower = (systemUser?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
+    
+    if (!isAdmin) {
+      alert("Access Denied: Only portal Admins can perform bulk deletions.");
+      return;
+    }
+
+    if (items.length === 0) {
+      alert("No data records selected.");
+      return;
+    }
+
+    openConfirm(
+      "Bulk Delete Entries", 
+      `Are you sure you want to permanently delete these ${items.length} selected ledger entries? This action is irreversible.`, 
+      async () => {
+        try {
+          for (const item of items) {
+            await deleteAccountsPayable(item.id);
+          }
+          handleLogAction('Payables Bulk Deleted', `Permanently deleted ${items.length} chosen ledger entries.`, 'delete');
+          alert(`Successfully deleted the selected ${items.length} entries.`);
+        } catch (err) {
+          console.error("Failed to delete selected items: ", err);
+          alert("An error occurred during bulk deletion.");
+        }
+      }
+    );
+  };
+
   const handleDeleteAPBatch = async (batchId: string) => {
     const userRoleLower = (systemUser?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
@@ -5534,6 +5566,7 @@ export default function App() {
           onAdd={() => setShowAPModal(true)}
           onEdit={(ap: AccountsPayable) => setShowAPModal(ap)}
           onDelete={handleDeleteAP}
+          onDeleteMultiple={handleDeleteAPMultiple}
           onDeleteBatch={handleDeleteAPBatch}
           onUploadExcel={handleUploadExcelPayable}
           user={systemUser}
