@@ -97,6 +97,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     mobileNumber: '',
     position: 'Cleaner',
     passportNumber: '',
+    emiratesIdNumber: '',
     salaryExpectation: 0,
     notes: '',
     status: 'Applied' as JobApplicant['status'],
@@ -115,6 +116,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     otherAllowance: 500,
     passportNumber: '',
     mobileNumber: '',
+    email: '',
+    emiratesIdNumber: '',
     joiningDate: new Date().toISOString().split('T')[0],
     offerDate: new Date().toISOString().split('T')[0],
     expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -250,6 +253,66 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     return counts;
   };
 
+  // Helper to ensure a job offer exists in Firestore if status is Offered or Hired (Approved)
+  const ensureJobOfferForApplicantDoc = async (
+    appId: string,
+    appName: string,
+    appEmail: string,
+    appMobile: string,
+    appPosition: string,
+    appPassport: string,
+    appEmiratesId: string,
+    appSalaryExp: number,
+    appStatus: 'Applied' | 'Interview Scheduled' | 'Interview Conducted' | 'Offered' | 'Hired' | 'Rejected'
+  ) => {
+    try {
+      const existingOffer = offers.find(o => o.applicantId === appId);
+      const newStatus = appStatus === 'Hired' ? 'Accepted' : 'Offered';
+      
+      if (existingOffer) {
+        if (existingOffer.status !== newStatus || existingOffer.emiratesIdNumber !== appEmiratesId) {
+          await setDoc(doc(db, 'job_offers', existingOffer.id), {
+            ...existingOffer,
+            status: newStatus,
+            emiratesIdNumber: appEmiratesId || existingOffer.emiratesIdNumber || '',
+            email: appEmail || existingOffer.email || '',
+            mobileNumber: appMobile || existingOffer.mobileNumber || ''
+          }, { merge: true });
+        }
+      } else {
+        const offerId = doc(collection(db, 'job_offers')).id;
+        const salaryExp = appSalaryExp || 3000;
+        const basic = Math.round(salaryExp * 0.6);
+        const housing = Math.round(salaryExp * 0.2);
+        const transport = Math.round(salaryExp * 0.1);
+        const other = Math.round(salaryExp * 0.1);
+
+        const newOffer: JobOffer = {
+          id: offerId,
+          applicantId: appId,
+          employeeName: appName,
+          position: appPosition,
+          salary: basic,
+          housingAllowance: housing,
+          transportAllowance: transport,
+          otherAllowance: other,
+          passportNumber: appPassport || '',
+          mobileNumber: appMobile || '',
+          email: appEmail || '',
+          emiratesIdNumber: appEmiratesId || '',
+          joiningDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          offerDate: new Date().toISOString().split('T')[0],
+          expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          status: newStatus,
+          additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.'
+        };
+        await setDoc(doc(db, 'job_offers', offerId), newOffer);
+      }
+    } catch (err) {
+      console.error("Error securing job offer for applicant:", err);
+    }
+  };
+
   // Handle Save Applicant
   const handleSaveApplicant = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,6 +327,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         mobileNumber: applicantForm.mobileNumber,
         position: applicantForm.position,
         passportNumber: applicantForm.passportNumber,
+        emiratesIdNumber: applicantForm.emiratesIdNumber || '',
         salaryExpectation: Number(applicantForm.salaryExpectation),
         status: applicantForm.status,
         appliedDate: editingApplicant ? editingApplicant.appliedDate : new Date().toISOString().split('T')[0],
@@ -281,12 +345,28 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       });
 
       await setDoc(doc(db, 'job_applicants', applicantId), data);
+
+      // If status is 'Offered' or 'Hired', ensure offer is generated
+      if (applicantForm.status === 'Offered' || applicantForm.status === 'Hired') {
+        await ensureJobOfferForApplicantDoc(
+          applicantId,
+          applicantForm.name,
+          applicantForm.email,
+          applicantForm.mobileNumber,
+          applicantForm.position,
+          applicantForm.passportNumber,
+          applicantForm.emiratesIdNumber,
+          Number(applicantForm.salaryExpectation),
+          applicantForm.status
+        );
+      }
+
       setShowApplicantModal(false);
       setEditingApplicant(null);
       // Reset Form
       setApplicantForm({
         name: '', email: '', mobileNumber: '', position: 'Cleaner', 
-        passportNumber: '', salaryExpectation: 0, notes: '', status: 'Applied',
+        passportNumber: '', emiratesIdNumber: '', salaryExpectation: 0, notes: '', status: 'Applied',
         interviewType: 'F2F', interviewMeetLink: '', interviewDate: ''
       });
     } catch (err) {
@@ -304,6 +384,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       mobileNumber: app.mobileNumber,
       position: app.position,
       passportNumber: app.passportNumber || '',
+      emiratesIdNumber: app.emiratesIdNumber || '',
       salaryExpectation: app.salaryExpectation || 0,
       notes: app.notes || '',
       status: app.status,
@@ -336,6 +417,19 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
     if (!canManage) return;
     try {
       await setDoc(doc(db, 'job_applicants', app.id), { ...app, status }, { merge: true });
+      if (status === 'Offered' || status === 'Hired') {
+        await ensureJobOfferForApplicantDoc(
+          app.id,
+          app.name,
+          app.email,
+          app.mobileNumber,
+          app.position,
+          app.passportNumber,
+          app.emiratesIdNumber || '',
+          app.salaryExpectation || 0,
+          status
+        );
+      }
     } catch (err) {
       console.error("Error updating status:", err);
     }
@@ -352,6 +446,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       otherAllowance: app.salaryExpectation && app.salaryExpectation > 0 ? Math.round(app.salaryExpectation * 0.1) : 500,
       passportNumber: app.passportNumber || '',
       mobileNumber: app.mobileNumber || '',
+      email: app.email || '',
+      emiratesIdNumber: app.emiratesIdNumber || '',
       joiningDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 14 days later
       offerDate: new Date().toISOString().split('T')[0],
       expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -382,6 +478,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         otherAllowance: Number(offerForm.otherAllowance),
         passportNumber: offerForm.passportNumber,
         mobileNumber: offerForm.mobileNumber,
+        email: offerForm.email,
+        emiratesIdNumber: offerForm.emiratesIdNumber,
         joiningDate: offerForm.joiningDate,
         offerDate: offerForm.offerDate,
         expiryDate: offerForm.expiryDate,
@@ -399,11 +497,12 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
 
       await setDoc(doc(db, 'job_offers', offerId), data, { merge: true });
 
-      // If tied to an applicant, automatically mark them as "Hired"
+      // If tied to an applicant, automatically mark them as "Hired" or "Offered" based on offer status
       if (offerForm.applicantId) {
         const linkedApp = applicants.find(a => a.id === offerForm.applicantId);
         if (linkedApp) {
-          await setDoc(doc(db, 'job_applicants', linkedApp.id), { ...linkedApp, status: 'Hired' }, { merge: true });
+          const newAppStatus = offerForm.status === 'Accepted' ? 'Hired' : 'Offered';
+          await setDoc(doc(db, 'job_applicants', linkedApp.id), { ...linkedApp, status: newAppStatus }, { merge: true });
         }
       }
 
@@ -413,9 +512,10 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       setOfferForm({
         employeeName: '', position: 'Cleaner', salary: 3000, housingAllowance: 1000,
         transportAllowance: 500, otherAllowance: 500, passportNumber: '', mobileNumber: '',
+        email: '', emiratesIdNumber: '',
         joiningDate: new Date().toISOString().split('T')[0], offerDate: new Date().toISOString().split('T')[0],
         expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: 'Offered',
-        additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided.', applicantId: ''
+        additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.', applicantId: ''
       });
     } catch (err) {
       console.error("Error saving job offer:", err);
@@ -435,6 +535,8 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       otherAllowance: offer.otherAllowance || 0,
       passportNumber: offer.passportNumber,
       mobileNumber: offer.mobileNumber,
+      email: offer.email || '',
+      emiratesIdNumber: offer.emiratesIdNumber || '',
       joiningDate: offer.joiningDate,
       offerDate: offer.offerDate,
       expiryDate: offer.expiryDate || '',
@@ -739,6 +841,13 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       const refNo = `PGC/HR/AP-${rx}`;
       const offerDateFormatted = offer.offerDate ? offer.offerDate.split('-').reverse().join('/') : new Date().toLocaleDateString('en-GB');
 
+      // Heading: OFFER OF EMPLOYMENT (Large Deep Blue Centered Title)
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(15);
+      doc.setTextColor(29, 59, 132); // Deep Blue Theme color
+      const titleText = "OFFER OF EMPLOYMENT";
+      doc.text(titleText, (210 - doc.getTextWidth(titleText)) / 2, 41);
+
       // Meta Data (Positioning below the header at y = 52)
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(10.5);
@@ -749,26 +858,48 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       doc.text(dateText, 190 - doc.getTextWidth(dateText), 52);
 
       // Recipient Address Block
-      doc.setFontSize(11);
+      doc.setFontSize(10.5);
+      doc.setFont("Helvetica", "bold");
       doc.text(`To: Mr. ${offer.employeeName},`, 20, 64);
       doc.setFont("Helvetica", "normal");
-      doc.text(`Passport Number – ${offer.passportNumber || 'N/A'}`, 20, 70);
-
+      
+      let nextY = 69.5;
+      
+      doc.text(`Passport Number – ${offer.passportNumber || 'N/A'}`, 20, nextY);
+      nextY += 5.5;
+      
+      doc.text(`Mobile Contact – ${offer.mobileNumber || 'N/A'}`, 20, nextY);
+      nextY += 5.5;
+      
+      if (offer.email) {
+        doc.text(`Email Address – ${offer.email}`, 20, nextY);
+        nextY += 5.5;
+      }
+      
+      if (offer.emiratesIdNumber && offer.emiratesIdNumber.trim() !== '') {
+        doc.text(`Emirates ID – ${offer.emiratesIdNumber}`, 20, nextY);
+        nextY += 5.5;
+      }
+      
+      nextY += 4.5; // Gap before subject
+      
       // Subject
       doc.setFont("Helvetica", "bold");
-      doc.text(`Subject: Employment Offer for the Position of ${offer.position}`, 20, 81);
-
+      doc.text(`Subject: Employment Offer for the Position of ${offer.position}`, 20, nextY);
+      nextY += 11.5; // Gap before Salutation
+      
       // Salutation & Opening Paragraph
-      doc.text(`Dear Mr. ${offer.employeeName},`, 20, 93);
+      doc.text(`Dear Mr. ${offer.employeeName},`, 20, nextY);
       doc.setFont("Helvetica", "normal");
       doc.setFontSize(10);
+      nextY += 6; // Gap before paragraph
       
       const p1 = `We are pleased to extend this formal offer of employment to you for the position of ${offer.position} with Pioneer General Contracting LLC, based in Abu Dhabi, United Arab Emirates. We are confident that your experience and professional background will be valuable to our team and projects.`;
       const splitP1 = doc.splitTextToSize(p1, 170);
-      doc.text(splitP1, 20, 99);
-
-      // Employment Terms Table
-      let tableY = 118;
+      doc.text(splitP1, 20, nextY);
+      
+      const p1Height = splitP1.length * 4.8;
+      let tableY = nextY + p1Height + 8;
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(11);
       doc.setTextColor(29, 59, 132); // Deep Blue Theme color
@@ -782,7 +913,6 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
         ["Housing Allowance", formatAED(offer.housingAllowance || 0)],
         ["Transport Allowance", formatAED(offer.transportAllowance || 0)],
         ["Other Allowances", formatAED(offer.otherAllowance || 0)],
-        ["Mobile Allowance", offer.otherAllowance > 0 ? "Provided/Covered" : "As per company policy"],
         ["Total Monthly Salary", formatAED((offer.salary || 0) + (offer.housingAllowance || 0) + (offer.transportAllowance || 0) + (offer.otherAllowance || 0))],
         ["Probation Period", "6 months from the date of joining"],
         ["Working Hours", "As per UAE Labor Law and company policy"],
@@ -1035,71 +1165,58 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
       let nextY = 90 + (splitP1.length * 5.5) + 6;
       
       // Confirmed Details Container
-      doc.setFillColor(248, 250, 252); // slate 50 background
-      doc.rect(20, nextY, 170, 72, 'F');
-      doc.setDrawColor(203, 213, 225); // slate 300 border
-      doc.rect(20, nextY, 170, 72, 'D');
-      
-      doc.setFont("Helvetica", "bold");
-      doc.setFontSize(10.5);
-      doc.setTextColor(29, 59, 132);
-      doc.text("Confirmed Terms & Personal Details:", 25, nextY + 7);
-      
-      doc.setFontSize(9.5);
-      doc.setTextColor(15, 23, 42);
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Full Name:", 25, nextY + 15);
-      doc.setFont("Helvetica", "bold");
-      doc.text(`${offer.employeeName}`, 60, nextY + 15);
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Passport Number:", 25, nextY + 21);
-      doc.setFont("Helvetica", "bold");
-      doc.text(`${offer.passportNumber || 'N/A'}`, 60, nextY + 21);
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Mobile Contact:", 25, nextY + 27);
-      doc.setFont("Helvetica", "bold");
-      doc.text(`${offer.mobileNumber || 'N/A'}`, 60, nextY + 27);
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Designation:", 25, nextY + 33);
-      doc.setFont("Helvetica", "bold");
-      doc.text(`${offer.position}`, 60, nextY + 33);
-      
       const basic = offer.salary || 0;
       const lodging = offer.housingAllowance || 0;
       const transport = offer.transportAllowance || 0;
       const utilities = offer.otherAllowance || 0;
       const total = basic + lodging + transport + utilities;
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Basic Monthly Salary:", 25, nextY + 41);
+
+      const hasEmail = !!offer.email;
+      const hasEmiratesId = !!offer.emiratesIdNumber;
+
+      // Calculate container height dynamically
+      let lineCount = 8;
+      if (hasEmail) lineCount++;
+      if (hasEmiratesId) lineCount++;
+      const containerHeight = 15 + (lineCount * 6) + 4;
+
+      doc.setFillColor(248, 250, 252); // slate 50 background
+      doc.rect(20, nextY, 170, containerHeight, 'F');
+      doc.setDrawColor(203, 213, 225); // slate 300 border
+      doc.rect(20, nextY, 170, containerHeight, 'D');
+
+      let textY = nextY + 7;
       doc.setFont("Helvetica", "bold");
-      doc.text(`${formatAED(basic)}`, 74, nextY + 41);
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Total Gross Monthly Salary:", 25, nextY + 47);
-      doc.setFont("Helvetica", "bold");
-      doc.text(`${formatAED(total)}`, 74, nextY + 47);
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Proposed Joining Date:", 25, nextY + 53);
-      doc.setFont("Helvetica", "bold");
-      doc.text(`${offer.joiningDate ? offer.joiningDate.split('-').reverse().join('/') : 'N/A'}`, 74, nextY + 53);
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Associated Offer Code:", 25, nextY + 59);
-      doc.setFont("Helvetica", "bold");
-      doc.text(`${code}`, 74, nextY + 59);
-      
-      doc.setFont("Helvetica", "normal");
-      doc.text("Current Contact in UAE:", 25, nextY + 65);
-      doc.setFont("Helvetica", "bold");
-      doc.text(`${offer.mobileNumber || 'N/A'}`, 74, nextY + 65);
-      
-      nextY += 80;
+      doc.setFontSize(10.5);
+      doc.setTextColor(29, 59, 132);
+      doc.text("Confirmed Terms & Personal Details:", 25, textY);
+
+      textY += 8;
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+
+      const items = [
+        { label: "Full Name:", val: offer.employeeName },
+        { label: "Passport Number:", val: offer.passportNumber || 'N/A' },
+        { label: "Mobile Contact:", val: offer.mobileNumber || 'N/A' },
+        ...(hasEmail ? [{ label: "Email Address:", val: offer.email! }] : []),
+        ...(hasEmiratesId ? [{ label: "Emirates ID:", val: offer.emiratesIdNumber! }] : []),
+        { label: "Designation:", val: offer.position },
+        { label: "Basic Monthly Salary:", val: formatAED(basic) },
+        { label: "Total Gross Monthly Salary:", val: formatAED(total) },
+        { label: "Proposed Joining Date:", val: offer.joiningDate ? offer.joiningDate.split('-').reverse().join('/') : 'N/A' },
+        { label: "Associated Offer Code:", val: code }
+      ];
+
+      items.forEach(item => {
+        doc.setFont("Helvetica", "normal");
+        doc.text(item.label, 25, textY);
+        doc.setFont("Helvetica", "bold");
+        doc.text(item.val, 78, textY);
+        textY += 6;
+      });
+
+      nextY += containerHeight + 8;
       
       // Deceleration Paragraph
       doc.setFont("Helvetica", "normal");
@@ -1363,11 +1480,18 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                           <div className="flex flex-col gap-0.5 mt-1 text-[10px] text-slate-500">
                             <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-slate-400" /> {app.email}</span>
                             <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-slate-400" /> {app.mobileNumber}</span>
-                            {app.passportNumber && (
-                              <span className="flex items-center gap-1 text-[9px] bg-slate-100 w-max px-1 rounded">
-                                Passport: {app.passportNumber}
-                              </span>
-                            )}
+                            <div className="flex gap-1.5 flex-wrap mt-0.5">
+                              {app.passportNumber && (
+                                <span className="flex items-center gap-1 text-[9px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-medium">
+                                  Passport: {app.passportNumber}
+                                </span>
+                              )}
+                              {app.emiratesIdNumber && app.emiratesIdNumber.trim() !== '' && (
+                                <span className="flex items-center gap-1 text-[9px] bg-indigo-50 px-1.5 py-0.5 rounded text-indigo-700 font-semibold border border-indigo-100">
+                                  EID: {app.emiratesIdNumber}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-5 py-4">
@@ -1598,6 +1722,18 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                           <span className="font-bold text-slate-400 block uppercase text-[8px]">Passport Number</span>
                           <span className="text-slate-900 font-mono font-bold">{offer.passportNumber || 'N/A'}</span>
                         </div>
+                        {offer.email && (
+                          <div className="col-span-2">
+                            <span className="font-bold text-slate-400 block uppercase text-[8px]">Email Address</span>
+                            <span className="text-slate-900 font-medium">{offer.email}</span>
+                          </div>
+                        )}
+                        {offer.emiratesIdNumber && offer.emiratesIdNumber.trim() !== '' && (
+                          <div className="col-span-2">
+                            <span className="font-bold text-slate-400 block uppercase text-[8px]">Emirates ID Number</span>
+                            <span className="text-slate-900 font-mono font-bold">{offer.emiratesIdNumber}</span>
+                          </div>
+                        )}
                         <div>
                           <span className="font-bold text-slate-400 block uppercase text-[8px]">Salary Breakdown</span>
                           <span className="text-brand-600 font-extrabold">{formatAED(grossTotal)} / mo</span>
@@ -1951,6 +2087,19 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm })
                     value={applicantForm.passportNumber}
                     onChange={(e) => setApplicantForm({ ...applicantForm, passportNumber: e.target.value })}
                     placeholder="e.g. N1234567"
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Emirates ID Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={applicantForm.emiratesIdNumber}
+                    onChange={(e) => setApplicantForm({ ...applicantForm, emiratesIdNumber: e.target.value })}
+                    placeholder="e.g. 784-1234-5678901-2"
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
                   />
                 </div>
@@ -2318,6 +2467,32 @@ Pioneer DMS`}
                     value={offerForm.mobileNumber}
                     onChange={(e) => setOfferForm({ ...offerForm, mobileNumber: e.target.value })}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={offerForm.email}
+                    onChange={(e) => setOfferForm({ ...offerForm, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
+                    placeholder="e.g. candidate@example.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Emirates ID Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={offerForm.emiratesIdNumber}
+                    onChange={(e) => setOfferForm({ ...offerForm, emiratesIdNumber: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 outline-none"
+                    placeholder="e.g. 784-1234-5678901-2"
                   />
                 </div>
 

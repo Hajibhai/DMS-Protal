@@ -467,6 +467,7 @@ export interface JobApplicant {
   mobileNumber: string;
   position: string;
   passportNumber: string;
+  emiratesIdNumber?: string;
   status: 'Applied' | 'Interview Scheduled' | 'Interview Conducted' | 'Offered' | 'Hired' | 'Rejected';
   appliedDate: string;
   interviewDate?: string;
@@ -487,6 +488,8 @@ export interface JobOffer {
   otherAllowance: number;
   passportNumber: string;
   mobileNumber: string;
+  email?: string;
+  emiratesIdNumber?: string;
   joiningDate: string;
   offerDate: string;
   expiryDate?: string;
