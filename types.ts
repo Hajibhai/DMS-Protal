@@ -241,6 +241,14 @@ export interface AccountsPayable {
     dueDate?: string;
     paymentDate?: string;
     attachment?: string;
+    hours?: number;
+    actualAmount?: number;
+    advance?: number;
+    deduction?: number;
+    paid?: number;
+    payableAmount?: number;
+    supplierName?: string;
+    supplierCode?: string;
 }
 
 export interface AccountsReceivable {

@@ -4682,14 +4682,19 @@ export default function App() {
         const headers = rawData[headerRowIndex].map((h: any) => String(h || '').trim());
         
         const idxNameOfSupplier = headers.findIndex((h: string) => h.toLowerCase().includes('name of supplier') || h.toLowerCase() === 'supplier name');
-        const idxSupplierCode = headers.findIndex((h: string) => h === 'Supplier' || h.toLowerCase() === 'supplier code');
-        const idxInvoiceNumber = headers.findIndex((h: string) => h.toLowerCase().includes('invoice number') || h.toLowerCase().includes('invoice #'));
-        const idxBillAmount = headers.findIndex((h: string) => h.toLowerCase().includes('bill amount') || h.toLowerCase().includes('taxable amount') || h.toLowerCase().includes('amount'));
+        const idxSupplierCode = headers.findIndex((h: string) => h.toLowerCase().trim() === 'supplier' || h.toLowerCase() === 'supplier code');
+        const idxInvoiceNumber = headers.findIndex((h: string) => h.toLowerCase().includes('invoice number') || h.toLowerCase().includes('invoice #') || h.toLowerCase() === 'invoice');
+        const idxHours = headers.findIndex((h: string) => h.toLowerCase() === 'hours' || h.toLowerCase().includes('hours'));
+        const idxBillAmount = headers.findIndex((h: string) => h.toLowerCase().includes('bill amount'));
+        const idxActualAmount = headers.findIndex((h: string) => h.toLowerCase().includes('actual amount') || h.toLowerCase() === 'actual amount');
         const idxVat = headers.findIndex((h: string) => h.toLowerCase() === 'vat' || h.toLowerCase().includes('vat'));
         const idxTotal = headers.findIndex((h: string) => h.toLowerCase() === 'total' || h.toLowerCase().includes('total amount'));
+        const idxAdvance = headers.findIndex((h: string) => h.toLowerCase().includes('advance'));
+        const idxDeduction = headers.findIndex((h: string) => h.toLowerCase().includes('deduction'));
         const idxPaid = headers.findIndex((h: string) => h.toLowerCase() === 'paid');
-        const idxClearDate = headers.findIndex((h: string) => h.toLowerCase().includes('clear date') || h.toLowerCase().includes('payment date'));
-        const idxNotes = headers.findIndex((h: string) => h.toLowerCase().includes('notes') || h.toLowerCase().includes('remarks'));
+        const idxPayableAmount = headers.findIndex((h: string) => h.toLowerCase().includes('payable amount'));
+        const idxClearDate = headers.findIndex((h: string) => h.toLowerCase().includes('clear date') || h.toLowerCase().includes('payment clear date') || h.toLowerCase().includes('payment date'));
+        const idxNotes = headers.findIndex((h: string) => h.toLowerCase().includes('notes') || h.toLowerCase().includes('remarks') || h.toLowerCase().includes('notes / remarks'));
 
         if (idxNameOfSupplier === -1 && idxSupplierCode === -1) {
           alert("Could not identify 'Name of Supplier' or 'Supplier' column of the excel sheet. Please check column headers.");
@@ -4702,41 +4707,49 @@ export default function App() {
           const row = rawData[r];
           if (!row || row.length === 0) continue;
 
-          const rawName = String(row[idxNameOfSupplier] || row[idxSupplierCode] || '').trim();
-          if (!rawName || rawName === 'undefined' || rawName === '') continue; // Skip empty rows
+          const rawName = idxNameOfSupplier !== -1 && row[idxNameOfSupplier] !== undefined ? String(row[idxNameOfSupplier]).trim() : '';
+          const rawCode = idxSupplierCode !== -1 && row[idxSupplierCode] !== undefined ? String(row[idxSupplierCode]).trim() : '';
+          
+          let nameToUse = rawName;
+          let codeToUse = rawCode;
+          if (!nameToUse && !codeToUse) continue;
+          if (!nameToUse) nameToUse = codeToUse;
+          if (!codeToUse) codeToUse = nameToUse.substring(0, 3).toUpperCase();
 
-          const cleanRawName = rawName.toLowerCase();
+          const cleanRawName = nameToUse.toLowerCase().trim();
+          const cleanRawCode = codeToUse.toLowerCase().trim();
           const matchedSup = (suppliers || []).find((s: any) => 
             s.name?.toLowerCase().trim() === cleanRawName || 
-            s.code?.toLowerCase().trim() === cleanRawName ||
-            cleanRawName.includes(s.name?.toLowerCase().trim()) ||
-            s.name?.toLowerCase().trim().includes(cleanRawName)
+            s.code?.toLowerCase().trim() === cleanRawCode
           );
 
           let finalVendorId = '';
-          let finalVendorType: 'Supplier' | 'Vendor' = 'Supplier';
 
           if (matchedSup) {
             finalVendorId = matchedSup.id;
           } else {
-            const codeSuffix = rawName.substring(0, 3).toUpperCase();
             const newSup = {
               id: 'sup_' + Math.random().toString(36).substr(2, 9),
-              name: rawName,
-              code: codeSuffix,
+              name: nameToUse,
+              code: codeToUse,
               createdAt: new Date().toISOString()
             };
             finalVendorId = newSup.id;
             await addSupplier(newSup as any); 
           }
 
-          const rawInvoice = row[idxInvoiceNumber] !== undefined ? String(row[idxInvoiceNumber]).trim() : '';
+          const rawInvoice = idxInvoiceNumber !== -1 && row[idxInvoiceNumber] !== undefined ? String(row[idxInvoiceNumber]).trim() : '';
           const invoiceNumber = rawInvoice || 'INV-' + Math.random().toString(36).substr(2, 5).toUpperCase();
 
-          const billAmountVal = Number(String(row[idxBillAmount] || '0').replace(/[^0-9.-]/g, '')) || 0;
-          const vatVal = Number(String(row[idxVat] || '0').replace(/[^0-9.-]/g, '')) || Number((billAmountVal * 0.05).toFixed(2));
-          const totalVal = Number(String(row[idxTotal] || '0').replace(/[^0-9.-]/g, '')) || (billAmountVal + vatVal);
-          const paidVal = Number(String(row[idxPaid] || '0').replace(/[^0-9.-]/g, '')) || 0;
+          const hoursVal = idxHours !== -1 && row[idxHours] !== undefined ? Number(String(row[idxHours]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          const billAmountVal = idxBillAmount !== -1 && row[idxBillAmount] !== undefined ? Number(String(row[idxBillAmount]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          const actualAmountVal = idxActualAmount !== -1 && row[idxActualAmount] !== undefined ? Number(String(row[idxActualAmount]).replace(/[^0-9.-]/g, '')) || billAmountVal : billAmountVal;
+          const vatVal = idxVat !== -1 && row[idxVat] !== undefined ? Number(String(row[idxVat]).replace(/[^0-9.-]/g, '')) || Number((actualAmountVal * 0.05).toFixed(2)) : Number((actualAmountVal * 0.05).toFixed(2));
+          const totalVal = idxTotal !== -1 && row[idxTotal] !== undefined ? Number(String(row[idxTotal]).replace(/[^0-9.-]/g, '')) || Number((actualAmountVal + vatVal).toFixed(2)) : Number((actualAmountVal + vatVal).toFixed(2));
+          const advanceVal = idxAdvance !== -1 && row[idxAdvance] !== undefined ? Number(String(row[idxAdvance]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          const deductionVal = idxDeduction !== -1 && row[idxDeduction] !== undefined ? Number(String(row[idxDeduction]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          const paidVal = idxPaid !== -1 && row[idxPaid] !== undefined ? Number(String(row[idxPaid]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          const payableAmountVal = idxPayableAmount !== -1 && row[idxPayableAmount] !== undefined ? Number(String(row[idxPayableAmount]).replace(/[^0-9.-]/g, '')) || Number((totalVal - paidVal - advanceVal - deductionVal).toFixed(2)) : Number((totalVal - paidVal - advanceVal - deductionVal).toFixed(2));
 
           let status: 'Pending' | 'Paid' | 'Partially Paid' = 'Pending';
           if (paidVal >= totalVal && totalVal > 0) {
@@ -4745,31 +4758,41 @@ export default function App() {
             status = 'Partially Paid';
           }
 
-          const notes = row[idxNotes] !== undefined ? String(row[idxNotes]).trim() : '';
+          const notes = idxNotes !== -1 && row[idxNotes] !== undefined ? String(row[idxNotes]).trim() : '';
 
           const newAp: AccountsPayable = {
             id: 'ap_' + Math.random().toString(36).substr(2, 9),
             date: new Date().toISOString().split('T')[0],
             vendorId: finalVendorId,
-            vendorType: finalVendorType,
+            vendorType: 'Supplier',
             invoiceNumber,
             amount: billAmountVal,
             vatAmount: vatVal,
             totalAmount: totalVal,
             status,
-            description: `Imported via Ledger Excel list: ${notes}`.trim(),
+            description: notes || `Imported via Ledger Excel list`,
             dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            hours: hoursVal,
+            actualAmount: actualAmountVal,
+            advance: advanceVal,
+            deduction: deductionVal,
+            paid: paidVal,
+            payableAmount: payableAmountVal,
+            supplierName: nameToUse,
+            supplierCode: codeToUse
           };
 
-          if (row[idxClearDate]) {
+          if (idxClearDate !== -1 && row[idxClearDate]) {
             try {
               let rawDate = String(row[idxClearDate]).trim();
-              if (!isNaN(Number(rawDate))) {
-                const serial = Number(rawDate);
-                const dateObj = new Date((serial - 25569) * 86400 * 1000);
-                newAp.paymentDate = dateObj.toISOString().split('T')[0];
-              } else {
-                newAp.paymentDate = new Date(rawDate).toISOString().split('T')[0];
+              if (rawDate && rawDate !== 'undefined') {
+                if (!isNaN(Number(rawDate))) {
+                  const serial = Number(rawDate);
+                  const dateObj = new Date((serial - 25569) * 86400 * 1000);
+                  newAp.paymentDate = dateObj.toISOString().split('T')[0];
+                } else {
+                  newAp.paymentDate = new Date(rawDate).toISOString().split('T')[0];
+                }
               }
             } catch (e) {
               // ignore

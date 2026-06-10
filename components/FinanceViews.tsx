@@ -138,7 +138,7 @@ interface DataTableProps<T> {
     columns: {
         key: keyof T | string;
         label: string;
-        render?: (item: T) => React.ReactNode;
+        render?: (item: T, index: number) => React.ReactNode;
         sortable?: boolean;
     }[];
     onAdd?: () => void;
@@ -468,11 +468,11 @@ export function DataTable<T extends { id: string }>({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                            {filteredData.map((item) => (
+                            {filteredData.map((item, index) => (
                                 <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
                                     {columns.map((col) => (
                                         <td key={String(col.key)} className="px-6 py-5 text-sm font-bold text-slate-600">
-                                            {col.render ? col.render(item) : String((item as any)[col.key] || '-')}
+                                            {col.render ? col.render(item, index) : String((item as any)[col.key] || '-')}
                                         </td>
                                     ))}
                                     {(onEdit || onDelete || onViewBill) && (
@@ -6389,30 +6389,106 @@ export const VendorModal = ({ vendor, onSave, onCancel, openConfirm }: any) => {
 };
 
 export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave, onCancel, companies }: any) => {
-    const [formData, setFormData] = useState(ap || { 
-        id: Math.random().toString(36).substr(2, 9),
-        date: new Date().toISOString().split('T')[0],
-        vendorId: '',
-        vendorType: 'Supplier',
-        projectId: '',
-        invoiceNumber: '',
-        amount: 0,
-        vatAmount: 0,
-        totalAmount: 0,
-        description: '',
-        status: 'Pending',
-        companyId: companies && companies.length > 0 ? companies[0].id : ''
+    const [formData, setFormData] = useState(() => {
+        const base = ap || {};
+        const amount = base.amount || 0;
+        const actualAmount = base.actualAmount !== undefined ? base.actualAmount : amount;
+        const vatAmount = base.vatAmount !== undefined ? base.vatAmount : Number((actualAmount * 0.05).toFixed(2));
+        const totalAmount = base.totalAmount !== undefined ? base.totalAmount : Number((actualAmount + vatAmount).toFixed(2));
+        const paid = base.paid || 0;
+        const advance = base.advance || 0;
+        const deduction = base.deduction || 0;
+        const payableAmount = base.payableAmount !== undefined ? base.payableAmount : Number((totalAmount - paid - advance - deduction).toFixed(2));
+
+        return {
+            id: base.id || 'ap_' + Math.random().toString(36).substr(2, 9),
+            date: base.date || new Date().toISOString().split('T')[0],
+            vendorId: base.vendorId || '',
+            vendorType: base.vendorType || 'Supplier',
+            projectId: base.projectId || '',
+            invoiceNumber: base.invoiceNumber || '',
+            amount,
+            vatAmount,
+            totalAmount,
+            description: base.description || '',
+            status: base.status || 'Pending',
+            companyId: base.companyId || (companies && companies.length > 0 ? companies[0].id : ''),
+            hours: base.hours || 0,
+            actualAmount,
+            advance,
+            deduction,
+            paid,
+            payableAmount,
+            paymentDate: base.paymentDate || base.clearDate || '',
+            chequeNo: base.chequeNo || '',
+            chequeDate: base.chequeDate || '',
+            chequeAmount: base.chequeAmount || '',
+            supplierName: base.supplierName || '',
+            supplierCode: base.supplierCode || ''
+        };
     });
     const [payeeSearch, setPayeeSearch] = useState('');
 
-    const handleAmountChange = (val: number) => {
-        const vat = val * 0.05;
-        const total = val + vat;
-        setFormData({ 
-            ...formData, 
-            amount: val,
-            vatAmount: Number(vat.toFixed(2)),
-            totalAmount: Number(total.toFixed(2))
+    const handleRecalculate = (updates: any) => {
+        const next = { ...formData, ...updates };
+        
+        const amount = Number(next.amount) || 0;
+        const hours = Number(next.hours) || 0;
+        
+        // If they changed standard bill amount, and didn't touch actual amount, update actualAmount too
+        let actualAmount = Number(next.actualAmount);
+        if (updates.amount !== undefined && updates.actualAmount === undefined) {
+            actualAmount = amount;
+        }
+        if (isNaN(actualAmount)) actualAmount = amount;
+
+        // Auto-recalculate VAT 5% unless manually changed
+        let vatAmount = Number(next.vatAmount);
+        if (updates.actualAmount !== undefined || updates.amount !== undefined || isNaN(vatAmount)) {
+            vatAmount = Number((actualAmount * 0.05).toFixed(2));
+        }
+
+        const totalAmount = Number((actualAmount + vatAmount).toFixed(2));
+        const advance = Number(next.advance) || 0;
+        const deduction = Number(next.deduction) || 0;
+        const paid = Number(next.paid) || 0;
+        const payableAmount = Number((totalAmount - paid - advance - deduction).toFixed(2));
+
+        let status = next.status;
+        if (paid >= totalAmount && totalAmount > 0) {
+            status = 'Paid';
+        } else if (paid > 0) {
+            status = 'Partially Paid';
+        } else {
+            status = 'Pending';
+        }
+
+        // Keep supplierName and supplierCode in sync if vendor is a Supplier or Vendor of choice
+        let supplierName = next.supplierName;
+        let supplierCode = next.supplierCode;
+        if (updates.vendorId !== undefined) {
+            const list = next.vendorType === 'Supplier' ? suppliers : vendors;
+            const item = list.find((s: any) => s.id === updates.vendorId);
+            if (item) {
+                supplierName = item.name || '';
+                supplierCode = item.code || '';
+            }
+        }
+
+        setFormData({
+            ...next,
+            amount,
+            hours,
+            actualAmount,
+            vatAmount,
+            totalAmount,
+            advance,
+            deduction,
+            paid,
+            payableAmount,
+            status,
+            supplierName,
+            supplierCode
         });
     };
 
@@ -6421,43 +6497,45 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             <motion.div 
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-white"
+                className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden border border-white"
             >
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{ap ? 'Edit Payable' : 'Add Payable'}</h2>
-                        <p className="text-slate-500 text-sm font-medium mt-1">Enter payment details below</p>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{ap ? 'Edit Payable Ledger Entry' : 'Add New Payable Ledger Entry'}</h2>
+                        <p className="text-slate-500 text-sm font-medium mt-1">Provide supplier billing and payment metrics below</p>
                     </div>
                     <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
                 </div>
 
-                <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto">
-                    <div className="grid grid-cols-2 gap-4">
+                <div className="p-8 space-y-5 max-h-[70vh] overflow-y-auto">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Date</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice Date</label>
                             <input 
                                 type="date"
                                 value={formData.date}
-                                onChange={e => setFormData({ ...formData, date: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                onChange={e => handleRecalculate({ date: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-700"
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice #</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice Number</label>
                             <input 
                                 type="text"
+                                placeholder="e.g. INV-0035"
                                 value={formData.invoiceNumber}
-                                onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                onChange={e => handleRecalculate({ invoiceNumber: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-700 font-mono"
                             />
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Payee Type</label>
                             <select 
                                 value={formData.vendorType}
-                                onChange={e => setFormData({ ...formData, vendorType: e.target.value, vendorId: '' })}
+                                onChange={e => handleRecalculate({ vendorType: e.target.value, vendorId: '' })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             >
                                 <option value="Supplier">Supplier</option>
@@ -6475,7 +6553,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             />
                             <select 
                                 value={formData.vendorId}
-                                onChange={e => setFormData({ ...formData, vendorId: e.target.value })}
+                                onChange={e => handleRecalculate({ vendorId: e.target.value })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             >
                                 <option value="">Select...</option>
@@ -6488,52 +6566,160 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             </select>
                         </div>
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
-                        <select 
-                            value={formData.projectId}
-                            onChange={e => setFormData({ ...formData, projectId: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                        >
-                            <option value="">General / No Project</option>
-                            {projects.map((p: any) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Buying Corporate Identity (Company)</label>
-                        <select 
-                            value={formData.companyId || ''}
-                            onChange={e => setFormData({ ...formData, companyId: e.target.value })}
-                            className="w-full px-4 py-3 bg-brand-50 border border-brand-100/55 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-brand-700 cursor-pointer"
-                            required
-                        >
-                            {(!companies || companies.length === 0) && (
-                                <option value="">No corporate company accounts registered</option>
-                            )}
-                            {(companies || []).map((c: any) => (
-                                <option key={c.id} value={c.id}>🏢 {c.name}</option>
-                            ))}
-                        </select>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project (Optional)</label>
+                            <select 
+                                value={formData.projectId}
+                                onChange={e => handleRecalculate({ projectId: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-700"
+                            >
+                                <option value="">General / No Project</option>
+                                {projects.map((p: any) => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Buying Corporate Identity</label>
+                            <select 
+                                value={formData.companyId || ''}
+                                onChange={e => handleRecalculate({ companyId: e.target.value })}
+                                className="w-full px-4 py-3 bg-brand-50 border border-brand-100/55 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-brand-700 cursor-pointer"
+                                required
+                            >
+                                {(!companies || companies.length === 0) && (
+                                    <option value="">No corporate company accounts registered</option>
+                                )}
+                                {(companies || []).map((c: any) => (
+                                    <option key={c.id} value={c.id}>🏢 {c.name}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Taxable Amount (AED)</label>
-                            <input 
-                                type="number"
-                                value={formData.amount}
-                                onChange={e => handleAmountChange(Number(e.target.value))}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                            />
+                    <div className="border border-indigo-100 bg-indigo-50/20 p-5 rounded-2xl space-y-4">
+                        <div className="text-[11px] font-black uppercase tracking-wider text-indigo-800 flex items-center gap-1.5 border-b border-indigo-100/60 pb-2">
+                            <span className="w-2.5 h-2.5 bg-indigo-600 rounded-full" />
+                            Core Ledger Figures (Amounts in AED)
                         </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hours</label>
+                                <input 
+                                    type="number"
+                                    step="any"
+                                    placeholder="0"
+                                    value={formData.hours || ''}
+                                    onChange={e => handleRecalculate({ hours: Number(e.target.value) })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bill Amount</label>
+                                <input 
+                                    type="number"
+                                    step="any"
+                                    placeholder="0.00"
+                                    value={formData.amount || ''}
+                                    onChange={e => handleRecalculate({ amount: Number(e.target.value) })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Actual Amount</label>
+                                <input 
+                                    type="number"
+                                    step="any"
+                                    placeholder="Defaults to Bill Amount"
+                                    value={formData.actualAmount || ''}
+                                    onChange={e => handleRecalculate({ actualAmount: Number(e.target.value) })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">VAT Amount (5%)</label>
+                                <input 
+                                    type="number"
+                                    step="any"
+                                    placeholder="Calculated automatically"
+                                    value={formData.vatAmount || ''}
+                                    onChange={e => handleRecalculate({ vatAmount: Number(e.target.value) })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Amount</label>
+                                <div className="w-full px-3 py-2.5 bg-slate-100 rounded-xl text-sm font-black text-slate-800 border-none">
+                                    AED {(formData.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Payment Clear Date</label>
+                                <input 
+                                    type="date"
+                                    value={formData.paymentDate || ''}
+                                    onChange={e => handleRecalculate({ paymentDate: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 border-t border-indigo-100/40 pt-3">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Advance</label>
+                                <input 
+                                    type="number"
+                                    step="any"
+                                    placeholder="0"
+                                    value={formData.advance || ''}
+                                    onChange={e => handleRecalculate({ advance: Number(e.target.value) })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Deduction</label>
+                                <input 
+                                    type="number"
+                                    step="any"
+                                    placeholder="0"
+                                    value={formData.deduction || ''}
+                                    onChange={e => handleRecalculate({ deduction: Number(e.target.value) })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-rose-600 placeholder:text-slate-300 outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Paid Amount</label>
+                                <input 
+                                    type="number"
+                                    step="any"
+                                    placeholder="0"
+                                    value={formData.paid || ''}
+                                    onChange={e => handleRecalculate({ paid: Number(e.target.value) })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-emerald-600 outline-none focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-indigo-700">Payable Amount</label>
+                                <div className={cn("w-full px-3 py-2.5 rounded-xl text-sm font-black border-none", formData.payableAmount > 0 ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-900")}>
+                                    AED {(formData.payableAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Status</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Status (Manual Override)</label>
                             <select 
                                 value={formData.status}
-                                onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                onChange={e => handleRecalculate({ status: e.target.value })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             >
                                 <option value="Pending">Pending</option>
@@ -6542,26 +6728,14 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4 p-4 bg-brand-50/50 rounded-2xl border border-brand-100">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">VAT (5%)</label>
-                            <div className="w-full px-4 py-3 bg-white/50 border border-brand-100 rounded-xl text-sm font-bold text-slate-500">
-                                {formData.vatAmount.toLocaleString()}
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Total Amount</label>
-                            <div className="w-full px-4 py-3 bg-brand-600 rounded-xl text-sm font-black text-white shadow-md">
-                                {formData.totalAmount.toLocaleString()}
-                            </div>
-                        </div>
-                    </div>
+
                     <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Description</label>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Notes / Remarks</label>
                         <textarea 
                             value={formData.description}
-                            onChange={e => setFormData({ ...formData, description: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[100px]"
+                            placeholder="Add payment notes, terms or supplier billing remarks here..."
+                            onChange={e => handleRecalculate({ description: e.target.value })}
+                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[80px] text-slate-700 placeholder:text-slate-400"
                         />
                     </div>
                     
@@ -6577,7 +6751,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     type="text" 
                                     placeholder="e.g. 10482"
                                     value={formData.chequeNo || ''}
-                                    onChange={e => setFormData({ ...formData, chequeNo: e.target.value })}
+                                    onChange={e => handleRecalculate({ chequeNo: e.target.value })}
                                     className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs font-bold outline-none"
                                 />
                             </div>
@@ -6586,7 +6760,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                 <input 
                                     type="date" 
                                     value={formData.chequeDate || ''}
-                                    onChange={e => setFormData({ ...formData, chequeDate: e.target.value })}
+                                    onChange={e => handleRecalculate({ chequeDate: e.target.value })}
                                     className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs font-bold outline-none"
                                 />
                             </div>
@@ -6596,7 +6770,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     type="number" 
                                     placeholder="AED"
                                     value={formData.chequeAmount || ''}
-                                    onChange={e => setFormData({ ...formData, chequeAmount: e.target.value ? Number(e.target.value) : '' })}
+                                    onChange={e => handleRecalculate({ chequeAmount: e.target.value ? Number(e.target.value) : '' })}
                                     className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs font-bold outline-none"
                                 />
                             </div>
