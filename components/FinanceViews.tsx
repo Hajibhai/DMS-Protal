@@ -159,6 +159,7 @@ interface DataTableProps<T> {
     customSearch?: (item: T, query: string) => boolean;
     enableMultiSelect?: boolean;
     onBulkDelete?: (items: T[]) => void | Promise<void>;
+    renderFooter?: (filteredData: T[]) => React.ReactNode;
 }
 
 export function DataTable<T extends { id: string }>({
@@ -179,7 +180,8 @@ export function DataTable<T extends { id: string }>({
     onUploadExcel,
     customSearch,
     enableMultiSelect,
-    onBulkDelete
+    onBulkDelete,
+    renderFooter
 }: DataTableProps<T>) {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -630,6 +632,11 @@ export function DataTable<T extends { id: string }>({
                                 </tr>
                             )}
                         </tbody>
+                        {renderFooter && filteredData.length > 0 && (
+                            <tfoot className="border-t-2 border-slate-200 bg-slate-50/95 sticky bottom-0 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.03)] font-semibold text-slate-900">
+                                {renderFooter(filteredData)}
+                            </tfoot>
+                        )}
                     </table>
                 </div>
             </div>
@@ -714,6 +721,13 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [filterVendor, setFilterVendor] = useState('All');
     const [filterProject, setFilterProject] = useState('All');
     const [filterMonth, setFilterMonth] = useState('All');
+
+    // Date policy / Quick Filter stats
+    const [dateFilterMode, setDateFilterMode] = useState<'all' | 'current-month' | 'last-month' | 'month-wise' | 'year-wise' | 'custom-range'>('all');
+    const [selectedYearValue, setSelectedYearValue] = useState(new Date().getFullYear().toString());
+    const [selectedMonthValue, setSelectedMonthValue] = useState('');
+    const [customRangeStart, setCustomRangeStart] = useState('');
+    const [customRangeEnd, setCustomRangeEnd] = useState('');
 
     // SOA Tool state variables
     const [soaVendorId, setSoaVendorId] = useState('All');
@@ -802,7 +816,33 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
     // Apply Advanced Filters to dataset
     const filteredData = useMemo(() => {
+        const today = new Date();
+        const curYear = today.getFullYear();
+        const curMonthNum = String(today.getMonth() + 1).padStart(2, '0');
+        const curMonthStr = `${curYear}-${curMonthNum}`;
+
+        const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lmYear = lastMonthDate.getFullYear();
+        const lmMonthNum = String(lastMonthDate.getMonth() + 1).padStart(2, '0');
+        const lastMonthStr = `${lmYear}-${lmMonthNum}`;
+
         return (data || []).filter((item: any) => {
+            // Check Date Policy Mode
+            if (item.date) {
+                if (dateFilterMode === 'current-month') {
+                    if (item.date.substring(0, 7) !== curMonthStr) return false;
+                } else if (dateFilterMode === 'last-month') {
+                    if (item.date.substring(0, 7) !== lastMonthStr) return false;
+                } else if (dateFilterMode === 'month-wise') {
+                    if (selectedMonthValue && item.date.substring(0, 7) !== selectedMonthValue) return false;
+                } else if (dateFilterMode === 'year-wise') {
+                    if (selectedYearValue && item.date.substring(0, 4) !== selectedYearValue) return false;
+                } else if (dateFilterMode === 'custom-range') {
+                    if (customRangeStart && item.date < customRangeStart) return false;
+                    if (customRangeEnd && item.date > customRangeEnd) return false;
+                }
+            }
+
             if (startDate && item.date < startDate) return false;
             if (endDate && item.date > endDate) return false;
 
@@ -824,10 +864,11 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
             return true;
         });
-    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth]);
+    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
 
     const activeFiltersCount = useMemo(() => {
         let count = 0;
+        if (dateFilterMode !== 'all') count++;
         if (startDate) count++;
         if (endDate) count++;
         if (minAmount !== '') count++;
@@ -837,7 +878,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         if (filterProject !== 'All') count++;
         if (filterMonth !== 'All') count++;
         return count;
-    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth]);
+    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, dateFilterMode]);
 
     const handleClearAdvFilters = () => {
         setStartDate('');
@@ -848,6 +889,11 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         setFilterVendor('All');
         setFilterProject('All');
         setFilterMonth('All');
+        setDateFilterMode('all');
+        setSelectedYearValue(new Date().getFullYear().toString());
+        setSelectedMonthValue('');
+        setCustomRangeStart('');
+        setCustomRangeEnd('');
     };
 
     // Calculate dynamic high-level metrics based on filtered data to stay in sync
@@ -940,35 +986,6 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
     const userRoleLower = (user?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
-
-    // Excel Batch Derivation
-    const excelBatches = useMemo(() => {
-        const batchesMap = new Map<string, { fileName: string; count: number; date: string; totalAmount: number; itemIds: string[] }>();
-        (data || []).forEach((item: any) => {
-            if (item.excelFileName || item.excelBatchId) {
-                const batchKey = item.excelBatchId || item.excelFileName;
-                const existing = batchesMap.get(batchKey);
-                const amount = item.totalAmount || item.amount || 0;
-                if (existing) {
-                    existing.count += 1;
-                    existing.totalAmount += amount;
-                    existing.itemIds.push(item.id);
-                } else {
-                    batchesMap.set(batchKey, {
-                        fileName: item.excelFileName || item.excelBatchId || 'Unknown File',
-                        count: 1,
-                        date: item.date || new Date().toISOString().split('T')[0],
-                        totalAmount: amount,
-                        itemIds: [item.id]
-                    });
-                }
-            }
-        });
-        return Array.from(batchesMap.entries()).map(([batchId, info]) => ({
-            batchId,
-            ...info
-        })).sort((a, b) => b.batchId.localeCompare(a.batchId));
-    }, [data]);
 
     // Monthly Trends Calculation
     const monthlyTrends = useMemo(() => {
@@ -1397,6 +1414,145 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             {/* Main Dynamic Panel */}
             {activeTabMode === 'ledger' ? (
                 <div className="space-y-4">
+                    {/* Professional Date Filtering Bar: Month wise / Year wise / Range wise & Current / Last month */}
+                    <div className="bg-white border border-slate-100 p-5 rounded-3xl shadow-xs space-y-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div className="space-y-1">
+                                <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                                    <Calendar className="w-4 h-4 text-rose-500" />
+                                    <span>Posting Ledger Period Filter</span>
+                                </h3>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    Select quick filters or input custom periods for smart month/year/range tracking.
+                                </p>
+                            </div>
+                            
+                            {/* Mode Pill selector */}
+                            <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl border border-slate-200/40 gap-1">
+                                {[
+                                    { mode: 'all', label: 'All History' },
+                                    { mode: 'current-month', label: 'Current Month' },
+                                    { mode: 'last-month', label: 'Last Month' },
+                                    { mode: 'month-wise', label: 'Month-Wise' },
+                                    { mode: 'year-wise', label: 'Year-Wise' },
+                                    { mode: 'custom-range', label: 'Date Range' }
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.mode}
+                                        type="button"
+                                        onClick={() => {
+                                            setDateFilterMode(tab.mode as any);
+                                            // Pre-populate if empty
+                                            if (tab.mode === 'month-wise' && !selectedMonthValue) {
+                                                setSelectedMonthValue(new Date().toISOString().substring(0, 7));
+                                            }
+                                        }}
+                                        className={cn(
+                                            "px-3 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer",
+                                            dateFilterMode === tab.mode 
+                                                ? "bg-white text-slate-950 shadow-xs border border-slate-200/30 font-black" 
+                                                : "text-slate-500 hover:text-slate-800"
+                                        )}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Interactive Configurator Area depending on selected mode */}
+                        {dateFilterMode !== 'all' && (
+                            <div className="bg-slate-50 p-4 border border-slate-200/40 rounded-2xl animate-fadeIn text-xs">
+                                {dateFilterMode === 'current-month' && (
+                                    <div className="flex items-center gap-2 text-slate-600 font-medium font-sans">
+                                        <span className="p-1 px-2.5 bg-rose-50 border border-rose-100 rounded-md text-rose-700 font-mono font-bold">MODE ACTIVE: CURRENT MONTH</span>
+                                        <span>Showing records matching <strong className="text-slate-900 font-bold">{new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}</strong>.</span>
+                                    </div>
+                                )}
+
+                                {dateFilterMode === 'last-month' && (
+                                    <div className="flex items-center gap-2 text-slate-600 font-medium font-sans">
+                                        <span className="p-1 px-2.5 bg-amber-50 border border-amber-100 rounded-md text-amber-700 font-mono font-bold">MODE ACTIVE: LAST MONTH</span>
+                                        <span>Showing records matching <strong className="text-slate-900 font-bold">{(() => {
+                                            const today = new Date();
+                                            return new Date(today.getFullYear(), today.getMonth() - 1, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
+                                        })()}</strong>.</span>
+                                    </div>
+                                )}
+
+                                {dateFilterMode === 'month-wise' && (
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-mono text-[9px] font-bold text-slate-400 uppercase">Select Target Month</span>
+                                            <input 
+                                                type="month"
+                                                value={selectedMonthValue}
+                                                onChange={e => setSelectedMonthValue(e.target.value)}
+                                                className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700 focus:outline-hidden font-sans"
+                                            />
+                                        </div>
+                                        <div className="text-slate-600 font-medium pt-3 font-sans">
+                                            Currently filtering for month: <strong className="text-slate-900 font-black">{selectedMonthValue ? (() => {
+                                                const [yr, mn] = selectedMonthValue.split('-');
+                                                return new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
+                                            })() : 'None Selected'}</strong>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {dateFilterMode === 'year-wise' && (
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-mono text-[9px] font-bold text-slate-400 uppercase">Target Financial Year</span>
+                                            <select
+                                                value={selectedYearValue}
+                                                onChange={e => setSelectedYearValue(e.target.value)}
+                                                className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700 cursor-pointer focus:outline-hidden font-sans"
+                                            >
+                                                {Array.from({ length: 11 }, (_, i) => (2020 + i).toString()).map(yr => (
+                                                    <option key={yr} value={yr}>{yr}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="text-slate-605 font-medium pt-3 font-sans">
+                                            Currently filtering for year: <strong className="text-slate-900 font-black">{selectedYearValue}</strong>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {dateFilterMode === 'custom-range' && (
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 font-sans">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-mono text-[9px] font-bold text-slate-400 uppercase">From Date</span>
+                                            <input 
+                                                type="date"
+                                                value={customRangeStart}
+                                                onChange={e => setCustomRangeStart(e.target.value)}
+                                                className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700 focus:outline-hidden"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-mono text-[9px] font-bold text-slate-400 uppercase">To Date</span>
+                                            <input 
+                                                type="date"
+                                                value={customRangeEnd}
+                                                onChange={e => setCustomRangeEnd(e.target.value)}
+                                                className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700 focus:outline-hidden"
+                                            />
+                                        </div>
+                                        <div className="text-slate-605 font-medium pb-1.5">
+                                            {customRangeStart && customRangeEnd ? (
+                                                <span>Showing range between <strong className="text-slate-900 font-bold">{customRangeStart}</strong> and <strong className="text-slate-900 font-bold">{customRangeEnd}</strong></span>
+                                            ) : (
+                                                <span className="text-slate-400 font-medium">Please pick both boundaries for range tracking.</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Advanced Filter Controller */}
                     <div className="bg-white border border-slate-100 p-5 rounded-3xl shadow-sm">
                         <div className="flex justify-between items-center">
@@ -1524,43 +1680,6 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         )}
                     </div>
 
-                    {/* Excel Import Batches Section for Admins */}
-                    {isAdmin && excelBatches.length > 0 && (
-                        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-xs space-y-3 animate-fadeIn">
-                            <div className="flex items-center gap-2">
-                                <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
-                                <span className="font-extrabold text-sm text-slate-800">Admin Panel: Excel Upload History Logs</span>
-                                <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 font-mono font-bold text-[10px] px-2 py-0.5 rounded-full">
-                                    {excelBatches.length} imported files
-                                </span>
-                            </div>
-                            <p className="text-xs text-slate-400 font-medium leading-relaxed">
-                                If some Excel data was uploaded incorrectly, you can permanently delete the file record and its associated data rows from your Ledger here.
-                            </p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
-                                {excelBatches.map((batch) => (
-                                    <div key={batch.batchId} className="flex justify-between items-center bg-slate-50 hover:bg-slate-100/70 p-3.5 border border-slate-200/50 rounded-2xl transition-all">
-                                        <div className="space-y-1 pr-3 overflow-hidden">
-                                            <p className="text-xs font-black text-slate-800 truncate" title={batch.fileName}>{batch.fileName}</p>
-                                            <div className="flex gap-2 items-center text-[10px] text-slate-400 font-medium font-mono">
-                                                <span>Records: <strong className="text-slate-700 font-extrabold">{batch.count}</strong></span>
-                                                <span>•</span>
-                                                <span>Sum: <strong className="text-indigo-600 font-extrabold">AED {batch.totalAmount.toLocaleString()}</strong></span>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => onDeleteBatch && onDeleteBatch(batch.batchId)}
-                                            className="p-2 text-rose-500 hover:text-white hover:bg-rose-500 border border-rose-200/50 hover:border-transparent rounded-xl transition-all cursor-pointer shadow-2xs grow-0 shrink-0"
-                                            title="Delete imported Excel data batch"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     <DataTable<AccountsPayable>
                         title="Accounts Payable Ledger"
                         description="Filtered list of supplier billings and payments matching specified constraints."
@@ -1605,6 +1724,30 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     <span className="font-mono font-black text-slate-900 block whitespace-nowrap">{item.invoiceNumber || '-'}</span>
                                 ),
                                 exportText: (item) => item.invoiceNumber || ''
+                            },
+                            { 
+                                key: 'date', 
+                                label: 'Invoice Date', 
+                                sortable: true,
+                                render: (item) => {
+                                    if (!item.date) return <span className="text-xs text-slate-400 font-mono">-</span>;
+                                    const d = new Date(item.date);
+                                    // Handle edge case of invalid date cleanly
+                                    if (isNaN(d.getTime())) {
+                                        return <span className="text-xs text-slate-400 font-mono">{item.date}</span>;
+                                    }
+                                    const formatted = d.toLocaleDateString('default', { day: '2-digit', month: 'short', year: 'numeric' });
+                                    const monthLabel = d.toLocaleDateString('default', { month: 'short', year: 'numeric' });
+                                    return (
+                                        <div className="font-mono text-xs whitespace-nowrap leading-tight">
+                                            <span className="text-slate-700 font-bold block">{formatted}</span>
+                                            <span className="text-[9px] text-indigo-600 font-extrabold tracking-normal uppercase bg-indigo-55/80 border border-indigo-100/50 px-1 py-0.5 rounded-sm font-sans inline-block mt-0.5">
+                                                {monthLabel}
+                                            </span>
+                                        </div>
+                                    );
+                                },
+                                exportText: (item) => item.date || ''
                             },
                             { 
                                 key: 'hours', 
@@ -1759,6 +1902,126 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         searchFields={['invoiceNumber', 'description']}
                         exportFileName="Accounts_Payable"
                         user={user}
+                        renderFooter={(filteredItems) => {
+                            let uniqueSuppliers = new Set<string>();
+                            let hours = 0;
+                            let billAmount = 0;
+                            let actualAmount = 0;
+                            let vatAmount = 0;
+                            let totalAmount = 0;
+                            let advance = 0;
+                            let deduction = 0;
+                            let paid = 0;
+                            let payableAmount = 0;
+
+                            filteredItems.forEach(item => {
+                                const sName = item.supplierName || getVendorName(item.vendorId, item.vendorType) || '';
+                                if (sName && sName !== 'Unknown' && sName !== '-') {
+                                    uniqueSuppliers.add(sName);
+                                }
+
+                                hours += item.hours !== undefined ? item.hours : 0;
+                                billAmount += item.amount || 0;
+
+                                const actual = item.actualAmount !== undefined ? item.actualAmount : item.amount || 0;
+                                actualAmount += actual;
+
+                                const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+                                vatAmount += vat;
+
+                                const total = item.totalAmount !== undefined ? item.totalAmount : Number((actual + vat).toFixed(2));
+                                totalAmount += total;
+
+                                const adv = item.advance || 0;
+                                advance += adv;
+
+                                const ded = item.deduction || 0;
+                                deduction += ded;
+
+                                const pd = item.paid || 0;
+                                paid += pd;
+
+                                const computedPayable = item.payableAmount !== undefined ? item.payableAmount : Number((total - pd - adv - ded).toFixed(2));
+                                payableAmount += computedPayable;
+                            });
+
+                            const userRoleLower = (user?.role || '').toLowerCase();
+                            const isAdminCheck = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
+
+                            return (
+                                <tr className="bg-slate-100/90 hover:bg-slate-150 border-t border-slate-250 transition-colors font-black text-slate-900 text-xs">
+                                    {isAdminCheck && <td className="px-6 py-4" />}
+                                    <td className="px-6 py-4 text-left font-black text-slate-500 uppercase tracking-widest">
+                                        TOTALS
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-semibold text-indigo-700 min-w-[200px]">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-indigo-500/80 font-black uppercase tracking-wider">Suppliers</span>
+                                            <span className="font-bold text-xs">{uniqueSuppliers.size} Unique</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-bold text-slate-400">-</td>
+                                    <td className="px-6 py-4 text-left font-bold text-slate-400">-</td>
+                                    <td className="px-6 py-4 text-center font-mono font-extrabold text-slate-800">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hours</span>
+                                            <span>{hours.toLocaleString()}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-mono font-bold text-slate-600 whitespace-nowrap">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Bill</span>
+                                            <span>AED {billAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-mono font-bold text-slate-800 whitespace-nowrap">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Actual</span>
+                                            <span>AED {actualAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-mono font-bold text-slate-500 whitespace-nowrap">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">VAT</span>
+                                            <span>AED {vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-mono font-extrabold text-slate-950 whitespace-nowrap">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Total</span>
+                                            <span>AED {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-mono font-bold text-indigo-600 whitespace-nowrap">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Advance</span>
+                                            <span>AED {advance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-mono font-bold text-rose-600 whitespace-nowrap">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-rose-450 font-bold uppercase tracking-wider">Deduct</span>
+                                            <span>AED {deduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-mono font-extrabold text-emerald-600 whitespace-nowrap">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-wider">Paid</span>
+                                            <span>AED {paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-mono font-black text-amber-900 bg-amber-100/40 rounded-lg whitespace-nowrap">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-amber-700 font-black uppercase tracking-wider">Payable</span>
+                                            <span>AED {payableAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-left font-bold text-slate-400">-</td>
+                                    <td className="px-6 py-4 text-left font-bold text-slate-400">-</td>
+                                    {(onEdit || onDelete) && <td className="px-6 py-4 text-right" />}
+                                </tr>
+                            );
+                        }}
                     />
                 </div>
             ) : activeTabMode === 'insights' ? (
@@ -3443,6 +3706,13 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const [filterCompany, setFilterCompany] = useState('All');
     const [filterMonth, setFilterMonth] = useState('All');
 
+    // Date policy / Quick Filter stats
+    const [dateFilterMode, setDateFilterMode] = useState<'all' | 'current-month' | 'last-month' | 'month-wise' | 'year-wise' | 'custom-range'>('all');
+    const [selectedYearValue, setSelectedYearValue] = useState(new Date().getFullYear().toString());
+    const [selectedMonthValue, setSelectedMonthValue] = useState('');
+    const [customRangeStart, setCustomRangeStart] = useState('');
+    const [customRangeEnd, setCustomRangeEnd] = useState('');
+
     // SOA Tool state variables
     const [soaEntityId, setSoaEntityId] = useState('All');
     const [soaProjectId, setSoaProjectId] = useState('All');
@@ -3513,7 +3783,33 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
     // Apply Advanced Filters to dataset
     const filteredData = useMemo(() => {
+        const today = new Date();
+        const curYear = today.getFullYear();
+        const curMonthNum = String(today.getMonth() + 1).padStart(2, '0');
+        const curMonthStr = `${curYear}-${curMonthNum}`;
+
+        const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lmYear = lastMonthDate.getFullYear();
+        const lmMonthNum = String(lastMonthDate.getMonth() + 1).padStart(2, '0');
+        const lastMonthStr = `${lmYear}-${lmMonthNum}`;
+
         return (data || []).filter((item: any) => {
+            // Check Date Policy Mode
+            if (item.date) {
+                if (dateFilterMode === 'current-month') {
+                    if (item.date.substring(0, 7) !== curMonthStr) return false;
+                } else if (dateFilterMode === 'last-month') {
+                    if (item.date.substring(0, 7) !== lastMonthStr) return false;
+                } else if (dateFilterMode === 'month-wise') {
+                    if (selectedMonthValue && item.date.substring(0, 7) !== selectedMonthValue) return false;
+                } else if (dateFilterMode === 'year-wise') {
+                    if (selectedYearValue && item.date.substring(0, 4) !== selectedYearValue) return false;
+                } else if (dateFilterMode === 'custom-range') {
+                    if (customRangeStart && item.date < customRangeStart) return false;
+                    if (customRangeEnd && item.date > customRangeEnd) return false;
+                }
+            }
+
             if (startDate && item.date < startDate) return false;
             if (endDate && item.date > endDate) return false;
 
@@ -3542,10 +3838,11 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
             return true;
         });
-    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth]);
+    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
 
     const activeFiltersCount = useMemo(() => {
         let count = 0;
+        if (dateFilterMode !== 'all') count++;
         if (startDate) count++;
         if (endDate) count++;
         if (minAmount !== '') count++;
@@ -3556,7 +3853,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         if (filterCompany !== 'All') count++;
         if (filterMonth !== 'All') count++;
         return count;
-    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth]);
+    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth, dateFilterMode]);
 
     const handleClearAdvFilters = () => {
         setStartDate('');
@@ -3568,6 +3865,11 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         setFilterProject('All');
         setFilterCompany('All');
         setFilterMonth('All');
+        setDateFilterMode('all');
+        setSelectedYearValue(new Date().getFullYear().toString());
+        setSelectedMonthValue('');
+        setCustomRangeStart('');
+        setCustomRangeEnd('');
     };
 
     // Statement of Account Items filter logic
@@ -4081,6 +4383,145 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             {/* Main Dynamic Panel */}
             {activeTabMode === 'ledger' ? (
                 <div className="space-y-4">
+                    {/* Professional Date Filtering Bar: Month wise / Year wise / Range wise & Current / Last month */}
+                    <div className="bg-white border border-slate-100 p-5 rounded-3xl shadow-xs space-y-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div className="space-y-1">
+                                <h3 className="font-extrabold text-sm text-slate-800 flex items-center gap-2">
+                                    <Calendar className="w-4 h-4 text-blue-500" />
+                                    <span>Receivable Ledger Period Filter</span>
+                                </h3>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    Select quick filters or enter custom periods for smart month/year/range tracking.
+                                </p>
+                            </div>
+                            
+                            {/* Mode Pill selector */}
+                            <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl border border-slate-200/40 gap-1">
+                                {[
+                                    { mode: 'all', label: 'All History' },
+                                    { mode: 'current-month', label: 'Current Month' },
+                                    { mode: 'last-month', label: 'Last Month' },
+                                    { mode: 'month-wise', label: 'Month-Wise' },
+                                    { mode: 'year-wise', label: 'Year-Wise' },
+                                    { mode: 'custom-range', label: 'Date Range' }
+                                ].map((tab) => (
+                                    <button
+                                        key={tab.mode}
+                                        type="button"
+                                        onClick={() => {
+                                            setDateFilterMode(tab.mode as any);
+                                            // Pre-populate if empty
+                                            if (tab.mode === 'month-wise' && !selectedMonthValue) {
+                                                setSelectedMonthValue(new Date().toISOString().substring(0, 7));
+                                            }
+                                        }}
+                                        className={cn(
+                                            "px-3 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer",
+                                            dateFilterMode === tab.mode 
+                                                ? "bg-white text-slate-950 shadow-xs border border-slate-200/30 font-black" 
+                                                : "text-slate-500 hover:text-slate-800"
+                                        )}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Interactive Configurator Area depending on selected mode */}
+                        {dateFilterMode !== 'all' && (
+                            <div className="bg-slate-50 p-4 border border-slate-200/40 rounded-2xl animate-fadeIn text-xs">
+                                {dateFilterMode === 'current-month' && (
+                                    <div className="flex items-center gap-2 text-slate-600 font-medium font-sans">
+                                        <span className="p-1 px-2.5 bg-blue-50 border border-blue-100 rounded-md text-blue-700 font-mono font-bold">MODE ACTIVE: CURRENT MONTH</span>
+                                        <span>Showing records matching <strong className="text-slate-900 font-bold">{new Date().toLocaleDateString('default', { month: 'long', year: 'numeric' })}</strong>.</span>
+                                    </div>
+                                )}
+
+                                {dateFilterMode === 'last-month' && (
+                                    <div className="flex items-center gap-2 text-slate-600 font-medium font-sans">
+                                        <span className="p-1 px-2.5 bg-amber-50 border border-amber-100 rounded-md text-amber-700 font-mono font-bold">MODE ACTIVE: LAST MONTH</span>
+                                        <span>Showing records matching <strong className="text-slate-900 font-bold">{(() => {
+                                            const today = new Date();
+                                            return new Date(today.getFullYear(), today.getMonth() - 1, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
+                                        })()}</strong>.</span>
+                                    </div>
+                                )}
+
+                                {dateFilterMode === 'month-wise' && (
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-mono text-[9px] font-bold text-slate-400 uppercase">Select Target Month</span>
+                                            <input 
+                                                type="month"
+                                                value={selectedMonthValue}
+                                                onChange={e => setSelectedMonthValue(e.target.value)}
+                                                className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700 focus:outline-hidden font-sans"
+                                            />
+                                        </div>
+                                        <div className="text-slate-600 font-medium pt-3 font-sans">
+                                            Currently filtering for month: <strong className="text-slate-900 font-black">{selectedMonthValue ? (() => {
+                                                const [yr, mn] = selectedMonthValue.split('-');
+                                                return new Date(parseInt(yr), parseInt(mn) - 1, 1).toLocaleDateString('default', { month: 'long', year: 'numeric' });
+                                            })() : 'None Selected'}</strong>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {dateFilterMode === 'year-wise' && (
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-mono text-[9px] font-bold text-slate-400 uppercase">Target Financial Year</span>
+                                            <select
+                                                value={selectedYearValue}
+                                                onChange={e => setSelectedYearValue(e.target.value)}
+                                                className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700 cursor-pointer focus:outline-hidden font-sans"
+                                            >
+                                                {Array.from({ length: 11 }, (_, i) => (2020 + i).toString()).map(yr => (
+                                                    <option key={yr} value={yr}>{yr}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="text-slate-650 font-medium pt-3 font-sans">
+                                            Currently filtering for year: <strong className="text-slate-900 font-black">{selectedYearValue}</strong>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {dateFilterMode === 'custom-range' && (
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 font-sans">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-mono text-[9px] font-bold text-slate-400 uppercase">From Date</span>
+                                            <input 
+                                                type="date"
+                                                value={customRangeStart}
+                                                onChange={e => setCustomRangeStart(e.target.value)}
+                                                className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700 focus:outline-hidden"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-mono text-[9px] font-bold text-slate-400 uppercase">To Date</span>
+                                            <input 
+                                                type="date"
+                                                value={customRangeEnd}
+                                                onChange={e => setCustomRangeEnd(e.target.value)}
+                                                className="bg-white border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700 focus:outline-hidden"
+                                            />
+                                        </div>
+                                        <div className="text-slate-605 font-medium pb-1.5">
+                                            {customRangeStart && customRangeEnd ? (
+                                                <span>Showing range between <strong className="text-slate-900 font-bold">{customRangeStart}</strong> and <strong className="text-slate-900 font-bold">{customRangeEnd}</strong></span>
+                                            ) : (
+                                                <span className="text-slate-400 font-medium">Please pick both boundaries for range tracking.</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Advanced Filter Controller */}
                     <div className="bg-white border border-slate-100 p-5 rounded-3xl shadow-sm">
                         <div className="flex justify-between items-center">
@@ -6820,6 +7261,30 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                 onChange={e => handleRecalculate({ date: e.target.value })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-700"
                             />
+                            <div className="mt-1.5 pt-1.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                                <span className="text-[9px] text-slate-400 font-bold block shrink-0">📆 Quick Period:</span>
+                                <select
+                                    onChange={e => {
+                                        if (e.target.value) {
+                                            const [yr, mn] = e.target.value.split('-');
+                                            // default to 1st of that month
+                                            const nextDate = `${yr}-${mn}-01`;
+                                            handleRecalculate({ date: nextDate });
+                                        }
+                                    }}
+                                    className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-none rounded-lg text-[10px] font-black cursor-pointer transition-all outline-none"
+                                    value={formData.date ? formData.date.substring(0, 7) : ''}
+                                >
+                                    <option value="">-- Set Month --</option>
+                                    {Array.from({ length: 12 }, (_, i) => {
+                                        const d = new Date();
+                                        d.setMonth(d.getMonth() - i);
+                                        const mKey = d.toISOString().substring(0, 7);
+                                        const mLabel = d.toLocaleDateString('default', { month: 'short', year: 'numeric' });
+                                        return <option key={mKey} value={mKey}>{mLabel}</option>;
+                                    })}
+                                </select>
+                            </div>
                         </div>
                         <div className="space-y-1">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice Number</label>

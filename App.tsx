@@ -4763,6 +4763,7 @@ export default function App() {
         const idxPayableAmount = headers.findIndex((h: string) => h.toLowerCase().includes('payable amount'));
         const idxClearDate = headers.findIndex((h: string) => h.toLowerCase().includes('clear date') || h.toLowerCase().includes('payment clear date') || h.toLowerCase().includes('payment date'));
         const idxNotes = headers.findIndex((h: string) => h.toLowerCase().includes('notes') || h.toLowerCase().includes('remarks') || h.toLowerCase().includes('notes / remarks'));
+        const idxDate = headers.findIndex((h: string) => h.toLowerCase().trim() === 'date' || h.toLowerCase().trim() === 'invoice date' || h.toLowerCase().trim() === 'posting date' || h.toLowerCase().includes('date'));
 
         if (idxNameOfSupplier === -1 && idxSupplierCode === -1) {
           alert("Could not identify 'Name of Supplier' or 'Supplier' column of the excel sheet. Please check column headers.");
@@ -4830,9 +4831,27 @@ export default function App() {
 
           const notes = idxNotes !== -1 && row[idxNotes] !== undefined ? String(row[idxNotes]).trim() : '';
 
+          let apDate = new Date().toISOString().split('T')[0];
+          if (idxDate !== -1 && row[idxDate]) {
+            try {
+              let rawDate = String(row[idxDate]).trim();
+              if (rawDate && rawDate !== 'undefined') {
+                if (!isNaN(Number(rawDate))) {
+                  const serial = Number(rawDate);
+                  const dateObj = new Date((serial - 25569) * 86400 * 1000);
+                  apDate = dateObj.toISOString().split('T')[0];
+                } else {
+                  apDate = new Date(rawDate).toISOString().split('T')[0];
+                }
+              }
+            } catch (e) {
+              // fallback remains today
+            }
+          }
+
           const newAp: AccountsPayable = {
             id: 'ap_' + Math.random().toString(36).substr(2, 9),
-            date: new Date().toISOString().split('T')[0],
+            date: apDate,
             vendorId: finalVendorId,
             vendorType: 'Supplier',
             invoiceNumber,
@@ -5759,6 +5778,8 @@ export default function App() {
           setAnimationIntensity={setAnimationIntensity}
           portalBranding={portalBranding}
           onUpdatePortalBranding={handleUpdatePortalBranding}
+          accountsPayable={accountsPayable}
+          onDeleteBatch={handleDeleteAPBatch}
         />
       )}
       {activeTab === 'help' && (
@@ -6637,7 +6658,9 @@ const SettingsView = ({
     animationIntensity = 'smooth',
     setAnimationIntensity = () => {},
     portalBranding = { logoUrl: '', logoText: 'PIONEER', logoSubtext: 'DMS PORTAL' },
-    onUpdatePortalBranding = async () => {}
+    onUpdatePortalBranding = async () => {},
+    accountsPayable = [],
+    onDeleteBatch
 }: { 
     user: SystemUser, 
     onPasswordReset: () => void,
@@ -6656,11 +6679,43 @@ const SettingsView = ({
     animationIntensity?: string,
     setAnimationIntensity?: (val: string) => void,
     portalBranding?: { logoUrl?: string; logoText?: string; logoSubtext?: string },
-    onUpdatePortalBranding?: (branding: { logoUrl?: string; logoText?: string; logoSubtext?: string }) => Promise<void>
+    onUpdatePortalBranding?: (branding: { logoUrl?: string; logoText?: string; logoSubtext?: string }) => Promise<void>,
+    accountsPayable?: AccountsPayable[],
+    onDeleteBatch?: (batchId: string) => Promise<void>
 }) => {
     const canManageSettings = user?.permissions?.canManageSettings;
     const userRoleLower = user?.role?.toLowerCase() || '';
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
+    const isAllowedBatchManager = isAdmin || userRoleLower === 'accountant' || userRoleLower === 'accounts' || userRoleLower === 'finance';
+
+    // Excel Batch Derivation derived inside SettingsView from accountsPayable
+    const excelBatches = useMemo(() => {
+        const batchesMap = new Map<string, { fileName: string; count: number; date: string; totalAmount: number; itemIds: string[] }>();
+        (accountsPayable || []).forEach((item: any) => {
+            if (item.excelFileName || item.excelBatchId) {
+                const batchKey = item.excelBatchId || item.excelFileName;
+                const existing = batchesMap.get(batchKey);
+                const amount = item.totalAmount || item.amount || 0;
+                if (existing) {
+                    existing.count += 1;
+                    existing.totalAmount += amount;
+                    existing.itemIds.push(item.id);
+                } else {
+                    batchesMap.set(batchKey, {
+                        fileName: item.excelFileName || item.excelBatchId || 'Unknown File',
+                        count: 1,
+                        date: item.date || new Date().toISOString().split('T')[0],
+                        totalAmount: amount,
+                        itemIds: [item.id]
+                    });
+                }
+            }
+        });
+        return Array.from(batchesMap.entries()).map(([batchId, info]) => ({
+            batchId,
+            ...info
+        })).sort((a, b) => b.batchId.localeCompare(a.batchId));
+    }, [accountsPayable]);
     
     // Portal branding states
     const [logoUrl, setLogoUrl] = useState(portalBranding?.logoUrl || '');
@@ -7188,6 +7243,55 @@ const SettingsView = ({
                                     View
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {isAllowedBatchManager && excelBatches.length > 0 && (
+                    <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm animate-in fade-in duration-300">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-slate-100 mb-6">
+                            <div className="flex items-center gap-3.5">
+                                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl shadow-sm border border-emerald-100 flex-shrink-0">
+                                    <FileSpreadsheet className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                                        Excel Upload History Logs
+                                        <span className="px-2.5 py-0.5 bg-brand-50 border border-brand-150 text-brand-700 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                            {excelBatches.length} imported files
+                                        </span>
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium mt-1">
+                                        View and manage files imported into the Accounts Payable Ledger. Only accessible to Admins and Accounts roles.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {excelBatches.map((batch) => (
+                                <div key={batch.batchId} className="p-5 rounded-2xl border border-slate-100 bg-white hover:bg-slate-50/40 hover:border-slate-200/60 transition-all flex justify-between items-center group">
+                                    <div className="space-y-1 pr-4 overflow-hidden">
+                                        <div className="flex items-center gap-2">
+                                            <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                                            <span className="font-extrabold text-slate-800 text-sm truncate" title={batch.fileName}>{batch.fileName}</span>
+                                        </div>
+                                        <p className="text-xs text-slate-400 font-medium">Uploaded on: <strong className="text-slate-600 font-mono text-[10.5px] font-bold">{batch.date}</strong></p>
+                                        <div className="flex gap-3 items-center text-[10.5px] text-slate-400 font-medium font-mono pt-1">
+                                            <span>Records: <strong className="text-slate-705 font-bold">{batch.count}</strong></span>
+                                            <span>•</span>
+                                            <span>Sum: <strong className="text-indigo-650 font-bold">AED {batch.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => onDeleteBatch && onDeleteBatch(batch.batchId)}
+                                        className="p-3 hover:bg-rose-50 border border-transparent hover:border-rose-100 text-slate-400 hover:text-rose-600 rounded-[1.25rem] transition-all cursor-pointer grow-0 shrink-0"
+                                        title="Delete imported excel batch data"
+                                    >
+                                        <Trash2 className="w-4.5 h-4.5" />
+                                    </button>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}
