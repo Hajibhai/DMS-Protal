@@ -342,6 +342,9 @@ export interface EverydayExpense {
     kmStart?: number;
     kmEnd?: number;
     kmRun?: number;
+    startTime?: string;
+    endDate?: string;
+    endTime?: string;
 }
 
 export interface DashboardStats {

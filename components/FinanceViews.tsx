@@ -9965,24 +9965,37 @@ export const EverydayExpenseView: React.FC<{
             render: (item: EverydayExpense) => (
                 <div className="space-y-1.5 my-1 text-left">
                     <p className="text-slate-800 font-bold whitespace-pre-line leading-relaxed">{item.description || '-'}</p>
-                    {item.isVehicleFuel && (
-                        <div className="inline-flex flex-wrap items-center gap-1.5 px-2 py-0.5 bg-amber-50/70 border border-amber-200/50 rounded-lg text-[10px] text-amber-800 font-extrabold font-sans select-all">
-                            <span className="flex items-center gap-1 mr-0.5">
-                                <Car className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                                <span className="bg-amber-100 px-1 py-0.5 rounded text-amber-950 font-mono tracking-wide">{item.vehicleNumber || 'N/A'}</span>
-                            </span>
-                            {item.kmStart !== undefined && item.kmEnd !== undefined && (
-                                <>
-                                    <span className="text-amber-300">|</span>
-                                    <span>Start: {item.kmStart} km</span>
-                                    <span className="text-amber-300">|</span>
-                                    <span>End: {item.kmEnd} km</span>
-                                    <span className="text-amber-300">|</span>
-                                    <span className="bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded font-black">Run: {item.kmEnd - item.kmStart} km</span>
-                                </>
-                            )}
-                        </div>
-                    )}
+                    <div className="flex flex-col gap-1">
+                        {item.isVehicleFuel && (
+                            <div className="inline-flex self-start flex-wrap items-center gap-1.5 px-2 py-0.5 bg-amber-50/70 border border-amber-200/50 rounded-lg text-[10px] text-amber-800 font-extrabold font-sans select-all">
+                                <span className="flex items-center gap-1 mr-0.5">
+                                    <Car className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                    <span className="bg-amber-100 px-1 py-0.5 rounded text-amber-950 font-mono tracking-wide">{item.vehicleNumber || 'N/A'}</span>
+                                </span>
+                                {item.kmStart !== undefined && item.kmEnd !== undefined && (
+                                    <>
+                                        <span className="text-amber-300">|</span>
+                                        <span>Start: {item.kmStart} km</span>
+                                        <span className="text-amber-300">|</span>
+                                        <span>End: {item.kmEnd} km</span>
+                                        <span className="text-amber-300">|</span>
+                                        <span className="bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded font-black">Run: {item.kmEnd - item.kmStart} km</span>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                        {(item.startTime || item.endTime || item.endDate) && (
+                            <div className="inline-flex self-start flex-wrap items-center gap-1.5 px-2 py-0.5 bg-indigo-50 border border-indigo-100/70 rounded-lg text-[10px] text-indigo-850 font-black font-sans">
+                                <span className="flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                    <span className="text-indigo-950 font-black">Validity:</span>
+                                </span>
+                                <span>{item.date} {item.startTime ? `@ ${item.startTime}` : ''}</span>
+                                <span className="text-indigo-300 font-bold">➔</span>
+                                <span>{item.endDate || item.date} {item.endTime ? `@ ${item.endTime}` : ''}</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )
         },
@@ -10622,7 +10635,10 @@ export const EverydayExpenseModal: React.FC<{
         if (expense) {
             return {
                 ...expense,
-                category: expense.category || ''
+                category: expense.category || '',
+                startTime: expense.startTime || '',
+                endDate: expense.endDate || '',
+                endTime: expense.endTime || ''
             };
         }
         return {
@@ -10643,7 +10659,10 @@ export const EverydayExpenseModal: React.FC<{
             uploadedBy: user?.name || '',
             uploadedByUid: user?.uid || '',
             uploadedDate: new Date().toISOString().split('T')[0],
-            employeeId: ''
+            employeeId: '',
+            startTime: '',
+            endDate: '',
+            endTime: ''
         };
     });
 
@@ -11076,16 +11095,19 @@ export const EverydayExpenseModal: React.FC<{
                                 type="text"
                                 value={formData.siNo}
                                 onChange={e => setFormData({ ...formData, siNo: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all font-mono"
                             />
                         </div>
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Date</label>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-indigo-600 ml-1 flex items-center gap-1 font-bold">
+                                <span>Start Date / Date</span>
+                                <span className="text-rose-500">*</span>
+                            </label>
                             <input 
                                 type="date"
                                 value={formData.date}
                                 onChange={e => setFormData({ ...formData, date: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border border-indigo-100 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
                             />
                         </div>
                         <div className="space-y-1">
@@ -11094,9 +11116,51 @@ export const EverydayExpenseModal: React.FC<{
                                 type="text"
                                 value={formData.invoiceNo}
                                 onChange={e => setFormData({ ...formData, invoiceNo: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all font-mono"
                             />
                         </div>
+                    </div>
+
+                    {/* Timeframe & Validity (Auto-set or Manual) */}
+                    <div className="bg-slate-50/50 p-5 rounded-3xl border border-slate-200/50 space-y-4">
+                        <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                            <Clock className="w-4.5 h-4.5 text-indigo-600" />
+                            <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest">Timeframe & Validity (Parking / Duration)</h4>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-bold uppercase tracking-widest text-slate-500 block ml-1">Start Time (24h format)</label>
+                                <input 
+                                    type="text"
+                                    placeholder="e.g. 17:35"
+                                    value={formData.startTime || ''}
+                                    onChange={e => setFormData({ ...formData, startTime: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all font-mono"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-bold uppercase tracking-widest text-slate-500 block ml-1">End Date (optional)</label>
+                                <input 
+                                    type="date"
+                                    value={formData.endDate || ''}
+                                    onChange={e => setFormData({ ...formData, endDate: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-bold uppercase tracking-widest text-slate-500 block ml-1">End Time (24h format)</label>
+                                <input 
+                                    type="text"
+                                    placeholder="e.g. 17:35"
+                                    value={formData.endTime || ''}
+                                    onChange={e => setFormData({ ...formData, endTime: e.target.value })}
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all font-mono"
+                                />
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-medium">
+                            * Automatically filled on upload if detected (e.g. for Dubai Car Parking standard bills).
+                        </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -11412,6 +11476,51 @@ export const EverydayExpenseModal: React.FC<{
                                     }
                                     if (Number(formData.kmEnd) < Number(formData.kmStart)) {
                                         setValidationError("Kilometer End cannot be less than Kilometer Start.");
+                                        return;
+                                    }
+                                }
+                            }
+
+                            // Timeframe & Date Validations
+                            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                            if (!formData.date || !dateRegex.test(formData.date)) {
+                                setValidationError("Start Date / Date must be a valid date in YYYY-MM-DD format.");
+                                return;
+                            }
+
+                            const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+                            if (formData.startTime && !timeRegex.test(formData.startTime)) {
+                                setValidationError("Start Time must be in valid 24-hour style, e.g., '14:20' or '08:05'.");
+                                return;
+                            }
+                            if (formData.endTime && !timeRegex.test(formData.endTime)) {
+                                setValidationError("End Time must be in valid 24-hour style, e.g., '14:20' or '08:05'.");
+                                return;
+                            }
+
+                            if (formData.endDate && !dateRegex.test(formData.endDate)) {
+                                setValidationError("End Date must be a valid date in YYYY-MM-DD format.");
+                                return;
+                            }
+
+                            const checkEndDate = formData.endDate || formData.date;
+                            if (formData.date && checkEndDate) {
+                                if (checkEndDate < formData.date) {
+                                    setValidationError("End Date cannot be before the Start Date.");
+                                    return;
+                                }
+                                
+                                if (formData.date === checkEndDate && formData.startTime && formData.endTime) {
+                                    const startMins = (() => {
+                                        const [h, m] = formData.startTime.split(':').map(Number);
+                                        return h * 60 + m;
+                                    })();
+                                    const endMins = (() => {
+                                        const [h, m] = formData.endTime.split(':').map(Number);
+                                        return h * 60 + m;
+                                    })();
+                                    if (endMins < startMins) {
+                                        setValidationError("End Time cannot be before Start Time on the same day.");
                                         return;
                                     }
                                 }

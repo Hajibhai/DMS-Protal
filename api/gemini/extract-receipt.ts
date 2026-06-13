@@ -73,7 +73,7 @@ export default async function handler(req: any, res: any) {
         type: Type.OBJECT,
         properties: {
           siNo: { type: Type.STRING, description: "Sequential number/serial number of the invoice if printed, or empty string" },
-          date: { type: Type.STRING, description: "Transaction date in YYYY-MM-DD format" },
+          date: { type: Type.STRING, description: "Transaction date in YYYY-MM-DD format. If this is a parking receipt, this represents the START date." },
           invoiceNo: { type: Type.STRING, description: "Invoice or reference number on the receipt" },
           trnNo: { type: Type.STRING, description: "Tax Registration Number (TRN) in UAE format (often 15 digits) or empty if not present" },
           clientName: { type: Type.STRING, description: "Company or Client Name to whom invoice is billed (e.g. Pioneer General Contracting LLC - SPC)" },
@@ -83,10 +83,16 @@ export default async function handler(req: any, res: any) {
           vatAmount: { type: Type.NUMBER, description: "VAT amount (usually 5% in UAE)" },
           totalAmount: { type: Type.NUMBER, description: "Total amount including VAT" },
           description: { type: Type.STRING, description: "Brief description of the goods or services purchased" },
+          startTime: { type: Type.STRING, description: "Start time on the bill in HH:MM 24-hour style if present (e.g., '17:35'), else empty" },
+          endDate: { type: Type.STRING, description: "End date in YYYY-MM-DD format if present, else empty string" },
+          endTime: { type: Type.STRING, description: "End time on the bill in HH:MM 24-hour style if present (e.g., '17:35'), else empty" },
         },
         required: ["date", "billAmount", "totalAmount"]
       };
-      prompt = "Analyze this receipt image and extract the following everyday operational invoice details into a JSON object.";
+      prompt = "Analyze this receipt image and extract the following everyday operational invoice details into a JSON object. " +
+               "CRITICAL INSTRUCTIONS FOR DATE & TIMEFRAME: " +
+               "1. UAE / Dubai receipts write dates in Day/Month/Year (DD/MM/YY) format. For example, '22/05/26' means May 22, 2026. You MUST extract this carefully as '2026-05-22' for the 'date' field. Do not swap month and date! " +
+               "2. For parking tickets stating 'START' and 'END' with times (e.g., '17:35') and dates (e.g., '22/05/26' and '23/05/26'), extract the 'startTime' as '17:35', the 'endDate' as '2026-05-23', and the 'endTime' as '17:35'. Ensure dates are formatted as YYYY-MM-DD.";
     } else if (type === "safety") {
       responseSchema = {
         type: Type.OBJECT,
