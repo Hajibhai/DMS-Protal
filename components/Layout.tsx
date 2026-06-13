@@ -5,7 +5,7 @@ import {
   LogOut, Settings, User, Bell, Search,
   Building2, Globe, HelpCircle, FileText, LayoutGrid,
   Briefcase, Truck, Wallet, Check, Video, ExternalLink, Sparkles, Calendar,
-  Mail, Phone
+  Mail, Phone, ZoomIn, ZoomOut, Move, Crop
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -191,6 +191,95 @@ export const Layout: React.FC<LayoutProps> = ({
   });
   const [isDevEditMode, setIsDevEditMode] = useState(false);
   const [editedDevProfile, setEditedDevProfile] = useState<DeveloperProfile>({ ...devProfile });
+
+  // Lightbox for full developer profile photo
+  const [isDevLightboxOpen, setIsDevLightboxOpen] = useState(false);
+
+  // Crop & Adjust modal state logic
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string>('');
+  const [cropScale, setCropScale] = useState(1.2);
+  const [cropPanX, setCropPanX] = useState(0);
+  const [cropPanY, setCropPanY] = useState(0);
+  const [isDraggingCrop, setIsDraggingCrop] = useState(false);
+  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
+
+  const handleCropDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    setIsDraggingCrop(true);
+    setDragStartPos({ x: clientX - cropPanX, y: clientY - cropPanY });
+  };
+
+  const handleCropDragMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDraggingCrop) return;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    setCropPanX(clientX - dragStartPos.x);
+    setCropPanY(clientY - dragStartPos.y);
+  };
+
+  const handleCropDragEnd = () => {
+    setIsDraggingCrop(false);
+  };
+
+  const handleConfirmCrop = () => {
+    if (!cropImageSrc) return;
+    
+    const imgElement = new Image();
+    imgElement.crossOrigin = 'anonymous';
+    imgElement.onload = () => {
+      const viewDim = 280;
+      const cropCircleDim = 200;
+      
+      const naturalW = imgElement.naturalWidth;
+      const naturalH = imgElement.naturalHeight;
+      const ar = naturalW / naturalH;
+      
+      let drawW = viewDim;
+      let drawH = viewDim;
+      if (ar > 1) {
+        drawH = viewDim / ar;
+      } else {
+        drawW = viewDim * ar;
+      }
+      
+      const finalScale = cropScale;
+      const imgCenterLimitX = 140 + cropPanX;
+      const imgCenterLimitY = 140 + cropPanY;
+      
+      const imgLeft = imgCenterLimitX - (drawW * finalScale) / 2;
+      const imgTop = imgCenterLimitY - (drawH * finalScale) / 2;
+      
+      const cropLeft = 40;
+      const cropTop = 40;
+      
+      const dx = cropLeft - imgLeft;
+      const dy = cropTop - imgTop;
+      
+      const srcScale = naturalW / (drawW * finalScale);
+      
+      const sx = dx * srcScale;
+      const sy = dy * srcScale;
+      const sw = cropCircleDim * srcScale;
+      const sh = cropCircleDim * srcScale;
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = 500;
+      canvas.height = 500;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, 500, 500);
+        ctx.drawImage(imgElement, sx, sy, sw, sh, 0, 0, 500, 500);
+        
+        const resultUrl = canvas.toDataURL('image/jpeg', 0.95);
+        setEditedDevProfile(prev => ({ ...prev, photoUrl: resultUrl }));
+        setIsCropModalOpen(false);
+      }
+    };
+    imgElement.src = cropImageSrc;
+  };
 
   // Load Developer Profile on mount
   useEffect(() => {
@@ -1193,9 +1282,15 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="p-6 space-y-6 overflow-y-auto">
               {!isDevEditMode ? (
                 <div className="space-y-4 text-center">
-                  <div className="mx-auto w-24 h-24 rounded-full border border-slate-200 overflow-hidden flex items-center justify-center bg-slate-100 shadow-inner">
+                  <div 
+                    onClick={() => {
+                      if (devProfile.photoUrl) setIsDevLightboxOpen(true);
+                    }}
+                    className={`mx-auto w-24 h-24 rounded-full border border-slate-200 overflow-hidden flex items-center justify-center bg-slate-100 shadow-inner group transition-all duration-300 ${devProfile.photoUrl ? 'cursor-zoom-in hover:scale-105 active:scale-95 hover:border-indigo-400 hover:ring-4 hover:ring-indigo-100' : ''}`}
+                    title={devProfile.photoUrl ? "Click to view full photo" : "No photo uploaded yet"}
+                  >
                     {devProfile.photoUrl ? (
-                      <img src={devProfile.photoUrl} alt="Developer" className="w-full h-full object-cover" />
+                      <img src={devProfile.photoUrl} alt="Developer" className="w-full h-full object-cover group-hover:brightness-95 transition-all" />
                     ) : (
                       <span className="text-2xl font-black text-slate-400">MAK</span>
                     )}
@@ -1235,9 +1330,15 @@ export const Layout: React.FC<LayoutProps> = ({
                 <div className="space-y-4">
                   {/* Photo Edit */}
                   <div className="flex flex-col items-center gap-2">
-                    <div className="w-24 h-24 rounded-full border border-slate-200 overflow-hidden flex items-center justify-center bg-slate-100 relative">
+                    <div 
+                      onClick={() => {
+                        if (editedDevProfile.photoUrl) setIsDevLightboxOpen(true);
+                      }}
+                      className={`w-24 h-24 rounded-full border border-slate-200 overflow-hidden flex items-center justify-center bg-slate-100 relative group transition-all duration-305 ${editedDevProfile.photoUrl ? 'cursor-zoom-in hover:scale-105 active:scale-95 hover:border-indigo-400 hover:ring-4 hover:ring-indigo-100' : ''}`}
+                      title={editedDevProfile.photoUrl ? "Click to view full photo" : ""}
+                    >
                       {editedDevProfile.photoUrl ? (
-                        <img src={editedDevProfile.photoUrl} alt="Developer" className="w-full h-full object-cover" />
+                        <img src={editedDevProfile.photoUrl} alt="Developer" className="w-full h-full object-cover group-hover:brightness-95 transition-all" />
                       ) : (
                         <span className="text-2xl font-black text-slate-400">MAK</span>
                       )}
@@ -1252,14 +1353,18 @@ export const Layout: React.FC<LayoutProps> = ({
                         if (file) {
                           const reader = new FileReader();
                           reader.onloadend = () => {
-                            setEditedDevProfile(prev => ({ ...prev, photoUrl: reader.result as string }));
+                            setCropImageSrc(reader.result as string);
+                            setCropScale(1.2);
+                            setCropPanX(0);
+                            setCropPanY(0);
+                            setIsCropModalOpen(true);
                           };
                           reader.readAsDataURL(file);
                         }
                       }}
                     />
-                    <label htmlFor="dev-photo-input" className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black cursor-pointer transition-all border border-slate-200/60">
-                      Upload Picture
+                    <label htmlFor="dev-photo-input" className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-705 rounded-xl text-[10px] font-black cursor-pointer transition-all border border-slate-250/60 shadow-sm flex items-center gap-1 hover:border-slate-350">
+                      <Crop className="w-3 h-3 text-brand-600" /> Upload & Crop Picture
                     </label>
                   </div>
 
@@ -1322,6 +1427,187 @@ export const Layout: React.FC<LayoutProps> = ({
               )}
             </div>
           </motion.div>
+        </div>
+      )}
+
+      {/* Crop & Adjust Modal */}
+      {isCropModalOpen && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md no-print">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl relative flex flex-col border border-slate-100"
+          >
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <Crop className="w-5 h-5 text-indigo-600 animate-pulse animate-duration-1000" />
+                <h3 className="text-base font-black text-slate-900 tracking-tight">Crop & Adjust Portrait</h3>
+              </div>
+              <button 
+                onClick={() => setIsCropModalOpen(false)}
+                className="p-1 hover:bg-slate-200/50 text-slate-400 hover:text-slate-755 rounded-xl transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-6 flex flex-col items-center justify-center space-y-6">
+              <p className="text-slate-500 text-[11px] font-bold text-center">
+                💡 <span className="text-indigo-650">Drag / Swipe</span> directly on the photo below, or use the fine-tuning sliders to center and scale your face.
+              </p>
+
+              {/* Viewport container with circular cutout mask */}
+              <div 
+                className="relative w-[280px] h-[280px] bg-slate-900 rounded-[2rem] overflow-hidden cursor-move select-none border-2 border-slate-200/80 shadow-md animate-fade-in"
+                onMouseDown={handleCropDragStart}
+                onMouseMove={handleCropDragMove}
+                onMouseUp={handleCropDragEnd}
+                onMouseLeave={handleCropDragEnd}
+                onTouchStart={handleCropDragStart}
+                onTouchMove={handleCropDragMove}
+                onTouchEnd={handleCropDragEnd}
+              >
+                <img 
+                  src={cropImageSrc} 
+                  alt="Crop Target"
+                  style={{
+                    transform: `translate(${cropPanX}px, ${cropPanY}px) scale(${cropScale})`,
+                    transformOrigin: 'center center',
+                  }}
+                  className="w-full h-full object-contain pointer-events-none transition-transform"
+                />
+                
+                {/* Circular Mask guide */}
+                <div className="absolute inset-0 pointer-events-none border-[40px] border-slate-950/70 flex items-center justify-center">
+                  <div className="w-[200px] h-[200px] border-2 border-dashed border-white rounded-full bg-transparent shadow-[0_0_0_9999px_rgba(15,23,42,0.45)]" />
+                </div>
+              </div>
+
+              {/* Zoom & Translation sliders */}
+              <div className="w-full space-y-4 px-1">
+                {/* Zoom */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <span className="flex items-center gap-1"><ZoomIn className="w-3.5 h-3.5 text-brand-600" /> Zoom Level</span>
+                    <span className="text-indigo-600 font-extrabold">{Math.round(cropScale * 100)}%</span>
+                  </div>
+                  <input 
+                    type="range"
+                    min="1.0"
+                    max="5.0"
+                    step="0.02"
+                    value={cropScale}
+                    onChange={(e) => setCropScale(parseFloat(e.target.value))}
+                    className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-indigo-650"
+                  />
+                </div>
+
+                {/* Left/Right Offset */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <span>Horizontal Position (X)</span>
+                    <span className="text-slate-705 font-bold">{cropPanX}px</span>
+                  </div>
+                  <input 
+                    type="range"
+                    min="-180"
+                    max="180"
+                    step="1"
+                    value={cropPanX}
+                    onChange={(e) => setCropPanX(parseInt(e.target.value))}
+                    className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-brand-600"
+                  />
+                </div>
+
+                {/* Up/Down Offset */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <span>Vertical Position (Y)</span>
+                    <span className="text-slate-705 font-bold">{cropPanY}px</span>
+                  </div>
+                  <input 
+                    type="range"
+                    min="-180"
+                    max="180"
+                    step="1"
+                    value={cropPanY}
+                    onChange={(e) => setCropPanY(parseInt(e.target.value))}
+                    className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-brand-600"
+                  />
+                </div>
+              </div>
+
+              {/* Alignment Tools Row */}
+              <div className="flex gap-2 w-full pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCropScale(1.2);
+                    setCropPanX(0);
+                    setCropPanY(0);
+                  }}
+                  className="flex-1 py-2 border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-xl text-[10px] font-black transition-all cursor-pointer shadow-sm text-center"
+                >
+                  Reset Positioning & Scale
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-slate-100 flex gap-2.5 bg-slate-50/50">
+              <button
+                type="button"
+                onClick={() => setIsCropModalOpen(false)}
+                className="flex-1 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-705 rounded-xl text-xs font-black transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCrop}
+                className="flex-1 px-4 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Check className="w-4 h-4" /> Save Crop & Apply
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Lightbox Modal */}
+      {isDevLightboxOpen && (
+        <div 
+          onClick={() => setIsDevLightboxOpen(false)}
+          className="fixed inset-0 z-[230] flex flex-col items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md no-print cursor-zoom-out"
+        >
+          <button 
+            onClick={() => setIsDevLightboxOpen(false)}
+            className="absolute top-6 right-6 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all border border-white/10 cursor-pointer"
+            title="Close Lightbox"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-full max-h-[75vh] rounded-3xl overflow-hidden border border-white/10 shadow-2xl bg-slate-900 cursor-default"
+          >
+            {devProfile.photoUrl ? (
+              <img 
+                src={devProfile.photoUrl} 
+                alt={`${devProfile.name} Full Profile`} 
+                className="max-w-md w-full max-h-[70vh] object-contain block mx-auto xs:max-w-xs md:max-w-md lg:max-w-lg shadow-inner"
+              />
+            ) : null}
+            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950/80 to-transparent p-5 text-center">
+              <h4 className="text-white text-base font-black tracking-tight">{devProfile.name}</h4>
+              <p className="text-indigo-400 text-xs font-bold">Solutions Architect</p>
+            </div>
+          </motion.div>
+          <p className="text-white/50 text-[10px] font-bold mt-4 tracking-wider uppercase">
+            Click anywhere to exit view
+          </p>
         </div>
       )}
 
