@@ -5672,6 +5672,7 @@ export default function App() {
           vendors={vendors}
           projects={projects}
           attendance={attendance} 
+          leaveRequests={leaveRequests}
           user={systemUser}
           auditLogs={auditLogs}
           setShowAuditModal={setShowAuditModal}
@@ -6244,6 +6245,306 @@ export default function App() {
   );
 }
 
+// --- Staff Leave Calendar Component ---
+
+const StaffLeaveCalendar = ({ leaveRequests = [], employees = [] }: { leaveRequests: any[]; employees: any[] }) => {
+    // Generate dates list for the upcoming 30 days starting from today
+    const daysArray = useMemo(() => {
+        const list = [];
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        for (let i = 0; i < 30; i++) {
+            const d = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+            list.push(d);
+        }
+        return list;
+    }, []);
+
+    const parseLocalDate = (dateStr: string) => {
+        if (!dateStr) return null;
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return new Date(dateStr);
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    };
+
+    // Filter approved leaves that fall into our 30-day window
+    const approvedLeaves = useMemo(() => {
+        if (!daysArray.length) return [];
+        const startRange = daysArray[0];
+        const endRange = daysArray[29];
+
+        return leaveRequests.filter((req: any) => {
+            const isApproved = req.status === 'Approved' || String(req.status).toLowerCase() === 'approved';
+            if (!isApproved) return false;
+
+            const start = parseLocalDate(req.startDate);
+            const end = parseLocalDate(req.endDate);
+            if (!start || !end) return false;
+            start.setHours(0, 0, 0, 0);
+            end.setHours(23, 59, 59, 999);
+
+            return start <= endRange && end >= startRange;
+        });
+    }, [leaveRequests, daysArray]);
+
+    // Group leaves by employee
+    const employeeLeavePlacements = useMemo(() => {
+        const map: Record<string, { employee: any; leaves: any[] }> = {};
+        
+        approvedLeaves.forEach((req: any) => {
+            const emp = employees.find((e: any) => e.id === req.employeeId);
+            if (!emp) return;
+
+            if (!map[req.employeeId]) {
+                map[req.employeeId] = {
+                    employee: emp,
+                    leaves: []
+                };
+            }
+            map[req.employeeId].leaves.push(req);
+        });
+
+        return Object.values(map);
+    }, [approvedLeaves, employees]);
+
+    // Color definitions for leave types
+    const getLeaveStyle = (type: string) => {
+        const t = String(type).toUpperCase();
+        if (t === 'AL' || t === 'ANNUAL_LEAVE') {
+            return {
+                bg: 'bg-emerald-100 border-emerald-200 text-emerald-800',
+                dot: 'bg-emerald-500',
+                label: 'Annual Leave'
+            };
+        } else if (t === 'SL' || t === 'SICK_LEAVE') {
+            return {
+                bg: 'bg-rose-100 border-rose-200 text-rose-800',
+                dot: 'bg-rose-500',
+                label: 'Sick Leave'
+            };
+        } else if (t === 'UL' || t === 'UNPAID_LEAVE') {
+            return {
+                bg: 'bg-amber-100 border-amber-200 text-amber-800',
+                dot: 'bg-amber-500',
+                label: 'Unpaid Leave'
+            };
+        } else if (t === 'EL' || t === 'EMERGENCY_LEAVE') {
+            return {
+                bg: 'bg-purple-100 border-purple-200 text-purple-800',
+                dot: 'bg-purple-500',
+                label: 'Emergency Leave'
+            };
+        }
+        return {
+            bg: 'bg-blue-100 border-blue-200 text-blue-800',
+            dot: 'bg-blue-500',
+            label: type || 'Leave'
+        };
+    };
+
+    const formatDateHeader = (date: Date) => {
+        return {
+            weekday: date.toLocaleDateString('en-US', { weekday: 'short' }),
+            dayNum: date.getDate(),
+            month: date.toLocaleDateString('en-US', { month: 'short' })
+        };
+    };
+
+    const isToday = (date: Date) => {
+        const today = new Date();
+        return date.getDate() === today.getDate() &&
+               date.getMonth() === today.getMonth() &&
+               date.getFullYear() === today.getFullYear();
+    };
+
+    return (
+        <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-50 rounded-2xl text-indigo-600">
+                        <Calendar className="w-5 h-5 animate-pulse" />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Staff Leave Calendar</h3>
+                        <p className="text-xs text-slate-500 font-semibold">Timeline mapping approved leave requests for the upcoming 30 days.</p>
+                    </div>
+                </div>
+
+                {/* Legend */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-100 p-3 rounded-2xl">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mr-1">Legend:</span>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        <span>Annual (AL)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                        <span>Sick (SL)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                        <span>Unpaid (UL)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                        <span>Emergency (EL)</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Main Content */}
+            {employeeLeavePlacements.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-12 text-center rounded-[2rem] bg-slate-50/50 border border-dashed border-slate-200/80">
+                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center m-3 mb-4 text-slate-400">
+                        <Calendar className="w-8 h-8 opacity-40" />
+                    </div>
+                    <h4 className="text-sm font-extrabold text-slate-800">Clear Attendance Schedule</h4>
+                    <p className="text-xs text-slate-500 max-w-sm mt-1">There are no approved leave requests scheduled for any employee in the next 30 days.</p>
+                </div>
+            ) : (
+                <div className="border border-slate-200/80 rounded-[2rem] overflow-hidden bg-white shadow-inner">
+                    <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full border-collapse min-w-[1400px]">
+                            <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200/80">
+                                    {/* Sticky Left Header for Employee Column */}
+                                    <th className="sticky left-0 z-25 bg-slate-50 text-left px-6 py-4 border-r border-slate-200/80 w-[240px] shrink-0 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Personnel / Employee</span>
+                                    </th>
+                                    
+                                    {/* 30 Day Headers */}
+                                    {daysArray.map((day, dIdx) => {
+                                        const { weekday, dayNum, month } = formatDateHeader(day);
+                                        const current = isToday(day);
+                                        return (
+                                            <th 
+                                                key={dIdx} 
+                                                className={cn(
+                                                    "px-1 py-3 text-center border-r border-slate-100 w-[55px] min-w-[55px]",
+                                                    current ? "bg-indigo-50/40" : ""
+                                                )}
+                                            >
+                                                <div className="flex flex-col items-center justify-center space-y-0.5">
+                                                    <span className={cn(
+                                                        "text-[9px] font-black uppercase tracking-wider",
+                                                        current ? "text-indigo-600" : "text-slate-400"
+                                                    )}>
+                                                        {weekday}
+                                                    </span>
+                                                    <div className={cn(
+                                                        "w-7 h-7 flex items-center justify-center rounded-lg text-xs font-bold transition-all",
+                                                        current ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20 scale-105" : "text-slate-700"
+                                                    )}>
+                                                        {dayNum}
+                                                    </div>
+                                                    <span className="text-[9px] font-bold text-slate-400 uppercase">
+                                                        {month}
+                                                    </span>
+                                                </div>
+                                            </th>
+                                        );
+                                    })}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {employeeLeavePlacements.map(({ employee, leaves }) => {
+                                    return (
+                                        <tr key={employee.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors group">
+                                            {/* Sticky Personnel Row Header */}
+                                            <td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-r border-slate-200/80 px-6 py-4 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                                                <div className="flex items-center gap-3">
+                                                    {employee.profileImage ? (
+                                                        <img 
+                                                            src={employee.profileImage} 
+                                                            alt={employee.name} 
+                                                            className="w-10 h-10 rounded-xl object-cover border border-slate-200 shrink-0"
+                                                            referrerPolicy="no-referrer"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-sm font-extrabold text-slate-500 shrink-0 border border-slate-200">
+                                                            {employee.name.charAt(0)}
+                                                        </div>
+                                                    )}
+                                                    <div className="overflow-hidden min-w-0">
+                                                        <h5 className="text-xs font-black text-slate-900 truncate" title={employee.name}>
+                                                            {employee.name}
+                                                        </h5>
+                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                            <span className="text-[9px] font-black tracking-wider text-slate-400 truncate max-w-[140px] uppercase">
+                                                                {employee.code || 'N/A'} • {employee.department || 'Other'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            {/* Days Alignment Cells */}
+                                            {daysArray.map((day, dIdx) => {
+                                                const activeLeave = leaves.find((req: any) => {
+                                                    const start = parseLocalDate(req.startDate);
+                                                    const end = parseLocalDate(req.endDate);
+                                                    if (!start || !end) return false;
+                                                    start.setHours(0, 0, 0, 0);
+                                                    end.setHours(23, 59, 59, 999);
+                                                    return day >= start && day <= end;
+                                                });
+
+                                                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                                                const current = isToday(day);
+
+                                                if (activeLeave) {
+                                                    const style = getLeaveStyle(activeLeave.type);
+                                                    return (
+                                                        <td 
+                                                            key={dIdx} 
+                                                            className={cn(
+                                                                "p-1 border-r border-slate-100 text-center align-middle relative",
+                                                                current ? "bg-indigo-50/20" : ""
+                                                            )}
+                                                            title={`${employee.name}: ${style.label} (${activeLeave.startDate} to ${activeLeave.endDate})`}
+                                                        >
+                                                            <div className={cn(
+                                                                "mx-auto h-8 flex items-center justify-center rounded-lg text-[10px] font-extrabold border shadow-sm transition-transform active:scale-95 cursor-help",
+                                                                style.bg
+                                                            )}>
+                                                                {activeLeave.type || 'L'}
+                                                            </div>
+                                                        </td>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <td 
+                                                        key={dIdx} 
+                                                        className={cn(
+                                                            "p-1 border-r border-slate-100 text-center align-middle hover:bg-slate-100/30 transition-colors",
+                                                            isWeekend ? "bg-slate-50/60" : "",
+                                                            current ? "bg-indigo-50/10" : ""
+                                                        )}
+                                                    >
+                                                        <div className="h-8 flex items-center justify-center text-[11px] font-bold text-slate-400">
+                                                            {isWeekend ? (
+                                                                <span className="text-[8px] font-bold text-slate-300">W</span>
+                                                            ) : (
+                                                                <span className="w-1 h-1 rounded-full bg-slate-200"></span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // --- Dashboard View ---
 
 const DashboardView = ({ 
@@ -6252,9 +6553,10 @@ const DashboardView = ({
     vendors = [], 
     projects = [], 
     attendance = [], 
+    leaveRequests = [],
     user, 
     auditLogs = [], 
-    setShowAuditModal, 
+    setShowAuditModal,  
     onOpenUserManagement, 
     onOpenManageCompanies, 
     onOpenOnboarding, 
@@ -6744,6 +7046,9 @@ const DashboardView = ({
                     </div>
                 </div>
             </div>
+
+            {/* Staff Leave Calendar */}
+            <StaffLeaveCalendar leaveRequests={leaveRequests} employees={employees} />
 
         </div>
     );

@@ -4,7 +4,8 @@ import {
   Menu, X, ChevronDown, 
   LogOut, Settings, User, Bell, Search,
   Building2, Globe, HelpCircle, FileText, LayoutGrid,
-  Briefcase, Truck, Wallet, Check, Video, ExternalLink, Sparkles, Calendar
+  Briefcase, Truck, Wallet, Check, Video, ExternalLink, Sparkles, Calendar,
+  Mail, Phone
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -167,6 +168,63 @@ export const Layout: React.FC<LayoutProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [mobileExpanded, setMobileExpanded] = useState<string | null>(null);
+
+  const [isDevModalOpen, setIsDevModalOpen] = useState(false);
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState<'privacy' | 'terms'>('privacy');
+
+  // Developer Profile settings
+  interface DeveloperProfile {
+    name: string;
+    email: string;
+    contactNumber: string;
+    photoUrl: string;
+    bio: string;
+  }
+
+  const [devProfile, setDevProfile] = useState<DeveloperProfile>({
+    name: "Mohamed Abdul Kader",
+    email: "abdulkaderp3010@gmail.com",
+    contactNumber: "+971 50 301 0244",
+    photoUrl: "",
+    bio: "Lead Developer & Full-Stack Solutions Architect of Pioneer Portal."
+  });
+  const [isDevEditMode, setIsDevEditMode] = useState(false);
+  const [editedDevProfile, setEditedDevProfile] = useState<DeveloperProfile>({ ...devProfile });
+
+  // Load Developer Profile on mount
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const docRef = doc(db, 'developer_settings', 'profile');
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const profileData = snap.data() as DeveloperProfile;
+          setDevProfile(profileData);
+          setEditedDevProfile(profileData);
+        }
+      } catch (err) {
+        console.warn("Information on developer profile:", err);
+      }
+    };
+    loadProfile();
+  }, []);
+
+  const handleSaveDevProfile = async () => {
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      const docRef = doc(db, 'developer_settings', 'profile');
+      await setDoc(docRef, editedDevProfile);
+      setDevProfile(editedDevProfile);
+      setIsDevEditMode(false);
+    } catch (err: any) {
+      console.error("Failed to save profile:", err);
+      alert("Failed to save profile: " + err.message);
+    }
+  };
+
+  const isCreatorUser = user?.role?.toLowerCase() === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
 
   const [layoutMeetings, setLayoutMeetings] = useState<any[]>([]);
 
@@ -1060,13 +1118,31 @@ export const Layout: React.FC<LayoutProps> = ({
       <footer className="bg-white border-t border-slate-200/60 py-8">
         <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2 text-slate-400 text-sm font-medium">
-              <Globe className="w-4 h-4" />
-              <span>Pioneer Document Management System v2.5</span>
+            <div className="flex flex-col items-center md:items-start gap-1">
+              <div className="flex items-center gap-2 text-slate-400 text-sm font-medium">
+                <Globe className="w-4 h-4" />
+                <span>Pioneer Document Management System v5.0</span>
+              </div>
             </div>
             <div className="flex items-center gap-6 text-slate-400 text-sm font-bold">
-              <button className="hover:text-brand-600 transition-colors">Privacy Policy</button>
-              <button className="hover:text-brand-600 transition-colors">Terms of Service</button>
+              <button 
+                onClick={() => {
+                  setLegalModalTab('privacy');
+                  setIsLegalModalOpen(true);
+                }}
+                className="hover:text-indigo-650 transition-colors"
+              >
+                Privacy Policy
+              </button>
+              <button 
+                onClick={() => {
+                  setLegalModalTab('terms');
+                  setIsLegalModalOpen(true);
+                }}
+                className="hover:text-indigo-650 transition-colors"
+              >
+                Terms of Service
+              </button>
               <button 
                 onClick={() => setIsSupportModalOpen(true)}
                 className="hover:text-brand-600 transition-colors"
@@ -1074,12 +1150,274 @@ export const Layout: React.FC<LayoutProps> = ({
                 Contact Support
               </button>
             </div>
-            <p className="text-slate-400 text-xs font-medium">
-              © {new Date().getFullYear()} Pioneer. All rights reserved.
-            </p>
+            <div className="flex flex-col items-center md:items-end gap-1">
+              <p className="text-slate-400 text-xs font-medium text-center md:text-right">
+                © {new Date().getFullYear()} Pioneer. All rights reserved.
+              </p>
+              <p className="text-slate-400 text-xs font-semibold text-center md:text-right">
+                Web Application Developed by{' '}
+                <button 
+                  onClick={() => {
+                    setEditedDevProfile({ ...devProfile });
+                    setIsDevEditMode(false);
+                    setIsDevModalOpen(true);
+                  }}
+                  className="text-indigo-600 hover:text-indigo-800 underline font-extrabold cursor-pointer transition-all"
+                >
+                  {devProfile.name}
+                </button>
+              </p>
+            </div>
           </div>
         </div>
       </footer>
+
+      {/* Developer Profile Modal */}
+      {isDevModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl relative flex flex-col border border-slate-100"
+          >
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h3 className="text-base font-black text-slate-900 tracking-tight">Developer Information</h3>
+              <button 
+                onClick={() => setIsDevModalOpen(false)}
+                className="p-1 hover:bg-slate-200/50 text-slate-400 hover:text-slate-750 rounded-xl transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-6 overflow-y-auto">
+              {!isDevEditMode ? (
+                <div className="space-y-4 text-center">
+                  <div className="mx-auto w-24 h-24 rounded-full border border-slate-200 overflow-hidden flex items-center justify-center bg-slate-100 shadow-inner">
+                    {devProfile.photoUrl ? (
+                      <img src={devProfile.photoUrl} alt="Developer" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-2xl font-black text-slate-400">MAK</span>
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-black text-slate-900">{devProfile.name}</h4>
+                    <p className="text-xs text-brand-600 font-extrabold mt-0.5">Full Stack Solution Architect</p>
+                  </div>
+                  <p className="text-slate-500 text-xs leading-relaxed font-semibold px-4">{devProfile.bio}</p>
+                  
+                  <div className="border-t border-slate-100 pt-4 space-y-2.5 text-left text-xs font-bold text-slate-705 px-2">
+                    <div className="flex items-center gap-3">
+                      <Mail className="w-4 h-4 text-brand-600 shrink-0" />
+                      <a href={`mailto:${devProfile.email}`} className="text-slate-700 hover:text-brand-650 transition-colors underline">{devProfile.email}</a>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Phone className="w-4 h-4 text-brand-600 shrink-0" />
+                      <a href={`tel:${devProfile.contactNumber}`} className="text-slate-700 hover:text-brand-650 transition-colors">{devProfile.contactNumber}</a>
+                    </div>
+                  </div>
+
+                  {isCreatorUser && (
+                    <div className="pt-4 border-t border-slate-100">
+                      <button
+                        onClick={() => {
+                          setEditedDevProfile({ ...devProfile });
+                          setIsDevEditMode(true);
+                        }}
+                        className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-black transition-all cursor-pointer"
+                      >
+                        Edit Details
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Photo Edit */}
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-24 h-24 rounded-full border border-slate-200 overflow-hidden flex items-center justify-center bg-slate-100 relative">
+                      {editedDevProfile.photoUrl ? (
+                        <img src={editedDevProfile.photoUrl} alt="Developer" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-2xl font-black text-slate-400">MAK</span>
+                      )}
+                    </div>
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      id="dev-photo-input"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setEditedDevProfile(prev => ({ ...prev, photoUrl: reader.result as string }));
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    <label htmlFor="dev-photo-input" className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black cursor-pointer transition-all border border-slate-200/60">
+                      Upload Picture
+                    </label>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Developer Name</label>
+                      <input 
+                        type="text"
+                        value={editedDevProfile.name}
+                        onChange={e => setEditedDevProfile({ ...editedDevProfile, name: e.target.value })}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-250/60 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Email Address</label>
+                      <input 
+                        type="email"
+                        value={editedDevProfile.email}
+                        onChange={e => setEditedDevProfile({ ...editedDevProfile, email: e.target.value })}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-250/60 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Contact Number</label>
+                      <input 
+                        type="text"
+                        value={editedDevProfile.contactNumber}
+                        onChange={e => setEditedDevProfile({ ...editedDevProfile, contactNumber: e.target.value })}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-250/60 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Brief Bio</label>
+                      <textarea 
+                        value={editedDevProfile.bio}
+                        onChange={e => setEditedDevProfile({ ...editedDevProfile, bio: e.target.value })}
+                        rows={3}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-250/60 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 bg-white resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5 pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsDevEditMode(false)}
+                      className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveDevProfile}
+                      className="flex-1 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black transition-all cursor-pointer"
+                    >
+                      Save Profile
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Legal Policies Modal (Privacy and Terms) */}
+      {isLegalModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-[2.5rem] w-full max-w-3xl overflow-hidden shadow-2xl relative flex flex-col border border-slate-100 max-h-[85vh]"
+          >
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 block shrink-0">
+              <div>
+                <h3 className="text-base font-black text-slate-900 tracking-tight">Legal Center & Governance Agreements</h3>
+                <p className="text-[10px] text-slate-400 font-bold">Policy version 5.0 — active operational rules.</p>
+              </div>
+              <button 
+                onClick={() => setIsLegalModalOpen(false)}
+                className="p-1 hover:bg-slate-200/50 text-slate-400 hover:text-slate-750 rounded-xl transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Tabs */}
+            <div className="px-6 border-b border-slate-100 flex gap-4 bg-slate-50/20 block shrink-0">
+              <button
+                onClick={() => setLegalModalTab('privacy')}
+                className={`py-3 text-xs font-black relative transition-all cursor-pointer ${legalModalTab === 'privacy' ? 'text-brand-650' : 'text-slate-405 hover:text-slate-700'}`}
+              >
+                Privacy Policy
+                {legalModalTab === 'privacy' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-600 rounded-full" />}
+              </button>
+              <button
+                onClick={() => setLegalModalTab('terms')}
+                className={`py-3 text-xs font-black relative transition-all cursor-pointer ${legalModalTab === 'terms' ? 'text-brand-650' : 'text-slate-405 hover:text-slate-700'}`}
+              >
+                Terms of Service
+                {legalModalTab === 'terms' && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-600 rounded-full" />}
+              </button>
+            </div>
+
+            <div className="p-6 sm:p-8 overflow-y-auto text-xs text-slate-650 leading-relaxed space-y-4">
+              {legalModalTab === 'privacy' ? (
+                <div className="space-y-4">
+                  <h4 className="text-sm font-black text-slate-800">1. Data Collected & Operations</h4>
+                  <p>
+                    We collect essential information to facilitate secure document workflow. This includes company registries, 
+                    employee names, designations, corporate attachments, invoice bills, receipts, and user access records. 
+                    All data is persisted in physical data systems and Google Cloud hosting nodes secured by direct Firestore access rules.
+                  </p>
+                  <h4 className="text-sm font-black text-slate-800">2. Usage Rights & Communication Scopes</h4>
+                  <p>
+                    Data uploaded is strictly analyzed to notify project overseers about engineer document expirations, 
+                    attendance balances, personnel tally sheets, meeting updates, and accounts payable balances. We never share, 
+                    license, sell, or rent your database storage units to external metrics hubs or commercial vendors.
+                  </p>
+                  <h4 className="text-sm font-black text-slate-800">3. Cloud Permissions & Auth Rules</h4>
+                  <p>
+                    Secure Firestore permissions are monitored continuously. User login credentials, biometric/camera feeds for attendance 
+                    clipping, and storage drives are locked on a strict role-based permission system. Employees can only access logs associated 
+                    with their specific identification keys.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <h4 className="text-sm font-black text-slate-800">1. Terms of Service Acceptance</h4>
+                  <p>
+                    By logging into the Pioneer DMS corporate dashboard, you represent that you are an Authorized System Employee, Subcontractor, 
+                    or Administrator. You agree to upload authentic, verified files, tax registration numbers (TRN), and invoice ledgers.
+                  </p>
+                  <h4 className="text-sm font-black text-slate-800">2. Code Integrity & Platform Standard</h4>
+                  <p>
+                    No employee or supervisor may inject scripts, dump mock telemetry lists, or run unauthorized scraper hooks against the API. 
+                    The software is provided "as is" under the governance of the head software creator, Mohamed Abdul Kader.
+                  </p>
+                  <h4 className="text-sm font-black text-slate-800">3. Accounts & Reconciliation Audits</h4>
+                  <p>
+                    The client agrees that all Everyday Operating Expenses must correspond to registered operational receipts. Any discrepancies in 
+                    personnel tallies, petty cash balance mismatches, and accounts payable remarks are logged to the Audit Room automatically.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex justify-end bg-slate-50/50 block shrink-0">
+              <button
+                onClick={() => setIsLegalModalOpen(false)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black tracking-wider transition-all cursor-pointer"
+              >
+                Accept & Close
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

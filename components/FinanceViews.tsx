@@ -9149,131 +9149,131 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employee
                         </div>
                     </div>
 
-                    {/* Disbursed to Employee (For Voucher & Sign flow) */}
-                    {formData.type === 'Expense' && (
-                        <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200/50">
-                            <label className="flex items-center gap-2 cursor-pointer select-none">
-                                <input 
-                                    type="checkbox" 
-                                    checked={!!formData.employeeId}
-                                    onChange={e => {
-                                        if (!e.target.checked) {
+                    {/* Disbursed/Allocated to Employee (For Voucher, Inflow & Tally matching) */}
+                    <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-200/50">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input 
+                                type="checkbox" 
+                                checked={!!formData.employeeId}
+                                onChange={e => {
+                                    if (!e.target.checked) {
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            employeeId: '',
+                                            contact: '',
+                                            requestedBy: ''
+                                        }));
+                                    } else {
+                                        const firstEmp = (employees && employees[0]) ? employees[0] : null;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            employeeId: firstEmp ? firstEmp.id : 'select_placeholder',
+                                            contact: firstEmp ? firstEmp.name : '',
+                                            requestedBy: firstEmp ? firstEmp.name : ''
+                                        }));
+                                    }
+                                }}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 w-4 h-4"
+                            />
+                            <span className="text-xs font-bold text-slate-705">
+                                {formData.type === 'Income' ? 'Allocate to Staff / Employee (Petty Cash Advance)' : 'Disbursed to Staff / Employee (Voucher & Signature Required)'}
+                            </span>
+                        </label>
+
+                        {formData.employeeId ? (
+                            <div className="space-y-3 pt-1 animate-fadeIn">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Select Staff Member</label>
+                                    <select
+                                        value={formData.employeeId === 'select_placeholder' ? '' : formData.employeeId}
+                                        onChange={e => {
+                                            const selectedId = e.target.value;
+                                            const emp = (employees || []).find((x: any) => x.id === selectedId);
                                             setFormData(prev => ({
                                                 ...prev,
-                                                employeeId: '',
-                                                contact: '',
-                                                requestedBy: ''
+                                                employeeId: selectedId,
+                                                contact: emp ? emp.name : '',
+                                                requestedBy: emp ? emp.name : ''
                                             }));
-                                        } else {
-                                            const firstEmp = (employees && employees[0]) ? employees[0] : null;
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                employeeId: firstEmp ? firstEmp.id : 'select_placeholder',
-                                                contact: firstEmp ? firstEmp.name : '',
-                                                requestedBy: firstEmp ? firstEmp.name : ''
-                                            }));
-                                        }
-                                    }}
-                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 w-4 h-4"
-                                />
-                                <span className="text-xs font-bold text-slate-705">Given to Staff / Employee (Voucher & Signature Required)</span>
-                            </label>
-
-                            {formData.employeeId ? (
-                                <div className="space-y-3 pt-1 animate-fadeIn">
-                                    <div className="space-y-1.5">
-                                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Select Staff Member</label>
-                                        <select
-                                            value={formData.employeeId === 'select_placeholder' ? '' : formData.employeeId}
-                                            onChange={e => {
-                                                const selectedId = e.target.value;
-                                                const emp = (employees || []).find((x: any) => x.id === selectedId);
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    employeeId: selectedId,
-                                                    contact: emp ? emp.name : '',
-                                                    requestedBy: emp ? emp.name : ''
-                                                }));
-                                                if (errors.contact) {
-                                                    setErrors(prev => ({ ...prev, contact: '' }));
-                                                }
-                                            }}
-                                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all cursor-pointer shadow-sm"
-                                        >
-                                            <option value="">-- Choose Employee --</option>
-                                            {(employees || []).map((e: any) => (
-                                                <option key={e.id} value={e.id}>{e.name} ({e.code || 'No Code'})</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {formData.employeeId && formData.employeeId !== 'select_placeholder' && (
-                                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                                            {/* Download Voucher Button */}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const emp = (employees || []).find((x: any) => x.id === formData.employeeId);
-                                                    downloadPettyCashPDF(formData, emp);
-                                                }}
-                                                className="flex-1 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200/50 flex items-center justify-center gap-2 transition-all cursor-pointer"
-                                            >
-                                                <Download className="w-4 h-4" />
-                                                Download Voucher PDF
-                                            </button>
-
-                                            {/* Upload signed copy input */}
-                                            <div className="flex-1 relative">
-                                                <input 
-                                                    type="file" 
-                                                    id="signed-voucher-upload"
-                                                    accept="image/*,application/pdf"
-                                                    className="hidden"
-                                                    onChange={(e) => {
-                                                        const file = e.target.files?.[0];
-                                                        if (file) {
-                                                            const reader = new FileReader();
-                                                            reader.onloadend = () => {
-                                                                setFormData(prev => ({
-                                                                    ...prev,
-                                                                    signedAttachment: reader.result as string,
-                                                                    signedAttachmentName: file.name
-                                                                }));
-                                                            };
-                                                            reader.readAsDataURL(file);
-                                                        }
-                                                    }}
-                                                />
-                                                <label
-                                                    htmlFor="signed-voucher-upload"
-                                                    className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold cursor-pointer transition-all w-full text-center"
-                                                >
-                                                    <Upload className="w-4 h-4" />
-                                                    {formData.signedAttachmentName ? "Change Signed Voucher" : "Upload Signed Voucher"}
-                                                </label>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {formData.signedAttachment && (
-                                        <div className="flex items-center justify-between p-2.5 bg-emerald-50/50 border border-emerald-100 rounded-lg text-xs font-bold text-slate-700 animate-fadeIn">
-                                            <div className="flex items-center gap-2 truncate">
-                                                <Paperclip className="w-4 h-4 text-emerald-600 shrink-0" />
-                                                <span className="truncate text-[11px] text-emerald-800 font-extrabold">{formData.signedAttachmentName || "Signed_Voucher.pdf"}</span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setFormData(prev => ({ ...prev, signedAttachment: '', signedAttachmentName: '' }))}
-                                                className="text-[10px] text-rose-600 hover:text-rose-805 bg-white hover:bg-rose-50 px-2 py-1 rounded border border-rose-150 transition-all font-black shrink-0"
-                                            >
-                                                Remove File
-                                            </button>
-                                        </div>
-                                    )}
+                                            if (errors.contact) {
+                                                setErrors(prev => ({ ...prev, contact: '' }));
+                                            }
+                                        }}
+                                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all cursor-pointer shadow-sm"
+                                    >
+                                        <option value="">-- Choose Employee --</option>
+                                        {(employees || []).map((e: any) => (
+                                            <option key={e.id} value={e.id}>{e.name} ({e.code || 'No Code'})</option>
+                                        ))}
+                                    </select>
                                 </div>
-                            ) : null}
-                        </div>
-                    )}
+
+                                {formData.employeeId && formData.employeeId !== 'select_placeholder' && formData.type === 'Expense' && (
+                                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                                        {/* Download Voucher Button */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const emp = (employees || []).find((x: any) => x.id === formData.employeeId);
+                                                downloadPettyCashPDF(formData, emp);
+                                            }}
+                                            className="flex-1 px-4 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200/50 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Download Voucher PDF
+                                        </button>
+
+                                        {/* Upload signed copy input */}
+                                        <div className="flex-1 relative">
+                                            <input 
+                                                type="file" 
+                                                id="signed-voucher-upload"
+                                                accept="image/*,application/pdf"
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) {
+                                                        const reader = new FileReader();
+                                                        reader.onloadend = () => {
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                signedAttachment: reader.result as string,
+                                                                signedAttachmentName: file.name
+                                                            }));
+                                                        };
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }}
+                                            />
+                                            <label
+                                                htmlFor="signed-voucher-upload"
+                                                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold cursor-pointer transition-all w-full text-center"
+                                            >
+                                                <Upload className="w-4 h-4" />
+                                                {formData.signedAttachmentName ? "Change Signed Voucher" : "Upload Signed Voucher"}
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {formData.signedAttachment && formData.type === 'Expense' && (
+                                    <div className="flex items-center justify-between p-2.5 bg-emerald-50/50 border border-emerald-100 rounded-lg text-xs font-bold text-slate-700 animate-fadeIn">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <Paperclip className="w-4 h-4 text-emerald-600 shrink-0" />
+                                            <span className="truncate text-[11px] text-emerald-800 font-extrabold">{formData.signedAttachmentName || "Signed_Voucher.pdf"}</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, signedAttachment: '', signedAttachmentName: '' }))}
+                                            className="text-[10px] text-rose-600 hover:text-rose-805 bg-white hover:bg-rose-50 px-2 py-1 rounded border border-rose-150 transition-all font-black shrink-0"
+                                        >
+                                            Remove File
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ) : null}
+                    </div>
 
                     {/* Received From / Requested By (Contact) */}
                     <div className="space-y-1.5">
@@ -9806,6 +9806,45 @@ export const EverydayExpenseView: React.FC<{
     const [activeViewTab, setActiveViewTab] = useState<'ledger' | 'tally'>('ledger');
     const [tallySearch, setTallySearch] = useState('');
     const [reconciliationDetail, setReconciliationDetail] = useState<any | null>(null);
+    const [selectedMonth, setSelectedMonth] = useState<string>('');
+    const [selectedYear, setSelectedYear] = useState<string>('');
+
+    const months = [
+        { label: 'All Months', value: '' },
+        { label: 'January', value: '01' },
+        { label: 'February', value: '02' },
+        { label: 'March', value: '03' },
+        { label: 'April', value: '04' },
+        { label: 'May', value: '05' },
+        { label: 'June', value: '06' },
+        { label: 'July', value: '07' },
+        { label: 'August', value: '08' },
+        { label: 'September', value: '09' },
+        { label: 'October', value: '10' },
+        { label: 'November', value: '11' },
+        { label: 'December', value: '12' }
+    ];
+
+    const years = useMemo(() => {
+        const extracted = Array.from(new Set(data.map(d => {
+            if (!d.date) return '';
+            const y = d.date.split('-')[0];
+            return y && y.length === 4 ? y : '';
+        }).filter(Boolean))).sort();
+        return ['', ...extracted];
+    }, [data]);
+
+    const filteredLedgerData = useMemo(() => {
+        return data.filter(item => {
+            if (!item.date) return true;
+            const [year, month] = item.date.split('-');
+            
+            const matchesMonth = selectedMonth ? month === selectedMonth : true;
+            const matchesYear = selectedYear ? year === selectedYear : true;
+            
+            return matchesMonth && matchesYear;
+        });
+    }, [data, selectedMonth, selectedYear]);
 
     const userRoleLower = user?.role?.toLowerCase() || '';
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
@@ -10027,21 +10066,70 @@ export const EverydayExpenseView: React.FC<{
             )}
 
             {currentTab === 'ledger' ? (
-                <DataTable 
-                    title="Everyday Expenses"
-                    description="Track daily operational expenses and billings."
-                    icon={Wallet}
-                    data={data}
-                    columns={columns}
-                    onAdd={onAdd}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                    onViewBill={(item) => setViewingBill(item.attachment || null)}
-                    searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date', 'vehicleNumber', 'category']}
-                    exportFileName="Everyday_Expenses"
-                    user={user}
-                    filterOptions={filterOptions}
-                />
+                <div className="space-y-4">
+                    {/* Month & Year Filter Bar */}
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 no-print">
+                        <div className="bg-white border border-slate-200/60 rounded-[1.5rem] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                            <div className="flex items-center gap-2">
+                                <ListFilter className="w-4 h-4 text-brand-600" />
+                                <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Month & Year Filter Desk</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Month</span>
+                                    <select
+                                        value={selectedMonth}
+                                        onChange={e => setSelectedMonth(e.target.value)}
+                                        className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none cursor-pointer hover:bg-slate-100 transition-colors"
+                                    >
+                                        {months.map(m => (
+                                            <option key={m.value} value={m.value}>{m.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Year</span>
+                                    <select
+                                        value={selectedYear}
+                                        onChange={e => setSelectedYear(e.target.value)}
+                                        className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none cursor-pointer hover:bg-slate-100 transition-colors"
+                                    >
+                                        {years.map(y => (
+                                            <option key={y} value={y}>{y ? y : 'All Years'}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {(selectedMonth || selectedYear) && (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedMonth('');
+                                            setSelectedYear('');
+                                        }}
+                                        className="text-[10px] font-bold text-red-650 hover:text-red-800 px-2 py-1 bg-red-50 rounded-lg hover:bg-red-105 transition-colors"
+                                    >
+                                        Reset Filter
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <DataTable 
+                        title="Everyday Expenses"
+                        description="Track daily operational expenses and billings."
+                        icon={Wallet}
+                        data={filteredLedgerData}
+                        columns={columns}
+                        onAdd={onAdd}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        onViewBill={(item) => setViewingBill(item.attachment || null)}
+                        searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date', 'vehicleNumber', 'category']}
+                        exportFileName="Everyday_Expenses"
+                        user={user}
+                        filterOptions={filterOptions}
+                    />
+                </div>
             ) : (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
                     {/* Reconciler Header */}
