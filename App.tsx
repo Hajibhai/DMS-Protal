@@ -9228,6 +9228,51 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
     const [error, setError] = useState<string | null>(null);
     const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
+    const handleDownloadReport = () => {
+        if (filteredSuppliers.length === 0) {
+            alert("No suppliers found to download.");
+            return;
+        }
+
+        const reportData = filteredSuppliers.map((supplier, index) => ({
+            "SR. #": index + 1,
+            "SUPPLIER CODE": supplier.code || "",
+            "SUPPLIER NAME": supplier.name || "",
+            "TRN (TAX REGISTRATION NO.)": supplier.trn || "N/A",
+            "CONTACT PERSON": supplier.contactPerson || "N/A",
+            "EMAIL ADDRESS": supplier.email || "N/A",
+            "PHONE NUMBER": supplier.phone || "N/A",
+            "CATEGORY": supplier.category || "N/A",
+            "BUSINESS ADDRESS": supplier.address || "N/A",
+            "DOCUMENTS LINKED": (supplier.driveFiles || []).length,
+            "NOTES / REMARKS": supplier.notes || "N/A"
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(reportData);
+        
+        // Define clean custom widths for columns so it looks professional in Excel
+        const wscols = [
+            { wch: 8 },  // SR. #
+            { wch: 15 }, // SUPPLIER CODE
+            { wch: 35 }, // SUPPLIER NAME
+            { wch: 25 }, // TRN
+            { wch: 25 }, // CONTACT PERSON
+            { wch: 30 }, // EMAIL ADDRESS
+            { wch: 20 }, // PHONE NUMBER
+            { wch: 18 }, // CATEGORY
+            { wch: 40 }, // BUSINESS ADDRESS
+            { wch: 18 }, // DOCUMENTS LINKED
+            { wch: 40 }  // NOTES / REMARKS
+        ];
+        ws['!cols'] = wscols;
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Suppliers List");
+        
+        const timestamp = new Date().toISOString().slice(0, 10);
+        XLSX.writeFile(wb, `Suppliers_Directory_Report_${timestamp}.xlsx`);
+    };
+
     const sortedSuppliers = useMemo(() => {
         return [...suppliers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     }, [suppliers]);
@@ -9355,22 +9400,32 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                         )}
                     </div>
 
-                    {canManageSuppliers && (
-                        <div className="flex gap-3 w-full sm:w-auto">
-                            <button 
-                                onClick={() => setIsReordering(true)}
-                                className="flex-1 sm:flex-none bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
-                            >
-                                <GripVertical className="w-4 h-4" /> Reorder
-                            </button>
-                            <button 
-                                onClick={() => setIsAdding(true)}
-                                className="flex-1 sm:flex-none bg-white text-slate-900 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-xl shadow-slate-900/10 active:scale-95"
-                            >
-                                <Plus className="w-4 h-4" /> Add Supplier
-                            </button>
-                        </div>
-                    )}
+                    <div className="flex gap-3 w-full sm:w-auto">
+                        <button 
+                            onClick={handleDownloadReport}
+                            className="flex-1 sm:flex-none bg-white text-slate-700 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+                            title="Download Suppliers report as Excel"
+                        >
+                            <FileDown className="w-4.5 h-4.5 text-brand-600 animate-pulse" /> Download Report
+                        </button>
+
+                        {canManageSuppliers && (
+                            <>
+                                <button 
+                                    onClick={() => setIsReordering(true)}
+                                    className="flex-1 sm:flex-none bg-white text-slate-600 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+                                >
+                                    <GripVertical className="w-4 h-4" /> Reorder
+                                </button>
+                                <button 
+                                    onClick={() => setIsAdding(true)}
+                                    className="flex-1 sm:flex-none bg-white text-slate-900 border border-slate-200 px-6 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-xl shadow-slate-900/10 active:scale-95"
+                                >
+                                    <Plus className="w-4 h-4" /> Add Supplier
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
