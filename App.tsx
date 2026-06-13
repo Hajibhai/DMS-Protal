@@ -2182,6 +2182,7 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
 
 const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }: { onClose: () => void, users: SystemUser[], openConfirm: (title: string, message: string, onConfirm: () => void, type?: 'danger' | 'warning') => void, currentUser: SystemUser, onLog: any }) => {
     const [localUsers, setLocalUsers] = useState<SystemUser[]>(users);
+    const [searchTerm, setSearchTerm] = useState('');
     const isAuthorizedToManage = 
         currentUser?.permissions?.canManageUsers || 
         currentUser?.role === UserRole.ADMIN || 
@@ -2444,6 +2445,25 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                         {isAuthorizedToManage && (
                             <button onClick={() => { setShowAdd(true); setEditingUser(null); }} className="flex items-center gap-2 bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700">
                                 <Plus className="w-4 h-4" /> Add User
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="mb-4 relative">
+                        <input
+                            type="text"
+                            placeholder="Search by name, email, or role..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-10 py-2 border rounded-xl bg-white text-gray-900 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm transition-all"
+                        />
+                        <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        {searchTerm && (
+                            <button 
+                                onClick={() => setSearchTerm('')} 
+                                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-650 font-bold text-xs"
+                            >
+                                <X className="w-4 h-4" />
                             </button>
                         )}
                     </div>
@@ -2793,50 +2813,70 @@ const UserManagementModal = ({ onClose, users, openConfirm, currentUser, onLog }
                     )}
 
                     <div className="space-y-2">
-                        {localUsers
-                            .filter(u => {
+                        {(() => {
+                            const filtered = localUsers.filter(u => {
                                 // Creator details don't show anywhere
-                                return u.role !== UserRole.CREATOR && u.email !== CREATOR_USER.email;
-                            })
-                            .map(u => (
-                            <div key={u.uid || u.username} className="flex items-center justify-between p-3 border rounded-xl hover:bg-gray-50 transition-colors">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-bold text-sm overflow-hidden shrink-0 border border-slate-100 shadow-xs">
-                                        {u.photoURL ? (
-                                            <img src={u.photoURL} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                        ) : (
-                                            u.name ? u.name.charAt(0).toUpperCase() : '?'
-                                        )}
+                                if (u.role === UserRole.CREATOR || u.email === CREATOR_USER.email) {
+                                    return false;
+                                }
+                                if (!searchTerm) return true;
+                                const term = searchTerm.toLowerCase();
+                                return (
+                                    (u.name || '').toLowerCase().includes(term) ||
+                                    (u.email || '').toLowerCase().includes(term) ||
+                                    (u.username || '').toLowerCase().includes(term) ||
+                                    (u.role || '').toLowerCase().includes(term)
+                                );
+                            });
+
+                            if (filtered.length === 0) {
+                                return (
+                                    <div className="py-8 text-center text-gray-400 text-sm">
+                                        No active system users matching "{searchTerm}"
                                     </div>
-                                    <div>
-                                        <p className="font-medium text-gray-800 text-sm">{u.name} <span className="text-gray-400 font-normal">({u.email || u.username})</span></p>
-                                        <div className="flex flex-wrap items-center gap-2 mt-1">
-                                            <span className="text-xs text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md uppercase">{u.role}</span>
-                                            {u.password && (
-                                                <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                                                    <span className="text-slate-300">|</span>
-                                                    <span className="font-medium">Password: </span>
-                                                    <span className="font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200/50 px-2 py-0.5 rounded text-[11px] flex items-center gap-1">
-                                                        <Key className="w-3 h-3 text-amber-600" />
-                                                        {u.password}
-                                                    </span>
-                                                </div>
+                                );
+                            }
+
+                            return filtered.map(u => (
+                                <div key={u.uid || u.username} className="flex items-center justify-between p-3 border rounded-xl hover:bg-gray-50 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 font-bold text-sm overflow-hidden shrink-0 border border-slate-100 shadow-xs">
+                                            {u.photoURL ? (
+                                                <img src={u.photoURL} alt={u.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                            ) : (
+                                                u.name ? u.name.charAt(0).toUpperCase() : '?'
                                             )}
                                         </div>
+                                        <div>
+                                            <p className="font-medium text-gray-800 text-sm">{u.name} <span className="text-gray-400 font-normal">({u.email || u.username})</span></p>
+                                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                                                <span className="text-xs text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md uppercase">{u.role}</span>
+                                                {u.password && (
+                                                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                                                        <span className="text-slate-300">|</span>
+                                                        <span className="font-medium">Password: </span>
+                                                        <span className="font-mono font-bold bg-amber-50 text-amber-900 border border-amber-200/50 px-2 py-0.5 rounded text-[11px] flex items-center gap-1">
+                                                            <Key className="w-3 h-3 text-amber-600" />
+                                                            {u.password}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => { setEditingUser(u); setShowAdd(false); }} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                                            <Edit className="w-4 h-4" />
+                                        </button>
+                                        {u.email !== CREATOR_USER.username && (
+                                            <button onClick={() => handleDelete(u)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => { setEditingUser(u); setShowAdd(false); }} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                                        <Edit className="w-4 h-4" />
-                                    </button>
-                                    {u.email !== CREATOR_USER.username && (
-                                        <button onClick={() => handleDelete(u)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                            ));
+                        })()}
                     </div>
                 </div>
                 
@@ -5203,7 +5243,7 @@ export default function App() {
           { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManageFinance' },
           { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManageFinance' },
           { id: 'camp', label: 'Camp', icon: Home, permission: 'canManageFinance' },
-          { id: 'projected-expenses', label: 'Projected Expenses', icon: TrendingDown, permission: 'canManageFinance' },
+          { id: 'projected-expenses', label: 'Project Expenses', icon: TrendingDown, permission: 'canManageFinance' },
           { id: 'engineer-hub', label: 'Procurement Documents', icon: HardHat, permission: 'canManageFinance' },
         ]
       },
@@ -5774,11 +5814,56 @@ export default function App() {
       )}
       {activeTab === 'projected-expenses' && (
         <ProjectedExpenseView 
-          data={projectedExpenses}
+          data={(() => {
+            const direct = projectedExpenses.map(p => ({
+              ...p,
+              type: 'direct' as const
+            }));
+            const everydayWithProject = everydayExpenses
+              .filter(e => e.projectId && e.projectId !== 'no-project' && e.projectId !== '')
+              .map(e => ({
+                id: e.id,
+                siNo: e.siNo || '',
+                date: e.date || '',
+                invoiceNumber: e.invoiceNo || 'N/A',
+                billDescription: e.description || 'Everyday Expense',
+                clientName: e.clientName || '-',
+                siteLocation: e.shopName || e.supplierName || 'N/A',
+                workDescription: e.category || 'Everyday Expense',
+                actualAmount: typeof e.billAmount === 'number' ? e.billAmount : (e.totalAmount || 0) - (e.vatAmount || 0),
+                vatAmount: e.vatAmount || 0,
+                totalAmount: e.totalAmount || 0,
+                projectId: e.projectId,
+                uploadedBy: e.uploadedBy || 'Staff',
+                uploadedByUid: e.uploadedByUid || '',
+                updatedBy: e.updatedBy || '',
+                updatedByUid: e.updatedByUid || '',
+                type: 'everyday' as const
+              }));
+            return [...direct, ...everydayWithProject];
+          })()}
           projects={projects}
           onAdd={() => setShowProjectedExpenseModal(true)}
-          onEdit={(pe: ProjectedExpense) => setShowProjectedExpenseModal(pe)}
-          onDelete={handleDeleteProjectedExpense}
+          onEdit={(pe: any) => {
+            if (pe.type === 'everyday') {
+              const original = everydayExpenses.find(ee => ee.id === pe.id);
+              if (original) {
+                setShowEverydayExpenseModal(original);
+              }
+            } else {
+              setShowProjectedExpenseModal(pe);
+            }
+          }}
+          onDelete={(pe: any) => {
+            if (pe.type === 'everyday') {
+              const original = everydayExpenses.find(ee => ee.id === pe.id);
+              if (original) {
+                handleDeleteEverydayExpense(original);
+              }
+            } else {
+              handleDeleteProjectedExpense(pe);
+            }
+          }}
           user={systemUser}
         />
       )}
@@ -6039,6 +6124,7 @@ export default function App() {
             projects={projects}
             onSave={handleSaveProjectedExpense}
             onCancel={() => setShowProjectedExpenseModal(false)}
+            user={systemUser}
           />
         )}
         {showEverydayExpenseModal && (

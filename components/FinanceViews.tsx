@@ -146,6 +146,7 @@ interface DataTableProps<T> {
     onEdit?: (item: T) => void;
     onDelete?: (item: T) => void;
     onViewBill?: (item: T) => void;
+    onDownloadStatement?: (item: T) => void;
     searchPlaceholder?: string;
     searchFields: (keyof T)[];
     exportFileName: string;
@@ -173,6 +174,7 @@ export function DataTable<T extends { id: string }>({
     onEdit,
     onDelete,
     onViewBill,
+    onDownloadStatement,
     searchPlaceholder = "Search...",
     searchFields,
     exportFileName,
@@ -291,12 +293,12 @@ export function DataTable<T extends { id: string }>({
             totalSums[key] = filteredData.reduce((sum, item) => {
                 let val = (item as any)[key];
                 if (key === 'totalAmount' && val === undefined) {
-                    const actual = item.actualAmount !== undefined ? item.actualAmount : (item as any).amount || 0;
-                    const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+                    const actual = (item as any).actualAmount !== undefined ? (item as any).actualAmount : (item as any).amount || 0;
+                    const vat = (item as any).vatAmount !== undefined ? (item as any).vatAmount : Number((actual * 0.05).toFixed(2));
                     val = Number((actual + vat).toFixed(2));
                 } else if (key === 'payableAmount' && val === undefined) {
-                    const actual = item.actualAmount !== undefined ? item.actualAmount : (item as any).amount || 0;
-                    const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+                    const actual = (item as any).actualAmount !== undefined ? (item as any).actualAmount : (item as any).amount || 0;
+                    const vat = (item as any).vatAmount !== undefined ? (item as any).vatAmount : Number((actual * 0.05).toFixed(2));
                     const total = Number((actual + vat).toFixed(2));
                     const advance = (item as any).advance || 0;
                     const deduction = (item as any).deduction || 0;
@@ -772,7 +774,7 @@ export function DataTable<T extends { id: string }>({
                                         </div>
                                     </th>
                                 ))}
-                                {(onEdit || onDelete || onViewBill) && (
+                                {(onEdit || onDelete || onViewBill || onDownloadStatement) && (
                                     <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
                                         Actions
                                     </th>
@@ -803,9 +805,18 @@ export function DataTable<T extends { id: string }>({
                                             {col.render ? col.render(item, index) : String((item as any)[col.key] || '-')}
                                         </td>
                                     ))}
-                                    {(onEdit || onDelete || onViewBill) && (
+                                    {(onEdit || onDelete || onViewBill || onDownloadStatement) && (
                                         <td className="px-6 py-5 text-right">
                                             <div className="flex items-center justify-end gap-2 transition-opacity">
+                                                {onDownloadStatement && (
+                                                    <button 
+                                                        onClick={() => onDownloadStatement(item)}
+                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100 cursor-pointer"
+                                                        title="Download Statement"
+                                                    >
+                                                        <Download className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                                 {onViewBill && (item as any).attachment && (
                                                     <button 
                                                         onClick={() => onViewBill(item)}
@@ -838,7 +849,7 @@ export function DataTable<T extends { id: string }>({
                             ))}
                             {filteredData.length === 0 && (
                                 <tr>
-                                    <td colSpan={columns.length + (onEdit || onDelete || onViewBill ? 1 : 0) + (enableMultiSelect && isAdmin ? 1 : 0)} className="px-6 py-20 text-center">
+                                    <td colSpan={columns.length + (onEdit || onDelete || onViewBill || onDownloadStatement ? 1 : 0) + (enableMultiSelect && isAdmin ? 1 : 0)} className="px-6 py-20 text-center">
                                         <div className="flex flex-col items-center gap-3">
                                             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
                                                 <Search className="w-8 h-8 text-slate-200" />
@@ -7162,7 +7173,187 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete,
     );
 };
 
-export const ProjectedExpenseView = ({ data, projects, onAdd, onEdit, onDelete, user }: any) => {
+export const generateProjectExpenseStatementPdf = (expense: ProjectedExpense, projects: any[]) => {
+    const doc = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    const getProjectName = (id?: string) => {
+        if (!id) return 'General / No Project';
+        return projects.find((p: any) => p.id === id)?.name || 'N/A';
+    };
+
+    // Corporate Head Banner (Royal Blue)
+    doc.setFillColor(37, 99, 235);
+    doc.rect(0, 0, 210, 8, 'F');
+
+    // Company Header
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(15, 23, 42);
+    doc.text("PIONEER DMS GROUP LTD", 15, 24);
+
+    doc.setFontSize(9.5);
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Project Expense & Billing Record Statement", 15, 30);
+    doc.text(`Doc Ref: PE-REC-${expense.invoiceNumber || expense.siNo || 'AUTO'}`, 15, 35);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 15, 40);
+
+    // Divider Line
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.4);
+    doc.line(15, 45, 195, 45);
+
+    // Left Column: Record Info
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.setTextColor(30, 41, 59);
+    doc.text("EXPENSE SERVICE SUMMARY", 15, 53);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.text("SI. No:", 15, 61);
+    doc.setFont("Helvetica", "normal");
+    doc.text(String(expense.siNo || '-'), 45, 61);
+
+    doc.setFont("Helvetica", "bold");
+    doc.text("Date:", 15, 67);
+    doc.setFont("Helvetica", "normal");
+    doc.text(formatDisplayDate(expense.date), 45, 67);
+
+    doc.setFont("Helvetica", "bold");
+    doc.text("Bill/Invoice No:", 15, 73);
+    doc.setFont("Helvetica", "normal");
+    doc.text(String(expense.invoiceNumber || '-'), 45, 73);
+
+    doc.setFont("Helvetica", "bold");
+    doc.text("Associated Project:", 15, 79);
+    doc.setFont("Helvetica", "normal");
+    doc.text(getProjectName(expense.projectId), 45, 79);
+
+    // Right Column: Client & Location Info
+    doc.setFont("Helvetica", "bold");
+    doc.text("CLIENT & LOCATION", 115, 53);
+
+    doc.text("Client Name:", 115, 61);
+    doc.setFont("Helvetica", "normal");
+    doc.text(String(expense.clientName || '-'), 145, 61);
+
+    doc.setFont("Helvetica", "bold");
+    doc.text("Site Location:", 115, 67);
+    doc.setFont("Helvetica", "normal");
+    doc.text(String(expense.siteLocation || '-'), 145, 67);
+
+    doc.setFont("Helvetica", "bold");
+    doc.text("Uploaded By:", 115, 73);
+    doc.setFont("Helvetica", "normal");
+    doc.text(String(expense.uploadedBy || expense.updatedBy || 'Staff'), 145, 73);
+
+    doc.setFont("Helvetica", "bold");
+    doc.text("Updated By:", 115, 79);
+    doc.setFont("Helvetica", "normal");
+    doc.text(String(expense.updatedBy || expense.uploadedBy || 'Staff'), 145, 79);
+
+    // Description Section
+    doc.setDrawColor(241, 245, 249);
+    doc.setFillColor(248, 250, 252);
+    doc.rect(15, 87, 180, 42, 'F');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(30, 41, 59);
+    doc.text("DESCRIPTION & MEMORANDUM", 20, 94);
+
+    doc.setFontSize(8.5);
+    doc.text("Bill Title / Type:", 20, 101);
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text(String(expense.billDescription || 'No description provided'), 52, 101);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("Detailed Work Scope:", 20, 108);
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    
+    // Multi-line work description support
+    const splitWork = doc.splitTextToSize(String(expense.workDescription || '-'), 168);
+    doc.text(splitWork, 20, 114);
+
+    // Financial breakdown Table header
+    const tableHeaderY = 138;
+    doc.setFillColor(37, 99, 235); // Pioneer Royal Blue
+    doc.rect(15, tableHeaderY, 180, 8.5, 'F');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text("FINANCIAL SUMMARY ITEMIZATION", 18, tableHeaderY + 5.5);
+    doc.text("AMOUNT (AED)", 192, tableHeaderY + 5.5, { align: 'right' });
+
+    // Financial Rows
+    let currentRowY = tableHeaderY + 8.5;
+
+    // Row 1: Actual Amount
+    doc.setFillColor(255, 255, 255);
+    doc.rect(15, currentRowY, 180, 9, 'F');
+    doc.setDrawColor(241, 245, 249);
+    doc.line(15, currentRowY + 9, 195, currentRowY + 9);
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text("Subtotal (Actual Bill Amount excluding VAT)", 18, currentRowY + 6);
+    doc.setFont("Helvetica", "bold");
+    doc.text(`AED ${expense.actualAmount ? expense.actualAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00'}`, 192, currentRowY + 6, { align: 'right' });
+
+    // Row 2: VAT Amount
+    currentRowY += 9;
+    doc.setFillColor(248, 250, 252);
+    doc.rect(15, currentRowY, 180, 9, 'F');
+    doc.line(15, currentRowY + 9, 195, currentRowY + 9);
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text("Value Added Tax (5.0% Standard VAT Assessment)", 18, currentRowY + 6);
+    doc.setFont("Helvetica", "bold");
+    doc.text(`AED ${expense.vatAmount ? expense.vatAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00'}`, 192, currentRowY + 6, { align: 'right' });
+
+    // Row 3: Grand Total Amount
+    currentRowY += 9;
+    doc.setFillColor(241, 245, 249);
+    doc.rect(15, currentRowY, 180, 11, 'F');
+    doc.setDrawColor(203, 213, 225);
+    doc.line(15, currentRowY + 11, 195, currentRowY + 11);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text("GRAND BILLING TOTAL (INCLUDING VAT)", 18, currentRowY + 7);
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.text(`AED ${expense.totalAmount ? expense.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00'}`, 192, currentRowY + 7, { align: 'right' });
+
+    // Footer signature spaces
+    const signatureY = 220;
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.4);
+    doc.line(25, signatureY, 80, signatureY);
+    doc.line(130, signatureY, 185, signatureY);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Prepared / Printed By", 52.5, signatureY + 4.5, { align: 'center' });
+    doc.text("Authorized Finance Manager Signatory", 157.5, signatureY + 4.5, { align: 'center' });
+
+    // Page number
+    doc.setFontSize(7.5);
+    doc.text("Pioneer DMS Ltd • Secure Ledger Document", 105, 282, { align: 'center' });
+
+    // Save PDF
+    doc.save(`Project_Expense_Statement_${expense.invoiceNumber || expense.siNo || 'record'}.pdf`);
+};
+
+export const ProjectExpenseView = ({ data, projects, onAdd, onEdit, onDelete, user }: any) => {
     const getProjectName = (id?: string) => {
         if (!id) return 'General';
         return projects.find((p: any) => p.id === id)?.name || 'N/A';
@@ -7170,8 +7361,8 @@ export const ProjectedExpenseView = ({ data, projects, onAdd, onEdit, onDelete, 
 
     return (
         <DataTable<ProjectedExpense>
-            title="Projected Expenses"
-            description="Manage and track projected project expenses and billings."
+            title="Project Expenses"
+            description="Manage and track project expenses and billings."
             icon={TrendingDown}
             data={data}
             columns={[
@@ -7195,16 +7386,32 @@ export const ProjectedExpenseView = ({ data, projects, onAdd, onEdit, onDelete, 
                     label: 'Total Amount',
                     render: (item) => <span className="font-black text-slate-900">AED {item.totalAmount.toLocaleString()}</span>
                 },
+                { 
+                    key: 'uploadedBy', 
+                    label: 'Uploaded/Updated By', 
+                    sortable: true, 
+                    render: (item: ProjectedExpense) => {
+                        const who = item.uploadedBy || item.updatedBy || '-';
+                        const uploadDate = item.date || '';
+                        if (who !== '-' && uploadDate) {
+                            return `${who} (on ${formatDisplayDate(uploadDate)})`;
+                        }
+                        return who;
+                    } 
+                },
             ]}
             onAdd={onAdd}
             onEdit={onEdit}
             onDelete={onDelete}
-            searchFields={['invoiceNumber', 'billDescription', 'clientName', 'siteLocation', 'workDescription']}
-            exportFileName="Projected_Expenses"
+            onDownloadStatement={(item) => generateProjectExpenseStatementPdf(item, projects)}
+            searchFields={['invoiceNumber', 'billDescription', 'clientName', 'siteLocation', 'workDescription', 'uploadedBy', 'updatedBy']}
+            exportFileName="Project_Expenses"
             user={user}
         />
     );
 };
+
+export const ProjectedExpenseView = ProjectExpenseView;
 
 // --- Modals ---
 
@@ -9142,20 +9349,36 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employee
     );
 };
 
-export const ProjectedExpenseModal = ({ expense, projects, onSave, onCancel }: any) => {
-    const [formData, setFormData] = useState(expense || { 
-        id: Math.random().toString(36).substr(2, 9),
-        siNo: '',
-        date: new Date().toISOString().split('T')[0],
-        invoiceNumber: '',
-        billDescription: '',
-        clientName: '',
-        siteLocation: '',
-        workDescription: '',
-        actualAmount: 0,
-        vatAmount: 0,
-        totalAmount: 0,
-        projectId: ''
+export const ProjectedExpenseModal = ({ expense, projects, onSave, onCancel, user }: any) => {
+    const [formData, setFormData] = useState(() => {
+        if (expense) {
+            return {
+                ...expense,
+                uploadedBy: expense.uploadedBy || '',
+                uploadedByUid: expense.uploadedByUid || '',
+                updatedBy: expense.updatedBy || '',
+                updatedByUid: expense.updatedByUid || '',
+            };
+        }
+        const initialWho = user?.name || user?.username || 'Staff';
+        return { 
+            id: Math.random().toString(36).substr(2, 9),
+            siNo: '',
+            date: new Date().toISOString().split('T')[0],
+            invoiceNumber: '',
+            billDescription: '',
+            clientName: '',
+            siteLocation: '',
+            workDescription: '',
+            actualAmount: 0,
+            vatAmount: 0,
+            totalAmount: 0,
+            projectId: '',
+            uploadedBy: initialWho,
+            uploadedByUid: user?.uid || '',
+            updatedBy: initialWho,
+            updatedByUid: user?.uid || ''
+        };
     });
 
     const handleAmountChange = (val: number) => {
@@ -9178,7 +9401,7 @@ export const ProjectedExpenseModal = ({ expense, projects, onSave, onCancel }: a
             >
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{expense ? 'Edit Projected Expense' : 'Add Projected Expense'}</h2>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">{expense ? 'Edit Project Expense' : 'Add Project Expense'}</h2>
                         <p className="text-slate-500 text-sm font-medium mt-1">Enter expense details below</p>
                     </div>
                     <button onClick={onCancel} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm"><X className="w-5 h-5" /></button>
@@ -9296,7 +9519,22 @@ export const ProjectedExpenseModal = ({ expense, projects, onSave, onCancel }: a
 
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
                     <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
-                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Expense</button>
+                    <button 
+                        onClick={() => {
+                            const currentWho = user?.name || user?.username || 'Staff';
+                            const updatedData = {
+                                ...formData,
+                                updatedBy: currentWho,
+                                updatedByUid: user?.uid || '',
+                                uploadedBy: formData.uploadedBy || currentWho,
+                                uploadedByUid: formData.uploadedByUid || user?.uid || '',
+                            };
+                            onSave(updatedData);
+                        }} 
+                        className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20"
+                    >
+                        Save Expense
+                    </button>
                 </div>
             </motion.div>
         </div>
@@ -11630,15 +11868,40 @@ export const FinancialDashboardView: React.FC<{
         doc.setFontSize(7.5);
         doc.setTextColor(255, 255, 255);
         doc.text("DATE", 18, tableHeaderY + 5.5);
-        doc.text("TRANSACTION DETAILS & REFERENCE", 42, tableHeaderY + 5.5);
-        doc.text("SOURCE LEDGER", 112, tableHeaderY + 5.5);
-        doc.text("PREV. BALANCE", 145, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("TRANSACTION DETAILS & REFERENCE", 38, tableHeaderY + 5.5);
+        doc.text("SOURCE LEDGER", 104, tableHeaderY + 5.5);
+        doc.text("PREV. BALANCE", 144, tableHeaderY + 5.5, { align: 'right' });
         doc.text("TX AMOUNT", 168, tableHeaderY + 5.5, { align: 'right' });
-        doc.text("RUN. BALANCE", 192, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("RUN. BALANCE", 194, tableHeaderY + 5.5, { align: 'right' });
+
+        const sanitizePdfText = (str: string): string => {
+            if (!str) return '';
+            return str
+                .split('')
+                .filter(char => {
+                    const code = char.charCodeAt(0);
+                    return (code >= 32 && code <= 126) || (code >= 160 && code <= 255);
+                })
+                .join('')
+                .replace(/\s+/g, ' ')
+                .trim();
+        };
 
         let currentY = tableHeaderY + 8.5;
         selectedAccountLedger.forEach((tx, idx) => {
-            if (currentY > 268) {
+            const sanitizedDesc = sanitizePdfText(tx.description || '');
+            const sanitizedRef = sanitizePdfText(tx.reference || '');
+            const descLines: string[] = doc.splitTextToSize(sanitizedDesc, 62);
+            const refLines: string[] = doc.splitTextToSize(sanitizedRef, 62);
+
+            // Calculate dynamic row heights to prevent text truncation and overlap
+            const lineHtDesc = 3.5;
+            const lineHtRef = 2.6;
+            const totalTextHt = (descLines.length * lineHtDesc) + (refLines.length * lineHtRef);
+            const rowHeight = Math.max(11.5, totalTextHt + 4.5);
+
+            // Check page boundary
+            if (currentY + rowHeight > 278) {
                 doc.addPage();
                 doc.setFillColor(37, 99, 235);
                 doc.rect(0, 0, 210, 6, 'F');
@@ -11650,11 +11913,11 @@ export const FinancialDashboardView: React.FC<{
                 doc.setFontSize(7.5);
                 doc.setTextColor(255, 255, 255);
                 doc.text("DATE", 18, 12 + 5.5);
-                doc.text("TRANSACTION DETAILS & REFERENCE", 42, 12 + 5.5);
-                doc.text("SOURCE LEDGER", 112, 12 + 5.5);
-                doc.text("PREV. BALANCE", 145, 12 + 5.5, { align: 'right' });
+                doc.text("TRANSACTION DETAILS & REFERENCE", 38, 12 + 5.5);
+                doc.text("SOURCE LEDGER", 104, 12 + 5.5);
+                doc.text("PREV. BALANCE", 144, 12 + 5.5, { align: 'right' });
                 doc.text("TX AMOUNT", 168, 12 + 5.5, { align: 'right' });
-                doc.text("RUN. BALANCE", 192, 12 + 5.5, { align: 'right' });
+                doc.text("RUN. BALANCE", 194, 12 + 5.5, { align: 'right' });
                 
                 currentY = 20.5;
             }
@@ -11662,33 +11925,37 @@ export const FinancialDashboardView: React.FC<{
             // Alternating zebra list item rows backgrounds
             if (idx % 2 === 0) {
                 doc.setFillColor(248, 250, 252);
-                doc.rect(15, currentY, 180, 9.5, 'F');
+                doc.rect(15, currentY, 180, rowHeight, 'F');
             }
 
+            // DATE Column
             doc.setFont("Helvetica", "normal");
             doc.setFontSize(7.5);
             doc.setTextColor(100, 116, 139);
-            doc.text(tx.date, 18, currentY + 6);
+            // Vertically center DATE text in the row
+            doc.text(tx.date, 18, currentY + (rowHeight / 2) + 1);
 
-            // Details and references mapping format
+            // TRANSACTION DETAILS & REFERENCE (Wrapped seamlessly)
             doc.setFont("Helvetica", "bold");
             doc.setTextColor(30, 41, 59);
-            let dTxt = tx.description;
-            if (dTxt.length > 33) {
-                dTxt = dTxt.substring(0, 31) + "...";
-            }
-            doc.text(dTxt, 42, currentY + 4);
+            doc.setFontSize(7.5);
+            
+            descLines.forEach((line, lIdx) => {
+                doc.text(line, 38, currentY + 3.8 + (lIdx * lineHtDesc));
+            });
             
             doc.setFont("Helvetica", "normal");
             doc.setFontSize(6.5);
             doc.setTextColor(148, 163, 184);
-            let rTxt = tx.reference;
-            if (rTxt.length > 51) {
-                rTxt = rTxt.substring(0, 49) + "...";
-            }
-            doc.text(rTxt, 42, currentY + 7.5);
+            const refStartOffset = 3.8 + (descLines.length * lineHtDesc) + 0.5;
+            refLines.forEach((line, rIdx) => {
+                doc.text(line, 38, currentY + refStartOffset + (rIdx * lineHtRef));
+            });
 
-            // Source types
+            // Vertically center numeric and single-line text columns
+            const valCenterY = currentY + (rowHeight / 2) + 1;
+
+            // SOURCE LEDGER Column
             doc.setFont("Helvetica", "bold");
             doc.setFontSize(7);
             if (tx.sourceType === 'Everyday Expense') {
@@ -11696,13 +11963,13 @@ export const FinancialDashboardView: React.FC<{
             } else {
                 doc.setTextColor(79, 70, 229); // Indigo
             }
-            doc.text(tx.sourceType.toUpperCase(), 112, currentY + 5.5);
+            doc.text(tx.sourceType.toUpperCase(), 104, valCenterY);
 
-            // Numeric Columns formatting
+            // PREV. BALANCE Column
             doc.setFont("Helvetica", "normal");
             doc.setFontSize(7.5);
             doc.setTextColor(100, 116, 139);
-            doc.text(tx.previousBalance.toLocaleString(undefined, {minimumFractionDigits: 2}), 145, currentY + 5.5, { align: 'right' });
+            doc.text(tx.previousBalance.toLocaleString(undefined, {minimumFractionDigits: 2}), 144, valCenterY, { align: 'right' });
 
             const isIncome = tx.changeType === 'in';
             doc.setFont("Helvetica", "bold");
@@ -11711,16 +11978,16 @@ export const FinancialDashboardView: React.FC<{
             } else {
                 doc.setTextColor(190, 24, 74);
             }
-            doc.text(`${isIncome ? "+" : "-"} ${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 168, currentY + 5.5, { align: 'right' });
+            doc.text(`${isIncome ? "+" : "-"} ${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 168, valCenterY, { align: 'right' });
 
             if (tx.balanceAfter >= 0) {
                 doc.setTextColor(16, 124, 65);
             } else {
                 doc.setTextColor(190, 24, 74);
             }
-            doc.text(tx.balanceAfter.toLocaleString(undefined, {minimumFractionDigits: 2}), 192, currentY + 5.5, { align: 'right' });
+            doc.text(tx.balanceAfter.toLocaleString(undefined, {minimumFractionDigits: 2}), 194, valCenterY, { align: 'right' });
 
-            currentY += 9.5;
+            currentY += rowHeight;
         });
 
         doc.save(`${selectedAccount.toUpperCase().replace(/\s+/g, '_')}_Statement_Ledger.pdf`);

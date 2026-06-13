@@ -1302,7 +1302,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
                 setEditingApplicant(null);
                 setApplicantForm({
                   name: '', email: '', mobileNumber: '', position: 'Cleaner', 
-                  passportNumber: '', salaryExpectation: 0, notes: '', status: 'Applied',
+                  passportNumber: '', emiratesIdNumber: '', salaryExpectation: 0, notes: '', status: 'Applied',
                   interviewType: 'F2F', interviewMeetLink: '', interviewDate: ''
                 });
                 setShowApplicantModal(true);
@@ -1318,6 +1318,7 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
                 setOfferForm({
                   employeeName: '', position: 'Cleaner', salary: 3000, housingAllowance: 1000,
                   transportAllowance: 500, otherAllowance: 500, passportNumber: '', mobileNumber: '',
+                  email: '', emiratesIdNumber: '', company: 'Pioneer DMS Group Ltd',
                   joiningDate: new Date().toISOString().split('T')[0], offerDate: new Date().toISOString().split('T')[0],
                   expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: 'Offered',
                   additionalDetails: 'Standard UAE Residence Visa, Medical Insurance, and Bi-annual flights to home country provided in accordance with UAE Labour Law.', applicantId: ''

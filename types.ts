@@ -92,6 +92,7 @@ export interface Employee {
   rejoiningReason?: string;
   profileImage?: string;
   projectName?: string;
+  email?: string;
   
   // New Document Fields
   documents?: EmployeeDocuments;
@@ -307,6 +308,10 @@ export interface ProjectedExpense {
     vatAmount: number; // 5%
     totalAmount: number;
     projectId?: string; // Optional link to project
+    uploadedBy?: string;
+    uploadedByUid?: string;
+    updatedBy?: string;
+    updatedByUid?: string;
 }
 
 export interface EverydayExpense {
