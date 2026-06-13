@@ -229,6 +229,7 @@ export interface Vendor {
 
 export interface AccountsPayable {
     id: string;
+    companyId?: string; // Buying Corporate Identity
     date: string;
     vendorId: string; // Linked to Supplier or Vendor
     vendorType: 'Supplier' | 'Vendor';

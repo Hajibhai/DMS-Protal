@@ -4828,6 +4828,44 @@ export default function App() {
     );
   };
 
+  const handleUpdateAPMultipleCompanyId = async (items: AccountsPayable[], companyId: string) => {
+    const userRoleLower = (systemUser?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
+    
+    if (!isAdmin) {
+      alert("Access Denied: Only portal Admins can perform bulk updates.");
+      return;
+    }
+
+    if (items.length === 0) {
+      alert("No data records selected.");
+      return;
+    }
+
+    const companyName = (companies || []).find((c: any) => c.id === companyId)?.name || 'Chosen Corporate Company';
+
+    openConfirm(
+      "Bulk Update Buying Corporate Identity", 
+      `Are you sure you want to change the Buying Corporate Identity of these ${items.length} selected accounts payable entries to "${companyName}"?`, 
+      async () => {
+        try {
+          for (const item of items) {
+            const updatedItem = {
+              ...item,
+              companyId
+            };
+            await saveAccountsPayable(updatedItem);
+          }
+          handleLogAction('Payables Bulk Updated', `Updated buying corporate identity of ${items.length} chosen ledger entries to ${companyName}.`, 'update');
+          alert(`Successfully updated corporate identity for the selected ${items.length} entries.`);
+        } catch (err) {
+          console.error("Failed to bulk update corporate identity: ", err);
+          alert("An error occurred during bulk update.");
+        }
+      }
+    );
+  };
+
   const handleDeleteARMultiple = async (items: AccountsReceivable[]) => {
     const userRoleLower = (systemUser?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
@@ -4976,6 +5014,7 @@ export default function App() {
         const idxClearDate = headers.findIndex((h: string) => h.toLowerCase().includes('clear date') || h.toLowerCase().includes('payment clear date') || h.toLowerCase().includes('payment date'));
         const idxNotes = headers.findIndex((h: string) => h.toLowerCase().includes('notes') || h.toLowerCase().includes('remarks') || h.toLowerCase().includes('notes / remarks'));
         const idxDate = headers.findIndex((h: string) => h.toLowerCase().trim() === 'date' || h.toLowerCase().trim() === 'invoice date' || h.toLowerCase().trim() === 'posting date' || h.toLowerCase().includes('date'));
+        const idxCompany = headers.findIndex((h: string) => h.toLowerCase().includes('company') || h.toLowerCase().includes('buying') || h.toLowerCase().includes('corporate') || h.toLowerCase().includes('filing entity') || h.toLowerCase().includes('buyer'));
 
         if (idxNameOfSupplier === -1 && idxSupplierCode === -1) {
           alert("Could not identify 'Name of Supplier' or 'Supplier' column of the excel sheet. Please check column headers.");
@@ -5066,8 +5105,21 @@ export default function App() {
             }
           }
 
+          let extractedCompanyId = '';
+          if (idxCompany !== -1 && row[idxCompany]) {
+            const rowCompanyVal = String(row[idxCompany]).trim().toLowerCase();
+            const foundComp = (companies || []).find((c: any) => 
+              c.name.toLowerCase().includes(rowCompanyVal) || 
+              rowCompanyVal.includes(c.name.toLowerCase())
+            );
+            if (foundComp) {
+              extractedCompanyId = foundComp.id;
+            }
+          }
+
           const newAp: AccountsPayable = {
             id: 'ap_' + Math.random().toString(36).substr(2, 9),
+            companyId: extractedCompanyId || undefined,
             date: apDate,
             vendorId: finalVendorId,
             vendorType: 'Supplier',
@@ -5816,6 +5868,7 @@ export default function App() {
           onDeleteBatch={handleDeleteAPBatch}
           onBulkUpdateDate={handleUpdateAPMultipleDate}
           onBulkUpdateNotes={handleUpdateAPMultipleNotes}
+          onBulkUpdateCompanyId={handleUpdateAPMultipleCompanyId}
           onUploadExcel={handleUploadExcelPayable}
           user={systemUser}
           companies={companies}
@@ -5980,6 +6033,7 @@ export default function App() {
           suppliers={suppliers}
           vendors={vendors}
           user={systemUser}
+          companies={companies}
         />
       )}
       {activeTab === 'tasks-notes' && (
@@ -15873,11 +15927,173 @@ const ReportsView = ({
     employees, attendance, leaveRequests, deductions, 
     projects, accountsPayable, accountsReceivable, pettyCash,
     everydayExpenses, projectedExpenses,
-    suppliers, vendors, user 
+    suppliers, vendors, user, companies 
 }: any) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [searchQuery, setSearchQuery] = useState('');
     
+    // VAT-specific filtering and period states
+    const [vatPeriodType, setVatPeriodType] = useState<'monthly' | 'quarterly'>('monthly');
+    const [vatYear, setVatYear] = useState<number>(() => {
+        const parts = (new Date().toISOString().slice(0, 7)).split('-');
+        return parts[0] ? Number(parts[0]) : 2026;
+    });
+    const [vatMonth, setVatMonth] = useState<number>(() => {
+        const parts = (new Date().toISOString().slice(0, 7)).split('-');
+        return parts[1] ? Number(parts[1]) - 1 : 5; // June is index 5
+    });
+    const [vatQuarter, setVatQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>(() => {
+        const m = new Date().getMonth();
+        if (m < 3) return 'Q1';
+        if (m < 6) return 'Q2';
+        if (m < 9) return 'Q3';
+        return 'Q4';
+    });
+    const [vatCompanyFilter, setVatCompanyFilter] = useState<string>('all');
+
+    useEffect(() => {
+        if (selectedMonth) {
+            const parts = selectedMonth.split('-');
+            const y = parts[0] ? Number(parts[0]) : null;
+            const m = parts[1] ? Number(parts[1]) : null;
+            if (y) setVatYear(y);
+            if (m) {
+                setVatMonth(m - 1);
+                if (m <= 3) setVatQuarter('Q1');
+                else if (m <= 6) setVatQuarter('Q2');
+                else if (m <= 9) setVatQuarter('Q3');
+                else setVatQuarter('Q4');
+            }
+        }
+    }, [selectedMonth]);
+
+    const vatPeriodLabel = useMemo(() => {
+        if (vatPeriodType === 'monthly') {
+            const mNames = [
+                "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December"
+            ];
+            return `${mNames[vatMonth]} ${vatYear}`;
+        } else {
+            return `${vatQuarter} ${vatYear}`;
+        }
+    }, [vatPeriodType, vatYear, vatMonth, vatQuarter]);
+
+    const vatReportDate = useMemo(() => {
+        if (vatPeriodType === 'monthly') {
+            return new Date(vatYear, vatMonth + 1, 0);
+        } else {
+            const endMonth = vatQuarter === 'Q1' ? 2 :
+                             vatQuarter === 'Q2' ? 5 :
+                             vatQuarter === 'Q3' ? 8 : 11;
+            return new Date(vatYear, endMonth + 1, 0);
+        }
+    }, [vatPeriodType, vatYear, vatMonth, vatQuarter]);
+
+    const vatFilteredLists = useMemo(() => {
+        const isDateInPeriod = (dateVal: string | Date | undefined) => {
+            if (!dateVal) return false;
+            const d = new Date(dateVal);
+            if (isNaN(d.getTime())) return false;
+            
+            // Check Year
+            if (d.getFullYear() !== vatYear) return false;
+            
+            // Check Month/Quarter
+            if (vatPeriodType === 'monthly') {
+                return d.getMonth() === vatMonth;
+            } else {
+                const m = d.getMonth();
+                if (vatQuarter === 'Q1') return m >= 0 && m <= 2;
+                if (vatQuarter === 'Q2') return m >= 3 && m <= 5;
+                if (vatQuarter === 'Q3') return m >= 6 && m <= 8;
+                return m >= 9 && m <= 11;
+            }
+        };
+
+        const isCompanyMatch = (item: any) => {
+            if (vatCompanyFilter === 'all') return true;
+            
+            const targetCompany = (companies || []).find((c: any) => c.id === vatCompanyFilter);
+            const compIdMatch = item.companyId === vatCompanyFilter;
+            const compNameMatch = targetCompany && item.companyName && 
+                (item.companyName.trim().toLowerCase() === targetCompany.name.trim().toLowerCase());
+                
+            return compIdMatch || compNameMatch;
+        };
+
+        const arList = (accountsReceivable || []).filter((item: any) => isDateInPeriod(item.date) && isCompanyMatch(item));
+        const apList = (accountsPayable || []).filter((item: any) => isDateInPeriod(item.date) && isCompanyMatch(item));
+        const everydayList = (everydayExpenses || []).filter((item: any) => isDateInPeriod(item.date));
+        const projectedList = (projectedExpenses || []).filter((item: any) => isDateInPeriod(item.date) && isCompanyMatch(item));
+        const pcList = (pettyCash || []).filter((item: any) => isDateInPeriod(item.date));
+
+        return {
+            arList,
+            apList,
+            everydayList,
+            projectedList,
+            pcList
+        };
+    }, [accountsReceivable, accountsPayable, everydayExpenses, projectedExpenses, pettyCash, vatPeriodType, vatYear, vatMonth, vatQuarter, vatCompanyFilter, companies]);
+
+    const getVatPayrollExpenses = () => {
+        let targetEmployees = employees || [];
+        if (vatCompanyFilter !== 'all') {
+            targetEmployees = targetEmployees.filter((e: any) => {
+                const targetCompany = (companies || []).find((c: any) => c.id === vatCompanyFilter);
+                const compMatch = e.companyId === vatCompanyFilter || 
+                    (targetCompany && e.company && e.company.trim().toLowerCase() === targetCompany.name.trim().toLowerCase());
+                return compMatch;
+            });
+        }
+
+        const targetMonths: { year: number; month: number }[] = [];
+        if (vatPeriodType === 'monthly') {
+            targetMonths.push({ year: vatYear, month: vatMonth });
+        } else {
+            const baseMonths = vatQuarter === 'Q1' ? [0, 1, 2] :
+                               vatQuarter === 'Q2' ? [3, 4, 5] :
+                               vatQuarter === 'Q3' ? [6, 7, 8] : [9, 10, 11];
+            baseMonths.forEach(m => targetMonths.push({ year: vatYear, month: m }));
+        }
+
+        let totalNetPayroll = 0;
+        targetMonths.forEach(({ year: yr, month: mn }) => {
+            const monthAttendance = (attendance || []).filter((r: any) => {
+                const d = new Date(r.date);
+                return d.getMonth() === mn && d.getFullYear() === yr;
+            });
+            const monthDeductions = (deductions || []).filter((d: any) => {
+                const date = new Date(d.date);
+                return date.getMonth() === mn && date.getFullYear() === yr;
+            });
+
+            targetEmployees.forEach((e: any) => {
+                const empAtt = monthAttendance.filter((r: any) => r.employeeId === e.id);
+                const empDeds = monthDeductions.filter((d: any) => d.employeeId === e.id);
+                
+                // standard basic payroll computation structure matching the app
+                const basic = e.basicSalary || 0;
+                const fixed = e.fixedAllowance || 0;
+                const totalIncome = basic + fixed;
+                
+                // Attendance percentage can adjust total matching system
+                const presentDays = empAtt.filter((r: any) => r.status === 'Present').length;
+                const totalWorkingDays = 30; // standard month divisor inside app
+                const attendanceRatio = Math.min(1, presentDays / totalWorkingDays);
+                const earnedIncome = totalIncome * (presentDays > 0 ? attendanceRatio : 1);
+                
+                const totalDeds = empDeds.reduce((acc: number, cur: any) => acc + (cur.amount || 0), 0);
+                const netPay = Math.max(0, earnedIncome - totalDeds);
+                
+                totalNetPayroll += netPay;
+            });
+        });
+
+        return totalNetPayroll;
+    };
+
     const [isReportPrintModalOpen, setIsReportPrintModalOpen] = useState(false);
 
     const handlePrint = () => {
@@ -16225,29 +16441,12 @@ const ReportsView = ({
 
     const uaeVatData = useMemo(() => {
         // End date of selected month to calculate aging relative to this point
-        const reportDate = new Date(currentYear, currentMonth + 1, 0);
+        const reportDate = vatReportDate;
         
         // Output VAT Calculations
-        // All Standard Rated supplies in this month (monthlyAR)
+        // All Standard Rated supplies in this month (vatFilteredLists.arList)
         let standardRatedSales = 0;
         let outputVat = 0;
-
-        const getArEmirate = (entityName: string, ref: string) => {
-            const lower = (entityName + " " + ref).toLowerCase();
-            if (lower.includes("abu dhabi") || lower.includes("auh")) return "Abu Dhabi";
-            if (lower.includes("sharjah") || lower.includes("shj")) return "Sharjah";
-            if (lower.includes("ajman") || lower.includes("ajm")) return "Ajman";
-            if (lower.includes("umm al") || lower.includes("uaq")) return "Umm Al Quwain";
-            if (lower.includes("ras al") || lower.includes("rak")) return "Ras Al Khaimah";
-            if (lower.includes("fujairah") || lower.includes("fuj")) return "Fujairah";
-            if (lower.includes("dubai") || lower.includes("dxb")) return "Dubai";
-            
-            // Deterministic distribution based on character code sum
-            let sum = 0;
-            for (let i = 0; i < entityName.length; i++) sum += entityName.charCodeAt(i);
-            const emirates = ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Dubai", "Abu Dhabi"];
-            return emirates[sum % emirates.length];
-        };
 
         const emirateDistribution = {
             "Abu Dhabi": { amount: 0, vat: 0 },
@@ -16259,18 +16458,17 @@ const ReportsView = ({
             "Fujairah": { amount: 0, vat: 0 }
         };
 
-        (monthlyAR || []).forEach((ar: any) => {
+        (vatFilteredLists.arList || []).forEach((ar: any) => {
             standardRatedSales += ar.amount || 0;
             outputVat += ar.vatAmount || 0;
 
-            let entityName = 'Unknown';
-            const type = ar.entityType || 'Project';
-            const id = ar.entityId || ar.projectId;
-            if (type === 'Project') entityName = (projects || []).find((p: any) => p.id === id)?.clientName || 'Unknown Client';
-            else if (type === 'Supplier') entityName = (suppliers || []).find((s: any) => s.id === id)?.name || 'Unknown Supplier';
-            else if (type === 'Vendor') entityName = (vendors || []).find((v: any) => v.id === id)?.name || 'Unknown Vendor';
+            const companyLower = (ar.companyName || '').trim().toLowerCase();
+            const isAbuDhabiCompany = 
+                companyLower === "pioneer general contracting llc - spc" || 
+                companyLower === "pioneer general contracting llc-spc branch" ||
+                companyLower.includes("pioneer general contracting");
 
-            const em = getArEmirate(entityName, ar.invoiceNumber || '');
+            const em = isAbuDhabiCompany ? "Abu Dhabi" : "Dubai";
             if (emirateDistribution[em as keyof typeof emirateDistribution]) {
                 emirateDistribution[em as keyof typeof emirateDistribution].amount += ar.amount || 0;
                 emirateDistribution[em as keyof typeof emirateDistribution].vat += ar.vatAmount || 0;
@@ -16280,14 +16478,14 @@ const ReportsView = ({
             }
         });
 
-        // Non-VAT / Zero Rated Income in this month (such as Petty Cash Income)
-        const zeroRatedSales = (monthlyPettyCash || []).filter((pc: any) => pc.type === 'Income').reduce((acc: number, pc: any) => acc + pc.amount, 0);
+        // We are not doing zero rated supplies
+        const zeroRatedSales = 0;
 
         // Input VAT Calculations
         // AP standard rated purchases
         let apPurchases = 0;
         let apInputVat = 0;
-        (monthlyAP || []).forEach((ap: any) => {
+        (vatFilteredLists.apList || []).forEach((ap: any) => {
             apPurchases += ap.amount || 0;
             apInputVat += ap.vatAmount || 0;
         });
@@ -16295,7 +16493,7 @@ const ReportsView = ({
         // Everyday expenses standard rated purchases
         let everydayExpensesPurchases = 0;
         let everydayInputVat = 0;
-        (monthlyEveryday || []).forEach((ee: any) => {
+        (vatFilteredLists.everydayList || []).forEach((ee: any) => {
             everydayExpensesPurchases += ee.billAmount || 0;
             everydayInputVat += ee.vatAmount || 0;
         });
@@ -16305,20 +16503,38 @@ const ReportsView = ({
         const totalInputVat = apInputVat + everydayInputVat;
 
         // Zero Rated / Non-VAT Expenses (such as Payroll, Petty Cash Expense)
-        const payrollExpenses = stats.totalNet || 0;
-        const pettyCashExpenses = (monthlyPettyCash || []).filter((pc: any) => pc.type === 'Expense').reduce((acc: number, pc: any) => acc + pc.amount, 0);
+        const payrollExpenses = getVatPayrollExpenses();
+        const pettyCashExpenses = (vatFilteredLists.pcList || []).filter((pc: any) => pc.type === 'Expense').reduce((acc: number, pc: any) => acc + pc.amount, 0);
         const nonTaxableExpenses = payrollExpenses + pettyCashExpenses;
 
         const netVatPayable = outputVat - totalInputVat;
 
-        // Aging Calculations - Relative to reportDate
+        // Aging Calculations - Relative to reportDate (which is vatReportDate)
         const arPendingItems = (accountsReceivable || []).filter((ar: any) => {
             const invoiceDate = new Date(ar.date);
+            
+            // Apply Company Filter
+            if (vatCompanyFilter !== 'all') {
+                const targetCompany = (companies || []).find((c: any) => c.id === vatCompanyFilter);
+                const isMatch = ar.companyId === vatCompanyFilter || 
+                    (targetCompany && ar.companyName && ar.companyName.trim().toLowerCase() === targetCompany.name.trim().toLowerCase());
+                if (!isMatch) return false;
+            }
+            
             return invoiceDate <= reportDate && (ar.status === 'Pending' || ar.status === 'Partially Received');
         });
 
         const apPendingItems = (accountsPayable || []).filter((ap: any) => {
             const invoiceDate = new Date(ap.date);
+            
+            // Apply Company Filter
+            if (vatCompanyFilter !== 'all') {
+                const targetCompany = (companies || []).find((c: any) => c.id === vatCompanyFilter);
+                const isMatch = ap.companyId === vatCompanyFilter || 
+                    (targetCompany && ap.companyName && ap.companyName.trim().toLowerCase() === targetCompany.name.trim().toLowerCase());
+                if (!isMatch) return false;
+            }
+            
             return invoiceDate <= reportDate && (ap.status === 'Pending' || ap.status === 'Partially Paid');
         });
 
@@ -16351,8 +16567,8 @@ const ReportsView = ({
             else apAging.bucket91_plus += amount;
         });
 
-        // Gather all standard-rated transactions this month
-        const outputTransactions = (monthlyAR || []).map((ar: any) => {
+        // Gather all standard-rated transactions this period
+        const outputTransactions = (vatFilteredLists.arList || []).map((ar: any) => {
             let entityName = 'Unknown';
             const type = ar.entityType || 'Project';
             const id = ar.entityId || ar.projectId;
@@ -16373,7 +16589,7 @@ const ReportsView = ({
         });
 
         const inputTransactions = [
-            ...(monthlyAP || []).map((ap: any) => {
+            ...(vatFilteredLists.apList || []).map((ap: any) => {
                 let entityName = 'Unknown';
                 if (ap.vendorType === 'Supplier') {
                     entityName = (suppliers || []).find((s: any) => s.id === ap.vendorId)?.name || 'Unknown Supplier';
@@ -16395,7 +16611,7 @@ const ReportsView = ({
                     total: ap.totalAmount || 0
                 };
             }),
-            ...(monthlyEveryday || []).map((ee: any) => ({
+            ...(vatFilteredLists.everydayList || []).map((ee: any) => ({
                 type: 'Input (Everyday)',
                 date: ee.date,
                 ref: ee.invoiceNo,
@@ -16426,7 +16642,7 @@ const ReportsView = ({
             inputTransactions,
             allTransactions: [...outputTransactions, ...inputTransactions].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
         };
-    }, [monthlyAR, monthlyAP, monthlyEveryday, monthlyProjected, monthlyPettyCash, accountsReceivable, accountsPayable, stats.totalNet, projects, suppliers, vendors, currentMonth, currentYear]);
+    }, [vatFilteredLists, vatReportDate, vatCompanyFilter, companies, accountsReceivable, accountsPayable, projects, suppliers, vendors]);
 
     const filteredStaff = useMemo(() => {
         if (!searchQuery) return activeStaff;
@@ -16551,6 +16767,14 @@ const ReportsView = ({
     const handleExport = () => {
         let data: any[] = [];
         let fileName = `Pioneer_${reportType}_Report_${monthName}_${currentYear}`;
+        if (reportType === 'uae_vat') {
+            const compLabel = vatCompanyFilter === 'all' 
+                ? 'All_Entities' 
+                : (((companies || []).find((c: any) => c.id === vatCompanyFilter)?.name) || 'Filtered');
+            const cleanCompLabel = compLabel.replace(/[^a-zA-Z0-9]/g, '_');
+            const cleanPeriodLabel = vatPeriodLabel.replace(/[^a-zA-Z0-9]/g, '_');
+            fileName = `Filing_Worksheet_VAT201_${cleanCompLabel}_${cleanPeriodLabel}`;
+        }
 
         switch (reportType) {
             case 'staff':
@@ -16945,15 +17169,17 @@ const ReportsView = ({
                         />
                     </div>
 
-                    <div className="relative">
-                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input 
-                            type="month" 
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            className="pl-12 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm"
-                        />
-                    </div>
+                    {reportType !== 'uae_vat' && (
+                        <div className="relative">
+                            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                                type="month" 
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                className="pl-12 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm"
+                            />
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-2">
                         <button 
@@ -17142,6 +17368,131 @@ const ReportsView = ({
                     transition={{ delay: 0.4 }}
                     className="space-y-8"
                 >
+                    {/* VAT Period & Company Filter Control Bar */}
+                    <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm no-print">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                            {/* Left: Section Header with Icons */}
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-brand-50 rounded-2xl border border-brand-100">
+                                    <Calculator className="w-6 h-6 text-brand-600" />
+                                </div>
+                                <div className="space-y-0.5">
+                                    <h4 className="text-sm font-black text-slate-900 tracking-tight">Filing Period & Entity Configuration</h4>
+                                    <p className="text-xs text-slate-500 font-medium leading-none">Configure company scope and filing periods for compliant FTA extraction.</p>
+                                </div>
+                            </div>
+                            
+                            {/* Right: Selects Grid */}
+                            <div className="flex flex-wrap items-center gap-4">
+                                {/* Company Wise Filter */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Filing Entity</label>
+                                    <div className="relative">
+                                        <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                        <select
+                                            value={vatCompanyFilter}
+                                            onChange={(e) => setVatCompanyFilter(e.target.value)}
+                                            className="pl-10 pr-10 py-2.5 bg-slate-50/50 hover:bg-slate-100 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer appearance-none min-w-[220px]"
+                                        >
+                                            <option value="all">All Filing Entities</option>
+                                            {(companies || []).map((comp: any) => (
+                                                <option key={comp.id} value={comp.id}>{comp.name}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                {/* Period Type Toggle */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Filing Interval</label>
+                                    <div className="inline-flex p-1 bg-slate-100/80 rounded-2xl border border-slate-200/40 h-[38px] items-center">
+                                        <button
+                                            type="button"
+                                            onClick={() => setVatPeriodType('monthly')}
+                                            className={cn(
+                                                "px-4 py-1.5 text-xs font-bold rounded-xl transition-all duration-200",
+                                                vatPeriodType === 'monthly'
+                                                    ? "bg-white text-slate-900 shadow-sm border border-slate-200/15"
+                                                    : "text-slate-500 hover:text-slate-800"
+                                            )}
+                                        >
+                                            Monthly
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setVatPeriodType('quarterly')}
+                                            className={cn(
+                                                "px-4 py-1.5 text-xs font-bold rounded-xl transition-all duration-200",
+                                                vatPeriodType === 'quarterly'
+                                                    ? "bg-white text-slate-900 shadow-sm border border-slate-200/15"
+                                                    : "text-slate-500 hover:text-slate-850"
+                                            )}
+                                        >
+                                            Quarterly
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Year Selection */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Tax Year</label>
+                                    <div className="relative">
+                                        <select
+                                            value={vatYear}
+                                            onChange={(e) => setVatYear(Number(e.target.value))}
+                                            className="pl-4 pr-10 py-2.5 bg-slate-50/50 hover:bg-slate-100 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer appearance-none min-w-[90px]"
+                                        >
+                                            {Array.from({ length: 7 }, (_, i) => 2024 + i).map((y) => (
+                                                <option key={y} value={y}>{y}</option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+
+                                {/* Month or Quarter Selection */}
+                                {vatPeriodType === 'monthly' ? (
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Assigned Month</label>
+                                        <div className="relative">
+                                            <select
+                                                value={vatMonth}
+                                                onChange={(e) => setVatMonth(Number(e.target.value))}
+                                                className="pl-4 pr-10 py-2.5 bg-slate-50/50 hover:bg-slate-100 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer appearance-none min-w-[140px]"
+                                            >
+                                                {[
+                                                    "January", "February", "March", "April", "May", "June",
+                                                    "July", "August", "September", "October", "November", "December"
+                                                ].map((mName, idx) => (
+                                                    <option key={idx} value={idx}>{mName}</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Assigned Quarter</label>
+                                        <div className="relative">
+                                            <select
+                                                value={vatQuarter}
+                                                onChange={(e) => setVatQuarter(e.target.value as any)}
+                                                className="pl-4 pr-10 py-2.5 bg-slate-50/50 hover:bg-slate-100 border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer appearance-none min-w-[140px]"
+                                            >
+                                                <option value="Q1">Q1 (Jan - Mar)</option>
+                                                <option value="Q2">Q2 (Apr - Jun)</option>
+                                                <option value="Q3">Q3 (Jul - Sep)</option>
+                                                <option value="Q4">Q4 (Oct - Dec)</option>
+                                            </select>
+                                            <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     {/* View Switcher Toggle */}
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white border border-slate-200/80 rounded-3xl p-4 shadow-sm">
                         <div className="space-y-0.5">
@@ -17651,7 +18002,7 @@ const ReportsView = ({
                                         </div>
                                         <div>
                                             <span className="text-xs font-black text-rose-500 uppercase tracking-widest font-mono">FTA Compliance Portal</span>
-                                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">VAT201 Live Filing Worksheet ({selectedMonth})</h3>
+                                            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">VAT201 Live Filing Worksheet ({vatPeriodLabel})</h3>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
@@ -17692,6 +18043,70 @@ const ReportsView = ({
                                         <div className="border border-slate-400 bg-slate-100/90 py-2 text-center font-black text-sm text-slate-900 tracking-widest uppercase mb-6 rounded-none shadow-sm">
                                             VAT Return
                                         </div>
+
+                                        {/* Taxable Person Details Section */}
+                                        {(() => {
+                                            const currentSelectedCompany = (companies || []).find((c: any) => c.id === vatCompanyFilter);
+                                            const getVatPeriodDateRange = () => {
+                                                if (vatPeriodType === 'monthly') {
+                                                    const start = new Date(vatYear, vatMonth, 1);
+                                                    const end = new Date(vatYear, vatMonth + 1, 0);
+                                                    const formatDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                                                    return `${formatDate(start)} - ${formatDate(end)}`;
+                                                } else {
+                                                    let startMonth = 0;
+                                                    let endMonth = 2;
+                                                    if (vatQuarter === 'Q2') { startMonth = 3; endMonth = 5; }
+                                                    else if (vatQuarter === 'Q3') { startMonth = 6; endMonth = 8; }
+                                                    else if (vatQuarter === 'Q4') { startMonth = 9; endMonth = 11; }
+                                                    
+                                                    const start = new Date(vatYear, startMonth, 1);
+                                                    const end = new Date(vatYear, endMonth + 1, 0);
+                                                    const formatDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+                                                    return `${formatDate(start)} - ${formatDate(end)}`;
+                                                }
+                                            };
+                                            return (
+                                                <div className="mb-6 fta-form-box-adjusted border border-slate-400">
+                                                    <div className="bg-slate-100/95 text-slate-900 px-3 py-1.5 font-extrabold text-[11px] uppercase tracking-wider border-b border-slate-400 text-left">
+                                                        Taxable Person Details
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 text-xs divide-y md:divide-y-0 md:divide-x divide-slate-400">
+                                                        <div className="p-3 space-y-2 text-left">
+                                                            <div>
+                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide block leading-none">Taxable Person Name (English)</span>
+                                                                <span className="text-xs font-bold text-slate-800">
+                                                                    {currentSelectedCompany ? currentSelectedCompany.name : "PIONEER GROUP OF COMPANIES (SPC)"}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide block leading-none">Tax Registration Number (TRN)</span>
+                                                                <span className="text-xs font-mono font-bold text-brand-650">
+                                                                    {currentSelectedCompany?.trn || "100249586100003"}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="p-3 space-y-2 text-left bg-slate-50/10">
+                                                            <div>
+                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide block leading-none">Filing Period & Range</span>
+                                                                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                                                                    <span className="text-[9px] bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded font-black border border-brand-100">
+                                                                        {vatPeriodLabel}
+                                                                    </span>
+                                                                    <span className="font-mono text-slate-600">{getVatPeriodDateRange()}</span>
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wide block leading-none">Taxable Person Address</span>
+                                                                <span className="text-xs font-bold text-slate-800">
+                                                                    {currentSelectedCompany?.address || "Abu Dhabi / Dubai, United Arab Emirates"}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
 
                                         {/* SECTION 1: Sales and Outputs */}
                                         <div className="mb-6 fta-form-box-adjusted">

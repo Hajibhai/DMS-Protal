@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
   FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle,
-  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent, Scale, Home
+  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent, Scale, Home, Building
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -162,6 +162,8 @@ interface DataTableProps<T> {
     onBulkDelete?: (items: T[]) => void | Promise<void>;
     onBulkUpdateDate?: (items: T[], newDate: string) => void | Promise<void>;
     onBulkUpdateNotes?: (items: T[], newNotes: string) => void | Promise<void>;
+    onBulkUpdateCompanyId?: (items: T[], companyId: string) => void | Promise<void>;
+    companies?: any[];
     renderFooter?: (filteredData: T[]) => React.ReactNode;
 }
 
@@ -187,6 +189,8 @@ export function DataTable<T extends { id: string }>({
     onBulkDelete,
     onBulkUpdateDate,
     onBulkUpdateNotes,
+    onBulkUpdateCompanyId,
+    companies,
     renderFooter
 }: DataTableProps<T>) {
     const [searchTerm, setSearchTerm] = useState('');
@@ -196,6 +200,7 @@ export function DataTable<T extends { id: string }>({
     const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
     const [bulkTargetDate, setBulkTargetDate] = useState('');
     const [bulkTargetNotes, setBulkTargetNotes] = useState('');
+    const [bulkTargetCompanyId, setBulkTargetCompanyId] = useState('');
 
     const userRoleLower = (user?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
@@ -778,6 +783,46 @@ export function DataTable<T extends { id: string }>({
                                     </div>
                                 </div>
                             )}
+
+                            {onBulkUpdateCompanyId && companies && (
+                                <div className="p-4 bg-white/75 border border-indigo-100 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fadeIn">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-indigo-950 font-black flex items-center gap-1.5 font-sans">
+                                            <Building className="w-4 h-4 text-indigo-650" />
+                                            Bulk Update Buying Corporate Identity
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <select
+                                                value={bulkTargetCompanyId}
+                                                onChange={e => setBulkTargetCompanyId(e.target.value)}
+                                                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-sans outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-705 min-w-[200px]"
+                                            >
+                                                <option value="">-- Select Corporate Identity --</option>
+                                                {(companies || []).map((c: any) => (
+                                                    <option key={c.id} value={c.id}>🏢 {c.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                if (!bulkTargetCompanyId) {
+                                                    alert("Please select a buying corporate identity.");
+                                                    return;
+                                                }
+                                                const selectedItems = data.filter(item => selectedIds.includes(item.id));
+                                                onBulkUpdateCompanyId(selectedItems, bulkTargetCompanyId);
+                                                setSelectedIds([]);
+                                                setBulkTargetCompanyId('');
+                                            }}
+                                            className="px-4.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md shadow-indigo-600/10 transition-all cursor-pointer active:scale-95"
+                                        >
+                                            Apply Corporate Identity to Selected
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -988,7 +1033,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
     />
 );
 
-export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, user, companies, onUploadExcel }: any) => {
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, onBulkUpdateCompanyId, user, companies, onUploadExcel }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
 
@@ -1002,6 +1047,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [filterVendor, setFilterVendor] = useState('All');
     const [filterProject, setFilterProject] = useState('All');
     const [filterMonth, setFilterMonth] = useState('All');
+    const [filterCompany, setFilterCompany] = useState('All');
 
     // Date policy / Quick Filter stats
     const [dateFilterMode, setDateFilterMode] = useState<'all' | 'current-month' | 'last-month' | 'month-wise' | 'year-wise' | 'custom-range'>('all');
@@ -1143,9 +1189,11 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                 if (m !== filterMonth) return false;
             }
 
+            if (filterCompany !== 'All' && item.companyId !== filterCompany) return false;
+
             return true;
         });
-    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
+    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, filterCompany, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
 
     const activeFiltersCount = useMemo(() => {
         let count = 0;
@@ -1158,8 +1206,9 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         if (filterVendor !== 'All') count++;
         if (filterProject !== 'All') count++;
         if (filterMonth !== 'All') count++;
+        if (filterCompany !== 'All') count++;
         return count;
-    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, dateFilterMode]);
+    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, filterCompany, dateFilterMode]);
 
     const handleClearAdvFilters = () => {
         setStartDate('');
@@ -1170,6 +1219,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         setFilterVendor('All');
         setFilterProject('All');
         setFilterMonth('All');
+        setFilterCompany('All');
         setDateFilterMode('all');
         setSelectedYearValue(new Date().getFullYear().toString());
         setSelectedMonthValue('');
@@ -1957,6 +2007,21 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                         </select>
                                     </div>
                                 </div>
+
+                                {/* Company / Buying Corporate Identity dropdown */}
+                                <div className="space-y-1">
+                                    <label className="block text-slate-405 font-mono font-bold uppercase text-[9px]">Buying Corporate Identity</label>
+                                    <select 
+                                        value={filterCompany} 
+                                        onChange={e => setFilterCompany(e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer font-sans"
+                                    >
+                                        <option value="All">All Filing Entities</option>
+                                        {(companies || []).map((c: any) => (
+                                            <option key={c.id} value={c.id}>🏢 {c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -2005,6 +2070,29 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     <span className="font-mono font-black text-slate-900 block whitespace-nowrap">{item.invoiceNumber || '-'}</span>
                                 ),
                                 exportText: (item) => item.invoiceNumber || ''
+                            },
+                            { 
+                                key: 'companyId', 
+                                label: 'Buying Corporate Identity',
+                                sortable: true,
+                                render: (item) => {
+                                    const comp = (companies || []).find((c: any) => c.id === item.companyId);
+                                    return (
+                                        <div className="flex items-center gap-2 min-w-[200px]">
+                                            {comp?.logo ? (
+                                                <img src={comp.logo} alt={comp.name} className="w-7 h-7 object-contain rounded border border-slate-100 bg-white p-0.5 shrink-0" referrerPolicy="no-referrer" />
+                                            ) : (
+                                                <div className="w-7 h-7 bg-indigo-50 text-indigo-600 border border-indigo-100/50 rounded flex items-center justify-center font-bold text-[10px] uppercase shrink-0">
+                                                    {(comp?.name || 'CO').substring(0, 2)}
+                                                </div>
+                                            )}
+                                            <span className="font-extrabold text-slate-800 text-xs truncate max-w-[170px]" title={comp?.name}>
+                                                {comp?.name || 'Unassigned'}
+                                            </span>
+                                        </div>
+                                    );
+                                },
+                                exportText: (item) => (companies || []).find((c: any) => c.id === item.companyId)?.name || 'Unassigned'
                             },
                             { 
                                 key: 'date', 
@@ -2173,6 +2261,8 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         onBulkDelete={onDeleteMultiple}
                         onBulkUpdateDate={onBulkUpdateDate}
                         onBulkUpdateNotes={onBulkUpdateNotes}
+                        onBulkUpdateCompanyId={onBulkUpdateCompanyId}
+                        companies={companies}
                         enableMultiSelect={true}
                         onUploadExcel={onUploadExcel}
                         customSearch={(item, query) => {
