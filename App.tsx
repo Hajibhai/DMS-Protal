@@ -4783,6 +4783,51 @@ export default function App() {
     );
   };
 
+  const handleUpdateAPMultipleNotes = async (items: AccountsPayable[], newNotes: string) => {
+    const userRoleLower = (systemUser?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
+    
+    if (!isAdmin) {
+      alert("Access Denied: Only portal Admins can perform bulk updates.");
+      return;
+    }
+
+    if (items.length === 0) {
+      alert("No data records selected.");
+      return;
+    }
+
+    const isDelete = newNotes === '';
+    const operationTitle = isDelete ? "Bulk Delete Notes/Remarks" : "Bulk Edit Notes/Remarks";
+    const operationMessage = isDelete 
+      ? `Are you sure you want to completely clear the notes / remarks for these ${items.length} selected accounts payable entries?`
+      : `Are you sure you want to update the Notes / Remarks of these ${items.length} selected accounts payable entries to: "${newNotes}"?`;
+
+    openConfirm(
+      operationTitle, 
+      operationMessage, 
+      async () => {
+        try {
+          for (const item of items) {
+            const updatedItem = {
+              ...item,
+              description: newNotes
+            };
+            await saveAccountsPayable(updatedItem);
+          }
+          const logMsg = isDelete 
+            ? `Cleared notes / remarks for ${items.length} chosen accounts payable ledger entries.`
+            : `Updated notes / remarks of ${items.length} chosen accounts payable entries to: "${newNotes}".`;
+          handleLogAction(isDelete ? 'Payables Notes Cleared' : 'Payables Notes Bulk Updated', logMsg, 'update');
+          alert(isDelete ? `Successfully cleared notes for the selected ${items.length} entries.` : `Successfully updated notes for the selected ${items.length} entries.`);
+        } catch (err) {
+          console.error("Failed to bulk update notes: ", err);
+          alert("An error occurred during bulk notes update.");
+        }
+      }
+    );
+  };
+
   const handleDeleteARMultiple = async (items: AccountsReceivable[]) => {
     const userRoleLower = (systemUser?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
@@ -5764,6 +5809,7 @@ export default function App() {
           onDeleteMultiple={handleDeleteAPMultiple}
           onDeleteBatch={handleDeleteAPBatch}
           onBulkUpdateDate={handleUpdateAPMultipleDate}
+          onBulkUpdateNotes={handleUpdateAPMultipleNotes}
           onUploadExcel={handleUploadExcelPayable}
           user={systemUser}
           companies={companies}

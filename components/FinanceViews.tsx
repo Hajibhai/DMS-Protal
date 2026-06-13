@@ -161,6 +161,7 @@ interface DataTableProps<T> {
     enableMultiSelect?: boolean;
     onBulkDelete?: (items: T[]) => void | Promise<void>;
     onBulkUpdateDate?: (items: T[], newDate: string) => void | Promise<void>;
+    onBulkUpdateNotes?: (items: T[], newNotes: string) => void | Promise<void>;
     renderFooter?: (filteredData: T[]) => React.ReactNode;
 }
 
@@ -185,6 +186,7 @@ export function DataTable<T extends { id: string }>({
     enableMultiSelect,
     onBulkDelete,
     onBulkUpdateDate,
+    onBulkUpdateNotes,
     renderFooter
 }: DataTableProps<T>) {
     const [searchTerm, setSearchTerm] = useState('');
@@ -193,6 +195,7 @@ export function DataTable<T extends { id: string }>({
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
     const [bulkTargetDate, setBulkTargetDate] = useState('');
+    const [bulkTargetNotes, setBulkTargetNotes] = useState('');
 
     const userRoleLower = (user?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
@@ -725,6 +728,57 @@ export function DataTable<T extends { id: string }>({
                                     </div>
                                 </div>
                             )}
+
+                            {onBulkUpdateNotes && (
+                                <div className="p-4 bg-white/75 border border-indigo-100 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fadeIn">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-indigo-950 font-black flex items-center gap-1.5">
+                                            <FileText className="w-4 h-4 text-indigo-600" />
+                                            Bulk Update Notes / Remarks
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="flex items-center gap-2 max-w-sm flex-1">
+                                            <input 
+                                                type="text"
+                                                placeholder="Type bulk notes / remarks..."
+                                                value={bulkTargetNotes}
+                                                onChange={e => setBulkTargetNotes(e.target.value)}
+                                                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-705 w-60"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    const trimmed = bulkTargetNotes.trim();
+                                                    if (!trimmed) {
+                                                        alert("Please enter some text for notes / remarks.");
+                                                        return;
+                                                    }
+                                                    const selectedItems = data.filter(item => selectedIds.includes(item.id));
+                                                    onBulkUpdateNotes(selectedItems, trimmed);
+                                                    setSelectedIds([]);
+                                                    setBulkTargetNotes('');
+                                                }}
+                                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md shadow-indigo-600/10 transition-all cursor-pointer active:scale-95"
+                                            >
+                                                Update Notes
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const selectedItems = data.filter(item => selectedIds.includes(item.id));
+                                                    onBulkUpdateNotes(selectedItems, '');
+                                                    setSelectedIds([]);
+                                                    setBulkTargetNotes('');
+                                                }}
+                                                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-black transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                                            >
+                                                Clear Notes
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -935,7 +989,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
     />
 );
 
-export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, user, companies, onUploadExcel }: any) => {
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, user, companies, onUploadExcel }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
 
@@ -2121,6 +2175,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         onDelete={onDelete}
                         onBulkDelete={onDeleteMultiple}
                         onBulkUpdateDate={onBulkUpdateDate}
+                        onBulkUpdateNotes={onBulkUpdateNotes}
                         enableMultiSelect={true}
                         onUploadExcel={onUploadExcel}
                         customSearch={(item, query) => {
