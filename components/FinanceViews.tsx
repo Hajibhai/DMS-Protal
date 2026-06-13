@@ -10295,83 +10295,77 @@ export const EverydayExpenseModal: React.FC<{
                 throw new Error("Failed to process the uploaded image");
             }
             setTempImageData({ image: base64, mime: mimeType });
-            const nameToSuggest = formData.uploadedBy || formData.updatedBy || user?.name || '';
+            const nameToSuggest = formData.uploadedBy || formData.updatedBy || user?.name || user?.username || 'Staff';
             setUploaderName(nameToSuggest);
 
-            if (nameToSuggest) {
-                // Already have user name, proceed to scan directly!
-                // Note: isScanning is already true
-                fetch("/api/gemini/extract-receipt", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        image: base64,
-                        mimeType: mimeType,
-                        type: "everyday"
-                    })
+            // Directly scan without showing name prompt overlay, since uploader name is auto-suggested or defaulted
+            fetch("/api/gemini/extract-receipt", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    image: base64,
+                    mimeType: mimeType,
+                    type: "everyday"
                 })
-                .then(async (response) => {
-                    const text = await response.text();
-                    if (!response.ok) {
-                        let errMsg = "Failed to scan receipt";
-                        try {
-                            const errResult = JSON.parse(text);
-                            errMsg = errResult.error || errMsg;
-                        } catch {
-                            errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
-                            if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
-                                errMsg = "Please make sure your server is running and configured correctly. (Vite dev server or backend received 404/500)";
-                            }
-                        }
-                        throw new Error(errMsg);
-                    }
+            })
+            .then(async (response) => {
+                const text = await response.text();
+                if (!response.ok) {
+                    let errMsg = "Failed to scan receipt";
                     try {
-                        return JSON.parse(text);
+                        const errResult = JSON.parse(text);
+                        errMsg = errResult.error || errMsg;
                     } catch {
-                        throw new Error("Invalid response format received from server (expected JSON)");
-                    }
-                })
-                .then((data) => {
-                    setFormData(prev => {
-                        const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', nameToSuggest);
-                        const updated = {
-                            ...prev,
-                            ...data,
-                            siNo: calculatedSiNo,
-                            uploadedBy: nameToSuggest,
-                            uploadedByUid: user?.uid || '',
-                            uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
-                            updatedBy: nameToSuggest,
-                            updatedByUid: user?.uid || '',
-                            attachment: base64
-                        };
-                        const duplicate = findDuplicateEntry(updated);
-                        if (duplicate) {
-                            setDuplicateMatch(duplicate);
+                        errMsg = text.slice(0, 120).trim() || `HTTP error ${response.status}`;
+                        if (errMsg.toLowerCase().includes('<!doctype html>') || errMsg.toLowerCase().includes('<html')) {
+                            errMsg = "Please make sure your server is running and configured correctly. (Vite dev server or backend received 404/500)";
                         }
-                        return updated;
-                    });
-                })
-                .catch((error: any) => {
-                    console.error("Scanning failed:", error);
-                    setScanError(error.message || "An error occurred while scanning with Gemini");
-                })
-                .finally(() => {
-                    setIsScanning(false);
-                    setTempImageData(null);
-                    if (fileInputRef.current) {
-                        fileInputRef.current.value = '';
                     }
-                    if (cameraInputRef.current) {
-                        cameraInputRef.current.value = '';
+                    throw new Error(errMsg);
+                }
+                try {
+                    return JSON.parse(text);
+                } catch {
+                    throw new Error("Invalid response format received from server (expected JSON)");
+                }
+            })
+            .then((data) => {
+                setFormData(prev => {
+                    const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', nameToSuggest);
+                    const updated = {
+                        ...prev,
+                        ...data,
+                        siNo: calculatedSiNo,
+                        uploadedBy: nameToSuggest,
+                        uploadedByUid: user?.uid || '',
+                        uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
+                        updatedBy: nameToSuggest,
+                        updatedByUid: user?.uid || '',
+                        attachment: base64
+                    };
+                    const duplicate = findDuplicateEntry(updated);
+                    if (duplicate) {
+                        setDuplicateMatch(duplicate);
                     }
+                    return updated;
                 });
-            } else {
-                setShowNamePrompt(true);
+            })
+            .catch((error: any) => {
+                console.error("Scanning failed:", error);
+                setScanError(error.message || "An error occurred while scanning with Gemini");
+            })
+            .finally(() => {
                 setIsScanning(false);
-            }
+                setTempImageData(null);
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+                if (cameraInputRef.current) {
+                    cameraInputRef.current.value = '';
+                }
+            });
         } catch (err: any) {
             console.error("Image processing error:", err);
             setScanError(err.message || "Failed to process the uploaded file");
@@ -10520,11 +10514,8 @@ export const EverydayExpenseModal: React.FC<{
                             <button 
                                 type="button"
                                 onClick={() => {
-                                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                                    if (isMobile && cameraInputRef.current) {
+                                    if (cameraInputRef.current) {
                                         cameraInputRef.current.click();
-                                    } else {
-                                        setShowCamera(true);
                                     }
                                 }}
                                 className="w-full sm:w-auto px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
