@@ -5026,13 +5026,18 @@ export default function App() {
 
           const hoursVal = idxHours !== -1 && row[idxHours] !== undefined ? Number(String(row[idxHours]).replace(/[^0-9.-]/g, '')) || 0 : 0;
           const billAmountVal = idxBillAmount !== -1 && row[idxBillAmount] !== undefined ? Number(String(row[idxBillAmount]).replace(/[^0-9.-]/g, '')) || 0 : 0;
-          const actualAmountVal = idxActualAmount !== -1 && row[idxActualAmount] !== undefined ? Number(String(row[idxActualAmount]).replace(/[^0-9.-]/g, '')) || billAmountVal : billAmountVal;
+          const deductionVal = idxDeduction !== -1 && row[idxDeduction] !== undefined ? Number(String(row[idxDeduction]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          
+          let actualAmountVal = idxActualAmount !== -1 && row[idxActualAmount] !== undefined ? Number(String(row[idxActualAmount]).replace(/[^0-9.-]/g, '')) : (deductionVal > 0 ? (billAmountVal - deductionVal) : billAmountVal);
+          if (deductionVal > 0 && idxActualAmount === -1) {
+            actualAmountVal = billAmountVal - deductionVal;
+          }
+          
           const vatVal = idxVat !== -1 && row[idxVat] !== undefined ? Number(String(row[idxVat]).replace(/[^0-9.-]/g, '')) || Number((actualAmountVal * 0.05).toFixed(2)) : Number((actualAmountVal * 0.05).toFixed(2));
           const totalVal = idxTotal !== -1 && row[idxTotal] !== undefined ? Number(String(row[idxTotal]).replace(/[^0-9.-]/g, '')) || Number((actualAmountVal + vatVal).toFixed(2)) : Number((actualAmountVal + vatVal).toFixed(2));
           const advanceVal = idxAdvance !== -1 && row[idxAdvance] !== undefined ? Number(String(row[idxAdvance]).replace(/[^0-9.-]/g, '')) || 0 : 0;
-          const deductionVal = idxDeduction !== -1 && row[idxDeduction] !== undefined ? Number(String(row[idxDeduction]).replace(/[^0-9.-]/g, '')) || 0 : 0;
           const paidVal = idxPaid !== -1 && row[idxPaid] !== undefined ? Number(String(row[idxPaid]).replace(/[^0-9.-]/g, '')) || 0 : 0;
-          const payableAmountVal = idxPayableAmount !== -1 && row[idxPayableAmount] !== undefined ? Number(String(row[idxPayableAmount]).replace(/[^0-9.-]/g, '')) || Number((totalVal - paidVal - advanceVal - deductionVal).toFixed(2)) : Number((totalVal - paidVal - advanceVal - deductionVal).toFixed(2));
+          const payableAmountVal = idxPayableAmount !== -1 && row[idxPayableAmount] !== undefined ? Number(String(row[idxPayableAmount]).replace(/[^0-9.-]/g, '')) || Number((totalVal - paidVal - advanceVal).toFixed(2)) : Number((totalVal - paidVal - advanceVal).toFixed(2));
 
           let status: 'Pending' | 'Paid' | 'Partially Paid' = 'Pending';
           if (paidVal >= totalVal && totalVal > 0) {

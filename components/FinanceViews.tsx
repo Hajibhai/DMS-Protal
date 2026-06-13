@@ -296,19 +296,18 @@ export function DataTable<T extends { id: string }>({
             totalSums[key] = filteredData.reduce((sum, item) => {
                 let val = (item as any)[key];
                 if (key === 'totalAmount' && val === undefined) {
-                    const actual = (item as any).actualAmount !== undefined ? (item as any).actualAmount : (item as any).amount || 0;
+                    const actual = (item as any).actualAmount !== undefined ? (item as any).actualAmount : (((item as any).amount || 0) - ((item as any).deduction || 0));
                     const vat = (item as any).vatAmount !== undefined ? (item as any).vatAmount : Number((actual * 0.05).toFixed(2));
                     val = Number((actual + vat).toFixed(2));
                 } else if (key === 'payableAmount' && val === undefined) {
-                    const actual = (item as any).actualAmount !== undefined ? (item as any).actualAmount : (item as any).amount || 0;
+                    const actual = (item as any).actualAmount !== undefined ? (item as any).actualAmount : (((item as any).amount || 0) - ((item as any).deduction || 0));
                     const vat = (item as any).vatAmount !== undefined ? (item as any).vatAmount : Number((actual * 0.05).toFixed(2));
                     const total = Number((actual + vat).toFixed(2));
                     const advance = (item as any).advance || 0;
-                    const deduction = (item as any).deduction || 0;
                     const paid = (item as any).paid || 0;
-                    val = Number((total - paid - advance - deduction).toFixed(2));
+                    val = Number((total - paid - advance).toFixed(2));
                 } else if (key === 'actualAmount' && val === undefined) {
-                    val = (item as any).amount || 0;
+                    val = ((item as any).amount || 0) - ((item as any).deduction || 0);
                 }
                 const n = Number(val || 0);
                 return sum + (isNaN(n) ? 0 : n);
@@ -2119,15 +2118,14 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 label: 'Payable Amount', 
                                 sortable: true,
                                 render: (item) => {
-                                    const actual = item.actualAmount !== undefined ? item.actualAmount : item.amount || 0;
+                                    const actual = item.actualAmount !== undefined ? item.actualAmount : ((item.amount || 0) - (item.deduction || 0));
                                     const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
                                     const total = item.totalAmount !== undefined ? item.totalAmount : Number((actual + vat).toFixed(2));
                                     
                                     const advance = item.advance || 0;
-                                    const deduction = item.deduction || 0;
                                     const paid = item.paid || 0;
                                     
-                                    const computedPayable = item.payableAmount !== undefined ? item.payableAmount : Number((total - paid - advance - deduction).toFixed(2));
+                                    const computedPayable = item.payableAmount !== undefined ? item.payableAmount : Number((total - paid - advance).toFixed(2));
                                     
                                     return (
                                         <span className={cn(
@@ -2139,15 +2137,14 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     );
                                 },
                                 exportText: (item) => {
-                                    const actual = item.actualAmount !== undefined ? item.actualAmount : item.amount || 0;
+                                    const actual = item.actualAmount !== undefined ? item.actualAmount : ((item.amount || 0) - (item.deduction || 0));
                                     const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
                                     const total = item.totalAmount !== undefined ? item.totalAmount : Number((actual + vat).toFixed(2));
                                     
                                     const advance = item.advance || 0;
-                                    const deduction = item.deduction || 0;
                                     const paid = item.paid || 0;
                                     
-                                    return item.payableAmount !== undefined ? item.payableAmount : Number((total - paid - advance - deduction).toFixed(2));
+                                    return item.payableAmount !== undefined ? item.payableAmount : Number((total - paid - advance).toFixed(2));
                                 }
                             },
                             { 
@@ -2207,7 +2204,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 hours += item.hours !== undefined ? item.hours : 0;
                                 billAmount += item.amount || 0;
 
-                                const actual = item.actualAmount !== undefined ? item.actualAmount : item.amount || 0;
+                                const actual = item.actualAmount !== undefined ? item.actualAmount : ((item.amount || 0) - (item.deduction || 0));
                                 actualAmount += actual;
 
                                 const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
@@ -2225,7 +2222,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 const pd = item.paid || 0;
                                 paid += pd;
 
-                                const computedPayable = item.payableAmount !== undefined ? item.payableAmount : Number((total - pd - adv - ded).toFixed(2));
+                                const computedPayable = item.payableAmount !== undefined ? item.payableAmount : Number((total - pd - adv).toFixed(2));
                                 payableAmount += computedPayable;
                             });
 
@@ -7620,13 +7617,17 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
     const [formData, setFormData] = useState(() => {
         const base = ap || {};
         const amount = base.amount || 0;
-        const actualAmount = base.actualAmount !== undefined ? base.actualAmount : amount;
+        const deduction = base.deduction || 0;
+        const actualAmount = base.actualAmount !== undefined 
+            ? (deduction > 0 ? Number((amount - deduction).toFixed(2)) : base.actualAmount) 
+            : Number((amount - deduction).toFixed(2));
         const vatAmount = base.vatAmount !== undefined ? base.vatAmount : Number((actualAmount * 0.05).toFixed(2));
         const totalAmount = base.totalAmount !== undefined ? base.totalAmount : Number((actualAmount + vatAmount).toFixed(2));
         const paid = base.paid || 0;
         const advance = base.advance || 0;
-        const deduction = base.deduction || 0;
-        const payableAmount = base.payableAmount !== undefined ? base.payableAmount : Number((totalAmount - paid - advance - deduction).toFixed(2));
+        const payableAmount = base.payableAmount !== undefined 
+            ? (deduction > 0 ? Number((totalAmount - paid - advance).toFixed(2)) : base.payableAmount)
+            : Number((totalAmount - paid - advance).toFixed(2));
 
         const initialDate = base.date || new Date().toISOString().split('T')[0];
         const initialDueDate = base.dueDate || (() => {
@@ -7675,25 +7676,29 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         
         const amount = Number(next.amount) || 0;
         const hours = Number(next.hours) || 0;
+        const deduction = Number(next.deduction) || 0;
         
-        // If they changed standard bill amount, and didn't touch actual amount, update actualAmount too
         let actualAmount = Number(next.actualAmount);
-        if (updates.amount !== undefined && updates.actualAmount === undefined) {
+        // "if there is any deduction then calculate automatically actual amount"
+        if (deduction > 0 || updates.deduction !== undefined || updates.amount !== undefined) {
+            actualAmount = Number((amount - deduction).toFixed(2));
+        } else if (updates.actualAmount !== undefined) {
+            actualAmount = Number(updates.actualAmount) || 0;
+        } else if (updates.amount !== undefined && updates.actualAmount === undefined) {
             actualAmount = amount;
         }
         if (isNaN(actualAmount)) actualAmount = amount;
 
-        // Auto-recalculate VAT 5% unless manually changed
+        // Auto-recalculate VAT 5% when any of the core amounts or deductions are updated
         let vatAmount = Number(next.vatAmount);
-        if (updates.actualAmount !== undefined || updates.amount !== undefined || isNaN(vatAmount)) {
+        if (updates.actualAmount !== undefined || updates.amount !== undefined || updates.deduction !== undefined || isNaN(vatAmount)) {
             vatAmount = Number((actualAmount * 0.05).toFixed(2));
         }
 
         const totalAmount = Number((actualAmount + vatAmount).toFixed(2));
         const advance = Number(next.advance) || 0;
-        const deduction = Number(next.deduction) || 0;
         const paid = Number(next.paid) || 0;
-        const payableAmount = Number((totalAmount - paid - advance - deduction).toFixed(2));
+        const payableAmount = Number((totalAmount - paid - advance).toFixed(2));
 
         let status = next.status;
         if (paid >= totalAmount && totalAmount > 0) {
@@ -7927,8 +7932,17 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     placeholder="Defaults to Bill Amount"
                                     value={formData.actualAmount || ''}
                                     onChange={e => handleRecalculate({ actualAmount: Number(e.target.value) })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-1 focus:ring-indigo-500"
+                                    disabled={formData.deduction > 0}
+                                    className={cn(
+                                        "w-full px-3 py-2 border rounded-xl text-sm font-semibold outline-none focus:ring-1 focus:ring-indigo-500",
+                                        formData.deduction > 0 ? "bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed" : "bg-white border-slate-200"
+                                    )}
                                 />
+                                {formData.deduction > 0 && (
+                                    <div className="text-[9px] text-indigo-600 font-bold ml-1 mt-0.5 animate-fadeIn">
+                                        Auto-calculated: Bill Amount - Deduction
+                                    </div>
+                                )}
                             </div>
                         </div>
 
