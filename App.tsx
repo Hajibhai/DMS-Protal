@@ -4504,7 +4504,7 @@ export default function App() {
     }) : () => {};
 
     const unsubCompanies = onSnapshot(collection(db, 'companies'), (snap) => {
-      setCompanies(snap.docs.map(d => d.data() as Company));
+      setCompanies(snap.docs.map(d => ({ ...d.data(), id: d.id } as Company)));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'companies');
     });
@@ -4516,19 +4516,19 @@ export default function App() {
     });
 
     const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snap) => {
-      setSuppliers(snap.docs.map(d => d.data() as Supplier));
+      setSuppliers(snap.docs.map(d => ({ ...d.data(), id: d.id } as Supplier)));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'suppliers');
     });
 
     const unsubProjects = onSnapshot(collection(db, 'projects'), (snap) => {
-      setProjects(snap.docs.map(d => d.data() as Project));
+      setProjects(snap.docs.map(d => ({ ...d.data(), id: d.id } as Project)));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'projects');
     });
 
     const unsubVendors = onSnapshot(collection(db, 'vendors'), (snap) => {
-      setVendors(snap.docs.map(d => d.data() as Vendor));
+      setVendors(snap.docs.map(d => ({ ...d.data(), id: d.id } as Vendor)));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'vendors');
     });

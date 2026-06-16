@@ -333,12 +333,13 @@ export const deleteDeduction = async (id: string) => {
 };
 
 // --- Companies ---
-export const addCompany = async (companyData: Omit<Company, 'id'>, currentCompaniesCount: number = 0) => {
-  const id = Math.random().toString(36).substr(2, 9);
+export const addCompany = async (companyData: Partial<Company> & Omit<Company, 'id'>, currentCompaniesCount: number = 0) => {
+  const parsedData = companyData as any;
+  const id = parsedData.id || Math.random().toString(36).substr(2, 9);
   const newCompany: Company = {
-    id,
     ...companyData,
-    order: currentCompaniesCount
+    id,
+    order: parsedData.order !== undefined ? parsedData.order : currentCompaniesCount
   };
   try {
     await setDoc(doc(db, 'companies', id), cleanData(newCompany));
@@ -376,12 +377,13 @@ export const deleteCompany = async (id: string) => {
 };
 
 // --- Suppliers ---
-export const addSupplier = async (supplierData: Omit<Supplier, 'id'>, currentSuppliersCount: number = 0) => {
-  const id = Math.random().toString(36).substr(2, 9);
+export const addSupplier = async (supplierData: Partial<Supplier> & Omit<Supplier, 'id'>, currentSuppliersCount: number = 0) => {
+  const parsedData = supplierData as any;
+  const id = parsedData.id || Math.random().toString(36).substr(2, 9);
   const newSupplier: Supplier = {
-    id,
     ...supplierData,
-    order: currentSuppliersCount
+    id,
+    order: parsedData.order !== undefined ? parsedData.order : currentSuppliersCount
   };
   try {
     await setDoc(doc(db, 'suppliers', id), cleanData(newSupplier));
@@ -419,12 +421,13 @@ export const deleteSupplier = async (id: string) => {
 };
 
 // --- Projects ---
-export const addProject = async (projectData: Omit<Project, 'id'>, currentProjectsCount: number = 0) => {
-  const id = Math.random().toString(36).substr(2, 9);
+export const addProject = async (projectData: Partial<Project> & Omit<Project, 'id'>, currentProjectsCount: number = 0) => {
+  const parsedData = projectData as any;
+  const id = parsedData.id || Math.random().toString(36).substr(2, 9);
   const newProject: Project = {
-    id,
     ...projectData,
-    order: currentProjectsCount
+    id,
+    order: parsedData.order !== undefined ? parsedData.order : currentProjectsCount
   };
   try {
     await setDoc(doc(db, 'projects', id), cleanData(newProject));
