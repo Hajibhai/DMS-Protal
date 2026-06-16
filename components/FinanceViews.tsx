@@ -1036,6 +1036,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
 export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, onBulkUpdateCompanyId, user, companies, onUploadExcel }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
+    const [viewingBill, setViewingBill] = useState<string | null>(null);
 
     // Advanced Filter State variables
     const [isAdvFilterOpen, setIsAdvFilterOpen] = useState(false);
@@ -2265,6 +2266,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         companies={companies}
                         enableMultiSelect={true}
                         onUploadExcel={onUploadExcel}
+                        onViewBill={(item) => setViewingBill(item.attachment || null)}
                         customSearch={(item, query) => {
                             const vName = getVendorName(item.vendorId, item.vendorType).toLowerCase();
                             const pName = getProjectName(item.projectId).toLowerCase();
@@ -2880,6 +2882,76 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                     </div>
                 </div>
             )}
+
+            {/* High-fidelity Invoice Image and PDF Attachment Viewer Modal */}
+            <AnimatePresence>
+                {viewingBill && (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-md no-print">
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white rounded-[2.5rem] w-full max-w-3xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh] border border-slate-100"
+                        >
+                            {/* Header */}
+                            <div className="p-6 sm:p-8 border-b border-slate-150 flex justify-between items-center bg-slate-50">
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                        <FileText className="w-5 h-5 text-indigo-600" />
+                                        <span>Supplier Invoice Attached Document</span>
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-medium mt-1">Rendered dynamically beneath secure sandbox constraints</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <a 
+                                        href={viewingBill} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+                                        title="Open file in separate tab"
+                                    >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                        <span>Open in New Tab</span>
+                                    </a>
+                                    <button 
+                                        onClick={() => setViewingBill(null)} 
+                                        className="p-2.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-all cursor-pointer border border-slate-200/50"
+                                        type="button"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Preview Body */}
+                            <div className="p-6 overflow-y-auto flex items-center justify-center bg-slate-100/50 flex-1 min-h-[400px]">
+                                {viewingBill.startsWith('data:application/pdf') ? (
+                                    <div className="w-full h-[55vh] rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                                        <object 
+                                            data={viewingBill} 
+                                            type="application/pdf" 
+                                            className="w-full h-full"
+                                        >
+                                            <iframe 
+                                                src={viewingBill} 
+                                                className="w-full h-full border-none"
+                                                title="Supplier Invoice PDF Viewer"
+                                            />
+                                        </object>
+                                    </div>
+                                ) : (
+                                    <img 
+                                        src={viewingBill} 
+                                        alt="Supplier Invoice Document" 
+                                        className="max-w-full max-h-[55vh] object-contain rounded-2xl shadow-md border border-slate-200 bg-white p-1"
+                                        referrerPolicy="no-referrer"
+                                    />
+                                )}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
@@ -7756,10 +7828,30 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             chequeDate: base.chequeDate || '',
             chequeAmount: base.chequeAmount || '',
             supplierName: base.supplierName || '',
-            supplierCode: base.supplierCode || ''
+            supplierCode: base.supplierCode || '',
+            attachment: base.attachment || ''
         };
     });
     const [payeeSearch, setPayeeSearch] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Limit size to 5MB as requested (5 * 1024 * 1024)
+        if (file.size > 5 * 1024 * 1024) {
+            alert('File size exceeds the 5MB limit.');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const base64 = reader.result as string;
+            handleRecalculate({ attachment: base64 });
+        };
+        reader.readAsDataURL(file);
+    };
 
     const handleRecalculate = (updates: any) => {
         const next = { ...formData, ...updates };
@@ -8131,6 +8223,92 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             onChange={e => handleRecalculate({ description: e.target.value })}
                             className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all min-h-[80px] text-slate-700 placeholder:text-slate-400"
                         />
+                    </div>
+
+                    {/* Custom base64 file upload dropzone (max 5MB) */}
+                    <div className="space-y-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block ml-1">Attach Invoice / Billing Document</span>
+                        <div className="flex flex-col gap-3">
+                            <div className="flex flex-wrap items-center gap-4">
+                                <button 
+                                    type="button"
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="px-4 py-2.5 bg-slate-50 border border-dashed border-slate-300 hover:border-slate-450 rounded-xl text-slate-600 text-xs font-bold transition-all hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-sm"
+                                >
+                                    <FileText className="w-4.5 h-4.5 text-slate-400" />
+                                    <span>Upload Supplier Invoice Document (max 5MB)</span>
+                                </button>
+                                <input 
+                                    type="file"
+                                    accept="image/*,application/pdf"
+                                    ref={fileInputRef}
+                                    onChange={handleFileChange}
+                                    className="hidden"
+                                />
+                                {formData.attachment && (
+                                    <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-100 p-2 rounded-xl text-[11px] font-black shadow-xs">
+                                        <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                        <span>Invoice Mounted Successfully</span>
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleRecalculate({ attachment: '' })}
+                                            className="p-1 hover:bg-emerald-100 text-emerald-700 rounded-lg ml-1 font-bold cursor-pointer"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {formData.attachment && (
+                                <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-2xl space-y-2.5 relative">
+                                    <div className="flex items-center justify-between border-b border-slate-200/50 pb-2">
+                                        <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-indigo-600">
+                                            <Eye className="w-3.5 h-3.5" />
+                                            <span>Uploaded Invoice Live Preview</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const w = window.open();
+                                                if (w) {
+                                                    w.document.write(`<iframe src="${formData.attachment}" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%; margin:0; padding:0; overflow:hidden;" allowfullscreen></iframe>`);
+                                                } else {
+                                                    alert("Please allow popups to open full-screen attachments.");
+                                                }
+                                            }}
+                                            className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors cursor-pointer"
+                                            title="Open in a dedicated new browser tab"
+                                        >
+                                            <ExternalLink className="w-3.5 h-3.5" />
+                                            <span>Open full-screen</span>
+                                        </button>
+                                    </div>
+                                    <div className="bg-white p-2 rounded-xl border border-slate-100 flex items-center justify-center overflow-auto max-h-[300px] shadow-inner">
+                                        {formData.attachment.startsWith('data:application/pdf') ? (
+                                            <object 
+                                                data={formData.attachment} 
+                                                type="application/pdf" 
+                                                className="w-full h-[250px] rounded-lg"
+                                            >
+                                                <iframe
+                                                    src={formData.attachment}
+                                                    className="w-full h-[250px] border-none rounded-lg"
+                                                    title="PDF Preview"
+                                                />
+                                            </object>
+                                        ) : (
+                                            <img
+                                                src={formData.attachment}
+                                                alt="Attachment preview"
+                                                className="max-h-[250px] object-contain rounded-lg"
+                                                referrerPolicy="no-referrer"
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                     
                     <div className="border border-slate-200/60 p-4 rounded-2xl bg-amber-50/20 space-y-3">
