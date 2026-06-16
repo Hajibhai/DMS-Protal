@@ -27,6 +27,8 @@ export const CampView: React.FC<CampViewProps> = ({
   const [sortField, setSortField] = useState<keyof CampExpense>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [viewingAttachment, setViewingAttachment] = useState<{ doc: string; name: string } | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>('all');
 
   // Multi-column filter
   const filteredCamps = useMemo(() => {
@@ -38,6 +40,23 @@ export const CampView: React.FC<CampViewProps> = ({
         (item.rentMonth || '').toLowerCase().includes(q) ||
         (item.description || '').toLowerCase().includes(q)
       );
+    }
+
+    // Month & Year Filter
+    if (selectedMonth !== 'all') {
+      result = result.filter(item => {
+        const parts = (item.rentMonth || '').trim().split(/\s+/);
+        const rentM = parts[0] || '';
+        return rentM.toLowerCase() === selectedMonth.toLowerCase();
+      });
+    }
+
+    if (selectedYear !== 'all') {
+      result = result.filter(item => {
+        const parts = (item.rentMonth || '').trim().split(/\s+/);
+        const rentY = parts[1] || '';
+        return rentY === selectedYear;
+      });
     }
     
     // Sort
@@ -57,7 +76,7 @@ export const CampView: React.FC<CampViewProps> = ({
     });
 
     return result;
-  }, [data, searchQuery, sortField, sortDirection]);
+  }, [data, searchQuery, sortField, sortDirection, selectedMonth, selectedYear]);
 
   // Calculations
   const totalRentExpenses = useMemo(() => {
@@ -272,7 +291,7 @@ export const CampView: React.FC<CampViewProps> = ({
       </div>
 
       {/* Search and Filters Strip */}
-      <div className="bg-white rounded-[2rem] border border-slate-100 p-4.5 flex flex-col md:flex-row items-center gap-4.5 shadow-sm">
+      <div className="bg-white rounded-[2rem] border border-slate-100 p-4.5 flex flex-col lg:flex-row items-center gap-4.5 shadow-sm">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
           <input
@@ -282,6 +301,31 @@ export const CampView: React.FC<CampViewProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200/50 rounded-xl py-2.5 pl-11 pr-4 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 placeholder-slate-400 text-slate-800"
           />
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+          {/* Month Filter */}
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+            className="w-full sm:w-44 bg-slate-50 border border-slate-200/50 rounded-xl p-2.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer"
+          >
+            <option value="all">All Months (Overall)</option>
+            {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+
+          {/* Year Filter */}
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            className="w-full sm:w-36 bg-slate-50 border border-slate-200/50 rounded-xl p-2.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 cursor-pointer"
+          >
+            <option value="all">All Years (Overall)</option>
+            {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 1 + i)).map(y => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
           <Filter className="w-4 h-4" />

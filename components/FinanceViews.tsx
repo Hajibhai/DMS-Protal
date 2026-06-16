@@ -11996,22 +11996,82 @@ export const FinancialDashboardView: React.FC<{
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
     const [viewingBill, setViewingBill] = useState<string | null>(null);
+    const [selectedMonth, setSelectedMonth] = useState<string>('all');
+    const [selectedYear, setSelectedYear] = useState<string>('all');
+    const [previewingPDF, setPreviewingPDF] = useState<boolean>(false);
+
+    // Month & Year parsing helper
+    const matchDashboardMonthYear = (dateStr: string | undefined, rentMonthStr: string | undefined, targetMonth: string, targetYear: string) => {
+        let itemMonth = '';
+        let itemYear = '';
+        
+        if (dateStr) {
+            const parts = dateStr.split('-');
+            if (parts.length >= 2) {
+                const y = parts[0];
+                const m = parseInt(parts[1], 10);
+                if (!isNaN(m) && m >= 1 && m <= 12) {
+                    const monthNames = [
+                        "January", "February", "March", "April", "May", "June",
+                        "July", "August", "September", "October", "November", "December"
+                    ];
+                    itemMonth = monthNames[m - 1];
+                    itemYear = y;
+                }
+            }
+        }
+        
+        if ((!itemMonth || !itemYear) && rentMonthStr) {
+            const parts = rentMonthStr.trim().split(/\s+/);
+            if (parts.length >= 2) {
+                itemMonth = parts[0];
+                itemYear = parts[1];
+            } else if (parts.length === 1) {
+                itemMonth = parts[0];
+            }
+        }
+        
+        const monthMatch = targetMonth === 'all' || (itemMonth && itemMonth.toLowerCase() === targetMonth.toLowerCase());
+        const yearMatch = targetYear === 'all' || (itemYear && itemYear === targetYear);
+        
+        return monthMatch && yearMatch;
+    };
+
+    const filteredPayables = useMemo(() => {
+        return (accountsPayable || []).filter(item => matchDashboardMonthYear(item.date || item.dueDate, undefined, selectedMonth, selectedYear));
+    }, [accountsPayable, selectedMonth, selectedYear]);
+
+    const filteredReceivables = useMemo(() => {
+        return (accountsReceivable || []).filter(item => matchDashboardMonthYear(item.date || item.dueDate, undefined, selectedMonth, selectedYear));
+    }, [accountsReceivable, selectedMonth, selectedYear]);
+
+    const filteredEverydayExpenses = useMemo(() => {
+        return (everydayExpenses || []).filter(item => matchDashboardMonthYear(item.date, undefined, selectedMonth, selectedYear));
+    }, [everydayExpenses, selectedMonth, selectedYear]);
+
+    const filteredCamps = useMemo(() => {
+        return (camps || []).filter(item => matchDashboardMonthYear(item.dueDate || item.startDate, item.rentMonth, selectedMonth, selectedYear));
+    }, [camps, selectedMonth, selectedYear]);
+
+    const filteredPettyCash = useMemo(() => {
+        return (pettyCash || []).filter(item => matchDashboardMonthYear(item.date, undefined, selectedMonth, selectedYear));
+    }, [pettyCash, selectedMonth, selectedYear]);
 
     // Accounts Payable calculations
-    const totalAP = useMemo(() => (accountsPayable || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [accountsPayable]);
-    const pendingAP = useMemo(() => (accountsPayable || []).filter((x: any) => x.status !== 'Paid' && x.status !== 'Settled').reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [accountsPayable]);
+    const totalAP = useMemo(() => (filteredPayables || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [filteredPayables]);
+    const pendingAP = useMemo(() => (filteredPayables || []).filter((x: any) => x.status !== 'Paid' && x.status !== 'Settled').reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [filteredPayables]);
 
     // Accounts Receivable calculations
-    const totalAR = useMemo(() => (accountsReceivable || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [accountsReceivable]);
-    const pendingAR = useMemo(() => (accountsReceivable || []).filter((x: any) => x.status !== 'Paid' && x.status !== 'Settled').reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [accountsReceivable]);
+    const totalAR = useMemo(() => (filteredReceivables || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [filteredReceivables]);
+    const pendingAR = useMemo(() => (filteredReceivables || []).filter((x: any) => x.status !== 'Paid' && x.status !== 'Settled').reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || 0), 0), [filteredReceivables]);
 
     // Everyday Expenses
-    const totalEE = useMemo(() => (everydayExpenses || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || Number(x.billAmount) || 0), 0), [everydayExpenses]);
+    const totalEE = useMemo(() => (filteredEverydayExpenses || []).reduce((sum: number, x: any) => sum + (Number(x.totalAmount) || Number(x.billAmount) || 0), 0), [filteredEverydayExpenses]);
 
     // Camp Expenses (deposit amount, rent, start date, end date, due date)
-    const totalCampExpenses = useMemo(() => (camps || []).reduce((sum: number, x: any) => sum + (Number(x.rent) || 0) + (Number(x.depositAmount) || 0), 0), [camps]);
-    const totalCampRent = useMemo(() => (camps || []).reduce((sum: number, x: any) => sum + (Number(x.rent) || 0), 0), [camps]);
-    const totalCampDeposit = useMemo(() => (camps || []).reduce((sum: number, x: any) => sum + (Number(x.depositAmount) || 0), 0), [camps]);
+    const totalCampExpenses = useMemo(() => (filteredCamps || []).reduce((sum: number, x: any) => sum + (Number(x.rent) || 0) + (Number(x.depositAmount) || 0), 0), [filteredCamps]);
+    const totalCampRent = useMemo(() => (filteredCamps || []).reduce((sum: number, x: any) => sum + (Number(x.rent) || 0), 0), [filteredCamps]);
+    const totalCampDeposit = useMemo(() => (filteredCamps || []).reduce((sum: number, x: any) => sum + (Number(x.depositAmount) || 0), 0), [filteredCamps]);
 
     // Extract categories/books representing accounts in Petty Cash
     const books = useMemo(() => {
@@ -12025,12 +12085,12 @@ export const FinancialDashboardView: React.FC<{
     // Reconciliation Calculation per Account/Book
     const reconciliations = useMemo(() => {
         return books.map(book => {
-            const bookPcs = (pettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
+            const bookPcs = (filteredPettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
             const advances = bookPcs.filter((item: any) => item.type === 'Income').reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0);
             const directSpent = bookPcs.filter((item: any) => item.type === 'Expense').reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0);
 
             // Match everyday expenses where uploader matches book name
-            const matchingEE = (everydayExpenses || []).filter((item: any) => {
+            const matchingEE = (filteredEverydayExpenses || []).filter((item: any) => {
                 const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
                 const cleanUploader = uploaderRaw.split('(')[0].trim();
                 const targetBook = book.toLowerCase().trim();
@@ -12054,7 +12114,7 @@ export const FinancialDashboardView: React.FC<{
                 matchingCount: matchingEE.length
             };
         });
-    }, [books, pettyCash, everydayExpenses]);
+    }, [books, filteredPettyCash, filteredEverydayExpenses]);
 
     // Filtered accounts for display
     const filteredReconciliations = useMemo(() => {
@@ -12082,7 +12142,7 @@ export const FinancialDashboardView: React.FC<{
         if (!selectedAccount) return [];
 
         const book = selectedAccount;
-        const bookPcs = (pettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
+        const bookPcs = (filteredPettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
 
         const pcsMapped = bookPcs.map(item => ({
             id: item.id,
@@ -12096,7 +12156,7 @@ export const FinancialDashboardView: React.FC<{
             originalItem: item
         }));
 
-        const matchingEE = (everydayExpenses || []).filter((item: any) => {
+        const matchingEE = (filteredEverydayExpenses || []).filter((item: any) => {
             const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
             const cleanUploader = uploaderRaw.split('(')[0].trim();
             const targetBook = book.toLowerCase().trim();
@@ -12142,7 +12202,7 @@ export const FinancialDashboardView: React.FC<{
                 balanceAfter: currentBal
             };
         });
-    }, [selectedAccount, pettyCash, everydayExpenses]);
+    }, [selectedAccount, filteredPettyCash, filteredEverydayExpenses]);
 
     // Handle overall reconciliation directory Excel Excel export
     const handleExportReconciliationExcel = () => {
@@ -12527,6 +12587,189 @@ export const FinancialDashboardView: React.FC<{
         doc.save(`${selectedAccount.toUpperCase().replace(/\s+/g, '_')}_Statement_Ledger.pdf`);
     };
 
+    // Handle overall Corporate Financial Dashboard summary Excel export
+    const handleExportDashboardExcel = () => {
+        const dataRows = [
+            { 'Financial Metric (Consolidated)': 'Accounts Receivable (Total Asset Value)', 'Amount (AED)': totalAR, 'Details': `Pending Collection: AED ${pendingAR}` },
+            { 'Financial Metric (Consolidated)': 'Accounts Payable (Total Liability Value)', 'Amount (AED)': totalAP, 'Details': `Pending Outflow: AED ${pendingAP}` },
+            { 'Financial Metric (Consolidated)': 'Everyday Expenses (Tally)', 'Amount (AED)': totalEE, 'Details': `${filteredEverydayExpenses.length} verified bill receipts` },
+            { 'Financial Metric (Consolidated)': 'Camp Accommodation (Cumulative Portions)', 'Amount (AED)': totalCampExpenses, 'Details': `Rent portion: AED ${totalCampRent} | Deposits portion: AED ${totalCampDeposit}` },
+            { 'Financial Metric (Consolidated)': 'Petty Cash In Hand (Reconciled Balance)', 'Amount (AED)': totalPCReconciledBalance, 'Details': totalPCReconciledBalance >= 0 ? "SURPLUS" : "DEFICIT" },
+            { 'Financial Metric (Consolidated)': 'Net Corporate System Liquidity', 'Amount (AED)': (totalAR + totalPCReconciledBalance - totalAP), 'Details': 'Consolidated available system-wide safe liquid currency' }
+        ];
+
+        const ws1 = XLSX.utils.json_to_sheet(dataRows);
+        
+        const ws2Data = filteredReconciliations.map((recon) => ({
+            'Account (Cash Book)': recon.accountName,
+            'Advances Received (AED)': recon.advances,
+            'Direct Petty Spent (AED)': recon.directSpent,
+            'Auto-Matched Everyday Cost (AED)': recon.everydaySpent,
+            'Reconciled Safe Cash (AED)': recon.reconciledBalance,
+            'Health Status': recon.reconciledBalance >= 0 ? "BALANCED" : "DEFICIT",
+            'Matched Verified Bills Count': recon.matchingCount
+        }));
+        const ws2 = XLSX.utils.json_to_sheet(ws2Data);
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws1, "Dashboard KPI Summary");
+        XLSX.utils.book_append_sheet(wb, ws2, "Integrated Reconciliations");
+
+        XLSX.writeFile(wb, `Corporate_Dashboard_Summary_${selectedMonth}_${selectedYear}.xlsx`);
+    };
+
+    // Handle overall Corporate Financial Dashboard summary PDF export
+    const handleExportDashboardPDF = () => {
+        const doc = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const assets = getPioneerPDFAssets();
+        if (assets.watermark) {
+            doc.addImage(assets.watermark, 'PNG', 32, 75, 145, 145, undefined, 'FAST');
+        }
+
+        doc.setFillColor(37, 99, 235); // brand Royal Blue top banner
+        doc.rect(0, 0, 210, 6, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(14);
+        doc.setTextColor(15, 23, 42);
+        doc.text("CONSOLIDATED CORPORATE FINANCIAL FOOTPRINT STATEMENT", 15, 18);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(8.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Selected Filter Period: Month: ${selectedMonth.toUpperCase()} | Year: ${selectedYear.toUpperCase()}`, 15, 23);
+        doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 15, 27);
+
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.35);
+        doc.line(15, 30, 195, 30);
+
+        // Section 1: KPI Metrics Panel Box
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(15, 35, 180, 52, 3, 3, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(51, 65, 85);
+        doc.text("I. CONSOLIDATED KEY PERFORMANCE INDICATORS", 20, 42);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+
+        const rowH = 7;
+        let yPos = 49;
+        
+        const metrics = [
+            { name: "Accounts Receivable Asset Value (Total AR)", val: totalAR, extra: `AED ${pendingAR.toLocaleString()} Pending` },
+            { name: "Accounts Payable Liability Value (Total AP)", val: totalAP, extra: `AED ${pendingAP.toLocaleString()} Pending` },
+            { name: "Everyday Expense Spend Tally (Total EE)", val: totalEE, extra: `${filteredEverydayExpenses.length} Verified Receipts` },
+            { name: "Camp Accommodation Cumulative Portions", val: totalCampExpenses, extra: `Rent: AED ${totalCampRent.toLocaleString()} | Deposit: AED ${totalCampDeposit.toLocaleString()}` },
+            { name: "Petty Cash in Hand (Fully Reconciled Balance)", val: totalPCReconciledBalance, extra: totalPCReconciledBalance >= 0 ? "Balanced Surplus" : "Overdrawn Deficit" }
+        ];
+
+        metrics.forEach((m) => {
+            doc.setFont("Helvetica", "bold");
+            doc.setTextColor(71, 85, 105);
+            doc.text(m.name, 22, yPos);
+            doc.text(m.extra, 115, yPos);
+
+            doc.setTextColor(15, 23, 42);
+            doc.text(`AED ${m.val.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 190, yPos, { align: 'right' });
+            
+            yPos += rowH;
+        });
+
+        // Safe cash liquidity metric
+        doc.setDrawColor(203, 213, 225);
+        doc.line(20, yPos - 1, 190, yPos - 1);
+        yPos += 2;
+
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(37, 99, 235);
+        doc.setFontSize(8.5);
+        doc.text("NET CORPORATE SYSTEM LIQUIDITY:", 22, yPos);
+        const systemLiquidity = totalAR + totalPCReconciledBalance - totalAP;
+        doc.text(`AED ${systemLiquidity.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 190, yPos, { align: 'right' });
+
+        // Section 2: Automated Petty Cash Reconciliations Directory Title
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(10);
+        doc.setTextColor(15, 23, 42);
+        doc.text("II. DETAILED PETTY CASH RECONCILIATIONS DIRECTORY", 15, 96);
+
+        // Header Table block
+        const tableHeaderY = 100;
+        doc.setFillColor(37, 99, 235);
+        doc.rect(15, tableHeaderY, 180, 8.5, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text("ACCOUNT (CASH BOOK)", 17, tableHeaderY + 5.5);
+        doc.text("ADVANCES (AED)", 72, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("DIRECT SPENT", 108, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("EVERYDAY COST", 142, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("RECONCILED CASH", 178, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("STATUS", 182, tableHeaderY + 5.5, { align: 'left' });
+
+        let currentY = tableHeaderY + 8.5;
+        filteredReconciliations.forEach((recon: any, idx: number) => {
+            if (currentY > 265) {
+                doc.setFontSize(6.5);
+                doc.setTextColor(148, 163, 184);
+                doc.text("Confidential • Pioneer Corporate Financial Ledger Summary Statement", 15, 287);
+                doc.text("Complete Statement", 195, 287, { align: 'right' });
+
+                doc.addPage();
+                doc.setFillColor(37, 99, 235);
+                doc.rect(0, 0, 210, 6, 'F');
+                currentY = 15;
+            }
+
+            if (idx % 2 === 0) {
+                doc.setFillColor(248, 250, 252);
+                doc.rect(15, currentY, 180, 8, 'F');
+            }
+
+            doc.setFont("Helvetica", "bold");
+            doc.setFontSize(7.5);
+            doc.setTextColor(51, 65, 85);
+            doc.text((recon.accountName || '').toUpperCase(), 17, currentY + 5.5);
+
+            doc.setFont("Helvetica", "normal");
+            doc.text(`AED ${recon.advances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 72, currentY + 5.5, { align: 'right' });
+            doc.text(`AED ${recon.directSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 108, currentY + 5.5, { align: 'right' });
+            doc.text(`AED ${recon.everydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 142, currentY + 5.5, { align: 'right' });
+
+            const isSurplus = recon.reconciledBalance >= 0;
+            doc.setFont("Helvetica", "bold");
+            if (isSurplus) {
+                doc.setTextColor(16, 124, 65);
+            } else {
+                doc.setTextColor(190, 24, 74);
+            }
+            doc.text(`AED ${recon.reconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 178, currentY + 5.5, { align: 'right' });
+            
+            doc.setFontSize(7);
+            doc.text(isSurplus ? "BALANCED" : "DEFICIT", 182, currentY + 5.5, { align: 'left' });
+
+            currentY += 8;
+        });
+
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text("Confidential • Pioneer Corporate Financial Ledger Summary Statement", 15, 287);
+        doc.text("Complete Statement", 195, 287, { align: 'right' });
+
+        doc.save(`Corporate_Financial_Dashboard_Summary_${selectedMonth}_${selectedYear}.pdf`);
+    };
+
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
             {/* Header section */}
@@ -12548,6 +12791,72 @@ export const FinancialDashboardView: React.FC<{
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
                         AED {(totalAR + totalPCReconciledBalance - totalAP).toLocaleString(undefined, {minimumFractionDigits: 2})}
                     </span>
+                </div>
+            </div>
+
+            {/* Consolidated Central Filter & Export Controls */}
+            <div className="bg-white rounded-[2rem] border border-slate-200/50 p-6 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1">
+                    <div className="flex items-center gap-2">
+                        <ListFilter className="w-5 h-5 text-brand-600 shrink-0" />
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-500">Period Visibility:</span>
+                    </div>
+                    {/* Month Filter Selector */}
+                    <div className="w-full sm:w-48 relative">
+                        <select
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 cursor-pointer appearance-none"
+                        >
+                            <option value="all">Overall Months (Consolidated)</option>
+                            {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map(m => (
+                                <option key={m} value={m}>{m}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none w-4 h-4 text-slate-400" />
+                    </div>
+
+                    {/* Year Filter Selector */}
+                    <div className="w-full sm:w-36 relative">
+                        <select
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200/60 rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 cursor-pointer appearance-none"
+                        >
+                            <option value="all">Overall Years</option>
+                            {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 1 + i)).map(y => (
+                                <option key={y} value={y}>{y}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none w-4 h-4 text-slate-400" />
+                    </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+                    <button
+                        onClick={() => setPreviewingPDF(true)}
+                        className="px-5 py-2.5 bg-brand-50 hover:bg-brand-100/85 text-brand-700 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-xs transition-all hover:scale-102 active:scale-98 cursor-pointer border border-brand-100"
+                        title="Preview the PDF template statement data panel first"
+                    >
+                        <Eye className="w-4 h-4 text-brand-500" />
+                        <span>Preview Statement</span>
+                    </button>
+                    <button
+                        onClick={handleExportDashboardExcel}
+                        className="px-5 py-2.5 bg-emerald-50 hover:bg-emerald-100/85 text-emerald-700 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-xs transition-all hover:scale-102 active:scale-98 cursor-pointer border border-emerald-100"
+                        title="Export current filtered dashboard summary to Excel spreadsheet"
+                    >
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        <span>Export Excel</span>
+                    </button>
+                    <button
+                        onClick={handleExportDashboardPDF}
+                        className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-102 active:scale-98 cursor-pointer font-bold"
+                        title="Direct download of current filtered summary statement as PDF"
+                    >
+                        <Download className="w-4 h-4 text-white" />
+                        <span>Export PDF</span>
+                    </button>
                 </div>
             </div>
 
@@ -13030,6 +13339,139 @@ export const FinancialDashboardView: React.FC<{
                                     className="px-5 py-2.5 bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm cursor-pointer"
                                 >
                                     Close Ledger
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {previewingPDF && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                            transition={{ duration: 0.25, ease: 'easeOut' }}
+                            className="bg-white rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh] border border-slate-200/80"
+                        >
+                            {/* Header */}
+                            <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 animate-fade-in">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl shadow-xs">
+                                        <FileText className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Statement Data Panel Report Preview</h3>
+                                        <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                                            Interactive sandbox previewing exact document compilation layout prior to PDF generation.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setPreviewingPDF(false)}
+                                    className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-450 hover:text-slate-600 cursor-pointer border border-slate-200/50 bg-white"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Realistic Sheet Layout Content */}
+                            <div className="flex-1 p-6 sm:p-8 overflow-y-auto bg-slate-100/40 space-y-6">
+                                <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm space-y-6 relative overflow-hidden">
+                                    {/* Report sheet header line */}
+                                    <div className="absolute top-0 inset-x-0 h-1.5 bg-brand-600" />
+                                    
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
+                                        <div>
+                                            <h4 className="text-sm font-black uppercase text-slate-900 tracking-tight">Consolidated Corporate Statement Summary</h4>
+                                            <p className="text-[10px] text-slate-405 font-bold uppercase tracking-widest mt-0.5">Pioneer Financial Footprint • Audit Report</p>
+                                        </div>
+                                        <div className="text-left sm:text-right text-[10px] text-slate-405 font-bold uppercase tracking-widest space-y-0.5">
+                                            <div>Date: {new Date().toLocaleDateString()}</div>
+                                            <div>Period: {selectedMonth.toUpperCase()} {selectedYear.toUpperCase()}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Step 1 KPI Metrics Statement */}
+                                    <div className="space-y-3">
+                                        <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-405">Section I: Executive Metrics Tally</h5>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {[
+                                                { label: "Accounts Receivable Asset Value", value: totalAR, desc: `Pending collection: AED ${pendingAR.toLocaleString()}` },
+                                                { label: "Accounts Payable Liability Value", value: totalAP, desc: `Pending outflow: AED ${pendingAP.toLocaleString()}` },
+                                                { label: "Everyday Expenses cumulative spent", value: totalEE, desc: `${filteredEverydayExpenses.length} Receipt bills verified` },
+                                                { label: "Camp Accommodations total portion", value: totalCampExpenses, desc: `Rent: AED ${totalCampRent.toLocaleString()} | Deposit: AED ${totalCampDeposit.toLocaleString()}` },
+                                                { label: "Petty Cash Safe Cash in Hand", value: totalPCReconciledBalance, desc: totalPCReconciledBalance >= 0 ? "Affirmative Balanced Surplus" : "Overdrawn deficit warnings ACTIVE" }
+                                            ].map((kpi, idx) => (
+                                                <div key={idx} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-150">
+                                                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-455 block">{kpi.label}</span>
+                                                    <span className="text-md font-black text-slate-850 tracking-tight block mt-0.5">AED {kpi.value.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                                    <span className="text-[9px] font-semibold text-slate-400 block mt-1">{kpi.desc}</span>
+                                                </div>
+                                            ))}
+
+                                            {/* Net Liquidity overall */}
+                                            <div className="p-4 bg-brand-50/50 rounded-2xl border border-brand-100 md:col-span-2">
+                                                <span className="text-[9px] font-bold uppercase tracking-wider text-brand-650 block font-extrabold pb-0.5">Net Corporate System Liquidity Position</span>
+                                                <span className="text-lg font-black text-brand-700 tracking-tight block">AED {(totalAR + totalPCReconciledBalance - totalAP).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                                <span className="text-[9px] font-semibold text-brand-500 block mt-1">Available consolidated liquid asset reserve index</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Step 2 Reconciliation Details Table */}
+                                    <div className="space-y-3">
+                                        <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-405">Section II: Petty Cash Books Reconciliation Directory</h5>
+                                        <div className="overflow-x-auto border border-slate-100 rounded-2xl">
+                                            <table className="min-w-full divide-y divide-slate-150 text-[10px]">
+                                                <thead className="bg-slate-50">
+                                                    <tr className="text-left font-bold text-slate-450 uppercase tracking-widest">
+                                                        <th className="px-4 py-2 text-left">Cashbook Account</th>
+                                                        <th className="px-4 py-2 text-right">Advances</th>
+                                                        <th className="px-4 py-2 text-right">Everyday Cost</th>
+                                                        <th className="px-4 py-2 text-right">Reconciled Safe Cash</th>
+                                                        <th className="px-4 py-2 text-center">Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 bg-white">
+                                                    {filteredReconciliations.map((recon) => {
+                                                        const isSurp = recon.reconciledBalance >= 0;
+                                                        return (
+                                                            <tr key={recon.accountName} className="hover:bg-slate-50/60 font-semibold text-slate-655">
+                                                                <td className="px-4 py-2.5 font-bold text-slate-755 capitalize">{recon.accountName}</td>
+                                                                <td className="px-4 py-2.5 text-right">AED {recon.advances.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                                <td className="px-4 py-2.5 text-right text-rose-600">AED {recon.everydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                                <td className={`px-4 py-2.5 text-right font-black ${isSurp ? "text-emerald-705" : "text-rose-600"}`}>AED {recon.reconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                                <td className="px-4 py-2.5 text-center">
+                                                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${isSurp ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{isSurp ? "Balanced" : "Deficit"}</span>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer Action Bar */}
+                            <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 rounded-b-[2.5rem]">
+                                <button
+                                    onClick={() => setPreviewingPDF(false)}
+                                    className="px-5 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-xs cursor-pointer"
+                                >
+                                    Dismiss Preview
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setPreviewingPDF(false);
+                                        handleExportDashboardPDF();
+                                    }}
+                                    className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer font-bold"
+                                >
+                                    <Download className="w-4 h-4 text-white" />
+                                    <span>Download PDF Document</span>
                                 </button>
                             </div>
                         </motion.div>

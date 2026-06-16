@@ -4577,7 +4577,7 @@ export default function App() {
     });
 
     const unsubCamps = onSnapshot(collection(db, 'camps'), (snap) => {
-      setCamps(snap.docs.map(d => d.data() as CampExpense));
+      setCamps(snap.docs.map(d => ({ ...d.data(), id: d.id }) as CampExpense));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'camps');
     });
