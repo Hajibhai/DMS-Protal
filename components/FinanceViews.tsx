@@ -12556,60 +12556,60 @@ export const FinancialDashboardView: React.FC<{
                 {/* 1. Accounts Receivable card */}
                 <div 
                     onClick={() => setActiveTab('accounts-receivable')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-emerald-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-emerald-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1">
+                        <div className="space-y-1 pr-12">
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Accounts Receivable</span>
                             <span className="text-2xl font-black text-slate-900 tracking-tight block">
-                                AED {totalAR.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                AED {totalAR.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl absolute top-6 right-6">
                             <TrendingUp className="w-5 h-5" />
                         </div>
                     </div>
                     <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
                         <span>Pending Collection:</span>
-                        <span className="text-emerald-600">AED {pendingAR.toLocaleString()}</span>
+                        <span className="text-emerald-600">AED {pendingAR.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                 </div>
 
                 {/* 2. Accounts Payable card */}
                 <div 
                     onClick={() => setActiveTab('accounts-payable')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-red-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-red-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1">
+                        <div className="space-y-1 pr-12">
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Accounts Payable</span>
                             <span className="text-2xl font-black text-slate-900 tracking-tight block">
-                                AED {totalAP.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                AED {totalAP.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-red-50 text-red-600 rounded-2xl">
+                        <div className="p-3 bg-red-50 text-red-600 rounded-2xl absolute top-6 right-6">
                             <TrendingDown className="w-5 h-5" />
                         </div>
                     </div>
                     <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
                         <span>Pending Outflow:</span>
-                        <span className="text-red-600">AED {pendingAP.toLocaleString()}</span>
+                        <span className="text-red-600">AED {pendingAP.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                     </div>
                 </div>
 
                 {/* 3. Everyday Expenses card */}
                 <div 
                     onClick={() => setActiveTab('everyday-expenses')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-amber-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-amber-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1">
+                        <div className="space-y-1 pr-12">
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Everyday Expenses</span>
                             <span className="text-2xl font-black text-slate-900 tracking-tight block">
-                                AED {totalEE.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                AED {totalEE.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+                        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl absolute top-6 right-6">
                             <Wallet className="w-5 h-5" />
                         </div>
                     </div>
@@ -12622,38 +12622,38 @@ export const FinancialDashboardView: React.FC<{
                 {/* 4. Camp Accommodation card */}
                 <div 
                     onClick={() => setActiveTab('camp')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-indigo-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-indigo-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1">
+                        <div className="space-y-1 pr-12">
                             <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 block">Camp Accommodation</span>
                             <span className="text-2xl font-black text-slate-900 tracking-tight block">
-                                AED {totalCampExpenses.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                AED {totalCampExpenses.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-indigo-50 text-indigo-650 rounded-2xl">
+                        <div className="p-3 bg-indigo-50 text-indigo-650 rounded-2xl absolute top-6 right-6">
                             <Home className="w-5 h-5" />
                         </div>
                     </div>
                     <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
-                        <span>Rent: <span className="font-extrabold text-indigo-650">AED {totalCampRent.toLocaleString()}</span></span>
-                        <span>Deposit: <span className="font-extrabold text-indigo-650">AED {totalCampDeposit.toLocaleString()}</span></span>
+                        <span>Rent: <span className="font-extrabold text-indigo-650">AED {totalCampRent.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></span>
+                        <span>Deposit: <span className="font-extrabold text-indigo-650">AED {totalCampDeposit.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></span>
                     </div>
                 </div>
 
                 {/* 5. Petty Cash In Hand card */}
                 <div 
                     onClick={() => setActiveTab('petty-cash')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-brand-200 active:scale-98 cursor-pointer transition-all flex flex-col justify-between"
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-brand-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1">
+                        <div className="space-y-1 pr-12">
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Petty Cash In Hand</span>
                             <span className={`text-2xl font-black tracking-tight block ${totalPCReconciledBalance >= 0 ? "text-slate-900" : "text-rose-600"}`}>
-                                AED {totalPCReconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                AED {totalPCReconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl">
+                        <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl absolute top-6 right-6">
                             <Scale className="w-5 h-5" />
                         </div>
                     </div>

@@ -5337,6 +5337,7 @@ export default function App() {
         subItems: [
           { id: 'suppliers', label: 'Suppliers', icon: Truck, permission: 'canManageSuppliers' },
           { id: 'projects', label: 'Projects', icon: Briefcase, permission: 'canManageProjects' },
+          { id: 'camp', label: 'Camp', icon: Home, permission: 'canManageFinance' },
           { id: 'cicpa', label: 'CICPA', icon: ShieldCheck, permission: 'canManageEmployees' },
           { id: 'safety', label: 'Safety', icon: ShieldAlert, permission: 'canManageEmployees' },
           { id: 'vendors', label: 'Clients', icon: Truck, permission: 'canManageProjects' },
@@ -5377,7 +5378,6 @@ export default function App() {
           { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManageFinance' },
           { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManageFinance' },
           { id: 'vouchers', label: 'Add Vouchers Section', icon: FileText, permission: 'canManageFinance' },
-          { id: 'camp', label: 'Camp', icon: Home, permission: 'canManageFinance' },
           { id: 'projected-expenses', label: 'Project Expenses', icon: TrendingDown, permission: 'canManageFinance' },
           { id: 'engineer-hub', label: 'Procurement Documents', icon: HardHat, permission: 'canManageFinance' },
         ]

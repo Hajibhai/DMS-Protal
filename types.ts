@@ -679,6 +679,7 @@ export interface CampExpense {
   startDate: string;
   endDate: string;
   description?: string;
+  attachment?: string;
 }
 
 export interface Voucher {

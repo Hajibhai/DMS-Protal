@@ -1,11 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   Plus, Edit, Trash2, Search, Filter, 
-  Home, Download, Calendar, ArrowUpDown, FileSpreadsheet, Eye, X
+  Home, Download, Calendar, ArrowUpDown, FileSpreadsheet, Eye, X, FileText, CheckCircle, ExternalLink, Trash
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { CampExpense } from '../types';
+import { jsPDF } from 'jspdf';
 
 interface CampViewProps {
   data: CampExpense[];
@@ -25,6 +26,7 @@ export const CampView: React.FC<CampViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<keyof CampExpense>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [viewingAttachment, setViewingAttachment] = useState<{ doc: string; name: string } | null>(null);
 
   // Multi-column filter
   const filteredCamps = useMemo(() => {
@@ -79,6 +81,104 @@ export const CampView: React.FC<CampViewProps> = ({
     }
   };
 
+  const handleDownloadPdfSummary = () => {
+    const doc = new jsPDF();
+    
+    // Title Banner
+    doc.setFillColor(79, 70, 229); // indigo-600
+    doc.rect(0, 0, 210, 40, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("PIONEER DMS PORTAL", 15, 18);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("CAMP ACCOMMODATION EXPENSES SUMMARY REPORT", 15, 28);
+    
+    // Metadata block
+    doc.setTextColor(51, 65, 85); // slate-700
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(`Generated On: ${new Date().toLocaleDateString()}`, 15, 52);
+    doc.text(`Total Records: ${filteredCamps.length}`, 15, 58);
+    
+    doc.text(`Total Rent Outflow: AED ${totalRentExpenses.toLocaleString()}`, 120, 52);
+    doc.text(`Total Deposits: AED ${totalDepositExpenses.toLocaleString()}`, 120, 58);
+    
+    // Divider
+    doc.setDrawColor(226, 232, 240); // slate-200
+    doc.setLineWidth(0.5);
+    doc.line(15, 65, 195, 65);
+    
+    // Table Headers
+    let currentY = 75;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setFillColor(248, 250, 252); // slate-50
+    doc.rect(15, currentY - 5, 180, 8, 'F');
+    
+    doc.text("S.No", 17, currentY);
+    doc.text("Camp Name", 28, currentY);
+    doc.text("Rent Month", 95, currentY);
+    doc.text("Due Date", 125, currentY);
+    doc.text("Deposit (AED)", 150, currentY);
+    doc.text("Rent (AED)", 175, currentY);
+    
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    
+    filteredCamps.forEach((item, idx) => {
+      currentY += 10;
+      
+      // Page break check
+      if (currentY > 280) {
+        doc.addPage();
+        currentY = 20;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setFillColor(248, 250, 252);
+        doc.rect(15, currentY - 5, 180, 8, 'F');
+        doc.text("S.No", 17, currentY);
+        doc.text("Camp Name", 28, currentY);
+        doc.text("Rent Month", 95, currentY);
+        doc.text("Due Date", 125, currentY);
+        doc.text("Deposit (AED)", 150, currentY);
+        doc.text("Rent (AED)", 175, currentY);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        currentY += 10;
+      }
+      
+      // Border lines
+      doc.setDrawColor(241, 245, 249); // slate-100
+      doc.line(15, currentY + 3, 195, currentY + 3);
+      
+      doc.text(String(idx + 1), 17, currentY);
+      doc.text(String(item.campName || ''), 28, currentY);
+      doc.text(String(item.rentMonth || ''), 95, currentY);
+      doc.text(String(item.dueDate || ''), 125, currentY);
+      doc.text(item.depositAmount ? Number(item.depositAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00', 150, currentY);
+      doc.text(Number(item.rent).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 175, currentY);
+    });
+    
+    // Total row at end
+    currentY += 12;
+    if (currentY > 280) {
+      doc.addPage();
+      currentY = 25;
+    }
+    doc.setFillColor(241, 245, 249);
+    doc.rect(15, currentY - 5, 180, 8, 'F');
+    doc.setFont("helvetica", "bold");
+    doc.text("GRAND CUMULATIVE TOTALS", 28, currentY);
+    doc.text(totalDepositExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 150, currentY);
+    doc.text(totalRentExpenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 175, currentY);
+    
+    doc.save("Corporate_Camp_Accommodation_Expenses_Summary.pdf");
+  };
+
   const handleExportExcel = () => {
     const wsData = filteredCamps.map((item, idx) => ({
       'S.No': idx + 1,
@@ -114,6 +214,13 @@ export const CampView: React.FC<CampViewProps> = ({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleDownloadPdfSummary}
+            className="flex items-center gap-2 bg-indigo-50 text-indigo-750 hover:bg-indigo-100 px-4.5 py-2.5 rounded-xl text-xs font-black border border-indigo-105 shadow-sm active:scale-95 transition-all cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>Download PDF Summary</span>
+          </button>
           <button
             onClick={handleExportExcel}
             className="flex items-center gap-2 bg-emerald-50 text-emerald-750 hover:bg-emerald-100 px-4.5 py-2.5 rounded-xl text-xs font-black border border-emerald-100 shadow-sm active:scale-95 transition-all cursor-pointer"
@@ -260,6 +367,15 @@ export const CampView: React.FC<CampViewProps> = ({
                     </td>
                     <td className="py-4.5 px-6 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        {item.attachment && (
+                          <button
+                            onClick={() => setViewingAttachment({ doc: item.attachment!, name: item.campName })}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all active:scale-95 cursor-pointer"
+                            title="View Active Invoice"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           onClick={() => onEdit(item)}
                           className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all active:scale-95 cursor-pointer"
@@ -283,6 +399,56 @@ export const CampView: React.FC<CampViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Dynamic Attachment Lightbox Viewer */}
+      <AnimatePresence>
+        {viewingAttachment && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+            <div className="bg-white rounded-[2.5rem] w-full max-w-4xl h-[85vh] overflow-hidden border border-slate-200/50 shadow-2xl flex flex-col relative">
+              {/* Head Section */}
+              <div className="bg-slate-900 text-white px-6.5 py-5 flex items-center justify-between">
+                <div>
+                  <h4 className="font-extrabold text-sm tracking-tight">{viewingAttachment.name}</h4>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Camp Document Preview</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a 
+                    href={viewingAttachment.doc} 
+                    download={`CAMP_${viewingAttachment.name.replace(/\s+/g, '_')}_document`}
+                    className="p-2 bg-slate-800 hover:bg-slate-705 text-slate-200 hover:text-white rounded-xl transition-all active:scale-95 flex items-center gap-1.5 text-xs font-black px-4"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Download</span>
+                  </a>
+                  <button 
+                    onClick={() => setViewingAttachment(null)}
+                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-all active:scale-95"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Viewer Container */}
+              <div className="flex-1 bg-slate-100 flex items-center justify-center p-6 overflow-auto">
+                {viewingAttachment.doc.startsWith('data:application/pdf') || viewingAttachment.doc.includes('pdf') ? (
+                  <iframe 
+                    src={viewingAttachment.doc} 
+                    className="w-full h-full rounded-2xl border-0 bg-white shadow"
+                    title="PDF Document"
+                  />
+                ) : (
+                  <img 
+                    src={viewingAttachment.doc} 
+                    alt="Camp Document" 
+                    className="max-w-full max-h-full rounded-2xl object-contain shadow-lg bg-white"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -306,10 +472,12 @@ export const CampModal: React.FC<CampModalProps> = ({
     dueDate: camp?.dueDate || '',
     startDate: camp?.startDate || '',
     endDate: camp?.endDate || '',
-    description: camp?.description || ''
+    description: camp?.description || '',
+    attachment: camp?.attachment || ''
   });
 
   const [validationError, setValidationError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const monthsList = [
     "January", "February", "March", "April", "May", "June",
@@ -318,6 +486,23 @@ export const CampModal: React.FC<CampModalProps> = ({
   
   const currentYearVal = new Date().getFullYear();
   const yearOptions = [currentYearVal - 1, currentYearVal, currentYearVal + 1, currentYearVal + 2];
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File size exceeds 5MB limit.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result as string;
+      setFormData(prev => ({ ...prev, attachment: b64 }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -343,7 +528,8 @@ export const CampModal: React.FC<CampModalProps> = ({
       dueDate: formData.dueDate,
       startDate: formData.startDate || new Date().toISOString().split('T')[0],
       endDate: formData.endDate || new Date(Date.now() + 31536000000).toISOString().split('T')[0],
-      description: formData.description.trim()
+      description: formData.description.trim(),
+      attachment: formData.attachment
     });
   };
 
@@ -499,6 +685,61 @@ export const CampModal: React.FC<CampModalProps> = ({
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200/50 rounded-xl p-3 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-650"
               />
+            </div>
+          </div>
+
+          {/* Attachment Upload Field */}
+          <div className="space-y-1.5 pt-1">
+            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+              Contract or Rent Payment Receipt (PDF / Image - Max 5MB)
+            </label>
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-2xl p-4.5 bg-slate-50/50 hover:bg-slate-50 text-center cursor-pointer transition-all space-y-1.5 focus:outline-none"
+            >
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileChange} 
+                accept="application/pdf,image/*" 
+                className="hidden" 
+              />
+              
+              {formData.attachment ? (
+                <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-indigo-100 shadow-sm">
+                  <div className="flex items-center gap-2 text-left min-w-0">
+                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-700 truncate max-w-[180px]">
+                        Invoice Document Uploaded
+                      </p>
+                      <p className="text-[10px] text-emerald-600 font-extrabold flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> Ready
+                      </p>
+                    </div>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFormData(prev => ({ ...prev, attachment: '' }));
+                    }}
+                    className="p-1 px-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-bold transition-all"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-1">
+                  <div className="p-2.5 bg-slate-100 text-slate-500 rounded-xl mb-1.5">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <p className="text-xs font-black text-slate-700">Upload or Drag Invoice document</p>
+                  <p className="text-[10px] text-slate-400 font-semibold">Supports PDFs, PNGs, JPGs up to 5MB</p>
+                </div>
+              )}
             </div>
           </div>
 
