@@ -74,6 +74,11 @@ service cloud.firestore {
       allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance');
     }
 
+    match /vouchers/{voucherId} {
+      allow read: if isAuthenticated();
+      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance');
+    }
+
     match /everyday_expenses/{eeId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();

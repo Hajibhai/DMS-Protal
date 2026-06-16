@@ -681,5 +681,29 @@ export interface CampExpense {
   description?: string;
 }
 
+export interface Voucher {
+    id: string;
+    voucherType: 'payment' | 'receipt';
+    voucherNo: string;
+    date: string; // YYYY-MM-DD
+    payeeOrReceiver: string; // Paid To / Received From
+    amount: number;
+    vatRate?: number; // e.g. 5
+    vatAmount?: number;
+    totalAmount: number;
+    paymentMode: 'Cash' | 'Bank Transfer' | 'Cheque' | 'Credit Card' | 'Other';
+    chequeOrRefNo?: string;
+    description: string;
+    preparedBy: string;
+    preparedByUid: string;
+    approvedBy?: string;
+    approvedByUid?: string;
+    receivedBy?: string;
+    projectId?: string; // associated project
+    companyId?: string; // buyer/seller company ID matching corporate accounts
+    attachment?: string; // Base64 document attachment
+    uploadedDate?: string;
+}
+
 
 

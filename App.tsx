@@ -114,7 +114,8 @@ import {
   CorporateBankAccount,
   CampExpense,
   Task,
-  Note
+  Note,
+  Voucher
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -133,7 +134,7 @@ import {
   saveEverydayExpense, deleteEverydayExpense,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType,
   saveHoliday, deleteHoliday, saveEngineerDocument, deleteEngineerDocument,
-  saveCamp, deleteCamp
+  saveCamp, deleteCamp, saveVoucher, deleteVoucher
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
 import SmartCommand from './components/SmartCommand';
@@ -152,6 +153,7 @@ import { EngineerView } from './components/EngineerView';
 import TasksNotesView from './components/TasksNotesView';
 import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/ExperienceLetterView';
 import { NocView } from './components/NocView';
+import { VouchersView } from './components/VouchersView';
 
 // --- Image Compression Helper ---
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
@@ -4173,6 +4175,7 @@ export default function App() {
   const [projectedExpenses, setProjectedExpenses] = useState<ProjectedExpense[]>([]);
   const [everydayExpenses, setEverydayExpenses] = useState<EverydayExpense[]>([]);
   const [camps, setCamps] = useState<CampExpense[]>([]);
+  const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [showCampModal, setShowCampModal] = useState<CampExpense | boolean>(false);
   const [engineerDocuments, setEngineerDocuments] = useState<EngineerDocument[]>([]);
   const [cicpaRecords, setCicpaRecords] = useState<CICPARecord[]>([]);
@@ -4579,6 +4582,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'camps');
     });
 
+    const unsubVouchers = onSnapshot(collection(db, 'vouchers'), (snap) => {
+      setVouchers(snap.docs.map(d => d.data() as Voucher));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'vouchers');
+    });
+
     const unsubEngineerDocs = onSnapshot(collection(db, 'engineer_documents'), (snap) => {
       setEngineerDocuments(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EngineerDocument));
     }, (error) => {
@@ -4655,6 +4664,7 @@ export default function App() {
       unsubProjectedExpenses();
       unsubEverydayExpenses();
       unsubCamps();
+      unsubVouchers();
       unsubEngineerDocs();
       unsubCICPA();
       unsubSafety();
@@ -5276,6 +5286,28 @@ export default function App() {
     });
   };
 
+  const handleSaveVoucher = async (data: Voucher) => {
+    await saveVoucher(data);
+    const isUpdate = vouchers.some(v => v.id === data.id);
+    handleLogAction(
+      isUpdate ? 'Voucher Updated' : 'Voucher Added',
+      `${data.voucherType === 'payment' ? 'Payment' : 'Receipt'} voucher ${data.voucherNo} was ${isUpdate ? 'updated' : 'added'}.`,
+      isUpdate ? 'update' : 'create'
+    );
+  };
+
+  const handleDeleteVoucher = async (id: string) => {
+    const voucher = vouchers.find(v => v.id === id);
+    if (voucher) {
+      await deleteVoucher(id);
+      handleLogAction(
+        'Voucher Deleted',
+        `${voucher.voucherType === 'payment' ? 'Payment' : 'Receipt'} voucher ${voucher.voucherNo} was deleted.`,
+        'delete'
+      );
+    }
+  };
+
   const handleSaveEngineerDocument = async (docData: EngineerDocument) => {
     await saveEngineerDocument(docData);
     const isUpdate = engineerDocuments.some(d => d.id === docData.id);
@@ -5344,6 +5376,7 @@ export default function App() {
           { id: 'accounts-receivable', label: 'Invoices (Accounts Receivable)', icon: TrendingUp, permission: 'canManageFinance' },
           { id: 'petty-cash', label: 'Petty Cash', icon: Wallet, permission: 'canManageFinance' },
           { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet, permission: 'canManageFinance' },
+          { id: 'vouchers', label: 'Add Vouchers Section', icon: FileText, permission: 'canManageFinance' },
           { id: 'camp', label: 'Camp', icon: Home, permission: 'canManageFinance' },
           { id: 'projected-expenses', label: 'Project Expenses', icon: TrendingDown, permission: 'canManageFinance' },
           { id: 'engineer-hub', label: 'Procurement Documents', icon: HardHat, permission: 'canManageFinance' },
@@ -5970,6 +6003,17 @@ export default function App() {
             }
           }}
           user={systemUser}
+        />
+      )}
+      {activeTab === 'vouchers' && (
+        <VouchersView
+          data={vouchers}
+          projects={projects}
+          companies={companies}
+          user={systemUser || CREATOR_USER}
+          onSave={handleSaveVoucher}
+          onDelete={handleDeleteVoucher}
+          openConfirm={openConfirm}
         />
       )}
       {activeTab === 'everyday-expenses' && (
