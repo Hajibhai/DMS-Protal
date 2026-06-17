@@ -1037,6 +1037,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
     const [viewingBill, setViewingBill] = useState<string | null>(null);
+    const [kpiFilter, setKpiFilter] = useState<'all' | 'paid' | 'pending' | 'vat' | null>(null);
 
     // Advanced Filter State variables
     const [isAdvFilterOpen, setIsAdvFilterOpen] = useState(false);
@@ -1196,6 +1197,22 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         });
     }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, filterCompany, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
 
+    const ledgerFilteredData = useMemo(() => {
+        if (!kpiFilter || kpiFilter === 'all') return filteredData;
+        return (filteredData || []).filter((item: any) => {
+            if (kpiFilter === 'paid') {
+                return item.status === 'Paid';
+            }
+            if (kpiFilter === 'pending') {
+                return item.status !== 'Paid';
+            }
+            if (kpiFilter === 'vat') {
+                return (item.vatAmount || 0) > 0;
+            }
+            return true;
+        });
+    }, [filteredData, kpiFilter]);
+
     const activeFiltersCount = useMemo(() => {
         let count = 0;
         if (dateFilterMode !== 'all') count++;
@@ -1208,8 +1225,9 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         if (filterProject !== 'All') count++;
         if (filterMonth !== 'All') count++;
         if (filterCompany !== 'All') count++;
+        if (kpiFilter && kpiFilter !== 'all') count++;
         return count;
-    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, filterCompany, dateFilterMode]);
+    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, filterCompany, dateFilterMode, kpiFilter]);
 
     const handleClearAdvFilters = () => {
         setStartDate('');
@@ -1226,6 +1244,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         setSelectedMonthValue('');
         setCustomRangeStart('');
         setCustomRangeEnd('');
+        setKpiFilter(null);
     };
 
     // Calculate dynamic high-level metrics based on filtered data to stay in sync
@@ -1694,52 +1713,96 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
             {/* Financial Summary Ribbons */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-blue-100 transition-all">
+                <div 
+                    onClick={() => setKpiFilter(!kpiFilter || kpiFilter === 'all' ? null : 'all')}
+                    className={cn(
+                        "bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md active:scale-[0.99] transition-all cursor-pointer relative overflow-hidden",
+                        (!kpiFilter || kpiFilter === 'all') 
+                            ? "border-blue-500 bg-blue-50/15 shadow-blue-50/40 ring-1 ring-blue-500/20" 
+                            : "border-slate-100 hover:border-blue-300"
+                    )}
+                >
                     <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Total Supplier Bills</span>
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono font-bold">Total Supplier Bills</span>
                         <div className="p-2 bg-blue-50 text-blue-600 rounded-2xl">
                             <FileText className="w-4 h-4" />
                         </div>
                     </div>
                     <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalBills.toLocaleString()}</p>
-                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono">Billed count: {metrics.count} invoices</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono font-bold">Billed count: {metrics.count} invoices</p>
+                    {(!kpiFilter || kpiFilter === 'all') && (
+                        <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-blue-500" />
+                    )}
                 </div>
 
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-emerald-100 transition-all">
+                <div 
+                    onClick={() => setKpiFilter(kpiFilter === 'paid' ? null : 'paid')}
+                    className={cn(
+                        "bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md active:scale-[0.99] transition-all cursor-pointer relative overflow-hidden",
+                        (kpiFilter === 'paid') 
+                            ? "border-emerald-500 bg-emerald-50/15 shadow-emerald-50/40 ring-1 ring-emerald-500/20" 
+                            : "border-slate-100 hover:border-emerald-300"
+                    )}
+                >
                     <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Cleared Outflows (Paid)</span>
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono font-bold">Cleared Outflows (Paid)</span>
                         <div className="p-2 bg-emerald-50 text-emerald-600 rounded-2xl">
                             <CheckCircle className="w-4 h-4" />
                         </div>
                     </div>
                     <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalPaid.toLocaleString()}</p>
-                    <p className="text-[10px] text-emerald-600 font-bold mt-2 font-mono">
+                    <p className="text-[10px] text-emerald-600 font-bold mt-2 font-mono font-bold">
                         Payment rate: {metrics.totalBills > 0 ? ((metrics.totalPaid / metrics.totalBills) * 100).toFixed(1) : 0}% ({metrics.paidCount} paid)
                     </p>
+                    {(kpiFilter === 'paid') && (
+                        <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    )}
                 </div>
 
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-rose-100 transition-all">
+                <div 
+                    onClick={() => setKpiFilter(kpiFilter === 'pending' ? null : 'pending')}
+                    className={cn(
+                        "bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md active:scale-[0.99] transition-all cursor-pointer relative overflow-hidden",
+                        (kpiFilter === 'pending') 
+                            ? "border-rose-500 bg-rose-50/15 shadow-rose-50/40 ring-1 ring-rose-500/20" 
+                            : "border-slate-100 hover:border-rose-300"
+                    )}
+                >
                     <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Aged Supplier Payables</span>
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono font-bold">Aged Supplier Payables</span>
                         <div className="p-2 bg-rose-50 text-rose-600 rounded-2xl">
                             <Clock className="w-4 h-4" />
                         </div>
                     </div>
                     <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalPending.toLocaleString()}</p>
-                    <p className="text-[10px] text-rose-600 font-bold mt-2 font-mono">
+                    <p className="text-[10px] text-rose-600 font-bold mt-2 font-mono font-bold">
                         {metrics.totalBills > 0 ? ((metrics.totalPending / metrics.totalBills) * 100).toFixed(1) : 0}% outstanding ({metrics.pendingCount} unpaid)
                     </p>
+                    {(kpiFilter === 'pending') && (
+                        <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                    )}
                 </div>
 
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-slate-200 transition-all">
+                <div 
+                    onClick={() => setKpiFilter(kpiFilter === 'vat' ? null : 'vat')}
+                    className={cn(
+                        "bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md active:scale-[0.99] transition-all cursor-pointer relative overflow-hidden",
+                        (kpiFilter === 'vat') 
+                            ? "border-indigo-500 bg-indigo-50/15 shadow-indigo-50/40 ring-1 ring-indigo-500/20" 
+                            : "border-slate-100 hover:border-indigo-300"
+                    )}
+                >
                     <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">5% Input Tax (Recoverable)</span>
-                        <div className="p-2 bg-slate-50 text-slate-600 rounded-2xl">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono font-bold">5% Input Tax (Recoverable)</span>
+                        <div className="p-2 bg-indigo-50 text-indigo-600 rounded-2xl">
                             <Percent className="w-4 h-4" />
                         </div>
                     </div>
                     <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalVat.toLocaleString()}</p>
-                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono">Claimable VAT on ledger</p>
+                    <p className="text-[10px] text-indigo-600 font-bold mt-2 font-mono font-bold font-bold">Claimable VAT on ledger</p>
+                    {(kpiFilter === 'vat') && (
+                        <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                    )}
                 </div>
             </div>
 
@@ -2031,7 +2094,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         title="Accounts Payable Ledger"
                         description="Filtered list of supplier billings and payments matching specified constraints."
                         icon={TrendingDown}
-                        data={filteredData}
+                        data={ledgerFilteredData}
                         columns={[
                             { 
                                 key: 'srNo', 
@@ -4137,6 +4200,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const [previewInvoiceItem, setPreviewInvoiceItem] = useState<{ item: any; comp: any; client: any } | null>(null);
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
+    const [kpiFilter, setKpiFilter] = useState<'all' | 'collected' | 'pending' | 'vat' | null>(null);
 
     // Advanced Filter State variables
     const [isAdvFilterOpen, setIsAdvFilterOpen] = useState(false);
@@ -4284,6 +4348,22 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         });
     }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
 
+    const ledgerFilteredData = useMemo(() => {
+        if (!kpiFilter || kpiFilter === 'all') return filteredData;
+        return (filteredData || []).filter((item: any) => {
+            if (kpiFilter === 'collected') {
+                return item.status === 'Received';
+            }
+            if (kpiFilter === 'pending') {
+                return item.status !== 'Received';
+            }
+            if (kpiFilter === 'vat') {
+                return (item.vatAmount || 0) > 0;
+            }
+            return true;
+        });
+    }, [filteredData, kpiFilter]);
+
     const activeFiltersCount = useMemo(() => {
         let count = 0;
         if (dateFilterMode !== 'all') count++;
@@ -4296,8 +4376,9 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         if (filterProject !== 'All') count++;
         if (filterCompany !== 'All') count++;
         if (filterMonth !== 'All') count++;
+        if (kpiFilter && kpiFilter !== 'all') count++;
         return count;
-    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth, dateFilterMode]);
+    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth, dateFilterMode, kpiFilter]);
 
     const handleClearAdvFilters = () => {
         setStartDate('');
@@ -4314,6 +4395,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         setSelectedMonthValue('');
         setCustomRangeStart('');
         setCustomRangeEnd('');
+        setKpiFilter(null);
     };
 
     // Statement of Account Items filter logic
@@ -4775,52 +4857,96 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
             {/* Financial Summary Ribbons */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-blue-100 transition-all">
+                <div 
+                    onClick={() => setKpiFilter(!kpiFilter || kpiFilter === 'all' ? null : 'all')}
+                    className={cn(
+                        "bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md active:scale-[0.99] transition-all cursor-pointer relative overflow-hidden",
+                        (!kpiFilter || kpiFilter === 'all') 
+                            ? "border-blue-500 bg-blue-50/15 shadow-blue-50/40 ring-1 ring-blue-500/20" 
+                            : "border-slate-100 hover:border-blue-300"
+                    )}
+                >
                     <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Total Billed Invoices</span>
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono font-bold">Total Billed Invoices</span>
                         <div className="p-2 bg-blue-50 text-blue-600 rounded-2xl">
                             <FileText className="w-4 h-4" />
                         </div>
                     </div>
                     <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalBilled.toLocaleString()}</p>
-                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono">Invoiced count: {metrics.count} bills</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono font-bold">Invoiced count: {metrics.count} bills</p>
+                    {(!kpiFilter || kpiFilter === 'all') && (
+                        <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-blue-500" />
+                    )}
                 </div>
 
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-emerald-100 transition-all">
+                <div 
+                    onClick={() => setKpiFilter(kpiFilter === 'collected' ? null : 'collected')}
+                    className={cn(
+                        "bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md active:scale-[0.99] transition-all cursor-pointer relative overflow-hidden",
+                        (kpiFilter === 'collected') 
+                            ? "border-emerald-500 bg-emerald-50/15 shadow-emerald-50/40 ring-1 ring-emerald-500/20" 
+                            : "border-slate-100 hover:border-emerald-300"
+                    )}
+                >
                     <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Revenue Collected</span>
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono font-bold">Revenue Collected</span>
                         <div className="p-2 bg-emerald-50 text-emerald-600 rounded-2xl">
                             <CheckCircle className="w-4 h-4" />
                         </div>
                     </div>
                     <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalCollected.toLocaleString()}</p>
-                    <p className="text-[10px] text-emerald-600 font-bold mt-2 font-mono">
+                    <p className="text-[10px] text-emerald-600 font-bold mt-2 font-mono font-bold">
                         Settle rate: {metrics.totalBilled > 0 ? ((metrics.totalCollected / metrics.totalBilled) * 100).toFixed(1) : 0}% ({metrics.collectedCount} settled)
                     </p>
+                    {(kpiFilter === 'collected') && (
+                        <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    )}
                 </div>
 
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-indigo-100 transition-all">
+                <div 
+                    onClick={() => setKpiFilter(kpiFilter === 'pending' ? null : 'pending')}
+                    className={cn(
+                        "bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md active:scale-[0.99] transition-all cursor-pointer relative overflow-hidden",
+                        (kpiFilter === 'pending') 
+                            ? "border-indigo-500 bg-indigo-50/15 shadow-indigo-50/40 ring-1 ring-indigo-500/20" 
+                            : "border-slate-100 hover:border-indigo-300"
+                    )}
+                >
                     <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">Outstanding Receivables</span>
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono font-bold">Outstanding Receivables</span>
                         <div className="p-2 bg-indigo-50 text-indigo-600 rounded-2xl">
                             <Clock className="w-4 h-4" />
                         </div>
                     </div>
                     <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalPending.toLocaleString()}</p>
-                    <p className="text-[10px] text-amber-600 font-bold mt-2 font-mono">
+                    <p className="text-[10px] text-amber-600 font-bold mt-2 font-mono font-bold">
                         {metrics.totalBilled > 0 ? ((metrics.totalPending / metrics.totalBilled) * 100).toFixed(1) : 0}% pending ({metrics.pendingCount} unpaid)
                     </p>
+                    {(kpiFilter === 'pending') && (
+                        <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                    )}
                 </div>
 
-                <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm hover:border-slate-200 transition-all">
+                <div 
+                    onClick={() => setKpiFilter(kpiFilter === 'vat' ? null : 'vat')}
+                    className={cn(
+                        "bg-white border rounded-3xl p-5 shadow-sm hover:shadow-md active:scale-[0.99] transition-all cursor-pointer relative overflow-hidden",
+                        (kpiFilter === 'vat') 
+                            ? "border-amber-500 bg-amber-50/15 shadow-amber-50/40 ring-1 ring-amber-500/20" 
+                            : "border-slate-100 hover:border-amber-300"
+                    )}
+                >
                     <div className="flex justify-between items-center mb-3">
-                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono">5% Output Tax (VAT)</span>
-                        <div className="p-2 bg-slate-50 text-slate-600 rounded-2xl">
+                        <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 font-mono font-bold">5% Output Tax (VAT)</span>
+                        <div className="p-2 bg-slate-50 text-slate-655 rounded-2xl">
                             <Percent className="w-4 h-4" />
                         </div>
                     </div>
                     <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalVat.toLocaleString()}</p>
-                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono">Collected Output VAT on ledger</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-2 font-mono font-bold">Collected Output VAT on ledger</p>
+                    {(kpiFilter === 'vat') && (
+                        <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    )}
                 </div>
             </div>
 
@@ -5096,7 +5222,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                         title="Accounts Receivable Ledger"
                         description="Standard general ledger list of client billings and collections."
                         icon={TrendingUp}
-                        data={filteredData}
+                        data={ledgerFilteredData}
                         columns={[
                         { key: 'date', label: 'Date', sortable: true },
                         { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
