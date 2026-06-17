@@ -147,6 +147,7 @@ interface DataTableProps<T> {
     onDelete?: (item: T) => void;
     onViewBill?: (item: T) => void;
     onDownloadStatement?: (item: T) => void;
+    onViewDetails?: (item: T) => void;
     searchPlaceholder?: string;
     searchFields: (keyof T)[];
     exportFileName: string;
@@ -178,6 +179,7 @@ export function DataTable<T extends { id: string }>({
     onDelete,
     onViewBill,
     onDownloadStatement,
+    onViewDetails,
     searchPlaceholder = "Search...",
     searchFields,
     exportFileName,
@@ -872,7 +874,7 @@ export function DataTable<T extends { id: string }>({
                                         </div>
                                     </th>
                                 ))}
-                                {(onEdit || onDelete || onViewBill || onDownloadStatement) && (
+                                {(onEdit || onDelete || onViewBill || onDownloadStatement || onViewDetails) && (
                                     <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
                                         Actions
                                     </th>
@@ -903,9 +905,18 @@ export function DataTable<T extends { id: string }>({
                                             {col.render ? col.render(item, index) : String((item as any)[col.key] || '-')}
                                         </td>
                                     ))}
-                                    {(onEdit || onDelete || onViewBill || onDownloadStatement) && (
-                                        <td className="px-6 py-5 text-right">
-                                            <div className="flex items-center justify-end gap-2 transition-opacity">
+                                    {(onEdit || onDelete || onViewBill || onDownloadStatement || onViewDetails) && (
+                                        <td className="px-6 py-5 text-right font-mono text-sm leading-none shrink-0">
+                                            <div className="flex items-center justify-end gap-1.5 transition-opacity">
+                                                {onViewDetails && (
+                                                    <button 
+                                                        onClick={() => onViewDetails(item)}
+                                                        className="p-1.5 hover:bg-white rounded-lg text-slate-450 hover:text-indigo-600 transition-all shadow-2xs border border-transparent hover:border-slate-100 cursor-pointer"
+                                                        title="View All Details"
+                                                    >
+                                                        <Eye className="w-4.5 h-4.5" />
+                                                    </button>
+                                                )}
                                                 {onDownloadStatement && (
                                                     <button 
                                                         onClick={() => onDownloadStatement(item)}
@@ -919,9 +930,9 @@ export function DataTable<T extends { id: string }>({
                                                     <button 
                                                         onClick={() => onViewBill(item)}
                                                         className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
-                                                        title="View Attached Bill"
+                                                        title="View Attached Invoice Document"
                                                     >
-                                                        <Eye className="w-4 h-4" />
+                                                        <Paperclip className="w-4 h-4" />
                                                     </button>
                                                 )}
                                                 {onEdit && (
@@ -947,7 +958,7 @@ export function DataTable<T extends { id: string }>({
                             ))}
                             {filteredData.length === 0 && (
                                 <tr>
-                                    <td colSpan={columns.length + (onEdit || onDelete || onViewBill || onDownloadStatement ? 1 : 0) + (enableMultiSelect && isAdmin ? 1 : 0)} className="px-6 py-20 text-center">
+                                    <td colSpan={columns.length + (onEdit || onDelete || onViewBill || onDownloadStatement || onViewDetails ? 1 : 0) + (enableMultiSelect && isAdmin ? 1 : 0)} className="px-6 py-20 text-center">
                                         <div className="flex flex-col items-center gap-3">
                                             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center">
                                                 <Search className="w-8 h-8 text-slate-200" />
@@ -1037,6 +1048,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
     const [viewingBill, setViewingBill] = useState<string | null>(null);
+    const [viewingRecordDetail, setViewingRecordDetail] = useState<AccountsPayable | null>(null);
     const [kpiFilter, setKpiFilter] = useState<'all' | 'paid' | 'pending' | 'vat' | null>(null);
 
     // Advanced Filter State variables
@@ -2127,6 +2139,23 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 exportText: (item) => item.supplierCode || ''
                             },
                             { 
+                                key: 'trn', 
+                                label: 'TRN No',
+                                sortable: true,
+                                render: (item) => {
+                                    const payee = (item.vendorType === 'Supplier' ? suppliers : vendors)?.find((s: any) => s.id === item.vendorId);
+                                    return (
+                                        <span className="font-mono text-xs text-slate-600 font-extrabold block">
+                                            {payee?.trn || '-'}
+                                        </span>
+                                    );
+                                },
+                                exportText: (item) => {
+                                    const payee = (item.vendorType === 'Supplier' ? suppliers : vendors)?.find((s: any) => s.id === item.vendorId);
+                                    return payee?.trn || '';
+                                }
+                            },
+                            { 
                                 key: 'invoiceNumber', 
                                 label: 'Invoice Number', 
                                 sortable: true,
@@ -2330,10 +2359,13 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         enableMultiSelect={true}
                         onUploadExcel={onUploadExcel}
                         onViewBill={(item) => setViewingBill(item.attachment || null)}
+                        onViewDetails={(item) => setViewingRecordDetail(item)}
                         customSearch={(item, query) => {
                             const vName = getVendorName(item.vendorId, item.vendorType).toLowerCase();
                             const pName = getProjectName(item.projectId).toLowerCase();
-                            return vName.includes(query) || pName.includes(query);
+                            const payee = (item.vendorType === 'Supplier' ? suppliers : vendors)?.find((s: any) => s.id === item.vendorId);
+                            const trnVal = (payee?.trn || '').toLowerCase();
+                            return vName.includes(query) || pName.includes(query) || trnVal.includes(query);
                         }}
                         searchFields={['invoiceNumber', 'description']}
                         exportFileName="Accounts_Payable"
@@ -2948,6 +2980,16 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
             {/* High-fidelity Invoice Image and PDF Attachment Viewer Modal */}
             <AnimatePresence>
+                {viewingRecordDetail && (
+                    <AccountsPayableDetailModal
+                        item={viewingRecordDetail}
+                        vendors={vendors}
+                        suppliers={suppliers}
+                        projects={projects}
+                        companies={companies}
+                        onClose={() => setViewingRecordDetail(null)}
+                    />
+                )}
                 {viewingBill && (
                     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-md no-print">
                         <motion.div 
@@ -8416,6 +8458,18 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     ))
                                 }
                             </select>
+                            {formData.vendorId && (() => {
+                                const payee = (formData.vendorType === 'Supplier' ? suppliers : vendors)?.find((s: any) => s.id === formData.vendorId);
+                                return payee?.trn ? (
+                                    <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 mt-1.5 text-xs text-slate-500 font-medium flex items-center justify-between">
+                                        <span>TRN Registered: <strong className="font-mono font-extrabold text-indigo-600">{payee.trn}</strong></span>
+                                    </div>
+                                ) : (
+                                    <div className="bg-amber-50/50 border border-amber-100 rounded-xl px-4 py-2 mt-1.5 text-xs text-amber-600 font-medium select-none">
+                                        ⚠️ Selected {formData.vendorType === 'Supplier' ? 'supplier' : 'client'} has no TRN registered in settings / directory!
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
 
@@ -8728,6 +8782,535 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
                     <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
                     <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Entry</button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
+export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects, onClose, companies }: any) => {
+    if (!item) return null;
+
+    // Resolve entities names
+    const payeeName = (() => {
+        if (item.supplierName) return item.supplierName;
+        const list = item.vendorType === 'Supplier' ? suppliers : vendors;
+        const found = list?.find((s: any) => s.id === item.vendorId);
+        return found ? found.name : 'Unknown';
+    })();
+
+    const payeeCode = (() => {
+        if (item.supplierCode) return item.supplierCode;
+        const list = item.vendorType === 'Supplier' ? suppliers : vendors;
+        const found = list?.find((s: any) => s.id === item.vendorId);
+        return found ? found.code : '-';
+    })();
+
+    const payeeTrn = (() => {
+        const list = item.vendorType === 'Supplier' ? suppliers : vendors;
+        const found = list?.find((s: any) => s.id === item.vendorId);
+        return found ? found.trn : '-';
+    })();
+
+    const projectName = (() => {
+        const found = projects?.find((p: any) => p.id === item.projectId);
+        return found ? found.name : '-';
+    })();
+
+    const companyName = (() => {
+        const found = companies?.find((c: any) => c.id === item.companyId);
+        return found ? found.name : '-';
+    })();
+
+    // Compute standard calculated values if missing
+    const actual = item.actualAmount !== undefined ? item.actualAmount : ((item.amount || 0) - (item.deduction || 0));
+    const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+    const total = item.totalAmount !== undefined ? item.totalAmount : Number((actual + vat).toFixed(2));
+    const advanceVal = item.advance || 0;
+    const deductionVal = item.deduction || 0;
+    const paidVal = item.paid || 0;
+    const computedPayable = item.payableAmount !== undefined ? item.payableAmount : Number((total - paidVal - advanceVal).toFixed(2));
+
+    const handlePrintRecord = () => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        const html = `
+            <html>
+                <head>
+                    <title>Bill Entry - Inv #${item.invoiceNumber || '-'}</title>
+                    <style>
+                        body { 
+                            font-family: system-ui, -apple-system, sans-serif; 
+                            color: #1e293b; 
+                            background-color: #ffffff;
+                            margin: 40px;
+                            line-height: 1.5;
+                        }
+                        .header {
+                            border-bottom: 2px solid #e2e8f0;
+                            padding-bottom: 20px;
+                            margin-bottom: 30px;
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: flex-end;
+                        }
+                        .title { font-size: 24px; font-weight: 800; color: #0f172a; margin: 0; }
+                        .subtitle { font-size: 14px; color: #64748b; margin-top: 5px; }
+                        .section-title {
+                            font-size: 12px;
+                            font-weight: 800;
+                            text-transform: uppercase;
+                            letter-spacing: 0.1em;
+                            color: #475569;
+                            border-bottom: 1px solid #cbd5e1;
+                            padding-bottom: 5px;
+                            margin-top: 30px;
+                            margin-bottom: 15px;
+                        }
+                        .grid {
+                            display: grid;
+                            grid-template-cols: repeat(2, 1fr);
+                            gap: 15px;
+                        }
+                        .grid-col {
+                            display: flex;
+                            flex-direction: column;
+                        }
+                        .label {
+                            font-size: 10px;
+                            font-weight: 800;
+                            text-transform: uppercase;
+                            color: #94a3b8;
+                            letter-spacing: 0.05em;
+                        }
+                        .value {
+                            font-size: 13px;
+                            font-weight: 700;
+                            color: #334155;
+                            margin-top: 3px;
+                        }
+                        .value-mono {
+                            font-family: monospace;
+                        }
+                        .financial-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-top: 15px;
+                        }
+                        .financial-table th {
+                            background-color: #f8fafc;
+                            color: #475569;
+                            border: 1px solid #cbd5e1;
+                            padding: 8px 12px;
+                            font-size: 10px;
+                            font-weight: 800;
+                            text-align: right;
+                            text-transform: uppercase;
+                        }
+                        .financial-table th:first-child { text-align: left; }
+                        .financial-table td {
+                            border: 1px solid #e2e8f0;
+                            padding: 10px 12px;
+                            font-size: 12px;
+                            text-align: right;
+                            font-weight: 600;
+                        }
+                        .financial-table td:first-child { text-align: left; font-weight: 700; color: #475569; }
+                        .payable-highlight {
+                            background-color: #fef3c7;
+                            color: #92400e;
+                            font-weight: 800 !important;
+                            font-size: 14px !important;
+                        }
+                        .payable-clear {
+                            background-color: #dcfce7;
+                            color: #166534;
+                            font-weight: 800 !important;
+                            font-size: 14px !important;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <div>
+                            <h1 class="title">Accounts Payable Billing Ledger</h1>
+                            <div class="subtitle">Single Record Audit sheet - Generated on ${new Date().toLocaleDateString('en-AE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="font-size: 14px; font-weight: 800; text-transform: uppercase; background: #f1f5f9; padding: 6px 12px; border-radius: 8px; color: #475569;">
+                                Status: ${item.status || '-'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="section-title">Record Identification</div>
+                    <div class="grid">
+                        <div class="grid-col">
+                            <span class="label">Invoice Number</span>
+                            <span class="value value-mono">${item.invoiceNumber || '-'}</span>
+                        </div>
+                        <div class="grid-col">
+                            <span class="label">Invoice Posting Date</span>
+                            <span class="value">${item.date || '-'}</span>
+                        </div>
+                        <div class="grid-col">
+                            <span class="label">Filing Corporate Entity / Buyer</span>
+                            <span class="value">${companyName || '-'}</span>
+                        </div>
+                        <div class="grid-col">
+                            <span class="label">Associated Project</span>
+                            <span class="value">${projectName || '-'}</span>
+                        </div>
+                    </div>
+
+                    <div class="section-title">Taxpayer & Payee Details</div>
+                    <div class="grid">
+                        <div class="grid-col">
+                            <span class="label">Supplier / Creditor Name</span>
+                            <span class="value">${payeeName} ${payeeCode !== '-' ? `(${payeeCode})` : ''}</span>
+                        </div>
+                        <div class="grid-col">
+                            <span class="label">Supplier TRN Number (VAT Registration)</span>
+                            <span class="value value-mono">${payeeTrn}</span>
+                        </div>
+                        <div class="grid-col">
+                            <span class="label">Payee Type</span>
+                            <span class="value">${item.vendorType || 'Supplier'}</span>
+                        </div>
+                    </div>
+
+                    <div class="section-title">Financial Ledger Position</div>
+                    <table class="financial-table">
+                        <thead>
+                            <tr>
+                                <th>Financial Component</th>
+                                <th>Value (AED)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Hours Logged</td>
+                                <td>${item.hours !== undefined ? item.hours : 0} hrs</td>
+                            </tr>
+                            <tr>
+                                <td>Taxable Base Amount (Bill Amount)</td>
+                                <td style="font-family: monospace;">AED ${(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            <tr>
+                                <td>Deduction (-)</td>
+                                <td style="font-family: monospace; color: #dc2626;">AED ${(deductionVal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            <tr>
+                                <td>Actual Work Value (Base - Deduction)</td>
+                                <td style="font-family: monospace;">AED ${(actual).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            <tr>
+                                <td>VAT Amount (5% on Actual Value)</td>
+                                <td style="font-family: monospace;">AED ${(vat).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            <tr style="background-color: #f8fafc; font-weight: 800;">
+                                <td>Grand Total (Actual + VAT)</td>
+                                <td style="font-family: monospace; color: #0f172a;">AED ${(total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            <tr>
+                                <td>Advance Paid Amount (-)</td>
+                                <td style="font-family: monospace; color: #4f46e5;">AED ${(advanceVal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            <tr>
+                                <td>Settled / Cleared Amount (-)</td>
+                                <td style="font-family: monospace; color: #16a34a;">AED ${(paidVal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            </tr>
+                            <tr class="${computedPayable > 0 ? 'payable-highlight' : 'payable-clear'}">
+                                <td>NET PAYABLE POSITION</td>
+                                <td style="font-family: monospace;">AED ${computedPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    ${item.description ? `
+                        <div class="section-title">Audit Notes & Remarks</div>
+                        <p style="font-size: 12px; color: #475569; background-color: #f8fafc; padding: 12px; border-radius: 8px; border: 1px dashed #cbd5e1; margin-top: 5px;">
+                            ${item.description}
+                        </p>
+                    ` : ''}
+
+                    ${item.chequeNo || item.chequeDate || item.chequeAmount ? `
+                        <div class="section-title">Cheque Settlement Information</div>
+                        <div class="grid">
+                            <div class="grid-col">
+                                <span class="label">Cheque Number</span>
+                                <span class="value value-mono">${item.chequeNo || '-'}</span>
+                            </div>
+                            <div class="grid-col">
+                                <span class="label">Cheque Settlement Date</span>
+                                <span class="value">${item.chequeDate || '-'}</span>
+                            </div>
+                            <div class="grid-col">
+                                <span class="label">Cheque Settlement Value</span>
+                                <span class="value value-mono">AED ${(item.chequeAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <div style="margin-top: 50px; font-size: 9px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 15px;">
+                        Pioneer DMS Portal • Automated Ledger Audit Copy • ID: ${item.id}
+                    </div>
+                </body>
+            </html>
+        `;
+
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 250);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4 overflow-y-auto animate-fadeIn">
+            <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-white rounded-[2.5rem] w-full max-w-4xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden max-h-[90vh]"
+            >
+                {/* Modal Header */}
+                <div className="p-8 border-b border-slate-100 bg-slate-50/20 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl shadow-inner shrink-0">
+                            <TrendingDown className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2.5">
+                                <h2 className="text-xl font-black text-slate-900 tracking-tight">Accounts Payable Detail View</h2>
+                                <span className={cn(
+                                    "px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full border",
+                                    item.status === 'Paid' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                                    item.status === 'Partially Paid' ? "bg-indigo-50 text-indigo-700 border-indigo-100" :
+                                    "bg-amber-50 text-amber-700 border-amber-100"
+                                )}>
+                                    {item.status}
+                                </span>
+                            </div>
+                            <p className="text-xs font-semibold text-slate-400 mt-0.5">Invoice: <span className="font-mono text-slate-600 font-extrabold">{item.invoiceNumber || '-'}</span> | ID: <span className="font-mono text-slate-400 font-bold">{item.id}</span></p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={onClose} 
+                        className="p-2 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-all cursor-pointer"
+                        title="Close Modal"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                {/* Modal Body (Scrollable container) */}
+                <div className="p-8 space-y-6 overflow-y-auto shrink select-text">
+                    {/* Identification Block */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div className="bg-slate-50/50 p-4.5 rounded-2xl border border-slate-100 space-y-1">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 block">Posting Date</span>
+                            <span className="font-bold text-sm text-slate-700 block">{item.date || '-'}</span>
+                        </div>
+                        <div className="bg-slate-50/50 p-4.5 rounded-2xl border border-slate-100 space-y-1">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 block">Payment Due Date</span>
+                            <span className="font-bold text-sm text-slate-700 block">{item.dueDate || '-'}</span>
+                        </div>
+                        <div className="bg-slate-50/50 p-4.5 rounded-2xl border border-slate-100 space-y-1 lg:col-span-2">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 block">Filing Corporate Entity (Buyer)</span>
+                            <span className="font-black text-sm text-brand-700 block whitespace-nowrap overflow-hidden text-ellipsis" title={companyName}>🏢 {companyName || '-'}</span>
+                        </div>
+                    </div>
+
+                    {/* Payee Details & Project Block */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-1.5 md:col-span-2">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 block">Supplier / Payee Details</span>
+                                <span className="bg-slate-200 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase">{item.vendorType || 'Supplier'}</span>
+                            </div>
+                            <span className="font-black text-base text-slate-800 block">{payeeName} {payeeCode !== '-' && <span className="text-xs text-slate-400 font-mono">({payeeCode})</span>}</span>
+                            <div className="flex items-center gap-1 text-xs text-slate-505 font-medium font-mono pt-1 border-t border-slate-100/50">
+                                <span className="font-sans text-[10px] font-black tracking-wider text-slate-400 uppercase">TRN:</span>
+                                <span className="text-indigo-600 font-extrabold">{payeeTrn !== '-' ? payeeTrn : 'Not Registered'}</span>
+                            </div>
+                        </div>
+                        <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-1.5">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 block">Associated Project</span>
+                            <div className="flex items-center gap-1.5 pt-1">
+                                <span className="text-[10px] p-1 bg-indigo-50 text-indigo-600 rounded-lg">📍</span>
+                                <span className="font-bold text-sm text-slate-700 block whitespace-nowrap overflow-hidden text-ellipsis" title={projectName}>{projectName || '-'}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Financial Positions Section */}
+                    <div className="space-y-3">
+                        <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest ml-1">Financial Breakdown</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-100 space-y-0.5">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Hours Logged</span>
+                                <span className="font-mono text-sm font-bold text-slate-700 block">{item.hours !== undefined ? item.hours : 0} hrs</span>
+                            </div>
+                            <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-100 space-y-0.5">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Base Bill Amount</span>
+                                <span className="font-mono text-sm font-bold text-slate-505 block">AED {(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="bg-rose-50/30 p-4 rounded-xl border border-rose-100/50 space-y-0.5">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-rose-500">Deduction (-)</span>
+                                <span className="font-mono text-sm font-black text-rose-600 block">AED {(deductionVal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-100 space-y-0.5">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">VAT (5%)</span>
+                                <span className="font-mono text-sm font-bold text-slate-400 block">AED {(vat).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 space-y-0.5">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-slate-505">Actual Invoice total</span>
+                                <span className="font-mono text-sm font-black text-slate-900 block">AED {(total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 space-y-0.5">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-indigo-505">Advance Settled (-)</span>
+                                <span className="font-mono text-sm font-black text-indigo-600 block">AED {(advanceVal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 space-y-0.5">
+                                <span className="text-[9px] font-black uppercase tracking-wider text-emerald-505">Amount Paid (-)</span>
+                                <span className="font-mono text-sm font-black text-emerald-600 block">AED {(paidVal).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className={cn(
+                                "p-4 rounded-xl space-y-0.5 border shadow-sm",
+                                computedPayable > 0 ? "bg-amber-50 border-amber-100 text-amber-900" : "bg-emerald-50 border-emerald-100 text-emerald-900"
+                            )}>
+                                <span className="text-[9px] font-black uppercase tracking-wider block">Net Payable Position</span>
+                                <span className="font-mono text-sm font-black block">AED {computedPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Remarks Section */}
+                    {item.description && (
+                        <div className="bg-sky-50/20 p-5 rounded-2xl border border-sky-100/50 space-y-1.5">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-[rgb(3,105,161)] block">Invoice Audit Notes & remarks</span>
+                            <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{item.description}</p>
+                        </div>
+                    )}
+
+                    {/* Cheque settlement info rendering if exists */}
+                    {(item.chequeNo || item.chequeDate || item.chequeAmount) && (
+                        <div className="bg-amber-50/15 p-5 rounded-2xl border border-amber-100/40 space-y-2">
+                            <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 bg-brand-600 rounded-full inline-block" />
+                                <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider">Cheque Settlement Status</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                                <div>
+                                    <span className="text-slate-450 font-bold block">Cheque Number:</span>
+                                    <span className="font-mono font-black text-slate-700">{item.chequeNo || '-'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-450 font-bold block">Cheque Date:</span>
+                                    <span className="font-bold text-slate-700">{item.chequeDate || '-'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-450 font-bold block">Cheque Paid Value:</span>
+                                    <span className="font-mono font-black text-brand-600">AED {(item.chequeAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Metadata: uploaded by / excel batch */}
+                    {(item.uploadedBy || item.excelFileName || item.paymentDate) && (
+                        <div className="border-t border-slate-100 pt-5 flex flex-wrap gap-x-8 gap-y-3 text-[11px] text-slate-400 font-bold">
+                            {item.uploadedBy && (
+                                <div className="flex items-center gap-1">
+                                    <span>👤 Creator:</span>
+                                    <span className="text-slate-500 font-extrabold">{item.uploadedBy}</span>
+                                </div>
+                            )}
+                            {item.excelFileName && (
+                                <div className="flex items-center gap-1 font-mono">
+                                    <span>📂 Excel Source File:</span>
+                                    <span className="text-indigo-600 font-extrabold">{item.excelFileName}</span>
+                                </div>
+                            )}
+                            {item.paymentDate && (
+                                <div className="flex items-center gap-1">
+                                    <span>📅 Paid Clearance Date:</span>
+                                    <span className="text-emerald-600 font-extrabold">{item.paymentDate}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Document Center Attachment Preview if exists */}
+                    {item.attachment && (
+                        <div className="p-5 bg-slate-50/85 border border-slate-200/60 rounded-2xl space-y-2.5 relative">
+                            <div className="flex items-center justify-between border-b border-slate-150 pb-2">
+                                <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-indigo-600">
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>Attached Original Invoice Document Preview</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const w = window.open();
+                                        if (w) {
+                                            w.document.write(`<iframe src="${item.attachment}" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%; margin:0; padding:0; overflow:hidden;" allowfullscreen></iframe>`);
+                                        } else {
+                                            alert("Please allow popups to open full-screen attachments.");
+                                        }
+                                    }}
+                                    className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="Open attachment in full size"
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    <span>Open In New Tab</span>
+                                </button>
+                            </div>
+                            <div className="bg-white p-3 rounded-xl border border-slate-150 flex items-center justify-center overflow-auto max-h-[350px] shadow-sm">
+                                {item.attachment.startsWith('data:application/pdf') ? (
+                                    <object 
+                                        data={item.attachment} 
+                                        type="application/pdf" 
+                                        className="w-full h-[300px] rounded-lg"
+                                    >
+                                        <iframe
+                                            src={item.attachment}
+                                            className="w-full h-[300px] border-none rounded-lg"
+                                            title="PDF Preview"
+                                        />
+                                    </object>
+                                ) : (
+                                    <img
+                                        src={item.attachment}
+                                        alt="Uploaded Original Invoice Attachment Preview"
+                                        className="max-h-[300px] object-contain rounded-lg"
+                                        referrerPolicy="no-referrer"
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
+                    <button 
+                        onClick={onClose} 
+                        className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all cursor-pointer text-center"
+                    >
+                        Close Details
+                    </button>
+                    <button 
+                        onClick={handlePrintRecord} 
+                        className="px-8 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all flex items-center gap-2 justify-center shadow-lg shadow-brand-600/10 cursor-pointer"
+                    >
+                        <Printer className="w-4.5 h-4.5" />
+                        Print Record Memo
+                    </button>
                 </div>
             </motion.div>
         </div>

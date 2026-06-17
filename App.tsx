@@ -9620,7 +9620,7 @@ const SupplierDocumentsModal = ({ supplier, onClose, onUpdate, openConfirm }: { 
 };
 
 const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppliers: Supplier[], openConfirm: any, onUpdate: (s: Supplier) => void, onAdd: (s: any) => Promise<void>, user: SystemUser }) => {
-    const [formData, setFormData] = useState({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', logo: '' });
+    const [formData, setFormData] = useState({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', logo: '', trn: '' });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isReordering, setIsReordering] = useState(false);
@@ -9724,7 +9724,7 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
         setError(null);
         try {
             await onAdd(formData);
-            setFormData({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', logo: '' });
+            setFormData({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', logo: '', trn: '' });
             setIsAdding(false);
         } catch (err: any) {
             setError("Failed to save supplier. Please check your connection and permissions.");
@@ -9910,6 +9910,15 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                                 onChange={e => setFormData({ ...formData, category: e.target.value })}
                             />
                         </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">TRN No (Tax Registration No)</label>
+                            <input 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all font-mono"
+                                placeholder="15-digit TRN"
+                                value={formData.trn || ''}
+                                onChange={e => setFormData({ ...formData, trn: e.target.value })}
+                            />
+                        </div>
                         <div className="space-y-2 lg:col-span-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Address</label>
                             <input 
@@ -10051,6 +10060,12 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                                         value={supplier.category || ''}
                                         onChange={e => updateSupplier({ ...supplier, category: e.target.value })}
                                     />
+                                    <input 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 font-mono"
+                                        placeholder="TRN No"
+                                        value={supplier.trn || ''}
+                                        onChange={e => updateSupplier({ ...supplier, trn: e.target.value })}
+                                    />
                                     <textarea 
                                         className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 min-h-[80px]"
                                         placeholder="Notes / Remarks"
@@ -10073,6 +10088,16 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                                             </span>
                                         )}
                                     </div>
+                                    {supplier.trn ? (
+                                        <div className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-500 font-bold bg-slate-50 border border-slate-150 px-2 py-1 rounded w-fit font-mono">
+                                            <span>TRN:</span>
+                                            <span className="text-brand-600 font-extrabold">{supplier.trn}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-1 flex items-center gap-1.5 text-[9px] text-amber-500 font-bold bg-amber-50/50 border border-amber-100 px-2 py-0.5 rounded w-fit select-none">
+                                            ⚠️ No TRN Registered
+                                        </div>
+                                    )}
                                     <div className="space-y-3 mt-auto">
                                         <div className="flex items-center gap-3 text-slate-500">
                                             <div className="p-1.5 bg-slate-50 rounded-lg">
@@ -10203,6 +10228,7 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                             <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Email</label><div className="font-bold">{viewingSupplier.email || '-'}</div></div>
                             <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Phone</label><div className="font-bold">{viewingSupplier.phone || '-'}</div></div>
                             <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Category</label><div className="font-bold">{viewingSupplier.category || '-'}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">TRN No (VAT Registry)</label><div className="font-bold text-brand-600 font-mono">{viewingSupplier.trn || '-'}</div></div>
                             <div className="col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Address</label><div className="font-bold italic">{viewingSupplier.address || '-'}</div></div>
                             <div className="col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Notes</label><div className="font-medium text-slate-500 italic leading-relaxed">{viewingSupplier.notes || '-'}</div></div>
                         </div>
