@@ -287,6 +287,7 @@ export interface PettyCash {
     approvedBy?: string;
     projectId?: string; // Optional link to project
     attachment?: string;
+    attachmentName?: string;
     mode?: string; // e.g. 'Cash', 'Online', 'Bank Transfer', 'Cheque', 'Card'
     contact?: string; // contact name (customer/vendor/contact)
     uploadedBy?: string;

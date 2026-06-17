@@ -6061,6 +6061,236 @@ export const downloadPettyCashPDF = (item: any, emp?: any) => {
     doc.save(`PettyCash_Disbursement_${emp?.name ? emp.name.replace(/\s+/g, '_') : 'Employee'}_${item.date}.pdf`);
 };
 
+export const PettyCashDetailModal = ({ item, onClose, getProjectName, employees, downloadPettyCashPDF }: { item: any; onClose: () => void; getProjectName: (id?: string) => string; employees: any[]; downloadPettyCashPDF: any }) => {
+    if (!item) return null;
+    const isIncome = item.type === 'Income';
+    const emp = item.employeeId ? (employees || []).find((x: any) => x.id === item.employeeId) : null;
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center z-[72] p-4 font-sans no-print">
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.96, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]"
+            >
+                {/* Header */}
+                <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+                    <div className="flex items-center gap-2.5 text-left">
+                        <span className={cn(
+                            "w-2.5 h-2.5 rounded-full",
+                            isIncome ? "bg-emerald-500 animate-pulse" : "bg-rose-500 animate-pulse"
+                        )} />
+                        <h2 className="text-base font-bold text-slate-900">
+                            Transaction Voucher: {item.category || 'General'}
+                        </h2>
+                    </div>
+                    <button 
+                        onClick={onClose} 
+                        className="p-2 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
+                    >
+                        <X className="w-4.5 h-4.5" />
+                    </button>
+                </div>
+
+                {/* Content Area */}
+                <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 text-left">
+                    {/* Summary Card with Flow Type and Big Value */}
+                    <div className={cn(
+                        "rounded-xl p-5 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4",
+                        isIncome ? "bg-emerald-50/40 border-emerald-100" : "bg-rose-50/40 border-rose-100"
+                    )}>
+                        <div className="space-y-1">
+                            <span className={cn(
+                                "px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase whitespace-nowrap tracking-wider",
+                                isIncome ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                            )}>
+                                {isIncome ? 'Cash Inbound / Receipt' : 'Expense / Payment Outbound'}
+                            </span>
+                            <h3 className="text-xs font-semibold text-slate-500 mt-1">
+                                {item.category || 'Office Cash Register'}
+                            </h3>
+                            <p className="text-[10px] text-slate-400 font-bold">Ref ID: {item.id}</p>
+                        </div>
+                        <div className="text-left sm:text-right">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Amount (AED)</span>
+                            <span className={cn(
+                                "text-2xl font-black font-mono tracking-tight block",
+                                isIncome ? "text-emerald-600" : "text-rose-600"
+                            )}>
+                                {isIncome ? '+' : '-'} AED {(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Metadata Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/65 p-4 rounded-xl border border-slate-100">
+                        <div className="space-y-1">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Date of Transaction</span>
+                            <span className="text-xs font-bold text-slate-800 block">{item.date}</span>
+                        </div>
+                        <div className="space-y-1">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Payment Mode</span>
+                            <span className="text-xs font-bold text-slate-800 inline-flex items-center gap-1.5 capitalize">
+                                {item.mode || 'Cash'}
+                            </span>
+                        </div>
+                        <div className="space-y-1">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                                {isIncome ? 'Donor / Source' : 'Recipient / Associate'}
+                            </span>
+                            <span className="text-xs font-bold text-slate-800 block truncate" title={item.contact || item.requestedBy || 'Boss'}>
+                                {item.contact || item.requestedBy || 'Boss'}
+                            </span>
+                        </div>
+                        <div className="space-y-1">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Linked Project</span>
+                            <span className="text-xs font-bold text-slate-800 block truncate">
+                                {getProjectName(item.projectId)}
+                            </span>
+                        </div>
+                        {item.uploadedBy && (
+                            <div className="space-y-1">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Uploaded By / Recorded By</span>
+                                <span className="text-xs font-bold text-slate-800 block">{item.uploadedBy}</span>
+                            </div>
+                        )}
+                        {item.updatedBy && item.updatedBy !== item.uploadedBy && (
+                            <div className="space-y-1">
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Last Updated By</span>
+                                <span className="text-xs font-bold text-slate-800 block">{item.updatedBy}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Description Section */}
+                    <div className="space-y-1.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Description / Narrative Notes</span>
+                        <p className="text-xs text-slate-700 bg-slate-50/40 p-3 rounded-lg border border-slate-100/80 font-medium leading-relaxed whitespace-pre-line min-h-[50px]">
+                            {item.description || "No description or narrative remarks provided."}
+                        </p>
+                    </div>
+
+                    {/* Vouchers & Signed Slips Section */}
+                    {item.employeeId && (
+                        <div className="p-4 bg-emerald-50/20 border border-emerald-100/50 rounded-xl space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-0.5 text-left">
+                                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Employee Staff Voucher</h4>
+                                    <p className="text-[10px] text-slate-505 font-semibold">Voucher signature required for this employee-allocated disbursement.</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => downloadPettyCashPDF(item, emp)}
+                                    className="px-3 py-1.5 bg-white hover:bg-slate-50 text-blue-700 border border-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Download PDF
+                                </button>
+                            </div>
+                            
+                            {emp && (
+                                <div className="text-xs font-semibold text-slate-600 bg-white border border-slate-100 p-2.5 rounded-lg flex items-center justify-between">
+                                    <span>Staff Member: <strong className="text-slate-800">{emp.name}</strong> ({emp.code || 'N/A'})</span>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase">Department: {emp.department || 'Operations'}</span>
+                                </div>
+                            )}
+
+                            {item.signedAttachment ? (
+                                <div className="flex items-center justify-between p-2.5 bg-white border border-emerald-100 rounded-lg text-xs font-bold text-slate-700">
+                                    <div className="flex items-center gap-2 truncate">
+                                        <Paperclip className="w-4 h-4 text-emerald-600 shrink-0" />
+                                        <span className="truncate text-[11px] text-emerald-850 font-extrabold">{item.signedAttachmentName || "Signed_Voucher.pdf"}</span>
+                                    </div>
+                                    {item.signedAttachment.startsWith('data:') && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const win = window.open();
+                                                if (win) {
+                                                    win.document.write(`<iframe src="${item.signedAttachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                                                } else {
+                                                    alert("Pop-up blocked. Please enable pop-ups to view attachment.");
+                                                }
+                                            }}
+                                            className="text-[10px] text-emerald-600 hover:text-emerald-800 bg-emerald-55 border border-emerald-100 px-2.5 py-1 rounded transition-all font-bold shrink-0 cursor-pointer"
+                                        >
+                                            View Slip
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="text-[10px] text-amber-600 font-bold bg-amber-50/50 border border-amber-100 p-2.5 rounded-lg text-center">
+                                    ⚠️ No signed voucher attachment has been uploaded for this employee handout yet.
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Standard Attachment Section */}
+                    {item.attachment ? (
+                        <div className="space-y-2.5 p-4 bg-blue-50/20 border border-blue-100/50 rounded-xl">
+                            <div className="flex justify-between items-center text-left">
+                                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Transaction Attachment / Verification Document</h4>
+                                <span className="text-[9px] font-bold px-1 py-0.5 bg-blue-105/50 text-blue-800 rounded uppercase">Verification Bond</span>
+                            </div>
+                            <div className="flex items-center justify-between p-2.5 bg-white border border-blue-100 rounded-lg text-xs font-bold text-slate-700">
+                                <div className="flex items-center gap-2 truncate">
+                                    <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <span className="truncate text-[11px] text-blue-900 font-extrabold">{item.attachmentName || "Attached_Document.png"}</span>
+                                </div>
+                                {item.attachment.startsWith('data:') && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const win = window.open();
+                                            if (win) {
+                                                win.document.write(`<iframe src="${item.attachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                                            } else {
+                                                alert("Pop-up blocked. Please enable pop-ups to view attachment.");
+                                            }
+                                        }}
+                                        className="text-[10px] text-blue-600 hover:text-blue-800 bg-blue-55 border border-blue-100 px-3 py-1 rounded transition-all font-bold shrink-0 cursor-pointer"
+                                    >
+                                        Open Document
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Image preview directly in modal for comfort if it is an image */}
+                            {item.attachment.startsWith('data:image/') && (
+                                <div className="border border-slate-150 rounded-xl overflow-hidden bg-slate-50 p-2">
+                                    <div className="relative group max-h-[300px] overflow-hidden flex items-center justify-center rounded-lg">
+                                        <img 
+                                            src={item.attachment} 
+                                            alt={item.attachmentName || "Attached document preview"} 
+                                            className="max-h-[290px] object-contain rounded-md shadow-sm"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : !item.employeeId && (
+                        <div className="text-[10px] text-slate-500 font-bold bg-slate-55/50 border border-slate-150/50 p-3 rounded-lg text-center">
+                            No reference document or invoice scan was uploaded for this transaction.
+                        </div>
+                    )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0 animate-fadeIn">
+                    <button 
+                        type="button"
+                        onClick={onClose} 
+                        className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 active:scale-95 transition-all shadow-sm hover:shadow-md cursor-pointer"
+                    >
+                        Close
+                    </button>
+                </div>
+            </motion.div>
+        </div>
+    );
+};
+
 export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete, user, employees, everydayExpenses }: any) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedBook, setSelectedBook] = useState('All Books');
@@ -6074,6 +6304,7 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete,
     // Row level direct signed voucher upload and lightbox preview properties
     const [previewSignedAttachment, setPreviewSignedAttachment] = useState<{ data: string; name: string } | null>(null);
     const [uploadingItemId, setUploadingItemId] = useState<string | null>(null);
+    const [selectedDetailItem, setSelectedDetailItem] = useState<any | null>(null);
     const rowFileInputRef = useRef<HTMLInputElement>(null);
 
     const handleRowFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -6816,6 +7047,13 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete,
                                                         </>
                                                     )}
                                                     <button 
+                                                        onClick={() => setSelectedDetailItem(item)} 
+                                                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors animate-fadeIn"
+                                                        title="View Details & Documents"
+                                                    >
+                                                        <Eye className="w-4 h-4 text-slate-450" />
+                                                    </button>
+                                                    <button 
                                                         onClick={() => onEdit(item)} 
                                                         className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-brand-600 transition-colors"
                                                     >
@@ -7383,6 +7621,17 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete,
                 onPrint={handleA4PrintWithConfig}
                 title="Print Petty Cash Statement"
             />
+
+            {/* View Details/Lightbox Overlay */}
+            {selectedDetailItem && (
+                <PettyCashDetailModal
+                    item={selectedDetailItem}
+                    onClose={() => setSelectedDetailItem(null)}
+                    getProjectName={getProjectName}
+                    employees={employees}
+                    downloadPettyCashPDF={downloadPettyCashPDF}
+                />
+            )}
         </div>
     );
 };
@@ -8992,6 +9241,8 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employee
                 employeeId: '',
                 signedAttachment: '',
                 signedAttachmentName: '',
+                attachment: '',
+                attachmentName: '',
                 ...pettyCash
             };
         }
@@ -9008,7 +9259,9 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employee
             contact: '',
             employeeId: '',
             signedAttachment: '',
-            signedAttachmentName: ''
+            signedAttachmentName: '',
+            attachment: '',
+            attachmentName: ''
         };
     });
 
@@ -9097,7 +9350,9 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employee
                 uploadedBy: uploaderName,
                 updatedBy: uploaderName,
                 contact: prev.contact || data.contact || uploaderName,
-                requestedBy: prev.requestedBy || data.requestedBy || data.contact || uploaderName
+                requestedBy: prev.requestedBy || data.requestedBy || data.contact || uploaderName,
+                attachment: tempImageData?.image || prev.attachment || '',
+                attachmentName: tempImageData ? `Scanned_Receipt_${new Date().toISOString().split('T')[0]}.png` : (prev.attachmentName || '')
             }));
         } catch (error: any) {
             console.error("Scanning failed:", error);
@@ -9563,6 +9818,86 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employee
                             )}
                             placeholder={formData.type === 'Income' ? "Who provided these funds? e.g. Jamel G" : "Who is receiving or requested this cash?"}
                         />
+                    </div>
+
+                    {/* General Transaction Document / Reference Attachment Row */}
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Transaction Attachment / Reference Document (Image or PDF)
+                        </label>
+                        <div className="border border-dashed border-slate-250 rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 transition-all flex flex-col items-center justify-center gap-2">
+                            <input 
+                                type="file" 
+                                id="general-document-upload"
+                                accept="image/*,application/pdf"
+                                className="hidden"
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onloadend = () => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                attachment: reader.result as string,
+                                                attachmentName: file.name
+                                            }));
+                                        };
+                                        reader.readAsDataURL(file);
+                                    }
+                                }}
+                            />
+                            {formData.attachment ? (
+                                <div className="w-full space-y-3">
+                                    <div className="flex items-center justify-between p-2.5 bg-blue-50/50 border border-blue-100 rounded-lg text-xs font-bold text-slate-700 animate-fadeIn">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <Paperclip className="w-4 h-4 text-blue-600 shrink-0" />
+                                            <span className="truncate text-[11px] text-blue-900 font-extrabold">{formData.attachmentName || "Attached_Document.png/pdf"}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                            {/* Preview/View button */}
+                                            {formData.attachment.startsWith('data:') && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const win = window.open();
+                                                        if (win) {
+                                                            win.document.write(`<iframe src="${formData.attachment}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+                                                        } else {
+                                                            alert("Pop-up blocked. Please enable pop-ups to view attachment.");
+                                                        }
+                                                    }}
+                                                    className="inline-flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-800 bg-white hover:bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-all font-bold cursor-pointer"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                    View
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData(prev => ({ ...prev, attachment: '', attachmentName: '' }))}
+                                                className="inline-flex items-center gap-1 text-[10px] text-rose-600 hover:text-rose-800 bg-white hover:bg-rose-50 px-2 py-1 rounded border border-rose-100 transition-all font-bold cursor-pointer"
+                                            >
+                                                <X className="w-3.5 h-3.5" />
+                                                Remove
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <label
+                                    htmlFor="general-document-upload"
+                                    className="flex flex-col items-center justify-center gap-2 py-2 cursor-pointer w-full text-center"
+                                >
+                                    <Upload className="w-6 h-6 text-slate-400" />
+                                    <div className="text-xs text-slate-600 font-bold">
+                                        Click to Upload or Drag File Here
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 font-semibold">
+                                        PNG, JPG, JPEG, or PDF up to 10MB
+                                    </div>
+                                </label>
+                            )}
+                        </div>
                     </div>
 
                     {/* Remarks / Narrative Description */}
