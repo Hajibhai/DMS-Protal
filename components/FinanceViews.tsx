@@ -2361,11 +2361,13 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         onViewBill={(item) => setViewingBill(item.attachment || null)}
                         onViewDetails={(item) => setViewingRecordDetail(item)}
                         customSearch={(item, query) => {
+                            const supplierName = (item.supplierName || '').toLowerCase();
+                            const supplierCode = (item.supplierCode || '').toLowerCase();
                             const vName = getVendorName(item.vendorId, item.vendorType).toLowerCase();
                             const pName = getProjectName(item.projectId).toLowerCase();
                             const payee = (item.vendorType === 'Supplier' ? suppliers : vendors)?.find((s: any) => s.id === item.vendorId);
                             const trnVal = (payee?.trn || '').toLowerCase();
-                            return vName.includes(query) || pName.includes(query) || trnVal.includes(query);
+                            return supplierName.includes(query) || supplierCode.includes(query) || vName.includes(query) || pName.includes(query) || trnVal.includes(query);
                         }}
                         searchFields={['invoiceNumber', 'description']}
                         exportFileName="Accounts_Payable"
