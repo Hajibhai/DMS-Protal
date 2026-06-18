@@ -253,6 +253,16 @@ export interface AccountsPayable {
     supplierCode?: string;
     excelBatchId?: string;
     excelFileName?: string;
+    siteInvoices?: {
+        id: string;
+        invoiceNumber: string;
+        projectId: string;
+        amount: number;
+        deduction: number;
+        vatAmount: number;
+        totalAmount: number;
+        description: string;
+    }[];
 }
 
 export interface AccountsReceivable {

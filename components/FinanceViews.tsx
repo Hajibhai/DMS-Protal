@@ -2481,6 +2481,13 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 
                                 const q = (query || '').toLowerCase().trim();
                                 if (!q) return true;
+
+                                const hasMatchingSiteInvoice = item.siteInvoices && item.siteInvoices.some((inv: any) => {
+                                    const invNum = (inv.invoiceNumber || '').toLowerCase();
+                                    const invNote = (inv.description || '').toLowerCase();
+                                    const invProjName = String(projects?.find((p: any) => p.id === inv.projectId)?.name || '').toLowerCase();
+                                    return invNum.includes(q) || invNote.includes(q) || invProjName.includes(q);
+                                });
                                 
                                 return (
                                     supplierName.includes(q) || 
@@ -2489,7 +2496,8 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     description.includes(q) ||
                                     vName.includes(q) || 
                                     pName.includes(q) || 
-                                    trnVal.includes(q)
+                                    trnVal.includes(q) ||
+                                    !!hasMatchingSiteInvoice
                                 );
                             } catch (e) {
                                 console.error("Error in AccountsPayableView customSearch:", e);
@@ -8771,7 +8779,8 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             chequeAmount: base.chequeAmount || '',
             supplierName: base.supplierName || '',
             supplierCode: base.supplierCode || '',
-            attachment: base.attachment || ''
+            attachment: base.attachment || '',
+            siteInvoices: base.siteInvoices || []
         };
     });
     const [payeeSearch, setPayeeSearch] = useState('');
@@ -8798,13 +8807,37 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
     const handleRecalculate = (updates: any) => {
         const next = { ...formData, ...updates };
         
-        const amount = Number(next.amount) || 0;
+        let siteInvoices = next.siteInvoices || [];
+        let amount = Number(next.amount) || 0;
+        let deduction = Number(next.deduction) || 0;
+        let vatAmount = Number(next.vatAmount);
+        
+        if (siteInvoices.length > 0) {
+            let sumAmount = 0;
+            let sumDeduction = 0;
+            let sumVat = 0;
+            siteInvoices.forEach((item: any) => {
+                const itemAmt = Number(item.amount) || 0;
+                const itemDed = Number(item.deduction) || 0;
+                const itemActual = Number((itemAmt - itemDed).toFixed(2));
+                const itemVat = Number((itemActual * 0.05).toFixed(2));
+                
+                sumAmount += itemAmt;
+                sumDeduction += itemDed;
+                sumVat += itemVat;
+                
+                item.vatAmount = itemVat;
+                item.totalAmount = Number((itemActual + itemVat).toFixed(2));
+            });
+            amount = Number(sumAmount.toFixed(2));
+            deduction = Number(sumDeduction.toFixed(2));
+            vatAmount = Number(sumVat.toFixed(2));
+        }
+
         const hours = Number(next.hours) || 0;
-        const deduction = Number(next.deduction) || 0;
         
         let actualAmount = Number(next.actualAmount);
-        // "if there is any deduction then calculate automatically actual amount"
-        if (deduction > 0 || updates.deduction !== undefined || updates.amount !== undefined) {
+        if (deduction > 0 || updates.deduction !== undefined || updates.amount !== undefined || siteInvoices.length > 0) {
             actualAmount = Number((amount - deduction).toFixed(2));
         } else if (updates.actualAmount !== undefined) {
             actualAmount = Number(updates.actualAmount) || 0;
@@ -8813,10 +8846,10 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         }
         if (isNaN(actualAmount)) actualAmount = amount;
 
-        // Auto-recalculate VAT 5% when any of the core amounts or deductions are updated
-        let vatAmount = Number(next.vatAmount);
-        if (updates.actualAmount !== undefined || updates.amount !== undefined || updates.deduction !== undefined || isNaN(vatAmount)) {
-            vatAmount = Number((actualAmount * 0.05).toFixed(2));
+        if (siteInvoices.length === 0) {
+            if (updates.actualAmount !== undefined || updates.amount !== undefined || updates.deduction !== undefined || isNaN(vatAmount)) {
+                vatAmount = Number((actualAmount * 0.05).toFixed(2));
+            }
         }
 
         const totalAmount = Number((actualAmount + vatAmount).toFixed(2));
@@ -8871,7 +8904,8 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             status,
             supplierName,
             supplierCode,
-            dueDate
+            dueDate,
+            siteInvoices
         });
     };
 
@@ -9031,6 +9065,169 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                         </div>
                     </div>
 
+                    {/* Site-wise Invoices Breakdown Section */}
+                    <div className="border border-indigo-100 bg-indigo-50/10 p-5 rounded-2xl space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-150 pb-2">
+                            <div>
+                                <h3 className="text-xs font-black uppercase tracking-wider text-brand-800 flex items-center gap-1.5">
+                                    <span className="w-2.5 h-2.5 bg-brand-600 rounded-full shrink-0" />
+                                    Multi-Site Invoices Breakdown
+                                </h3>
+                                <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                                    Itemize multiple invoices (e.g., 5 to 10 per month) for different work sites. Totals below calculate automatically.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const newList = [...(formData.siteInvoices || [])];
+                                    newList.push({
+                                        id: 'site_ap_' + Math.random().toString(36).substr(2, 9),
+                                        invoiceNumber: '',
+                                        projectId: formData.projectId || '',
+                                        description: '',
+                                        amount: 0,
+                                        deduction: 0,
+                                        vatAmount: 0,
+                                        totalAmount: 0,
+                                    });
+                                    handleRecalculate({ siteInvoices: newList });
+                                }}
+                                className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                Add Site Invoice Row
+                            </button>
+                        </div>
+
+                        {(formData.siteInvoices || []).length === 0 ? (
+                            <div className="text-center py-4 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                                <span className="text-[10px] text-slate-400 font-bold">No site breakdown items defined. Standard single-invoice ledger inputs apply below.</span>
+                            </div>
+                        ) : (
+                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                                {(formData.siteInvoices || []).map((row: any, idx: number) => (
+                                    <div key={row.id} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 relative shadow-xs hover:border-slate-300 transition-all">
+                                        <div className="absolute top-2.5 right-2 text-[10px] font-black text-slate-300">
+                                            #{idx + 1}
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Site / Project</label>
+                                                <select
+                                                    value={row.projectId || ''}
+                                                    onChange={e => {
+                                                        const list = [...formData.siteInvoices];
+                                                        list[idx] = { ...list[idx], projectId: e.target.value };
+                                                        handleRecalculate({ siteInvoices: list });
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-slate-700"
+                                                >
+                                                    <option value="">General / No Project</option>
+                                                    {projects.map((p: any) => (
+                                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Sub-Invoice #</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Invc #"
+                                                    value={row.invoiceNumber || ''}
+                                                    onChange={e => {
+                                                        const list = [...formData.siteInvoices];
+                                                        list[idx] = { ...list[idx], invoiceNumber: e.target.value };
+                                                        handleRecalculate({ siteInvoices: list });
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Work details / Site note</label>
+                                                <input
+                                                    type="text"
+                                                    placeholder="e.g. Site Plastering, Steel Supply"
+                                                    value={row.description || ''}
+                                                    onChange={e => {
+                                                        const list = [...formData.siteInvoices];
+                                                        list[idx] = { ...list[idx], description: e.target.value };
+                                                        handleRecalculate({ siteInvoices: list });
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-slate-700"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Bill Amount (AED)</label>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    placeholder="0.00"
+                                                    value={row.amount || ''}
+                                                    onChange={e => {
+                                                        const list = [...formData.siteInvoices];
+                                                        list[idx] = { ...list[idx], amount: Number(e.target.value) };
+                                                        handleRecalculate({ siteInvoices: list });
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-wider text-rose-500">Deduction (-)</label>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    placeholder="0"
+                                                    value={row.deduction || ''}
+                                                    onChange={e => {
+                                                        const list = [...formData.siteInvoices];
+                                                        list[idx] = { ...list[idx], deduction: Number(e.target.value) };
+                                                        handleRecalculate({ siteInvoices: list });
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-rose-600 font-mono"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-0.5">
+                                                <span className="text-[9.5px] font-bold text-slate-400 block">VAT Amount (5%)</span>
+                                                <span className="text-xs font-bold text-slate-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono">
+                                                    AED {Number(row.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                <div className="space-y-0.5 flex-1">
+                                                    <span className="text-[9.5px] font-black text-slate-400 block">Total Amount</span>
+                                                    <span className="text-xs font-black text-brand-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono">
+                                                        AED {Number(row.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const list = formData.siteInvoices.filter((r: any) => r.id !== row.id);
+                                                        handleRecalculate({ siteInvoices: list });
+                                                    }}
+                                                    className="p-1 px-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-100 hover:border-rose-200 text-rose-600 rounded-lg transition-all shrink-0 cursor-pointer"
+                                                    title="Remove Site Invoice Row"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
                     <div className="border border-indigo-100 bg-indigo-50/20 p-5 rounded-2xl space-y-4">
                         <div className="text-[11px] font-black uppercase tracking-wider text-indigo-800 flex items-center gap-1.5 border-b border-indigo-100/60 pb-2">
                             <span className="w-2.5 h-2.5 bg-indigo-600 rounded-full" />
@@ -9049,7 +9246,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500"
                                 />
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-1 font-sans">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bill Amount</label>
                                 <input 
                                     type="number"
@@ -9057,8 +9254,15 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     placeholder="0.00"
                                     value={formData.amount || ''}
                                     onChange={e => handleRecalculate({ amount: Number(e.target.value) })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500"
+                                    disabled={formData.siteInvoices?.length > 0}
+                                    className={cn(
+                                        "w-full px-3 py-2 border rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500 font-mono",
+                                        formData.siteInvoices?.length > 0 ? "bg-indigo-50/30 text-indigo-900 border-indigo-100 cursor-not-allowed" : "bg-white border-slate-200"
+                                    )}
                                 />
+                                {formData.siteInvoices?.length > 0 && (
+                                    <span className="text-[9px] text-indigo-700 font-semibold block mt-1">Calculated from site invoices</span>
+                                )}
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Actual Amount</label>
@@ -9068,13 +9272,13 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     placeholder="Defaults to Bill Amount"
                                     value={formData.actualAmount || ''}
                                     onChange={e => handleRecalculate({ actualAmount: Number(e.target.value) })}
-                                    disabled={formData.deduction > 0}
+                                    disabled={formData.deduction > 0 || formData.siteInvoices?.length > 0}
                                     className={cn(
                                         "w-full px-3 py-2 border rounded-xl text-sm font-semibold outline-none focus:ring-1 focus:ring-indigo-500",
-                                        formData.deduction > 0 ? "bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed" : "bg-white border-slate-200"
+                                        (formData.deduction > 0 || formData.siteInvoices?.length > 0) ? "bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed" : "bg-white border-slate-200"
                                     )}
                                 />
-                                {formData.deduction > 0 && (
+                                {(formData.deduction > 0 || formData.siteInvoices?.length > 0) && (
                                     <div className="text-[9px] text-indigo-600 font-bold ml-1 mt-0.5 animate-fadeIn">
                                         Auto-calculated: Bill Amount - Deduction
                                     </div>
@@ -9091,8 +9295,15 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     placeholder="Calculated automatically"
                                     value={formData.vatAmount || ''}
                                     onChange={e => handleRecalculate({ vatAmount: Number(e.target.value) })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600"
+                                    disabled={formData.siteInvoices?.length > 0}
+                                    className={cn(
+                                        "w-full px-3 py-2 border rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500 text-slate-600 font-mono",
+                                        formData.siteInvoices?.length > 0 ? "bg-indigo-50/30 text-indigo-900 border-indigo-100 cursor-not-allowed" : "bg-white border-slate-200"
+                                    )}
                                 />
+                                {formData.siteInvoices?.length > 0 && (
+                                    <span className="text-[9px] text-indigo-700 font-semibold block mt-1">Calculated from site invoices</span>
+                                )}
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Amount</label>
@@ -9131,8 +9342,15 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     placeholder="0"
                                     value={formData.deduction || ''}
                                     onChange={e => handleRecalculate({ deduction: Number(e.target.value) })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-rose-600 placeholder:text-slate-300 outline-none focus:ring-1 focus:ring-indigo-500"
+                                    disabled={formData.siteInvoices?.length > 0}
+                                    className={cn(
+                                        "w-full px-3 py-2 border rounded-xl text-sm font-semibold placeholder:text-slate-300 outline-none focus:ring-1 focus:ring-indigo-500 font-mono",
+                                        formData.siteInvoices?.length > 0 ? "bg-indigo-50/30 text-indigo-900 border-indigo-100 cursor-not-allowed text-rose-450" : "bg-white border-slate-200 text-rose-600"
+                                    )}
                                 />
+                                {formData.siteInvoices?.length > 0 && (
+                                    <span className="text-[9px] text-indigo-700 font-semibold block mt-1">Calculated from site invoices</span>
+                                )}
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Paid Amount</label>
@@ -9142,7 +9360,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                     placeholder="0"
                                     value={formData.paid || ''}
                                     onChange={e => handleRecalculate({ paid: Number(e.target.value) })}
-                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-emerald-600 outline-none focus:ring-1 focus:ring-indigo-500"
+                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-emerald-600 outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
                                 />
                             </div>
                             <div className="space-y-1">
@@ -9688,6 +9906,43 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                         </tbody>
                     </table>
 
+                    ${item.siteInvoices && item.siteInvoices.length > 0 ? `
+                        <div class="section-title">Itemized Site-Specific Invoices Breakdown</div>
+                        <table class="financial-table">
+                            <thead>
+                                <tr>
+                                    <th style="text-align: left;">Site / Project</th>
+                                    <th style="text-align: left;">Invoice #</th>
+                                    <th style="text-align: left;">Work details</th>
+                                    <th>Bill Amount (AED)</th>
+                                    <th>Deduction (AED)</th>
+                                    <th>VAT Amount (AED)</th>
+                                    <th>Total Amount (AED)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${item.siteInvoices.map((inv: any) => `
+                                    <tr>
+                                        <td style="text-align: left; font-weight: 700; color: #0f172a;">${projects?.find((p: any) => p.id === inv.projectId)?.name || 'General'}</td>
+                                        <td style="text-align: left; font-family: monospace;">#${inv.invoiceNumber || '-'}</td>
+                                        <td style="text-align: left; font-weight: 500; font-size: 11px; color: #475569;">${inv.description || '-'}</td>
+                                        <td style="font-family: monospace;">${(inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td style="font-family: monospace; color: #dc2626;">${(inv.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td style="font-family: monospace; color: #64748b;">${(inv.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td style="font-family: monospace; font-weight: 850; color: #4338ca;">${(inv.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    </tr>
+                                `).join('')}
+                                <tr style="background-color: #f8fafc; font-weight: 800; border-top: 2px solid #cbd5e1;">
+                                    <td colspan="3" style="text-align: left; text-transform: uppercase; font-size: 10px; color: #475569;">Consolidated Breakdown Summary:</td>
+                                    <td style="font-family: monospace;">AED ${(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    <td style="font-family: monospace; color: #dc2626;">AED ${(item.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    <td style="font-family: monospace;">AED ${(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    <td style="font-family: monospace; color: #0f172a;">AED ${(item.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    ` : ''}
+
                     ${item.description ? `
                         <div class="section-title">Audit Notes & Remarks</div>
                         <p style="font-size: 12px; color: #475569; background-color: #f8fafc; padding: 12px; border-radius: 8px; border: 1px dashed #cbd5e1; margin-top: 5px;">
@@ -9848,6 +10103,54 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                             </div>
                         </div>
                     </div>
+
+                    {/* Site Breakdown Table */}
+                    {item.siteInvoices && item.siteInvoices.length > 0 && (
+                        <div className="space-y-3.5 pt-4 border-t border-slate-100">
+                            <div className="flex items-center gap-2">
+                                <span className="p-1 px-2.5 bg-indigo-50 text-indigo-700 text-[10px] font-black rounded-lg uppercase tracking-wide">Multi-Site Ledger</span>
+                                <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Itemized Site-Specific Invoices ({item.siteInvoices.length})</h3>
+                            </div>
+                            <div className="overflow-x-auto border border-slate-150 rounded-2xl bg-slate-50/50">
+                                <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200/60 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
+                                            <th className="p-4 py-3">Site / Project</th>
+                                            <th className="p-4 py-3">Invoice #</th>
+                                            <th className="p-4 py-3">Work details</th>
+                                            <th className="p-4 py-3 text-right">Bill Amount</th>
+                                            <th className="p-4 py-3 text-right">Deduction</th>
+                                            <th className="p-4 py-3 text-right">VAT (5%)</th>
+                                            <th className="p-4 py-3 text-right">Total Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 font-bold bg-white text-slate-600">
+                                        {item.siteInvoices.map((inv: any) => {
+                                            const projName = projects?.find((p: any) => p.id === inv.projectId)?.name || 'General / No Project';
+                                            return (
+                                                <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
+                                                    <td className="p-4 text-slate-800 font-black whitespace-nowrap">{projName}</td>
+                                                    <td className="p-4 font-mono font-bold text-slate-500 whitespace-nowrap">#{inv.invoiceNumber || '-'}</td>
+                                                    <td className="p-4 text-xs font-medium text-slate-500 max-w-[200px] truncate" title={inv.description}>{inv.description || '-'}</td>
+                                                    <td className="p-4 text-right font-mono">AED {(inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-4 text-right font-mono text-rose-500">AED {(inv.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-4 text-right font-mono text-slate-400">AED {(inv.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-4 text-right font-mono text-indigo-600 font-extrabold">AED {(inv.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                        <tr className="bg-slate-105/40 border-t border-slate-250 text-slate-900 font-black text-xs">
+                                            <td colSpan={3} className="p-4 text-left font-black uppercase tracking-wider text-[10px] text-slate-500">Breakdown Consolidated Totals:</td>
+                                            <td className="p-4 text-right font-mono">AED {(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="p-4 text-right font-mono text-rose-600">AED {(item.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="p-4 text-right font-mono text-slate-600">AED {(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="p-4 text-right font-mono text-brand-700">AED {(item.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Remarks Section */}
                     {item.description && (
