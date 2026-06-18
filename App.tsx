@@ -6246,6 +6246,7 @@ export default function App() {
             companies={companies}
             onSave={handleSaveAP}
             onCancel={() => setShowAPModal(false)}
+            existingRecords={accountsPayable}
           />
         )}
         {showARModal && (
@@ -6257,6 +6258,7 @@ export default function App() {
             companies={companies}
             onSave={handleSaveAR}
             onCancel={() => setShowARModal(false)}
+            existingRecords={accountsReceivable}
           />
         )}
         {showPettyCashModal && (

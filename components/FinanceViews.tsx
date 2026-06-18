@@ -130,6 +130,30 @@ const compressImageFile = (file: File, maxDimension = 1200, quality = 0.85): Pro
     });
 };
 
+const getMonthYear = (dateStr: string): string => {
+    if (!dateStr) return 'Unknown';
+    try {
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) {
+            return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        }
+    } catch (e) {}
+    
+    // Fallback parser for arbitrary strings like "Apr 30, 2026", "2026-04-30" etc.
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const lower = dateStr.toLowerCase();
+    let foundMonth = 'Unknown';
+    for (const m of months) {
+        if (lower.includes(m.toLowerCase()) || lower.includes(m.substring(0, 3).toLowerCase())) {
+            foundMonth = m;
+            break;
+        }
+    }
+    const yearMatch = dateStr.match(/\b(20\d\d)\b/);
+    const foundYear = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+    return foundMonth !== 'Unknown' ? `${foundMonth} ${foundYear}` : 'Unknown';
+};
+
 interface DataTableProps<T> {
     title: string;
     description: string;
@@ -1045,7 +1069,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
 );
 
 export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, onBulkUpdateCompanyId, user, companies, onUploadExcel }: any) => {
-    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
+    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa' | 'duplicates'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
     const [viewingBill, setViewingBill] = useState<string | null>(null);
     const [viewingRecordDetail, setViewingRecordDetail] = useState<AccountsPayable | null>(null);
@@ -1677,6 +1701,77 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         downloadSOAExcel(soaVendorId, pName, pType, soaFilteredItems, false);
     };
 
+    const { duplicateGroups, duplicateGroupsCount } = useMemo(() => {
+        const records = data || [];
+        const groups: { [key: string]: any[] } = {};
+        
+        // Group by Invoice Number
+        const invGroups: { [invoiceNum: string]: any[] } = {};
+        records.forEach((record: any) => {
+            const inv = (record.invoiceNumber || '').trim().toLowerCase();
+            if (inv && inv.length > 0) {
+                if (!invGroups[inv]) invGroups[inv] = [];
+                invGroups[inv].push(record);
+            }
+        });
+
+        // Group by Supplier + Company + Month & Year
+        const monthGroups: { [key: string]: any[] } = {};
+        records.forEach((record: any) => {
+            const vendor = record.vendorId || 'none';
+            const company = record.companyId || 'none';
+            const mY = getMonthYear(record.date || record.invoiceDate);
+            if (mY !== 'Unknown') {
+                const key = `${vendor}_${company}_${mY}`;
+                if (!monthGroups[key]) monthGroups[key] = [];
+                monthGroups[key].push(record);
+            }
+        });
+
+        const list: any[] = [];
+        let count = 0;
+
+        // Collect matching invoice duplicates
+        Object.entries(invGroups).forEach(([inv, items]) => {
+            if (items.length > 1) {
+                list.push({
+                    id: 'inv_' + inv,
+                    type: 'invoice',
+                    key: `Invoice Number Conflict: #${items[0].invoiceNumber}`,
+                    items,
+                    reason: `These custom bills share the identical invoice number "${items[0].invoiceNumber}" in the master ledger.`
+                });
+                count++;
+            }
+        });
+
+        // Collect matching month/supplier duplicates
+        Object.entries(monthGroups).forEach(([key, items]) => {
+            if (items.length > 1) {
+                const item = items[0];
+                const payeeName = (() => {
+                    if (item.supplierName) return item.supplierName;
+                    const list = item.vendorType === 'Supplier' ? suppliers : vendors;
+                    const found = list?.find((s: any) => s.id === item.vendorId);
+                    return found ? found.name : 'Unknown';
+                })();
+                const compName = companies?.find((c: any) => c.id === item.companyId)?.name || 'the same company';
+                const mY = getMonthYear(item.date || item.invoiceDate);
+
+                list.push({
+                    id: 'month_' + key,
+                    type: 'monthly_company',
+                    key: `Month-wise Company Overlap: ${payeeName} & ${compName} in ${mY}`,
+                    items,
+                    reason: `Our rules flagged ${items.length} separate bill entries for supplier "${payeeName}" under buyer "${compName}" specifically during the single month of ${mY}.`
+                });
+                count++;
+            }
+        });
+
+        return { duplicateGroups: list, duplicateGroupsCount: count };
+    }, [data, suppliers, vendors, companies]);
+
     return (
         <div className="relative space-y-6">
             
@@ -1719,6 +1814,19 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         )}
                     >
                         📄 Statement of Account (SOA)
+                    </button>
+                    <button 
+                        onClick={() => setActiveTabMode('duplicates')}
+                        className={cn(
+                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                            activeTabMode === 'duplicates' ? "bg-white text-rose-600 shadow-sm animate-pulse-subtle" : "text-slate-500 hover:text-slate-800"
+                        )}
+                    >
+                        🔍 Double-Entry Auditor {duplicateGroupsCount > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[9px] font-bold animate-pulse">
+                                {duplicateGroupsCount}
+                            </span>
+                        )}
                     </button>
                 </div>
             </div>
@@ -2361,13 +2469,32 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         onViewBill={(item) => setViewingBill(item.attachment || null)}
                         onViewDetails={(item) => setViewingRecordDetail(item)}
                         customSearch={(item, query) => {
-                            const supplierName = (item.supplierName || '').toLowerCase();
-                            const supplierCode = (item.supplierCode || '').toLowerCase();
-                            const vName = getVendorName(item.vendorId, item.vendorType).toLowerCase();
-                            const pName = getProjectName(item.projectId).toLowerCase();
-                            const payee = (item.vendorType === 'Supplier' ? suppliers : vendors)?.find((s: any) => s.id === item.vendorId);
-                            const trnVal = (payee?.trn || '').toLowerCase();
-                            return supplierName.includes(query) || supplierCode.includes(query) || vName.includes(query) || pName.includes(query) || trnVal.includes(query);
+                            try {
+                                const supplierName = (item.supplierName || '').toLowerCase();
+                                const supplierCode = (item.supplierCode || '').toLowerCase();
+                                const invoiceNumber = (item.invoiceNumber || '').toLowerCase();
+                                const description = (item.description || '').toLowerCase();
+                                const vName = String(getVendorName?.(item.vendorId, item.vendorType) || '').toLowerCase();
+                                const pName = String(getProjectName?.(item.projectId) || '').toLowerCase();
+                                const payee = (item.vendorType === 'Supplier' ? suppliers : vendors)?.find((s: any) => s.id === item.vendorId);
+                                const trnVal = String(payee?.trn || '').toLowerCase();
+                                
+                                const q = (query || '').toLowerCase().trim();
+                                if (!q) return true;
+                                
+                                return (
+                                    supplierName.includes(q) || 
+                                    supplierCode.includes(q) || 
+                                    invoiceNumber.includes(q) ||
+                                    description.includes(q) ||
+                                    vName.includes(q) || 
+                                    pName.includes(q) || 
+                                    trnVal.includes(q)
+                                );
+                            } catch (e) {
+                                console.error("Error in AccountsPayableView customSearch:", e);
+                                return false;
+                            }
                         }}
                         searchFields={['invoiceNumber', 'description']}
                         exportFileName="Accounts_Payable"
@@ -2760,7 +2887,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         )}
                     </div>
                 </div>
-            ) : (
+            ) : activeTabMode === 'soa' ? (
                 /* activeTabMode === 'soa' */
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
                     
@@ -2974,6 +3101,148 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                         </div>
                                     );
                                 })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                /* activeTabMode === 'duplicates' */
+                <div className="space-y-6 animate-fadeIn">
+                    <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+                        <div>
+                            <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                <AlertTriangle className="w-5 h-5 text-rose-600" />
+                                <span>Double Entry Audit & Duplicate Cleaner</span>
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium">
+                                Automatically scans active Accounts Payable ledger lines for identical invoice numbers or duplicate group postings within the same calendar month.
+                            </p>
+                        </div>
+
+                        {duplicateGroups.length === 0 ? (
+                            <div className="text-center py-12 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-3">
+                                <div className="mx-auto w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center">
+                                    <CheckCircle className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-black text-slate-800">No Double Entries Found!</h4>
+                                    <p className="text-xs text-slate-400 font-medium">Your Accounts Payable ledger is completely clean. No duplicate invoice numbers or over-entries found.</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                {/* Stats Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="p-5 bg-rose-50/40 border border-rose-100 rounded-2xl">
+                                        <span className="text-[10px] uppercase font-black text-rose-800 tracking-wider">Total Duplication Alerts</span>
+                                        <p className="text-2xl font-black text-rose-600 mt-1">{duplicateGroupsCount}</p>
+                                    </div>
+                                    <div className="p-5 bg-amber-50/40 border border-amber-100 rounded-2xl">
+                                        <span className="text-[10px] uppercase font-black text-amber-800 tracking-wider">Invoice Conflicts</span>
+                                        <p className="text-2xl font-black text-amber-600 mt-1">
+                                            {duplicateGroups.filter(g => g.type === 'invoice').length}
+                                        </p>
+                                    </div>
+                                    <div className="p-5 bg-slate-50 border border-slate-150 rounded-2xl">
+                                        <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider">Monthly Over-entries</span>
+                                        <p className="text-2xl font-black text-slate-800 mt-1">
+                                            {duplicateGroups.filter(g => g.type === 'monthly_company').length}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    {duplicateGroups.map((group: any) => (
+                                        <div key={group.id} className="border border-rose-100 bg-rose-50/5 rounded-2xl overflow-hidden shadow-xs hover:border-rose-200 transition-all">
+                                            <div className="px-5 py-4 bg-rose-50/30 border-b border-rose-100/55 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                                <div>
+                                                    <h4 className="text-xs font-black text-rose-950 flex items-center gap-1.5 leading-snug">
+                                                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                                        {group.key}
+                                                    </h4>
+                                                    <p className="text-[10px] font-bold text-slate-400 mt-0.5">{group.reason}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-4 overflow-x-auto">
+                                                <table className="w-full text-xs text-left text-slate-600 border-collapse">
+                                                    <thead>
+                                                        <tr className="border-b border-slate-100 pb-2 text-[9px] font-black uppercase text-slate-400 tracking-widest">
+                                                            <th className="py-2.5 px-3">Date</th>
+                                                            <th className="py-2.5 px-3">Invoice #</th>
+                                                            <th className="py-2.5 px-3">Supplier Name</th>
+                                                            <th className="py-2.5 px-3">Buyer Company</th>
+                                                            <th className="py-2.5 px-3">Deduction</th>
+                                                            <th className="py-2.5 px-3">Total Amount</th>
+                                                            <th className="py-2.5 px-3">Status</th>
+                                                            <th className="py-2.5 px-3 text-right">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {group.items.map((item: any) => {
+                                                            const payeeName = item.supplierName || suppliers?.find((s: any) => s.id === item.vendorId)?.name || vendors?.find((v: any) => v.id === item.vendorId)?.name || 'Unknown';
+                                                            const compName = companies?.find((c: any) => c.id === item.companyId)?.name || '-';
+                                                            return (
+                                                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                                                                    <td className="py-3 px-3 font-semibold text-slate-800 font-mono">{item.date}</td>
+                                                                    <td className="py-3 px-3 font-extrabold text-slate-900 font-mono text-slate-700">
+                                                                        {item.invoiceNumber || <span className="text-slate-350 italic">None</span>}
+                                                                    </td>
+                                                                    <td className="py-3 px-3 font-bold text-slate-700">{payeeName}</td>
+                                                                    <td className="py-3 px-3 font-bold text-slate-505">{compName}</td>
+                                                                    <td className="py-3 px-3 font-bold text-rose-500 font-mono">AED {Number(item.deduction || 0).toLocaleString()}</td>
+                                                                    <td className="py-3 px-3 font-black text-brand-600 font-mono">AED {Number(item.totalAmount || item.amount || 0).toLocaleString()}</td>
+                                                                    <td className="py-3 px-3">
+                                                                        <span className={cn(
+                                                                            "px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase",
+                                                                            item.status === 'Paid' ? "bg-emerald-50 text-emerald-700" :
+                                                                            item.status === 'Partially Paid' ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"
+                                                                        )}>
+                                                                            {item.status}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="py-3 px-3 text-right">
+                                                                        <div className="flex items-center justify-end gap-1.5">
+                                                                            <button 
+                                                                                type="button"
+                                                                                onClick={() => setViewingRecordDetail(item)}
+                                                                                className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-black text-[10px] tracking-wide uppercase transition-all cursor-pointer"
+                                                                            >
+                                                                                Details
+                                                                            </button>
+                                                                            {onEdit && (
+                                                                                <button 
+                                                                                    type="button"
+                                                                                    onClick={() => onEdit(item)}
+                                                                                    className="p-1 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-black text-[10px] tracking-wide uppercase transition-all cursor-pointer"
+                                                                                >
+                                                                                    Edit
+                                                                                </button>
+                                                                            )}
+                                                                            {onDelete && (
+                                                                                <button 
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        if (confirm(`Are you absolutely sure you want to permanently delete/purge duplicate AP Entry #${item.invoiceNumber || item.id}?`)) {
+                                                                                            onDelete(item);
+                                                                                        }
+                                                                                    }}
+                                                                                    className="p-1 px-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-black text-[10px] tracking-wide uppercase transition-all cursor-pointer"
+                                                                                >
+                                                                                    Delete
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -4242,7 +4511,7 @@ export const downloadSOAExcel = (
 
 export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, onDeleteMultiple, onBulkUpdateDate, user, companies, bankAccounts = [] }: any) => {
     const [previewInvoiceItem, setPreviewInvoiceItem] = useState<{ item: any; comp: any; client: any } | null>(null);
-    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa'>('ledger');
+    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa' | 'duplicates'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
     const [kpiFilter, setKpiFilter] = useState<'all' | 'collected' | 'pending' | 'vat' | null>(null);
 
@@ -4722,6 +4991,76 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         downloadSOAExcel(soaEntityId, pName, pType, soaFilteredItems, true);
     };
 
+    const { duplicateGroups, duplicateGroupsCount } = useMemo(() => {
+        const records = data || [];
+        const groups: { [key: string]: any[] } = {};
+        
+        // Group by Invoice Number
+        const invGroups: { [invoiceNum: string]: any[] } = {};
+        records.forEach((record: any) => {
+            const inv = (record.invoiceNumber || '').trim().toLowerCase();
+            if (inv && inv.length > 0) {
+                if (!invGroups[inv]) invGroups[inv] = [];
+                invGroups[inv].push(record);
+            }
+        });
+
+        // Group by Client + Company + Month & Year
+        const monthGroups: { [key: string]: any[] } = {};
+        records.forEach((record: any) => {
+            const client = record.clientId || record.vendorId || 'none';
+            const company = record.companyId || 'none';
+            const mY = getMonthYear(record.date || record.invoiceDate);
+            if (mY !== 'Unknown') {
+                const key = `${client}_${company}_${mY}`;
+                if (!monthGroups[key]) monthGroups[key] = [];
+                monthGroups[key].push(record);
+            }
+        });
+
+        const list: any[] = [];
+        let count = 0;
+
+        // Collect matching invoice duplicates
+        Object.entries(invGroups).forEach(([inv, items]) => {
+            if (items.length > 1) {
+                list.push({
+                    id: 'inv_' + inv,
+                    type: 'invoice',
+                    key: `Invoice Number Conflict: #${items[0].invoiceNumber}`,
+                    items,
+                    reason: `These custom invoices share the identical invoice number "${items[0].invoiceNumber}" in the master ledger.`
+                });
+                count++;
+            }
+        });
+
+        // Collect matching month/client duplicates
+        Object.entries(monthGroups).forEach(([key, items]) => {
+            if (items.length > 1) {
+                const item = items[0];
+                const clientName = (() => {
+                    if (item.clientName) return item.clientName;
+                    const found = suppliers?.find((s: any) => s.id === item.clientId || s.id === item.vendorId) || vendors?.find((v: any) => v.id === item.clientId || v.id === item.vendorId);
+                    return found ? found.name : 'Unknown';
+                })();
+                const compName = companies?.find((c: any) => c.id === item.companyId)?.name || 'the same selling entity';
+                const mY = getMonthYear(item.date || item.invoiceDate);
+
+                list.push({
+                    id: 'month_' + key,
+                    type: 'monthly_company',
+                    key: `Month-wise Company Overlap: ${clientName} & ${compName} in ${mY}`,
+                    items,
+                    reason: `Our rules flagged ${items.length} separate invoice entries for client "${clientName}" by seller "${compName}" specifically during the single month of ${mY}.`
+                });
+                count++;
+            }
+        });
+
+        return { duplicateGroups: list, duplicateGroupsCount: count };
+    }, [data, suppliers, vendors, companies]);
+
     // Calculate dynamic high-level metrics
     const metrics = useMemo(() => {
         let totalBilled = 0;
@@ -4895,6 +5234,19 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                         )}
                     >
                         📄 SOA & Monthly Packs
+                    </button>
+                    <button 
+                        onClick={() => setActiveTabMode('duplicates')}
+                        className={cn(
+                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                            activeTabMode === 'duplicates' ? "bg-white text-rose-600 shadow-sm animate-pulse-subtle" : "text-slate-500 hover:text-slate-800"
+                        )}
+                    >
+                        🔍 Double-Entry Auditor {duplicateGroupsCount > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[9px] font-bold animate-pulse">
+                                {duplicateGroupsCount}
+                            </span>
+                        )}
                     </button>
                 </div>
             </div>
@@ -5375,7 +5727,31 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     onBulkDelete={onDeleteMultiple}
                     onBulkUpdateDate={onBulkUpdateDate}
                     enableMultiSelect={true}
-                    searchFields={['invoiceNumber']}
+                    customSearch={(item, query) => {
+                        try {
+                            const clientNameStr = (item.clientName || '').toLowerCase();
+                            const invoiceNumber = (item.invoiceNumber || '').toLowerCase();
+                            const description = (item.description || '').toLowerCase();
+                            const cName = String(getEntityName?.(item.entityId || item.projectId, item.entityType || 'Project') || '').toLowerCase();
+                            const sellerComp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
+                            const compName = String(sellerComp?.name || item.companyName || '').toLowerCase();
+                            
+                            const q = (query || '').toLowerCase().trim();
+                            if (!q) return true;
+                            
+                            return (
+                                clientNameStr.includes(q) || 
+                                invoiceNumber.includes(q) || 
+                                description.includes(q) || 
+                                cName.includes(q) || 
+                                compName.includes(q)
+                            );
+                        } catch (e) {
+                            console.error("Error in AccountsReceivableView customSearch:", e);
+                            return false;
+                        }
+                    }}
+                    searchFields={['invoiceNumber', 'description']}
                     exportFileName="Accounts_Receivable"
                     user={user}
                 />
@@ -5654,7 +6030,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                         )}
                     </div>
                 </div>
-            ) : (
+            ) : activeTabMode === 'soa' ? (
                 /* activeTabMode === 'soa' */
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
                     
@@ -5859,6 +6235,152 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                         </div>
                                     );
                                 })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            ) : (
+                /* activeTabMode === 'duplicates' */
+                <div className="space-y-6 animate-fadeIn">
+                    <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+                        <div>
+                            <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                <AlertTriangle className="w-5 h-5 text-rose-600" />
+                                <span>Double Entry Audit & Duplicate Cleaner</span>
+                            </h3>
+                            <p className="text-xs text-slate-400 font-medium">
+                                Automatically scans active Accounts Receivable ledger lines for identical invoice numbers or duplicate client bookings within the same calendar month.
+                            </p>
+                        </div>
+
+                        {duplicateGroups.length === 0 ? (
+                            <div className="text-center py-12 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-3">
+                                <div className="mx-auto w-12 h-12 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center">
+                                    <CheckCircle className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-black text-slate-800">No Double Entries Found!</h4>
+                                    <p className="text-xs text-slate-400 font-medium">Your Accounts Receivable ledger is completely clean. No duplicate invoice numbers or over-entries found.</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                {/* Stats Cards */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="p-5 bg-rose-50/40 border border-rose-100 rounded-2xl">
+                                        <span className="text-[10px] uppercase font-black text-rose-800 tracking-wider">Total Duplication Alerts</span>
+                                        <p className="text-2xl font-black text-rose-600 mt-1">{duplicateGroupsCount}</p>
+                                    </div>
+                                    <div className="p-5 bg-amber-50/40 border border-amber-100 rounded-2xl">
+                                        <span className="text-[10px] uppercase font-black text-amber-800 tracking-wider">Invoice Conflicts</span>
+                                        <p className="text-2xl font-black text-amber-600 mt-1">
+                                            {duplicateGroups.filter(g => g.type === 'invoice').length}
+                                        </p>
+                                    </div>
+                                    <div className="p-5 bg-slate-50 border border-slate-150 rounded-2xl">
+                                        <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider">Monthly Over-entries</span>
+                                        <p className="text-2xl font-black text-slate-800 mt-1">
+                                            {duplicateGroups.filter(g => g.type === 'monthly_company').length}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    {duplicateGroups.map((group: any) => (
+                                        <div key={group.id} className="border border-rose-100 bg-rose-50/5 rounded-2xl overflow-hidden shadow-xs hover:border-rose-200 transition-all">
+                                            <div className="px-5 py-4 bg-rose-50/30 border-b border-rose-100/55 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                                                <div>
+                                                    <h4 className="text-xs font-black text-rose-950 flex items-center gap-1.5 leading-snug">
+                                                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                                                        {group.key}
+                                                    </h4>
+                                                    <p className="text-[10px] font-bold text-slate-400 mt-0.5">{group.reason}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-4 overflow-x-auto">
+                                                <table className="w-full text-xs text-left text-slate-600 border-collapse">
+                                                    <thead>
+                                                        <tr className="border-b border-slate-100 pb-2 text-[9px] font-black uppercase text-slate-400 tracking-widest">
+                                                            <th className="py-2.5 px-3">Date</th>
+                                                            <th className="py-2.5 px-3">Invoice #</th>
+                                                            <th className="py-2.5 px-3">Client Name</th>
+                                                            <th className="py-2.5 px-3">Seller Company</th>
+                                                            <th className="py-2.5 px-3">Deduction</th>
+                                                            <th className="py-2.5 px-3">Total Amount</th>
+                                                            <th className="py-2.5 px-3">Status</th>
+                                                            <th className="py-2.5 px-3 text-right">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {group.items.map((item: any) => {
+                                                            const clientName = item.clientName || suppliers?.find((s: any) => s.id === item.clientId)?.name || vendors?.find((v: any) => v.id === item.clientId)?.name || 'Unknown';
+                                                            const compName = companies?.find((c: any) => c.id === item.companyId)?.name || '-';
+                                                            return (
+                                                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                                                                    <td className="py-3 px-3 font-semibold text-slate-800 font-mono">{item.date}</td>
+                                                                    <td className="py-3 px-3 font-extrabold text-slate-900 font-mono text-slate-700">
+                                                                        {item.invoiceNumber || <span className="text-slate-350 italic">None</span>}
+                                                                    </td>
+                                                                    <td className="py-3 px-3 font-bold text-slate-700">{clientName}</td>
+                                                                    <td className="py-3 px-3 font-bold text-slate-505">{compName}</td>
+                                                                    <td className="py-3 px-3 font-bold text-rose-500 font-mono">AED {Number(item.deduction || 0).toLocaleString()}</td>
+                                                                    <td className="py-3 px-3 font-black text-brand-600 font-mono">AED {Number(item.totalAmount || item.amount || 0).toLocaleString()}</td>
+                                                                    <td className="py-3 px-3">
+                                                                        <span className={cn(
+                                                                            "px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase",
+                                                                            item.status === 'Paid' ? "bg-emerald-50 text-emerald-700" :
+                                                                            item.status === 'Partially Paid' ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"
+                                                                        )}>
+                                                                            {item.status}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="py-3 px-3 text-right">
+                                                                        <div className="flex items-center justify-end gap-1.5">
+                                                                            <button 
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    const comp = companies?.find((c: any) => c.id === item.companyId);
+                                                                                    const client = suppliers?.find((s: any) => s.id === item.clientId) || vendors?.find((v: any) => v.id === item.clientId) || suppliers?.find((s: any) => s.id === item.vendorId);
+                                                                                    setPreviewInvoiceItem({ item, comp, client });
+                                                                                }}
+                                                                                className="p-1 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-black text-[10px] tracking-wide uppercase transition-all cursor-pointer"
+                                                                            >
+                                                                                Details
+                                                                            </button>
+                                                                            {onEdit && (
+                                                                                <button 
+                                                                                    type="button"
+                                                                                    onClick={() => onEdit(item)}
+                                                                                    className="p-1 px-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg font-black text-[10px] tracking-wide uppercase transition-all cursor-pointer"
+                                                                                >
+                                                                                    Edit
+                                                                                </button>
+                                                                            )}
+                                                                            {onDelete && (
+                                                                                <button 
+                                                                                    type="button"
+                                                                                    onClick={() => {
+                                                                                        if (confirm(`Are you absolutely sure you want to permanently delete/purge duplicate AR Entry #${item.invoiceNumber || item.id}?`)) {
+                                                                                            onDelete(item);
+                                                                                        }
+                                                                                    }}
+                                                                                    className="p-1 px-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-black text-[10px] tracking-wide uppercase transition-all cursor-pointer"
+                                                                                >
+                                                                                    Delete
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -8194,7 +8716,8 @@ export const VendorModal = ({ vendor, onSave, onCancel, openConfirm }: any) => {
     );
 };
 
-export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave, onCancel, companies }: any) => {
+export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave, onCancel, companies, existingRecords }: any) => {
+    const [duplicateConflict, setDuplicateConflict] = useState<any>(null);
     const [formData, setFormData] = useState(() => {
         const base = ap || {};
         const amount = base.amount || 0;
@@ -8781,11 +9304,146 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                     </div>
                 </div>
 
-                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
-                    <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
-                    <button onClick={() => onSave(formData)} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Entry</button>
-                </div>
+                {/* Validation and Duplication Handler */}
+                {(() => {
+                    const handleBeforeSave = () => {
+                        const records = existingRecords || [];
+                        const curInvoiceNum = (formData.invoiceNumber || '').trim().toLowerCase();
+                        const curVendorId = formData.vendorId;
+                        const curCompanyId = formData.companyId;
+                        const curMonthYear = getMonthYear(formData.date);
+                        
+                        let foundConflict = null;
+                        for (const record of records) {
+                            if (record.id === formData.id) continue;
+                            
+                            // Check 1: Identical Invoice Number
+                            const recInvoiceNum = (record.invoiceNumber || '').trim().toLowerCase();
+                            if (curInvoiceNum && recInvoiceNum && curInvoiceNum === recInvoiceNum) {
+                                foundConflict = { record, type: 'invoice' };
+                                break;
+                            }
+                            
+                            // Check 2: Same Vendor + Same Company (Corporate identity) + Same Month/Year
+                            const recMonthYear = getMonthYear(record.date);
+                            if (curVendorId && record.vendorId && curVendorId === record.vendorId &&
+                                curCompanyId && record.companyId && curCompanyId === record.companyId &&
+                                curMonthYear !== 'Unknown' && recMonthYear !== 'Unknown' &&
+                                curMonthYear === recMonthYear) {
+                                foundConflict = { record, type: 'monthly_company' };
+                                break;
+                            }
+                        }
+
+                        if (foundConflict) {
+                            setDuplicateConflict(foundConflict);
+                        } else {
+                            onSave(formData);
+                        }
+                    };
+
+                    return (
+                        <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
+                            <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
+                            <button onClick={handleBeforeSave} className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20">Save Entry</button>
+                        </div>
+                    );
+                })()}
             </motion.div>
+
+            {duplicateConflict && (
+                <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+                    <motion.div 
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl border border-rose-100 flex flex-col overflow-hidden text-left"
+                    >
+                        <div className="p-6 bg-rose-50/50 border-b border-rose-100 flex items-center gap-3">
+                            <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl shrink-0">
+                                <AlertTriangle className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 tracking-tight">
+                                    {duplicateConflict.type === 'invoice' 
+                                        ? 'Duplicate Invoice Number Warning' 
+                                        : 'Double Monthly Entry Detected'}
+                                </h3>
+                                <p className="text-[10px] font-bold text-rose-700/85 uppercase tracking-wider">
+                                    AP Ledger Validation Alert
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="text-xs font-semibold text-slate-500 leading-relaxed">
+                                {duplicateConflict.type === 'invoice' ? (
+                                    <>
+                                        An existing record already has the exact same invoice number <span className="font-mono font-bold text-slate-800 bg-slate-50 px-1 border rounded">#{formData.invoiceNumber}</span>. Multiple records with identical invoice numbers are restricted to preserve auditing compliance.
+                                    </>
+                                ) : (
+                                    <>
+                                        You have already recorded a billing for this supplier under corporate identity <strong className="text-slate-800">
+                                        {companies?.find((c: any) => c.id === formData.companyId)?.name || 'the same company'}
+                                        </strong> in <strong className="text-brand-600">{getMonthYear(formData.date)}</strong>. Planners usually intend to enter only one billing record per supplier monthly.
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 space-y-2">
+                                <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block pb-1 border-b border-slate-200/50">Conflicting Existing Entry:</span>
+                                <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs font-bold text-slate-700">
+                                    <div>
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">S. No / ID</span>
+                                        <span className="font-mono text-slate-800">{duplicateConflict.record.id}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">Invoice Date</span>
+                                        <span className="text-slate-800">{duplicateConflict.record.date}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">Invoice Number</span>
+                                        <span className="font-mono text-slate-800">{duplicateConflict.record.invoiceNumber || '-'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">Total Amount</span>
+                                        <span className="text-slate-800 font-extrabold text-rose-600">AED {(duplicateConflict.record.totalAmount || duplicateConflict.record.amount || 0).toLocaleString()}</span>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">Supplier / Payee</span>
+                                        <span className="text-slate-800">
+                                            {(() => {
+                                                const payee = (duplicateConflict.record.vendorType === 'Supplier' ? suppliers : vendors)?.find((s: any) => s.id === duplicateConflict.record.vendorId);
+                                                return payee ? payee.name : (duplicateConflict.record.supplierName || 'Unknown');
+                                            })()}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex gap-2.5">
+                            <button 
+                                onClick={() => setDuplicateConflict(null)}
+                                className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-xs font-black text-slate-600 rounded-xl hover:bg-slate-50 transition-all cursor-pointer text-center"
+                            >
+                                Back & Edit Input
+                            </button>
+                            
+                            {duplicateConflict.type === 'monthly_company' && (
+                                <button 
+                                    onClick={() => {
+                                        setDuplicateConflict(null);
+                                        onSave(formData);
+                                    }}
+                                    className="flex-1 px-4 py-2.5 bg-brand-600 text-white text-xs font-black rounded-xl hover:bg-brand-700 transition-all cursor-pointer text-center"
+                                >
+                                    Proceed & Save Duplicate
+                                </button>
+                            )}
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 };
@@ -9319,7 +9977,8 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
     );
 };
 
-export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSave, onCancel, companies }: any) => {
+export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSave, onCancel, companies, existingRecords }: any) => {
+    const [duplicateConflict, setDuplicateConflict] = useState<any>(null);
     const [formData, setFormData] = useState(() => {
         const defaultItem = { id: Math.random().toString(36).substr(2, 9), name: '', description: '', quantity: 1, rate: 0, total: 0 };
         if (ar) {
@@ -9776,26 +10435,167 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                 </div>
 
                 {/* Modal Footer Controls */}
-                <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
-                    <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
-                    <button 
-                        onClick={() => {
-                            if (!formData.companyId) {
-                                alert("Please select a selling corporate identity company first!");
-                                return;
+                {(() => {
+                    const handleBeforeSave = () => {
+                        if (!formData.companyId) {
+                            alert("Please select a selling corporate identity company first!");
+                            return;
+                        }
+
+                        const records = existingRecords || [];
+                        const curInvoiceNum = (formData.invoiceNumber || '').trim().toLowerCase();
+                        const curEntityId = formData.entityId;
+                        const curCompanyId = formData.companyId;
+                        const curMonthYear = getMonthYear(formData.date);
+                        
+                        let foundConflict = null;
+                        for (const record of records) {
+                            if (record.id === formData.id) continue;
+                            
+                            // Check 1: Identical Invoice Number
+                            const recInvoiceNum = (record.invoiceNumber || '').trim().toLowerCase();
+                            if (curInvoiceNum && recInvoiceNum && curInvoiceNum === recInvoiceNum) {
+                                foundConflict = { record, type: 'invoice' };
+                                break;
                             }
+                            
+                            // Check 2: Same client + Same Selling Corporate company + Same month & year
+                            const recMonthYear = getMonthYear(record.date);
+                            const recEntityId = record.entityId || record.projectId || '';
+                            if (curEntityId && recEntityId && curEntityId === recEntityId &&
+                                curCompanyId && record.companyId && curCompanyId === record.companyId &&
+                                curMonthYear !== 'Unknown' && recMonthYear !== 'Unknown' &&
+                                curMonthYear === recMonthYear) {
+                                foundConflict = { record, type: 'monthly_company' };
+                                break;
+                            }
+                        }
+
+                        if (foundConflict) {
+                            setDuplicateConflict(foundConflict);
+                        } else {
                             onSave({
                                 ...formData,
                                 companyTrn: selectedCompany?.trn || '',
                                 clientTrn: targetEntity?.trn || ''
                             });
-                        }} 
-                        className="flex-1 px-6 py-4 bg-blue-600 text-white rounded-2xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 cursor-pointer"
-                    >
-                        {ar ? 'Update Zoho Invoice' : 'Create Zoho Invoice'}
-                    </button>
-                </div>
+                        }
+                    };
+
+                    return (
+                        <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
+                            <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
+                            <button 
+                                onClick={handleBeforeSave} 
+                                className="flex-1 px-6 py-4 bg-blue-600 text-white rounded-2xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 cursor-pointer"
+                            >
+                                {ar ? 'Update Zoho Invoice' : 'Create Zoho Invoice'}
+                            </button>
+                        </div>
+                    );
+                })()}
             </motion.div>
+
+            {duplicateConflict && (
+                <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+                    <motion.div 
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl border border-rose-100 flex flex-col overflow-hidden text-left"
+                    >
+                        <div className="p-6 bg-rose-50/50 border-b border-rose-100 flex items-center gap-3">
+                            <div className="p-2.5 bg-rose-100 text-rose-600 rounded-xl shrink-0">
+                                <AlertTriangle className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 tracking-tight">
+                                    {duplicateConflict.type === 'invoice' 
+                                        ? 'Duplicate Invoice Number Warning' 
+                                        : 'Double Monthly Entry Detected'}
+                                </h3>
+                                <p className="text-[10px] font-bold text-rose-700/85 uppercase tracking-wider">
+                                    AR Ledger Validation Alert
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="text-xs font-semibold text-slate-500 leading-relaxed">
+                                {duplicateConflict.type === 'invoice' ? (
+                                    <>
+                                        An existing record already has the exact same invoice number <span className="font-mono font-bold text-slate-800 bg-slate-50 px-1 border rounded">#{formData.invoiceNumber}</span>. Multiple records with identical invoice numbers are restricted to preserve auditing compliance.
+                                    </>
+                                ) : (
+                                    <>
+                                        You have already recorded an invoice on this client under corporate selling identity <strong className="text-slate-800">
+                                        {companies?.find((c: any) => c.id === formData.companyId)?.name || 'the same company'}
+                                        </strong> in <strong className="text-blue-600">{getMonthYear(formData.date)}</strong>. Auditing rules advise verifying if you intended to record multiple separate invoices for the same client under the same selling corporate ID monthly.
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 space-y-2">
+                                <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block pb-1 border-b border-slate-200/50">Conflicting Existing Entry:</span>
+                                <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs font-bold text-slate-700">
+                                    <div>
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">S. No / ID</span>
+                                        <span className="font-mono text-slate-800">{duplicateConflict.record.id}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">Invoice Date</span>
+                                        <span className="text-slate-800">{duplicateConflict.record.date}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">Invoice Number</span>
+                                        <span className="font-mono text-slate-800">{duplicateConflict.record.invoiceNumber || '-'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">Total Amount</span>
+                                        <span className="text-slate-800 font-extrabold text-blue-600">AED {(duplicateConflict.record.totalAmount || duplicateConflict.record.amount || 0).toLocaleString()}</span>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <span className="text-[9px] uppercase font-black text-slate-400 block">Client / Project / Counterparty</span>
+                                        <span className="text-slate-800">
+                                            {(() => {
+                                                const recEntityType = duplicateConflict.record.entityType || 'Project';
+                                                const recEntityId = duplicateConflict.record.entityId || duplicateConflict.record.projectId;
+                                                const recList = recEntityType === 'Project' ? projects : (recEntityType === 'Supplier' ? suppliers : vendors);
+                                                const entity = recList?.find((e: any) => e.id === recEntityId);
+                                                return entity ? entity.name : 'Unknown Counterparty';
+                                            })()}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex gap-2.5">
+                            <button 
+                                onClick={() => setDuplicateConflict(null)}
+                                className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-xs font-black text-slate-600 rounded-xl hover:bg-slate-50 transition-all cursor-pointer text-center"
+                            >
+                                Back & Edit Input
+                            </button>
+                            
+                            {duplicateConflict.type === 'monthly_company' && (
+                                <button 
+                                    onClick={() => {
+                                        setDuplicateConflict(null);
+                                        onSave({
+                                            ...formData,
+                                            companyTrn: selectedCompany?.trn || '',
+                                            clientTrn: targetEntity?.trn || ''
+                                        });
+                                    }}
+                                    className="flex-1 px-4 py-2.5 bg-blue-600 text-white text-xs font-black rounded-xl hover:bg-blue-700 transition-all cursor-pointer text-center animate-pulse-subtle"
+                                >
+                                    Proceed & Save Duplicate
+                                </button>
+                            )}
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </div>
     );
 };
