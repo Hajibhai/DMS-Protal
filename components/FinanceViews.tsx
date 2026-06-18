@@ -2159,7 +2159,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer"
                                         >
                                             <option value="All">All Projects</option>
-                                            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>)}
                                         </select>
                                     </div>
                                 </div>
@@ -2955,7 +2955,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-800 outline-hidden font-extrabold cursor-pointer"
                                 >
                                     <option value="All">All Operations & Projects Combined</option>
-                                    {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>)}
                                 </select>
                             </div>
 
@@ -5586,7 +5586,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer font-sans"
                                         >
                                             <option value="All">All Projects</option>
-                                            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>)}
                                         </select>
                                     </div>
                                 </div>
@@ -6098,7 +6098,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                     className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-850 outline-hidden font-extrabold cursor-pointer text-xs"
                                 >
                                     <option value="All">All Projects Combined</option>
-                                    {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>)}
                                 </select>
                             </div>
 
@@ -7566,7 +7566,7 @@ export const PettyCashView = ({ data, projects, onAdd, onEdit, onSave, onDelete,
                         >
                             <option value="All">All Projects</option>
                             {projects.map((p: any) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
+                                <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>
                             ))}
                         </select>
                     </div>
@@ -9058,7 +9058,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             >
                                 <option value="">General / No Project</option>
                                 {projects.map((p: any) => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                    <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>
                                 ))}
                             </select>
                         </div>
@@ -9158,7 +9158,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                 >
                                                     <option value="">General / No Project</option>
                                                     {projects.map((p: any) => (
-                                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                                        <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>
                                                     ))}
                                                 </select>
                                             </div>
@@ -10666,9 +10666,9 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                 >
                                     <option value="">Select contact...</option>
                                     {formData.entityType === 'Project' && projects
-                                        .filter((p: any) => !entitySearch || p.name?.toLowerCase().includes(entitySearch.toLowerCase()))
+                                        .filter((p: any) => !entitySearch || p.name?.toLowerCase().includes(entitySearch.toLowerCase()) || p.clientName?.toLowerCase().includes(entitySearch.toLowerCase()))
                                         .map((p: any) => (
-                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                            <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>
                                         ))}
                                     {formData.entityType === 'Supplier' && suppliers
                                         .filter((s: any) => !entitySearch || s.name?.toLowerCase().includes(entitySearch.toLowerCase()) || s.code?.toLowerCase().includes(entitySearch.toLowerCase()))
@@ -11612,7 +11612,7 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employee
                             >
                                 <option value="">📁 General (No Project Link)</option>
                                 {projects.map((p: any) => (
-                                    <option key={p.id} value={p.id}>🏢 {p.name}</option>
+                                    <option key={p.id} value={p.id}>🏢 {p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>
                                 ))}
                             </select>
                         </div>
@@ -12086,7 +12086,7 @@ export const ProjectedExpenseModal = ({ expense, projects, onSave, onCancel, use
                         >
                             <option value="">General / No Project</option>
                             {projects.map((p: any) => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
+                                <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>
                             ))}
                         </select>
                     </div>
@@ -12480,7 +12480,7 @@ export const EverydayExpenseView: React.FC<{
         {
             key: 'projectId',
             label: 'Project',
-            options: projects.map(p => ({ label: p.name, value: p.id }))
+            options: projects.map(p => ({ label: p.clientName ? `${p.name} (${p.clientName})` : p.name, value: p.id }))
         },
         {
             key: 'category',
@@ -13731,7 +13731,7 @@ export const EverydayExpenseModal: React.FC<{
                             >
                                 <option value="">General / No Project</option>
                                 {projects.map((p: any) => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                    <option key={p.id} value={p.id}>{p.name}{p.clientName ? ` (${p.clientName})` : ''}</option>
                                 ))}
                             </select>
                         </div>
