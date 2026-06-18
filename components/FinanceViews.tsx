@@ -8811,31 +8811,49 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         let amount = Number(next.amount) || 0;
         let deduction = Number(next.deduction) || 0;
         let vatAmount = Number(next.vatAmount);
+        let advance = Number(next.advance) || 0;
+        let paid = Number(next.paid) || 0;
+        let hours = Number(next.hours) || 0;
         
         if (siteInvoices.length > 0) {
             let sumAmount = 0;
             let sumDeduction = 0;
             let sumVat = 0;
+            let sumAdvance = 0;
+            let sumPaid = 0;
+            let sumHours = 0;
             siteInvoices.forEach((item: any) => {
                 const itemAmt = Number(item.amount) || 0;
                 const itemDed = Number(item.deduction) || 0;
+                const itemAdv = Number(item.advance) || 0;
+                const itemPaid = Number(item.paid) || 0;
+                const itemHrs = Number(item.hours) || 0;
+                
                 const itemActual = Number((itemAmt - itemDed).toFixed(2));
                 const itemVat = Number((itemActual * 0.05).toFixed(2));
                 
                 sumAmount += itemAmt;
                 sumDeduction += itemDed;
                 sumVat += itemVat;
+                sumAdvance += itemAdv;
+                sumPaid += itemPaid;
+                sumHours += itemHrs;
                 
+                item.hours = itemHrs;
+                item.advance = itemAdv;
+                item.paid = itemPaid;
+                item.actualAmount = itemActual;
                 item.vatAmount = itemVat;
                 item.totalAmount = Number((itemActual + itemVat).toFixed(2));
             });
             amount = Number(sumAmount.toFixed(2));
             deduction = Number(sumDeduction.toFixed(2));
             vatAmount = Number(sumVat.toFixed(2));
+            advance = Number(sumAdvance.toFixed(2));
+            paid = Number(sumPaid.toFixed(2));
+            hours = Number(sumHours.toFixed(2));
         }
 
-        const hours = Number(next.hours) || 0;
-        
         let actualAmount = Number(next.actualAmount);
         if (deduction > 0 || updates.deduction !== undefined || updates.amount !== undefined || siteInvoices.length > 0) {
             actualAmount = Number((amount - deduction).toFixed(2));
@@ -8853,8 +8871,6 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         }
 
         const totalAmount = Number((actualAmount + vatAmount).toFixed(2));
-        const advance = Number(next.advance) || 0;
-        const paid = Number(next.paid) || 0;
         const payableAmount = Number((totalAmount - paid - advance).toFixed(2));
 
         let status = next.status;
@@ -9086,8 +9102,11 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                         invoiceNumber: '',
                                         projectId: formData.projectId || '',
                                         description: '',
+                                        hours: 0,
                                         amount: 0,
                                         deduction: 0,
+                                        advance: 0,
+                                        paid: 0,
                                         vatAmount: 0,
                                         totalAmount: 0,
                                     });
@@ -9099,7 +9118,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                 Add Site Invoice Row
                             </button>
                         </div>
-
+ 
                         {(formData.siteInvoices || []).length === 0 ? (
                             <div className="text-center py-4 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
                                 <span className="text-[10px] text-slate-400 font-bold">No site breakdown items defined. Standard single-invoice ledger inputs apply below.</span>
@@ -9112,7 +9131,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                             #{idx + 1}
                                         </div>
                                         
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                                             <div className="space-y-1">
                                                 <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Site / Project</label>
                                                 <select
@@ -9145,7 +9164,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                     className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
                                                 />
                                             </div>
-
+ 
                                             <div className="space-y-1">
                                                 <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Work details / Site note</label>
                                                 <input
@@ -9160,9 +9179,25 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                     className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-slate-700"
                                                 />
                                             </div>
-                                        </div>
 
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Hours</label>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    placeholder="0"
+                                                    value={row.hours || ''}
+                                                    onChange={e => {
+                                                        const list = [...formData.siteInvoices];
+                                                        list[idx] = { ...list[idx], hours: Number(e.target.value) };
+                                                        handleRecalculate({ siteInvoices: list });
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
+                                                />
+                                            </div>
+                                        </div>
+ 
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 items-end">
                                             <div className="space-y-1">
                                                 <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Bill Amount (AED)</label>
                                                 <input
@@ -9178,7 +9213,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                     className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
                                                 />
                                             </div>
-
+ 
                                             <div className="space-y-1">
                                                 <label className="text-[9px] font-black uppercase tracking-wider text-rose-500">Deduction (-)</label>
                                                 <input
@@ -9195,17 +9230,56 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                 />
                                             </div>
 
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-wider text-amber-600">Advance (-)</label>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    placeholder="0"
+                                                    value={row.advance || ''}
+                                                    onChange={e => {
+                                                        const list = [...formData.siteInvoices];
+                                                        list[idx] = { ...list[idx], advance: Number(e.target.value) };
+                                                        handleRecalculate({ siteInvoices: list });
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-amber-600 font-mono"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Paid Amount</label>
+                                                <input
+                                                    type="number"
+                                                    step="any"
+                                                    placeholder="0"
+                                                    value={row.paid || ''}
+                                                    onChange={e => {
+                                                        const list = [...formData.siteInvoices];
+                                                        list[idx] = { ...list[idx], paid: Number(e.target.value) };
+                                                        handleRecalculate({ siteInvoices: list });
+                                                    }}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-emerald-600 font-mono"
+                                                />
+                                            </div>
+ 
                                             <div className="space-y-0.5">
-                                                <span className="text-[9.5px] font-bold text-slate-400 block">VAT Amount (5%)</span>
-                                                <span className="text-xs font-bold text-slate-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono">
-                                                    AED {Number(row.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                <span className="text-[9px] font-bold text-slate-400 block whitespace-nowrap">Actual Amt</span>
+                                                <span className="text-xs font-bold text-slate-700 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono whitespace-nowrap">
+                                                    AED {Number((row.amount || 0) - (row.deduction || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </span>
                                             </div>
 
-                                            <div className="flex items-center gap-2">
+                                            <div className="space-y-0.5">
+                                                <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-tight whitespace-nowrap">VAT Amount (5%)</span>
+                                                <span className="text-xs font-bold text-slate-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono whitespace-nowrap">
+                                                    AED {Number(row.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+ 
+                                            <div className="flex items-end gap-2">
                                                 <div className="space-y-0.5 flex-1">
-                                                    <span className="text-[9.5px] font-black text-slate-400 block">Total Amount</span>
-                                                    <span className="text-xs font-black text-brand-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono">
+                                                    <span className="text-[9px] font-black text-slate-400 block uppercase tracking-tight whitespace-nowrap">Total Amount</span>
+                                                    <span className="text-xs font-black text-brand-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono whitespace-nowrap">
                                                         AED {Number(row.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </span>
                                                 </div>
@@ -9215,10 +9289,10 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                         const list = formData.siteInvoices.filter((r: any) => r.id !== row.id);
                                                         handleRecalculate({ siteInvoices: list });
                                                     }}
-                                                    className="p-1 px-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-100 hover:border-rose-200 text-rose-600 rounded-lg transition-all shrink-0 cursor-pointer"
+                                                    className="h-[29px] w-[29px] flex items-center justify-center bg-rose-50 hover:bg-rose-100 border border-rose-100 hover:border-rose-200 text-rose-600 rounded-lg transition-all shrink-0 cursor-pointer"
                                                     title="Remove Site Invoice Row"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
                                             </div>
                                         </div>
@@ -9914,8 +9988,12 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                                     <th style="text-align: left;">Site / Project</th>
                                     <th style="text-align: left;">Invoice #</th>
                                     <th style="text-align: left;">Work details</th>
+                                    <th>Hours</th>
                                     <th>Bill Amount (AED)</th>
                                     <th>Deduction (AED)</th>
+                                    <th>Advance (AED)</th>
+                                    <th>Paid Amount (AED)</th>
+                                    <th>Actual Amount (AED)</th>
                                     <th>VAT Amount (AED)</th>
                                     <th>Total Amount (AED)</th>
                                 </tr>
@@ -9926,16 +10004,24 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                                         <td style="text-align: left; font-weight: 700; color: #0f172a;">${projects?.find((p: any) => p.id === inv.projectId)?.name || 'General'}</td>
                                         <td style="text-align: left; font-family: monospace;">#${inv.invoiceNumber || '-'}</td>
                                         <td style="text-align: left; font-weight: 500; font-size: 11px; color: #475569;">${inv.description || '-'}</td>
+                                        <td style="font-family: monospace;">${inv.hours !== undefined ? inv.hours : 0}</td>
                                         <td style="font-family: monospace;">${(inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                         <td style="font-family: monospace; color: #dc2626;">${(inv.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td style="font-family: monospace; color: #b45309;">${(inv.advance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td style="font-family: monospace; color: #16a34a;">${(inv.paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td style="font-family: monospace;">${((inv.amount || 0) - (inv.deduction || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                         <td style="font-family: monospace; color: #64748b;">${(inv.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                         <td style="font-family: monospace; font-weight: 850; color: #4338ca;">${(inv.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                     </tr>
                                 `).join('')}
                                 <tr style="background-color: #f8fafc; font-weight: 800; border-top: 2px solid #cbd5e1;">
                                     <td colspan="3" style="text-align: left; text-transform: uppercase; font-size: 10px; color: #475569;">Consolidated Breakdown Summary:</td>
+                                    <td style="font-family: monospace;">${item.siteInvoices.reduce((acc: number, x: any) => acc + (x.hours || 0), 0)}</td>
                                     <td style="font-family: monospace;">AED ${(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                     <td style="font-family: monospace; color: #dc2626;">AED ${(item.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    <td style="font-family: monospace; color: #b45309;">AED ${(item.advance || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    <td style="font-family: monospace; color: #16a34a;">AED ${(item.paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    <td style="font-family: monospace;">AED ${((item.amount || 0) - (item.deduction || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                     <td style="font-family: monospace;">AED ${(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                     <td style="font-family: monospace; color: #0f172a;">AED ${(item.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                 </tr>
@@ -10112,39 +10198,52 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                                 <h3 className="text-xs font-black uppercase text-slate-400 tracking-widest">Itemized Site-Specific Invoices ({item.siteInvoices.length})</h3>
                             </div>
                             <div className="overflow-x-auto border border-slate-150 rounded-2xl bg-slate-50/50">
-                                <table className="w-full text-left border-collapse text-xs">
+                                <table className="w-full text-left border-collapse text-[11px]">
                                     <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-200/60 text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">
-                                            <th className="p-4 py-3">Site / Project</th>
-                                            <th className="p-4 py-3">Invoice #</th>
-                                            <th className="p-4 py-3">Work details</th>
-                                            <th className="p-4 py-3 text-right">Bill Amount</th>
-                                            <th className="p-4 py-3 text-right">Deduction</th>
-                                            <th className="p-4 py-3 text-right">VAT (5%)</th>
-                                            <th className="p-4 py-3 text-right">Total Amount</th>
+                                        <tr className="bg-slate-50 border-b border-slate-200/60 text-slate-500 font-extrabold uppercase text-[9px] tracking-wider">
+                                            <th className="p-3 py-2.5">Site / Project</th>
+                                            <th className="p-3 py-2.5">Invoice #</th>
+                                            <th className="p-3 py-2.5">Work details</th>
+                                            <th className="p-3 py-2.5 text-right">Hours</th>
+                                            <th className="p-3 py-2.5 text-right">Bill Amount</th>
+                                            <th className="p-3 py-2.5 text-right">Deduction</th>
+                                            <th className="p-3 py-2.5 text-right">Advance</th>
+                                            <th className="p-3 py-2.5 text-right">Paid Amount</th>
+                                            <th className="p-3 py-2.5 text-right">Actual Amt</th>
+                                            <th className="p-3 py-2.5 text-right">VAT (5%)</th>
+                                            <th className="p-3 py-2.5 text-right">Total Amount</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 font-bold bg-white text-slate-600">
                                         {item.siteInvoices.map((inv: any) => {
                                             const projName = projects?.find((p: any) => p.id === inv.projectId)?.name || 'General / No Project';
+                                            const computedActual = (inv.amount || 0) - (inv.deduction || 0);
                                             return (
                                                 <tr key={inv.id} className="hover:bg-slate-50/70 transition-colors">
-                                                    <td className="p-4 text-slate-800 font-black whitespace-nowrap">{projName}</td>
-                                                    <td className="p-4 font-mono font-bold text-slate-500 whitespace-nowrap">#{inv.invoiceNumber || '-'}</td>
-                                                    <td className="p-4 text-xs font-medium text-slate-500 max-w-[200px] truncate" title={inv.description}>{inv.description || '-'}</td>
-                                                    <td className="p-4 text-right font-mono">AED {(inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                                    <td className="p-4 text-right font-mono text-rose-500">AED {(inv.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                                    <td className="p-4 text-right font-mono text-slate-400">AED {(inv.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                                    <td className="p-4 text-right font-mono text-indigo-600 font-extrabold">AED {(inv.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-3 text-slate-800 font-black whitespace-nowrap">{projName}</td>
+                                                    <td className="p-3 font-mono font-bold text-slate-500 whitespace-nowrap">#{inv.invoiceNumber || '-'}</td>
+                                                    <td className="p-3 text-slate-500 font-medium max-w-[120px] truncate" title={inv.description}>{inv.description || '-'}</td>
+                                                    <td className="p-3 text-right font-mono text-slate-700">{inv.hours !== undefined ? inv.hours : 0} hrs</td>
+                                                    <td className="p-3 text-right font-mono text-slate-800">AED {(inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-3 text-right font-mono text-rose-500">AED {(inv.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-3 text-right font-mono text-amber-600">AED {(inv.advance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-3 text-right font-mono text-emerald-600">AED {(inv.paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-3 text-right font-mono text-slate-900">AED {computedActual.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-3 text-right font-mono text-slate-400">AED {(inv.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-3 text-right font-mono text-indigo-600 font-extrabold">AED {(inv.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                                 </tr>
                                             );
                                         })}
-                                        <tr className="bg-slate-105/40 border-t border-slate-250 text-slate-900 font-black text-xs">
-                                            <td colSpan={3} className="p-4 text-left font-black uppercase tracking-wider text-[10px] text-slate-500">Breakdown Consolidated Totals:</td>
-                                            <td className="p-4 text-right font-mono">AED {(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                            <td className="p-4 text-right font-mono text-rose-600">AED {(item.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                            <td className="p-4 text-right font-mono text-slate-600">AED {(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                            <td className="p-4 text-right font-mono text-brand-700">AED {(item.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                        <tr className="bg-slate-105/40 border-t border-slate-250 text-slate-900 font-black text-[11px]">
+                                            <td colSpan={3} className="p-3 text-left font-black uppercase tracking-wider text-[9px] text-slate-500">Breakdown Consolidated Totals:</td>
+                                            <td className="p-3 text-right font-mono text-slate-700">{item.siteInvoices.reduce((acc: number, x: any) => acc + (x.hours || 0), 0)} hrs</td>
+                                            <td className="p-3 text-right font-mono">AED {(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="p-3 text-right font-mono text-rose-600">AED {(item.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="p-3 text-right font-mono text-amber-600">AED {(item.advance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="p-3 text-right font-mono text-emerald-600">AED {(item.paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="p-3 text-right font-mono text-slate-900">AED {((item.amount || 0) - (item.deduction || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="p-3 text-right font-mono text-slate-600">AED {(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                            <td className="p-3 text-right font-mono text-brand-700">AED {(item.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                         </tr>
                                     </tbody>
                                 </table>

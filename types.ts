@@ -262,6 +262,10 @@ export interface AccountsPayable {
         vatAmount: number;
         totalAmount: number;
         description: string;
+        hours?: number;
+        actualAmount?: number;
+        advance?: number;
+        paid?: number;
     }[];
 }
 
