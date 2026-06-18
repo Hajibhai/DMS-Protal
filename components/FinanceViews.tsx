@@ -9127,8 +9127,21 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
                                 {(formData.siteInvoices || []).map((row: any, idx: number) => (
                                     <div key={row.id} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 relative shadow-xs hover:border-slate-300 transition-all">
-                                        <div className="absolute top-2.5 right-2 text-[10px] font-black text-slate-300">
-                                            #{idx + 1}
+                                        <div className="absolute top-2.5 right-2.5 flex items-center gap-2">
+                                            <span className="text-[9px] font-bold text-slate-400 select-none bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">
+                                                #{idx + 1}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const list = formData.siteInvoices.filter((r: any) => r.id !== row.id);
+                                                    handleRecalculate({ siteInvoices: list });
+                                                }}
+                                                className="h-6 w-6 flex items-center justify-center bg-rose-50 hover:bg-rose-100 border border-rose-100/60 hover:border-rose-200 text-rose-600 rounded-md transition-all shrink-0 cursor-pointer"
+                                                title="Remove Site Invoice Row"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
                                         </div>
                                         
                                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
@@ -9276,24 +9289,11 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                 </span>
                                             </div>
  
-                                            <div className="flex items-end gap-2">
-                                                <div className="space-y-0.5 flex-1">
-                                                    <span className="text-[9px] font-black text-slate-400 block uppercase tracking-tight whitespace-nowrap">Total Amount</span>
-                                                    <span className="text-xs font-black text-brand-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono whitespace-nowrap">
-                                                        AED {Number(row.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                    </span>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const list = formData.siteInvoices.filter((r: any) => r.id !== row.id);
-                                                        handleRecalculate({ siteInvoices: list });
-                                                    }}
-                                                    className="h-[29px] w-[29px] flex items-center justify-center bg-rose-50 hover:bg-rose-100 border border-rose-100 hover:border-rose-200 text-rose-600 rounded-lg transition-all shrink-0 cursor-pointer"
-                                                    title="Remove Site Invoice Row"
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                </button>
+                                            <div className="space-y-0.5">
+                                                <span className="text-[9px] font-black text-slate-400 block uppercase tracking-tight whitespace-nowrap">Total Amount</span>
+                                                <span className="text-xs font-black text-brand-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono whitespace-nowrap">
+                                                    AED {Number(row.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
