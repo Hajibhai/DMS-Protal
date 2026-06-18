@@ -14745,8 +14745,8 @@ export const FinancialDashboardView: React.FC<{
         doc.text("DATE", 18, tableHeaderY + 5.5);
         doc.text("TRANSACTION DETAILS & REFERENCE", 36, tableHeaderY + 5.5);
         doc.text("SOURCE LEDGER", 90, tableHeaderY + 5.5);
-        doc.text("PREV. BALANCE", 134, tableHeaderY + 5.5, { align: 'right' });
-        doc.text("TX AMOUNT", 165, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("PREV. BALANCE", 142, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("TX AMOUNT", 168, tableHeaderY + 5.5, { align: 'right' });
         doc.text("RUN. BALANCE", 194, tableHeaderY + 5.5, { align: 'right' });
 
         const sanitizePdfText = (str: string): string => {
@@ -14769,10 +14769,19 @@ export const FinancialDashboardView: React.FC<{
             const descLines: string[] = doc.splitTextToSize(sanitizedDesc, 52);
             const refLines: string[] = doc.splitTextToSize(sanitizedRef, 52);
 
+            let projectLines: string[] = [];
+            const projectObj = projects?.find((p: any) => p.id === tx.originalItem?.projectId);
+            if (projectObj) {
+                const projectText = `Project: ${projectObj.name}${projectObj.clientName ? ` (${projectObj.clientName})` : ''}`;
+                projectLines = doc.splitTextToSize(sanitizePdfText(projectText), 52);
+            }
+
             // Calculate dynamic row heights to prevent text truncation and overlap
             const lineHtDesc = 3.5;
             const lineHtRef = 2.6;
-            const totalTextHt = (descLines.length * lineHtDesc) + (refLines.length * lineHtRef);
+            const lineHtProj = 2.6;
+            const projTextHt = projectLines.length * lineHtProj;
+            const totalTextHt = (descLines.length * lineHtDesc) + (refLines.length * lineHtRef) + (projTextHt > 0 ? projTextHt + 0.5 : 0);
             const rowHeight = Math.max(11.5, totalTextHt + 4.5);
 
             // Check page boundary
@@ -14790,8 +14799,8 @@ export const FinancialDashboardView: React.FC<{
                 doc.text("DATE", 18, 12 + 5.5);
                 doc.text("TRANSACTION DETAILS & REFERENCE", 36, 12 + 5.5);
                 doc.text("SOURCE LEDGER", 90, 12 + 5.5);
-                doc.text("PREV. BALANCE", 134, 12 + 5.5, { align: 'right' });
-                doc.text("TX AMOUNT", 165, 12 + 5.5, { align: 'right' });
+                doc.text("PREV. BALANCE", 142, 12 + 5.5, { align: 'right' });
+                doc.text("TX AMOUNT", 168, 12 + 5.5, { align: 'right' });
                 doc.text("RUN. BALANCE", 194, 12 + 5.5, { align: 'right' });
                 
                 currentY = 20.5;
@@ -14827,6 +14836,16 @@ export const FinancialDashboardView: React.FC<{
                 doc.text(line, 36, currentY + refStartOffset + (rIdx * lineHtRef));
             });
 
+            if (projectLines.length > 0) {
+                doc.setFont("Helvetica", "bold");
+                doc.setFontSize(6.5);
+                doc.setTextColor(37, 99, 235); // Pioneer brand blue/brand colour
+                const projStartOffset = refStartOffset + (refLines.length * lineHtRef) + 0.5;
+                projectLines.forEach((line, pIdx) => {
+                    doc.text(line, 36, currentY + projStartOffset + (pIdx * lineHtProj));
+                });
+            }
+
             // Vertically center numeric and single-line text columns
             const valCenterY = currentY + (rowHeight / 2) + 1;
 
@@ -14844,7 +14863,7 @@ export const FinancialDashboardView: React.FC<{
             doc.setFont("Helvetica", "normal");
             doc.setFontSize(7.5);
             doc.setTextColor(100, 116, 139);
-            doc.text(tx.previousBalance.toLocaleString(undefined, {minimumFractionDigits: 2}), 134, valCenterY, { align: 'right' });
+            doc.text(tx.previousBalance.toLocaleString(undefined, {minimumFractionDigits: 2}), 142, valCenterY, { align: 'right' });
 
             const isIncome = tx.changeType === 'in';
             doc.setFont("Helvetica", "bold");
@@ -14853,7 +14872,7 @@ export const FinancialDashboardView: React.FC<{
             } else {
                 doc.setTextColor(190, 24, 74);
             }
-            doc.text(`${isIncome ? "+" : "-"} ${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 165, valCenterY, { align: 'right' });
+            doc.text(`${isIncome ? "+" : "-"} ${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 168, valCenterY, { align: 'right' });
 
             if (tx.balanceAfter >= 0) {
                 doc.setTextColor(16, 124, 65);
@@ -15559,6 +15578,17 @@ export const FinancialDashboardView: React.FC<{
                                                                 <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
                                                                     {tx.reference}
                                                                 </div>
+                                                                {(() => {
+                                                                    const proj = projects?.find((p: any) => p.id === tx.originalItem?.projectId);
+                                                                    if (proj) {
+                                                                        return (
+                                                                            <div className="text-[10px] text-brand-600 font-black mt-1 inline-flex items-center gap-1 bg-brand-50 px-2 py-0.5 rounded-md border border-brand-100">
+                                                                                <span className="opacity-75 font-bold">Project:</span> {proj.name}{proj.clientName ? ` (${proj.clientName})` : ''}
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                })()}
                                                             </td>
                                                             {/* Source Ledger */}
                                                             <td className="px-5 py-4">
