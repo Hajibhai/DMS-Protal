@@ -14743,10 +14743,10 @@ export const FinancialDashboardView: React.FC<{
         doc.setFontSize(7.5);
         doc.setTextColor(255, 255, 255);
         doc.text("DATE", 18, tableHeaderY + 5.5);
-        doc.text("TRANSACTION DETAILS & REFERENCE", 38, tableHeaderY + 5.5);
-        doc.text("SOURCE LEDGER", 104, tableHeaderY + 5.5);
-        doc.text("PREV. BALANCE", 144, tableHeaderY + 5.5, { align: 'right' });
-        doc.text("TX AMOUNT", 168, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("TRANSACTION DETAILS & REFERENCE", 36, tableHeaderY + 5.5);
+        doc.text("SOURCE LEDGER", 90, tableHeaderY + 5.5);
+        doc.text("PREV. BALANCE", 134, tableHeaderY + 5.5, { align: 'right' });
+        doc.text("TX AMOUNT", 165, tableHeaderY + 5.5, { align: 'right' });
         doc.text("RUN. BALANCE", 194, tableHeaderY + 5.5, { align: 'right' });
 
         const sanitizePdfText = (str: string): string => {
@@ -14766,8 +14766,8 @@ export const FinancialDashboardView: React.FC<{
         selectedAccountLedger.forEach((tx, idx) => {
             const sanitizedDesc = sanitizePdfText(tx.description || '');
             const sanitizedRef = sanitizePdfText(tx.reference || '');
-            const descLines: string[] = doc.splitTextToSize(sanitizedDesc, 62);
-            const refLines: string[] = doc.splitTextToSize(sanitizedRef, 62);
+            const descLines: string[] = doc.splitTextToSize(sanitizedDesc, 52);
+            const refLines: string[] = doc.splitTextToSize(sanitizedRef, 52);
 
             // Calculate dynamic row heights to prevent text truncation and overlap
             const lineHtDesc = 3.5;
@@ -14788,10 +14788,10 @@ export const FinancialDashboardView: React.FC<{
                 doc.setFontSize(7.5);
                 doc.setTextColor(255, 255, 255);
                 doc.text("DATE", 18, 12 + 5.5);
-                doc.text("TRANSACTION DETAILS & REFERENCE", 38, 12 + 5.5);
-                doc.text("SOURCE LEDGER", 104, 12 + 5.5);
-                doc.text("PREV. BALANCE", 144, 12 + 5.5, { align: 'right' });
-                doc.text("TX AMOUNT", 168, 12 + 5.5, { align: 'right' });
+                doc.text("TRANSACTION DETAILS & REFERENCE", 36, 12 + 5.5);
+                doc.text("SOURCE LEDGER", 90, 12 + 5.5);
+                doc.text("PREV. BALANCE", 134, 12 + 5.5, { align: 'right' });
+                doc.text("TX AMOUNT", 165, 12 + 5.5, { align: 'right' });
                 doc.text("RUN. BALANCE", 194, 12 + 5.5, { align: 'right' });
                 
                 currentY = 20.5;
@@ -14816,7 +14816,7 @@ export const FinancialDashboardView: React.FC<{
             doc.setFontSize(7.5);
             
             descLines.forEach((line, lIdx) => {
-                doc.text(line, 38, currentY + 3.8 + (lIdx * lineHtDesc));
+                doc.text(line, 36, currentY + 3.8 + (lIdx * lineHtDesc));
             });
             
             doc.setFont("Helvetica", "normal");
@@ -14824,7 +14824,7 @@ export const FinancialDashboardView: React.FC<{
             doc.setTextColor(148, 163, 184);
             const refStartOffset = 3.8 + (descLines.length * lineHtDesc) + 0.5;
             refLines.forEach((line, rIdx) => {
-                doc.text(line, 38, currentY + refStartOffset + (rIdx * lineHtRef));
+                doc.text(line, 36, currentY + refStartOffset + (rIdx * lineHtRef));
             });
 
             // Vertically center numeric and single-line text columns
@@ -14838,13 +14838,13 @@ export const FinancialDashboardView: React.FC<{
             } else {
                 doc.setTextColor(79, 70, 229); // Indigo
             }
-            doc.text(tx.sourceType.toUpperCase(), 104, valCenterY);
+            doc.text(tx.sourceType.toUpperCase(), 90, valCenterY);
 
             // PREV. BALANCE Column
             doc.setFont("Helvetica", "normal");
             doc.setFontSize(7.5);
             doc.setTextColor(100, 116, 139);
-            doc.text(tx.previousBalance.toLocaleString(undefined, {minimumFractionDigits: 2}), 144, valCenterY, { align: 'right' });
+            doc.text(tx.previousBalance.toLocaleString(undefined, {minimumFractionDigits: 2}), 134, valCenterY, { align: 'right' });
 
             const isIncome = tx.changeType === 'in';
             doc.setFont("Helvetica", "bold");
@@ -14853,7 +14853,7 @@ export const FinancialDashboardView: React.FC<{
             } else {
                 doc.setTextColor(190, 24, 74);
             }
-            doc.text(`${isIncome ? "+" : "-"} ${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 168, valCenterY, { align: 'right' });
+            doc.text(`${isIncome ? "+" : "-"} ${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 165, valCenterY, { align: 'right' });
 
             if (tx.balanceAfter >= 0) {
                 doc.setTextColor(16, 124, 65);
