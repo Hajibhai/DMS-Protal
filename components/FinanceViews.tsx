@@ -10381,6 +10381,7 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
 
 export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSave, onCancel, companies, existingRecords }: any) => {
     const [duplicateConflict, setDuplicateConflict] = useState<any>(null);
+    const [entitySearch, setEntitySearch] = useState('');
     const [formData, setFormData] = useState(() => {
         const defaultItem = { id: Math.random().toString(36).substr(2, 9), name: '', description: '', quantity: 1, rate: 0, total: 0 };
         if (ar) {
@@ -10621,40 +10622,72 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Entity Type</label>
                             <select 
                                 value={formData.entityType}
-                                onChange={e => setFormData({ ...formData, entityType: e.target.value, entityId: '' })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                onChange={e => {
+                                    setFormData({ ...formData, entityType: e.target.value, entityId: '' });
+                                    setEntitySearch('');
+                                }}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all font-sans"
                             >
                                 <option value="Project">Project</option>
                                 <option value="Supplier">Supplier</option>
                                 <option value="Vendor">Client</option>
                             </select>
                         </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 font-mono">
-                                Select {formData.entityType === 'Vendor' ? 'Client' : formData.entityType}
-                            </label>
-                            <select 
-                                value={formData.entityId}
-                                onChange={e => setFormData({ ...formData, entityId: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
-                            >
-                                <option value="">Select contact...</option>
-                                {formData.entityType === 'Project' && projects.map((p: any) => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
-                                ))}
-                                {formData.entityType === 'Supplier' && suppliers.map((s: any) => (
-                                    <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''}</option>
-                                ))}
-                                {formData.entityType === 'Vendor' && vendors.map((v: any) => (
-                                    <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>
-                                ))}
-                            </select>
+                        <div className="space-y-1.5 flex flex-col justify-start">
+                            <div className="flex justify-between items-center px-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">
+                                    Select {formData.entityType === 'Vendor' ? 'Client' : formData.entityType}
+                                </label>
+                                {entitySearch && (
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setEntitySearch('')}
+                                        className="text-[9px] text-rose-500 hover:text-rose-600 font-extrabold focus:outline-hidden"
+                                    >
+                                        Clear search
+                                    </button>
+                                )}
+                            </div>
+                            <div className="space-y-1 w-full">
+                                <div className="relative flex items-center">
+                                    <input 
+                                        type="text"
+                                        placeholder={`🔎 Type to search ${formData.entityType === 'Vendor' ? 'client' : formData.entityType.toLowerCase()}...`}
+                                        value={entitySearch}
+                                        onChange={e => setEntitySearch(e.target.value)}
+                                        className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-sans"
+                                    />
+                                    <span className="absolute left-3 text-slate-400 text-xs">🔎</span>
+                                </div>
+                                <select 
+                                    value={formData.entityId}
+                                    onChange={e => setFormData({ ...formData, entityId: e.target.value })}
+                                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer font-sans"
+                                >
+                                    <option value="">Select contact...</option>
+                                    {formData.entityType === 'Project' && projects
+                                        .filter((p: any) => !entitySearch || p.name?.toLowerCase().includes(entitySearch.toLowerCase()))
+                                        .map((p: any) => (
+                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                        ))}
+                                    {formData.entityType === 'Supplier' && suppliers
+                                        .filter((s: any) => !entitySearch || s.name?.toLowerCase().includes(entitySearch.toLowerCase()) || s.code?.toLowerCase().includes(entitySearch.toLowerCase()))
+                                        .map((s: any) => (
+                                            <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ''}</option>
+                                        ))}
+                                    {formData.entityType === 'Vendor' && vendors
+                                        .filter((v: any) => !entitySearch || v.name?.toLowerCase().includes(entitySearch.toLowerCase()) || v.code?.toLowerCase().includes(entitySearch.toLowerCase()))
+                                        .map((v: any) => (
+                                            <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>
+                                        ))}
+                                </select>
+                            </div>
                             {targetEntity?.trn ? (
-                                <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-50 border border-teal-100/60 rounded-lg text-[10px] font-black text-teal-700 font-mono mt-1">
+                                <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-teal-50 border border-teal-100/60 rounded-lg text-[10px] font-black text-teal-700 font-mono mt-1 w-fit">
                                     <span>Client TRN: <strong>{targetEntity.trn}</strong></span>
                                 </div>
                             ) : formData.entityId ? (
-                                <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-100/60 rounded-lg text-[10px] font-black text-amber-600 font-mono mt-1">
+                                <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-100/60 rounded-lg text-[10px] font-black text-amber-600 font-mono mt-1 w-fit">
                                     <span>No TRN registered for this contact!</span>
                                 </div>
                             ) : null}
