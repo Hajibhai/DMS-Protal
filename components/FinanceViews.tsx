@@ -3286,7 +3286,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                     />
                 )}
                 {viewingBill && (
-                    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-md no-print">
+                    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-md no-print">
                         <motion.div 
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
@@ -12206,6 +12206,272 @@ export const sanitizePdfText = (text: string): string => {
     return sanitized.trim();
 };
 
+export const downloadOverallSummaryExcel = (filteredTallies: any[]) => {
+    const wb = XLSX.utils.book_new();
+    
+    const rows = filteredTallies.map((item: any, idx: number) => ({
+        "S.No": idx + 1,
+        "Staff Member": item.employee.name,
+        "Employee Code": item.employee.code || 'N/A',
+        "Designation / Dept": item.employee.designation || item.employee.department || 'N/A',
+        "Cash Allocations IN (AED)": item.totalAdvanced,
+        "Petty Cash Spent (AED)": item.totalDirectSpent,
+        "Everyday Bills Spent (AED)": item.totalEverydaySpent,
+        "Total Spend OUT (AED)": item.totalSpending,
+        "Net Tally Balance (AED)": item.netBalance,
+        "Account Status": item.netBalance >= 0 ? "BALANCED" : "OVERSPENT/DEFICIT"
+    }));
+
+    const totalAdvanced = filteredTallies.reduce((acc, i) => acc + (i.totalAdvanced || 0), 0);
+    const totalDirectSpent = filteredTallies.reduce((acc, i) => acc + (i.totalDirectSpent || 0), 0);
+    const totalEverydaySpent = filteredTallies.reduce((acc, i) => acc + (i.totalEverydaySpent || 0), 0);
+    const totalSpending = filteredTallies.reduce((acc, i) => acc + (i.totalSpending || 0), 0);
+    const totalNetBalance = filteredTallies.reduce((acc, i) => acc + (i.netBalance || 0), 0);
+
+    rows.push({
+        "S.No": "",
+        "Staff Member": "GRAND TOTAL",
+        "Employee Code": "",
+        "Designation / Dept": "",
+        "Cash Allocations IN (AED)": totalAdvanced,
+        "Petty Cash Spent (AED)": totalDirectSpent,
+        "Everyday Bills Spent (AED)": totalEverydaySpent,
+        "Total Spend OUT (AED)": totalSpending,
+        "Net Tally Balance (AED)": totalNetBalance,
+        "Account Status": totalNetBalance >= 0 ? "BALANCED" : "OVERSPENT/DEFICIT"
+    } as any);
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    const wscols = [
+        { wch: 6 },  // S.No
+        { wch: 35 }, // Staff Member
+        { wch: 15 }, // Employee Code
+        { wch: 22 }, // Designation
+        { wch: 25 }, // Allocations
+        { wch: 22 }, // Petty spent
+        { wch: 22 }, // Everyday spent
+        { wch: 22 }, // Total spend
+        { wch: 22 }, // Net balance
+        { wch: 20 }  // Status
+    ];
+    ws['!cols'] = wscols;
+
+    XLSX.utils.book_append_sheet(wb, ws, "Personnel Tally Summary");
+    XLSX.writeFile(wb, `PIONEER_DMS_Personnel_Tally_Summary_${new Date().toISOString().split('T')[0]}.xlsx`);
+};
+
+export const downloadOverallSummaryPdf = (filteredTallies: any[]) => {
+    const doc = new jsPDF({
+        orientation: 'l',
+        unit: 'mm',
+        format: 'a4'
+    });
+
+    const assets = getPioneerPDFAssets();
+    if (assets.watermark) {
+        doc.addImage(assets.watermark, 'PNG', 75, 45, 145, 145, undefined, 'FAST');
+    }
+
+    doc.setFillColor(37, 99, 235);
+    doc.rect(0, 0, 297, 6, 'F');
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.setTextColor(15, 23, 42);
+    doc.text("PIONEER DMS GROUP LTD", 15, 19);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Consolidated Personnel Expenses & Petty Cash Tally Statement", 15, 24);
+    doc.text(`Report Generated On: ${new Date().toLocaleDateString()}`, 15, 28);
+
+    const totalHandlers = filteredTallies.length;
+    const totalAllocated = filteredTallies.reduce((sum, item) => sum + (item.totalAdvanced || 0), 0);
+    const totalSpent = filteredTallies.reduce((sum, item) => sum + (item.totalSpending || 0), 0);
+    const netBalance = filteredTallies.reduce((sum, item) => sum + (item.netBalance || 0), 0);
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.rect(170, 11, 112, 17, 'F');
+    doc.rect(170, 11, 112, 17);
+
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("TOTAL HANDLERS", 173, 15);
+    doc.text("TOTAL ALLOCATED", 201, 15);
+    doc.text("TOTAL SPENDOUT", 231, 15);
+    doc.text("NET BALANCE", 260, 15);
+
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`${totalHandlers}`, 173, 20);
+    doc.text(`AED ${totalAllocated.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 201, 20);
+    doc.text(`AED ${totalSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 231, 20);
+
+    if (netBalance >= 0) {
+        doc.setTextColor(16, 185, 129);
+    } else {
+        doc.setTextColor(239, 68, 68);
+    }
+    doc.text(`AED ${netBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 260, 20);
+
+    doc.setDrawColor(226, 232, 240);
+    doc.line(15, 33, 282, 33);
+
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text("PERSONNEL TALLY ROLL SUMMARY", 15, 40);
+
+    doc.setFillColor(248, 250, 252);
+    doc.rect(15, 44, 267, 8, 'F');
+
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(71, 85, 105);
+    doc.text("STAFF MEMBER & DETAIL", 17, 49);
+    doc.text("CASH ALLOC IN (AED)", 85, 49, { align: "right" });
+    doc.text("PETTY CASH SPENT (AED)", 125, 49, { align: "right" });
+    doc.text("EVERYDAY BILLS (AED)", 165, 49, { align: "right" });
+    doc.text("TOTAL SPEND OUT (AED)", 205, 49, { align: "right" });
+    doc.text("NET BALANCE (AED)", 245, 49, { align: "right" });
+    doc.text("TALLY STATUS", 252, 49);
+
+    let y = 56;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+
+    filteredTallies.forEach((item, idx) => {
+        const cleanName = sanitizePdfText(`${item.employee.name} (${item.employee.code || 'N/A'})`);
+        const deptStr = sanitizePdfText(item.employee.designation || item.employee.department || 'Staff');
+        
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        const nameLines = doc.splitTextToSize(cleanName, 52);
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        const deptLines = doc.splitTextToSize(deptStr, 52);
+        
+        const rowHeight = Math.max(9, (nameLines.length * 3.5) + (deptLines.length * 3) + 2);
+
+        if (y + rowHeight > 190) {
+            doc.addPage();
+            doc.setFillColor(37, 99, 235);
+            doc.rect(0, 0, 297, 6, 'F');
+
+            doc.setFillColor(248, 250, 252);
+            doc.rect(15, 12, 267, 8, 'F');
+            doc.setFontSize(8.5);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(71, 85, 105);
+            doc.text("STAFF MEMBER & DETAIL", 17, 17);
+            doc.text("CASH ALLOC IN (AED)", 85, 17, { align: "right" });
+            doc.text("PETTY CASH SPENT (AED)", 125, 17, { align: "right" });
+            doc.text("EVERYDAY BILLS (AED)", 165, 17, { align: "right" });
+            doc.text("TOTAL SPEND OUT (AED)", 205, 17, { align: "right" });
+            doc.text("NET BALANCE (AED)", 245, 17, { align: "right" });
+            doc.text("TALLY STATUS", 252, 17);
+
+            y = 25;
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor(51, 65, 85);
+        }
+
+        if (idx % 2 === 1) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(15, y - 2, 267, rowHeight, 'F');
+        }
+
+        // Render staff member name lines
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(15, 23, 42);
+        let currentTextY = y + 1.2;
+        nameLines.forEach((line: string) => {
+            doc.text(line, 17, currentTextY);
+            currentTextY += 3.5;
+        });
+
+        // Render department / designation lines
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+        currentTextY += 0.5;
+        deptLines.forEach((line: string) => {
+            doc.text(line, 17, currentTextY);
+            currentTextY += 3;
+        });
+
+        // Vertical align values to top
+        const valY = y + 2.5;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(51, 65, 85);
+
+        doc.text(item.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2}), 85, valY, { align: "right" });
+        doc.text(item.totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2}), 125, valY, { align: "right" });
+        doc.text(item.totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2}), 165, valY, { align: "right" });
+        doc.text(item.totalSpending.toLocaleString(undefined, {minimumFractionDigits: 2}), 205, valY, { align: "right" });
+
+        if (item.netBalance >= 0) {
+            doc.setTextColor(16, 185, 129);
+        } else {
+            doc.setTextColor(239, 68, 68);
+        }
+        doc.text(item.netBalance.toLocaleString(undefined, {minimumFractionDigits: 2}), 245, valY, { align: "right" });
+
+        doc.setFont("helvetica", "bold");
+        if (item.netBalance >= 0) {
+            doc.setTextColor(16, 185, 129);
+            doc.text("BALANCED", 252, valY);
+        } else {
+            doc.setTextColor(239, 68, 68);
+            doc.text("OVERSPENT", 252, valY);
+        }
+
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(51, 65, 85);
+
+        y += rowHeight;
+    });
+
+    if (y > 185) {
+        doc.addPage();
+        doc.setFillColor(37, 99, 235);
+        doc.rect(0, 0, 297, 6, 'F');
+        y = 15;
+    }
+
+    doc.setDrawColor(203, 213, 225);
+    doc.line(15, y - 3, 282, y - 3);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text("GRAND TOTALS:", 17, y + 1);
+
+    doc.text(totalAllocated.toLocaleString(undefined, {minimumFractionDigits: 2}), 85, y + 1, { align: "right" });
+    const sumPC = filteredTallies.reduce((sum, item) => sum + (item.totalDirectSpent || 0), 0);
+    const sumEveryday = filteredTallies.reduce((sum, item) => sum + (item.totalEverydaySpent || 0), 0);
+    doc.text(sumPC.toLocaleString(undefined, {minimumFractionDigits: 2}), 125, y + 1, { align: "right" });
+    doc.text(sumEveryday.toLocaleString(undefined, {minimumFractionDigits: 2}), 165, y + 1, { align: "right" });
+    doc.text(totalSpent.toLocaleString(undefined, {minimumFractionDigits: 2}), 205, y + 1, { align: "right" });
+
+    if (netBalance >= 0) {
+        doc.setTextColor(16, 185, 129);
+    } else {
+        doc.setTextColor(239, 68, 68);
+    }
+    doc.text(netBalance.toLocaleString(undefined, {minimumFractionDigits: 2}), 245, y + 1, { align: "right" });
+
+    doc.save(`PIONEER_DMS_Personnel_Tally_Summary_${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
 export const generateEmployeeTallyPdf = (tally: any) => {
     const doc = new jsPDF({
         orientation: 'p',
@@ -12250,59 +12516,78 @@ export const generateEmployeeTallyPdf = (tally: any) => {
     doc.text("STAFF ACCOUNT DETAILS", 15, 41);
 
     doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("Employee Name:", 15, 47);
     doc.setFont("helvetica", "normal");
-    doc.text(`Employee Name: ${empName}`, 15, 47);
-    doc.text(`Employee Code: ${empCode}`, 15, 52);
-    doc.text(`Designation/Dept: ${dept}`, 15, 57);
-
-    doc.text(`Total Advanced: AED ${tally.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 115, 47);
-    doc.text(`Total Expended: AED ${tally.totalSpending.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 115, 52);
     
+    // Split long employee names to multiple lines to prevent column overlapping
+    const nameLines = doc.splitTextToSize(empName, 145);
+    let nameY = 47;
+    nameLines.forEach((line: string, index: number) => {
+        doc.text(line, 45, nameY + (index * 4.5));
+    });
+
+    const nextY = 47 + (nameLines.length * 4.5) + 1;
+
+    // Remaining items of metadata in 2 columns
+    doc.setFont("helvetica", "bold");
+    doc.text("Employee Code:", 15, nextY);
+    doc.setFont("helvetica", "normal");
+    doc.text(empCode, 45, nextY);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Designation/Dept:", 15, nextY + 5);
+    doc.setFont("helvetica", "normal");
+    doc.text(dept, 45, nextY + 5);
+
+    // Column 2
+    doc.setFont("helvetica", "bold");
+    doc.text("Total Advanced:", 115, nextY);
+    doc.setFont("helvetica", "normal");
+    doc.text(`AED ${tally.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 145, nextY);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Total Expended:", 115, nextY + 5);
+    doc.setFont("helvetica", "normal");
+    doc.text(`AED ${tally.totalSpending.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 145, nextY + 5);
+
     // Balance Status
-    const statusText = tally.netBalance >= 0 
-        ? `REMAINING BALANCE: AED ${tally.netBalance.toLocaleString(undefined, {minimumFractionDigits: 2})} (BALANCED)`
-        : `OVERSPENT DEFICIT: AED ${Math.abs(tally.netBalance).toLocaleString(undefined, {minimumFractionDigits: 2})} (UNBALANCED)`;
+    const statusLabel = tally.netBalance >= 0 ? "REMAINING BALANCE:" : "OVERSPENT DEFICIT:";
+    const statusVal = `AED ${Math.abs(tally.netBalance).toLocaleString(undefined, {minimumFractionDigits: 2})} ${tally.netBalance >= 0 ? "(BALANCED)" : "(UNBALANCED)"}`;
     
     doc.setFont("helvetica", "bold");
+    doc.text(statusLabel, 115, nextY + 10);
+    
     if (tally.netBalance >= 0) {
         doc.setTextColor(16, 185, 129); // Green
     } else {
         doc.setTextColor(239, 68, 68); // Red
     }
-    doc.text(statusText, 115, 57);
+    doc.text(statusVal, 153, nextY + 10);
 
-    // Tally Certified Stamp
-    doc.setDrawColor(tally.netBalance >= 0 ? 16 : 239, tally.netBalance >= 0 ? 185 : 68, tally.netBalance >= 0 ? 129 : 68);
-    doc.rect(145, 12, 50, 15);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(tally.netBalance >= 0 ? 16 : 239, tally.netBalance >= 0 ? 185 : 68, tally.netBalance >= 0 ? 129 : 68);
-    doc.text(tally.netBalance >= 0 ? "TALLY SYSTEM: OK" : "TALLY: OVERSPENT", 152, 18);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.text("OFFICIALLY AUDITED", 157, 22);
+    const dividerY = nextY + 16;
 
     // Divider Line
     doc.setDrawColor(226, 232, 240);
-    doc.line(15, 63, 195, 63);
+    doc.line(15, dividerY, 195, dividerY);
 
     // Ledger Title
     doc.setFontSize(10);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(15, 23, 42);
-    doc.text("ITEMIZED TRANSACTION HISTORY LEDGER", 15, 71);
+    doc.text("ITEMIZED TRANSACTION HISTORY LEDGER", 15, dividerY + 8);
 
     // Table Headers
     doc.setFillColor(248, 250, 252);
-    doc.rect(15, 76, 180, 8, 'F');
+    doc.rect(15, dividerY + 13, 180, 8, 'F');
     doc.setFontSize(8.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(71, 85, 105);
-    doc.text("DATE", 16, 81);
-    doc.text("TYPE & REFERENCE", 38, 81);
-    doc.text("DESCRIPTION / SHOP / SUPPLIER", 82, 81);
-    doc.text("CREDIT (IN)", 170, 81, { align: "right" });
-    doc.text("DEBIT (OUT)", 194, 81, { align: "right" });
+    doc.text("DATE", 16, dividerY + 18);
+    doc.text("TYPE & REFERENCE", 38, dividerY + 18);
+    doc.text("DESCRIPTION / SHOP / SUPPLIER", 82, dividerY + 18);
+    doc.text("CREDIT (IN)", 170, dividerY + 18, { align: "right" });
+    doc.text("DEBIT (OUT)", 194, dividerY + 18, { align: "right" });
 
     // Let's merge both Petty Cash items and Everyday Expenses sorted chronologically
     const ledgerEntries: any[] = [];
@@ -12329,7 +12614,7 @@ export const generateEmployeeTallyPdf = (tally: any) => {
     // Sort entries by date ascending safely
     ledgerEntries.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
-    let y = 88;
+    let y = dividerY + 25;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(51, 65, 85);
@@ -12428,6 +12713,7 @@ export const EverydayExpenseView: React.FC<{
     const [activeViewTab, setActiveViewTab] = useState<'ledger' | 'tally'>('ledger');
     const [tallySearch, setTallySearch] = useState('');
     const [reconciliationDetail, setReconciliationDetail] = useState<any | null>(null);
+    const [selectedLedgerEntry, setSelectedLedgerEntry] = useState<any | null>(null);
     const [selectedMonth, setSelectedMonth] = useState<string>('');
     const [selectedYear, setSelectedYear] = useState<string>('');
 
@@ -12974,20 +13260,40 @@ export const EverydayExpenseView: React.FC<{
 
                     {/* Master Tally List of Employees */}
                     <div className="bg-white border border-slate-100 rounded-[2.5rem] overflow-hidden shadow-sm">
-                        <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="p-6 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
                             <div>
                                 <h3 className="text-base font-black text-slate-900 tracking-tight">Personnel Tally Roll</h3>
                                 <p className="text-xs text-slate-400 font-semibold">Consolidated tally sheets for each operational staff.</p>
                             </div>
-                            <div className="relative max-w-xs w-full">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                <input 
-                                    type="text" 
-                                    placeholder="Search staff profile..."
-                                    value={tallySearch}
-                                    onChange={e => setTallySearch(e.target.value)}
-                                    className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-800"
-                                />
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
+                                <div className="relative w-full sm:w-60">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search staff profile..."
+                                        value={tallySearch}
+                                        onChange={e => setTallySearch(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-800"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => downloadOverallSummaryExcel(filteredTallies)}
+                                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-755 text-white rounded-xl text-xs font-extrabold shadow-sm flex items-center gap-1.5 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                                        title="Download Overall Summary in Excel (.xlsx)"
+                                    >
+                                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                                        <span>Export Excel</span>
+                                    </button>
+                                    <button
+                                        onClick={() => downloadOverallSummaryPdf(filteredTallies)}
+                                        className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-755 text-white rounded-xl text-xs font-extrabold shadow-sm flex items-center gap-1.5 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                                        title="Download Overall Summary PDF Report"
+                                    >
+                                        <FileText className="w-3.5 h-3.5" />
+                                        <span>Export PDF</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -13099,77 +13405,86 @@ export const EverydayExpenseView: React.FC<{
                     <motion.div 
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="bg-white rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl relative flex flex-col max-h-[92vh]"
+                        className="bg-white rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl relative flex flex-col max-h-[92vh] border border-slate-100"
                     >
                         <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                             <div>
-                                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                                <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                                     Ledger Reconciliation Statement
                                 </h3>
-                                <p className="text-slate-500 text-xs font-semibold">
-                                    Detailed credits vs spendings ledger accounting for <span className="text-brand-600 font-extrabold">{reconciliationDetail.employee.name}</span>.
+                                <p className="text-slate-500 text-xs font-semibold mt-1">
+                                    Detailed credits vs spendings ledger accounting for <span className="text-indigo-600 font-black px-1.5 py-0.5 bg-indigo-50 border border-indigo-100 rounded-lg">{reconciliationDetail.employee.name}</span>.
                                 </p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button 
                                     onClick={() => generateEmployeeTallyPdf(reconciliationDetail)}
-                                    className="px-4 py-2 bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-xl text-xs font-black shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+                                    className="px-4 py-2.5 bg-[#2563eb] hover:bg-[#1d4ed8] text-white rounded-xl text-xs font-black shadow-md flex items-center gap-1.5 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                                 >
-                                    📥 Download PDF Statement
+                                    <Download className="w-4 h-4" />
+                                    Download PDF Statement
                                 </button>
                                 <button 
                                     onClick={() => setReconciliationDetail(null)}
-                                    className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm cursor-pointer"
+                                    className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm cursor-pointer border border-slate-200/50"
                                 >
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
                         </div>
 
-                        {/* Summary Block */}
-                        <div className="p-6 bg-slate-50 border-b border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                            <div className="bg-white p-3.5 rounded-2xl border border-slate-200/50 shadow-xs">
-                                <span className="text-slate-400 block font-bold text-[10px] uppercase">Allocated Cash (Credits)</span>
-                                <span className="text-sm font-black text-sky-700 mt-1 block">AED {reconciliationDetail.totalAdvanced.toLocaleString()}</span>
+                        {/* Summary Cards Block */}
+                        <div className="p-6 bg-slate-50/70 border-b border-slate-100 grid grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                            <div className="bg-sky-50/50 border border-sky-150 p-4 rounded-2xl shadow-xs transition-colors hover:bg-sky-50">
+                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Allocated Cash (Credits)</span>
+                                <span className="text-lg font-black text-sky-700 mt-1 block">AED {reconciliationDetail.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                             </div>
-                            <div className="bg-white p-3.5 rounded-2xl border border-slate-200/50 shadow-xs">
-                                <span className="text-slate-400 block font-bold text-[10px] uppercase">Vouchers Cash-out (Debits)</span>
-                                <span className="text-sm font-black text-slate-500 mt-1 block">AED {reconciliationDetail.totalDirectSpent.toLocaleString()}</span>
+                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-xs transition-colors hover:bg-slate-100/50">
+                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Vouchers Cash-out (Debits)</span>
+                                <span className="text-lg font-black text-slate-800 mt-1 block">AED {reconciliationDetail.totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                             </div>
-                            <div className="bg-white p-3.5 rounded-2xl border border-slate-200/50 shadow-xs">
-                                <span className="text-slate-400 block font-bold text-[10px] uppercase">Bills Submitted (Debits)</span>
-                                <span className="text-sm font-black text-slate-500 mt-1 block">AED {reconciliationDetail.totalEverydaySpent.toLocaleString()}</span>
+                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-xs transition-colors hover:bg-slate-100/50">
+                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Bills Submitted (Debits)</span>
+                                <span className="text-lg font-black text-slate-800 mt-1 block">AED {reconciliationDetail.totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                             </div>
-                            <div className={`p-3.5 rounded-2xl border shadow-xs ${reconciliationDetail.netBalance >= 0 ? "bg-emerald-50/50 border-emerald-150" : "bg-rose-50/50 border-rose-150"}`}>
-                                <span className="text-slate-400 block font-bold text-[10px] uppercase">Net Statement Tally</span>
-                                <span className={`text-sm font-black mt-1 block ${reconciliationDetail.netBalance >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
-                                    AED {reconciliationDetail.netBalance.toLocaleString()} {reconciliationDetail.netBalance >= 0 ? "(Balanced)" : "(Deficit)"}
+                            <div className={`p-4 rounded-2xl border shadow-sm transition-colors ${reconciliationDetail.netBalance >= 0 ? "bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50" : "bg-rose-50/40 border-rose-200 hover:bg-rose-50"}`}>
+                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Net Statement Tally</span>
+                                <span className={`text-lg font-black mt-1 block ${reconciliationDetail.netBalance >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                    AED {reconciliationDetail.netBalance.toLocaleString(undefined, {minimumFractionDigits: 2})} {reconciliationDetail.netBalance >= 0 ? "(Balanced)" : "(Deficit)"}
                                 </span>
                             </div>
                         </div>
 
                         {/* Dual Column Ledger Content */}
-                        <div className="p-6 overflow-y-auto flex-1 bg-slate-100/30 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[50vh]">
+                        <div className="p-6 overflow-y-auto flex-1 bg-slate-100/25 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[55vh]">
                             {/* LEFT SIDE: CASH CREDITS */}
                             <div className="space-y-4">
-                                <h4 className="text-xs font-black text-sky-850 uppercase tracking-wider flex items-center justify-between bg-sky-50 px-3 py-2 rounded-xl border border-sky-100">
+                                <h4 className="text-xs font-black text-sky-850 uppercase tracking-wider flex items-center justify-between bg-sky-50 px-4 py-3 rounded-2xl border border-sky-100">
                                     <span>Credits (Cash Received)</span>
-                                    <span className="text-sky-700">AED {reconciliationDetail.totalAdvanced.toLocaleString()}</span>
+                                    <span className="text-sky-700 font-extrabold text-[13px]">AED {reconciliationDetail.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                                 </h4>
                                 {reconciliationDetail.pettyCashItems.filter((i: any) => i.type === 'Income').length === 0 ? (
-                                    <p className="text-center p-8 bg-white border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-semibold">
-                                        No documented cash advances received.
-                                    </p>
+                                    <div className="text-center p-12 bg-white border border-dashed border-slate-200 rounded-2xl text-slate-400 font-semibold space-y-2">
+                                        <div className="text-2xl">💰</div>
+                                        <p className="text-xs">No documented cash advances received.</p>
+                                    </div>
                                 ) : (
-                                    <div className="space-y-2">
+                                    <div className="space-y-2.5">
                                         {reconciliationDetail.pettyCashItems.filter((i: any) => i.type === 'Income').map((item: any) => (
-                                            <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-slate-250/50 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-all text-xs">
-                                                <div>
-                                                    <p className="font-extrabold text-slate-900">{item.description || 'Petty cash advance'}</p>
-                                                    <span className="text-[10px] text-slate-400 font-bold">{item.date} • Mode: {item.mode || 'Cash'}</span>
+                                            <div 
+                                                key={item.id} 
+                                                onClick={() => setSelectedLedgerEntry(item)}
+                                                className="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-xs flex items-center justify-between gap-3 hover:border-sky-300 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer text-xs active:scale-[0.99]"
+                                                title="Click to view full entry details"
+                                            >
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-extrabold text-slate-900 truncate leading-snug">{item.description || 'Petty cash advance'}</p>
+                                                    <span className="text-[10px] text-slate-400 font-semibold mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                                                        {item.date} • Mode: {item.mode || 'Cash'}
+                                                    </span>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className="font-black text-sky-700">AED {item.amount.toLocaleString()}</p>
+                                                <div className="text-right shrink-0">
+                                                    <p className="font-black text-sky-700 text-sm">AED {item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                                                 </div>
                                             </div>
                                         ))}
@@ -13179,40 +13494,55 @@ export const EverydayExpenseView: React.FC<{
 
                             {/* RIGHT SIDE: SPENDINGS / DEBITS */}
                             <div className="space-y-4">
-                                <h4 className="text-xs font-black text-rose-850 uppercase tracking-wider flex items-center justify-between bg-rose-50 px-3 py-2 rounded-xl border border-rose-100">
+                                <h4 className="text-xs font-black text-rose-850 uppercase tracking-wider flex items-center justify-between bg-rose-50 px-4 py-3 rounded-2xl border border-rose-100">
                                     <span>Debits (Expenses Reported)</span>
-                                    <span className="text-rose-700">AED {reconciliationDetail.totalSpending.toLocaleString()}</span>
+                                    <span className="text-rose-700 font-extrabold text-[13px]">AED {reconciliationDetail.totalSpending.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                                 </h4>
                                 {reconciliationDetail.pettyCashItems.filter((i: any) => i.type === 'Expense').length === 0 && reconciliationDetail.everydayItems.length === 0 ? (
-                                    <p className="text-center p-8 bg-white border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs font-semibold">
-                                        No expense receipts logged.
-                                    </p>
+                                    <div className="text-center p-12 bg-white border border-dashed border-slate-200 rounded-2xl text-slate-400 font-semibold space-y-2">
+                                        <div className="text-2xl">📝</div>
+                                        <p className="text-xs">No expense receipts logged.</p>
+                                    </div>
                                 ) : (
-                                    <div className="space-y-2">
+                                    <div className="space-y-2.5">
                                         {/* Petty Cash Spending Vouchers */}
                                         {reconciliationDetail.pettyCashItems.filter((i: any) => i.type === 'Expense').map((item: any) => (
-                                            <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-slate-250/50 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-all text-xs">
-                                                <div>
-                                                    <p className="font-extrabold text-slate-900">{item.description || 'Petty cash disbursement'}</p>
-                                                    <span className="text-[10px] text-slate-400 font-bold">{item.date} • Petty Cash Book ({item.category})</span>
+                                            <div 
+                                                key={item.id} 
+                                                onClick={() => setSelectedLedgerEntry({ ...item, isVoucher: true })}
+                                                className="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-xs flex items-center justify-between gap-3 hover:border-rose-350 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer text-xs active:scale-[0.99]"
+                                                title="Click to view full voucher details"
+                                            >
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-extrabold text-slate-900 truncate leading-snug">{item.description || 'Petty cash disbursement'}</p>
+                                                    <span className="text-[10px] text-slate-400 font-semibold mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                                                        {item.date} • PC Category ({item.category})
+                                                    </span>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className="font-black text-slate-800">AED {item.amount.toLocaleString()}</p>
-                                                    <span className="text-[9px] text-[#ef4444] font-bold">Voucher</span>
+                                                <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                                                    <p className="font-black text-slate-800 text-sm">AED {item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                                    <span className="text-[9px] text-rose-600 bg-rose-50 border border-rose-100 font-extrabold px-1.5 py-0.5 rounded-md">Voucher</span>
                                                 </div>
                                             </div>
                                         ))}
 
                                         {/* Everyday Expense Receipts */}
                                         {reconciliationDetail.everydayItems.map((item: any) => (
-                                            <div key={item.id} className="bg-white p-3.5 rounded-2xl border border-slate-250/50 shadow-xs flex items-center justify-between gap-2 hover:border-slate-300 transition-all text-xs">
-                                                <div>
-                                                    <p className="font-extrabold text-slate-900">{item.description || 'Everyday purchase'}</p>
-                                                    <span className="text-[10px] text-slate-400 font-bold">{item.date} • Inv #{item.invoiceNo || 'N/A'} at {item.shopName || item.supplierName}</span>
+                                            <div 
+                                                key={item.id} 
+                                                onClick={() => setSelectedLedgerEntry({ ...item, isInvoice: true })}
+                                                className="bg-white p-4 rounded-2xl border border-slate-200/70 shadow-xs flex items-center justify-between gap-3 hover:border-indigo-350 hover:shadow-md hover:scale-[1.01] transition-all cursor-pointer text-xs active:scale-[0.99]"
+                                                title="Click to view full invoice & mileage details"
+                                            >
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-extrabold text-slate-900 truncate leading-snug">{item.description || 'Everyday purchase'}</p>
+                                                    <span className="text-[10px] text-slate-400 font-semibold mt-1 inline-block bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                                                        {item.date} • Inv #{item.invoiceNo || 'N/A'} at {item.shopName || item.supplierName || 'N/A'}
+                                                    </span>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className="font-black text-slate-800">AED {item.totalAmount.toLocaleString()}</p>
-                                                    <span className="text-[9px] text-brand-600 font-bold">Invoice</span>
+                                                <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                                                    <p className="font-black text-slate-800 text-sm">AED {(item.totalAmount || item.billAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                                    <span className="text-[9px] text-indigo-600 bg-indigo-50 border border-indigo-100 font-extrabold px-1.5 py-0.5 rounded-md">Invoice</span>
                                                 </div>
                                             </div>
                                         ))}
@@ -13221,10 +13551,10 @@ export const EverydayExpenseView: React.FC<{
                             </div>
                         </div>
 
-                        <div className="p-6 border-t border-slate-100 flex justify-end bg-slate-50">
+                        <div className="p-6 border-t border-slate-100 flex justify-end bg-slate-50 gap-3">
                             <button 
                                 onClick={() => setReconciliationDetail(null)}
-                                className="px-6 py-3 bg-white hover:bg-slate-50 border border-slate-250 rounded-2xl text-xs font-black text-slate-700 transition-all cursor-pointer"
+                                className="px-6 py-3 bg-white hover:bg-slate-50 border border-slate-250 rounded-2xl text-xs font-black text-slate-700 transition-all active:scale-[0.98] cursor-pointer shadow-xs"
                             >
                                 Close Statement
                             </button>
@@ -13233,9 +13563,249 @@ export const EverydayExpenseView: React.FC<{
                 </div>
             )}
 
+            {/* Detailed Ledger Item Review Overlay */}
+            {selectedLedgerEntry && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm no-print">
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="bg-white rounded-[2rem] w-full max-w-lg overflow-hidden shadow-2xl relative flex flex-col max-h-[85vh] border border-slate-100"
+                    >
+                        {/* Header */}
+                        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+                            <div>
+                                <span className={`text-[9px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-full ${
+                                    selectedLedgerEntry.type === 'Income' 
+                                        ? "bg-sky-50 text-sky-700 border border-sky-100" 
+                                        : selectedLedgerEntry.isInvoice 
+                                            ? "bg-indigo-50 text-indigo-700 border border-indigo-100" 
+                                            : "bg-rose-50 text-rose-700 border border-rose-100"
+                                }`}>
+                                    {selectedLedgerEntry.type === 'Income' 
+                                        ? "Cash Advance (Credit)" 
+                                        : selectedLedgerEntry.isInvoice 
+                                            ? "Everyday Bill (Debit)" 
+                                            : "Spending Voucher (Debit)"}
+                                </span>
+                                <h4 className="text-sm font-black text-slate-800 mt-1.5">
+                                    Transaction Detailed Record
+                                </h4>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedLedgerEntry(null)}
+                                className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400 hover:text-slate-600 shadow-xs cursor-pointer border border-slate-200"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+                            {/* Title & Amount Display Box */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-150/70 text-center">
+                                <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">Recorded Amount</span>
+                                <span className={`text-2xl font-black mt-1 block ${
+                                    selectedLedgerEntry.type === 'Income' ? "text-sky-700" : "text-slate-800"
+                                }`}>
+                                    AED {((selectedLedgerEntry.totalAmount !== undefined ? selectedLedgerEntry.totalAmount : selectedLedgerEntry.amount) || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                </span>
+                                <p className="text-slate-700 font-extrabold text-[12px] mt-2 leading-relaxed">
+                                    {selectedLedgerEntry.description || "Unspecified transactions ledger item"}
+                                </p>
+                            </div>
+
+                            {/* Property Table */}
+                            <div className="space-y-2.5">
+                                <h5 className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Accounting Metadata</h5>
+                                <div className="grid grid-cols-2 gap-3 bg-slate-50/40 p-3.5 rounded-2xl border border-slate-150/70">
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 block font-bold">Transaction Date</span>
+                                        <span className="font-extrabold text-slate-800 text-[11px]">{selectedLedgerEntry.date || "-"}</span>
+                                    </div>
+                                    
+                                    {selectedLedgerEntry.type === 'Income' && (
+                                        <>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Payment Mode</span>
+                                                <span className="font-extrabold text-slate-800 text-[11px]">{selectedLedgerEntry.mode || "Cash"}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Ref / Book Category</span>
+                                                <span className="font-extrabold text-slate-800 text-[11px]">{selectedLedgerEntry.category || "-"}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Requested By</span>
+                                                <span className="font-extrabold text-slate-800 text-[11px]">{selectedLedgerEntry.requestedBy || "-"}</span>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {!selectedLedgerEntry.type && selectedLedgerEntry.isInvoice && (
+                                        <>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Invoice / Bill No</span>
+                                                <span className="font-extrabold text-slate-800 text-[11px]">{selectedLedgerEntry.invoiceNo || "N/A"}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">TRN (Tax Reg No)</span>
+                                                <span className="font-extrabold text-slate-800 text-[11px]">{selectedLedgerEntry.trnNo || "N/A"}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Shop / Supplier</span>
+                                                <span className="font-extrabold text-slate-800 text-[11px]">{selectedLedgerEntry.shopName || selectedLedgerEntry.supplierName || "-"}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Allocated Project</span>
+                                                <span className="font-extrabold text-slate-800 text-[11px]">
+                                                    {(() => {
+                                                        const pObj = projects.find(p => p.id === selectedLedgerEntry.projectId);
+                                                        return pObj ? pObj.name : "N/A";
+                                                    })()}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Bill Base Amount</span>
+                                                <span className="font-extrabold text-slate-805 text-[11px]">AED {(selectedLedgerEntry.billAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">VAT Amount (5%)</span>
+                                                <span className="font-extrabold text-slate-805 text-[11px]">AED {(selectedLedgerEntry.vatAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Uploaded By</span>
+                                                <span className="font-extrabold text-slate-805 text-[11px]">{selectedLedgerEntry.uploadedBy || "-"}</span>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {selectedLedgerEntry.type === 'Expense' && (
+                                        <>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Petty Cash Category</span>
+                                                <span className="font-extrabold text-slate-800 text-[11px]">{selectedLedgerEntry.category || "-"}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 block font-bold">Requested By</span>
+                                                <span className="font-extrabold text-slate-800 text-[11px]">{selectedLedgerEntry.requestedBy || "-"}</span>
+                                            </div>
+                                            {selectedLedgerEntry.approvedBy && (
+                                                <div>
+                                                    <span className="text-[10px] text-slate-400 block font-bold">Approved By</span>
+                                                    <span className="font-extrabold text-slate-808 text-[11px]">{selectedLedgerEntry.approvedBy}</span>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Mileage / Vehicle Special Details */}
+                            {selectedLedgerEntry.isVehicleFuel && (
+                                <div className="space-y-2 bg-amber-50/40 p-4 rounded-2xl border border-amber-100">
+                                    <h5 className="text-[10px] uppercase font-black text-amber-800 tracking-wider flex items-center gap-1">
+                                        ⛽ Vehicle & Mileage Log
+                                    </h5>
+                                    <div className="grid grid-cols-2 gap-2.5 mt-1.5 text-slate-700">
+                                        <div>
+                                            <span className="text-[10px] text-amber-700 block font-bold">Vehicle Registration</span>
+                                            <span className="font-black text-[11px]">{selectedLedgerEntry.vehicleNumber || "N/A"}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] text-amber-700 block font-bold">Period / Validity</span>
+                                            <span className="font-extrabold text-[11px]">
+                                                {selectedLedgerEntry.startTime ? `${selectedLedgerEntry.startTime} - ` : ""}
+                                                {selectedLedgerEntry.endTime || "N/A"}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] text-amber-700 block font-bold">Starting Odometer</span>
+                                            <span className="font-extrabold text-[11px]">{selectedLedgerEntry.kmStart !== undefined ? `${selectedLedgerEntry.kmStart} km` : "N/A"}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] text-amber-700 block font-bold">Ending Odometer</span>
+                                            <span className="font-extrabold text-[11px]">{selectedLedgerEntry.kmEnd !== undefined ? `${selectedLedgerEntry.kmEnd} km` : "N/A"}</span>
+                                        </div>
+                                        <div className="col-span-2 border-t border-amber-200/50 pt-2 flex justify-between items-center">
+                                            <span className="text-[10px] text-amber-700 font-extrabold">Total Distance Covered:</span>
+                                            <span className="font-black text-[11.5px] text-amber-900 bg-amber-100/60 px-2 py-0.5 rounded-lg border border-amber-200">
+                                                {selectedLedgerEntry.kmRun !== undefined ? `${selectedLedgerEntry.kmRun} km` : "N/A"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Attached Bill/Voucher Preview */}
+                            {(selectedLedgerEntry.attachment || selectedLedgerEntry.billImage) && (
+                                <div className="space-y-2">
+                                    <h5 className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Attached Receipt / Document</h5>
+                                    <div className="mt-1 bg-slate-50 p-3 rounded-2xl border border-slate-150 flex items-center justify-center max-h-[190px] overflow-hidden group relative">
+                                        {(() => {
+                                            const fileUrl = selectedLedgerEntry.attachment || selectedLedgerEntry.billImage;
+                                            if (fileUrl.startsWith('data:image') || fileUrl.startsWith('http')) {
+                                                return (
+                                                    <div className="relative w-full flex flex-col items-center">
+                                                        <div 
+                                                            className="relative cursor-pointer group rounded-lg overflow-hidden border border-slate-200 shadow-xs max-h-[145px] flex items-center justify-center bg-white"
+                                                            onClick={() => setViewingBill(fileUrl)}
+                                                        >
+                                                            <img 
+                                                                src={fileUrl} 
+                                                                alt="Receipt Attachment" 
+                                                                className="max-h-[145px] object-contain transition-transform duration-300 group-hover:scale-[1.02]" 
+                                                                referrerPolicy="no-referrer"
+                                                            />
+                                                            <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center duration-200">
+                                                                <span className="bg-slate-900/85 text-white text-[10px] font-black px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md">
+                                                                    <Eye className="w-3.5 h-3.5" />
+                                                                    <span>Click to Expand</span>
+                                                                </span>
+                                                            </div>
+                                                            {/* Touch / non-hover fallback info badge */}
+                                                            <div className="absolute bottom-1 right-1 bg-slate-900/75 backdrop-blur-xs text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded-md pointer-events-none group-hover:hidden transition-all uppercase tracking-wider">
+                                                                Tap to Zoom
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            } else {
+                                                return (
+                                                    <div className="py-4 text-center w-full">
+                                                        <FileText className="w-8 h-8 text-slate-400 mx-auto mb-1" />
+                                                        <span className="font-bold text-slate-700 block">External Document File</span>
+                                                        <a 
+                                                            href={fileUrl} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer" 
+                                                            className="text-indigo-600 hover:underline font-extrabold mt-1 inline-block"
+                                                        >
+                                                            Open in New Tab
+                                                        </a>
+                                                    </div>
+                                                );
+                                            }
+                                        })()}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+                            <button 
+                                onClick={() => setSelectedLedgerEntry(null)}
+                                className="px-5 py-2 bg-white border border-slate-250 text-slate-700 rounded-xl font-bold transition-all hover:bg-slate-100 cursor-pointer text-xs shadow-xs"
+                            >
+                                Back to Statement
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+
             {/* Viewing Attachment Lightbox (inherited) */}
             {viewingBill && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print">
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print">
                     <motion.div 
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -16013,7 +16583,7 @@ export const FinancialDashboardView: React.FC<{
 
             {/* Lightbox / Attachment viewer modal */}
             {viewingBill && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print">
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print">
                     <motion.div 
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
