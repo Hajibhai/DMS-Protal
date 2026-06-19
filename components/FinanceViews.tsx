@@ -64,14 +64,19 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
  * Downscale and compress an image file to prevent "Request Entity Too Large" errors
  * on mobile phone uploads or camera pictures while preserving high legibility for AI OCR.
  */
-const compressImageFile = (file: File, maxDimension = 1200, quality = 0.85): Promise<{ base64: string; mimeType: string }> => {
+const compressImageFile = (file: File, maxDimension = 1000, quality = 0.8): Promise<{ base64: string; mimeType: string }> => {
     return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             const base64 = e.target?.result as string;
-            // Only compress image files
-            if (!file.type.startsWith('image/')) {
-                resolve({ base64, mimeType: file.type });
+            
+            // Check if it looks or sounds like an image, or is from direct camera (which has blank/generic types in some webviews)
+            const isImageMime = file.type && file.type.startsWith('image/');
+            const isGenericMime = !file.type || file.type === 'application/octet-stream' || file.type === 'image/unknown';
+            const hasImageExtension = file.name && /\.(jpg|jpeg|png|webp|gif|heic|heif)$/i.test(file.name);
+            
+            if (!isImageMime && !isGenericMime && !hasImageExtension) {
+                resolve({ base64, mimeType: file.type || 'application/octet-stream' });
                 return;
             }
 
@@ -81,7 +86,7 @@ const compressImageFile = (file: File, maxDimension = 1200, quality = 0.85): Pro
                     let width = img.width;
                     let height = img.height;
 
-                    // Only downscale if it exceeds maxDimension
+                    // Downscale the image to keep the payload size optimized for the Gemini API
                     if (width > maxDimension || height > maxDimension) {
                         if (width > height) {
                             height = Math.round((height * maxDimension) / width);
@@ -97,34 +102,44 @@ const compressImageFile = (file: File, maxDimension = 1200, quality = 0.85): Pro
                     canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     if (!ctx) {
-                        resolve({ base64, mimeType: file.type });
+                        const fallbackMime = isImageMime ? file.type : 'image/jpeg';
+                        resolve({ base64, mimeType: fallbackMime });
                         return;
                     }
 
                     ctx.drawImage(img, 0, 0, width, height);
                     
-                    // Use image/jpeg for excellent photographic/receipt compression
-                    const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+                    // Default generic or empty types to image/jpeg which has excellent compression
+                    let outputType = 'image/jpeg';
+                    if (file.type === 'image/png') {
+                        outputType = 'image/png';
+                    } else if (file.type === 'image/webp') {
+                        outputType = 'image/webp';
+                    }
+                    
                     const compressedBase64 = canvas.toDataURL(outputType, quality);
                     
-                    // Only use compressed if it's actually smaller
+                    // Only use compressed if it's actually smaller, but always return a valid image mimeType
                     if (compressedBase64.length < base64.length) {
                         resolve({ base64: compressedBase64, mimeType: outputType });
                     } else {
-                        resolve({ base64, mimeType: file.type });
+                        const fallbackMime = isImageMime ? file.type : 'image/jpeg';
+                        resolve({ base64, mimeType: fallbackMime });
                     }
                 } catch (err) {
-                    console.error("Image compression failed, using original file:", err);
-                    resolve({ base64, mimeType: file.type });
+                    console.error("Image compression failed, using original file with fallback mime:", err);
+                    const fallbackMime = isImageMime ? file.type : 'image/jpeg';
+                    resolve({ base64, mimeType: fallbackMime });
                 }
             };
             img.onerror = () => {
-                resolve({ base64, mimeType: file.type });
+                const fallbackMime = isImageMime ? file.type : 'image/jpeg';
+                resolve({ base64, mimeType: fallbackMime });
             };
             img.src = base64;
         };
         reader.onerror = () => {
-            resolve({ base64: '', mimeType: file.type });
+            resolve({ base64: '', mimeType: 'image/jpeg' });
         };
         reader.readAsDataURL(file);
     });
@@ -11397,7 +11412,12 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employee
                         <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
                             <button 
                                 type="button"
-                                onClick={() => fileInputRef.current?.click()}
+                                onClick={() => {
+                                    if (fileInputRef.current) {
+                                        fileInputRef.current.value = '';
+                                        fileInputRef.current.click();
+                                    }
+                                }}
                                 className="w-full sm:w-auto px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                             >
                                 <Upload className="w-3 h-3" />
@@ -11408,6 +11428,7 @@ export const PettyCashModal = ({ pettyCash, projects, onSave, onCancel, employee
                                 onClick={() => {
                                     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
                                     if (isMobile && cameraInputRef.current) {
+                                        cameraInputRef.current.value = '';
                                         cameraInputRef.current.click();
                                     } else {
                                         setShowCamera(true);
@@ -13468,7 +13489,12 @@ export const EverydayExpenseModal: React.FC<{
                         <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
                             <button 
                                 type="button"
-                                onClick={() => fileInputRef.current?.click()}
+                                onClick={() => {
+                                    if (fileInputRef.current) {
+                                        fileInputRef.current.value = '';
+                                        fileInputRef.current.click();
+                                    }
+                                }}
                                 className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
                             >
                                 <Upload className="w-3.5 h-3.5" />
@@ -13479,6 +13505,7 @@ export const EverydayExpenseModal: React.FC<{
                                 onClick={() => {
                                     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
                                     if (isMobile && cameraInputRef.current) {
+                                        cameraInputRef.current.value = '';
                                         cameraInputRef.current.click();
                                     } else {
                                         setShowCamera(true);
