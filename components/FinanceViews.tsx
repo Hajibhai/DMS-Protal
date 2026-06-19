@@ -424,11 +424,11 @@ export function DataTable<T extends { id: string }>({
                         }
                         body { 
                             font-family: system-ui, -apple-system, sans-serif; 
-                            color: #1e293b; 
+                            color: #000000; 
                             background-color: #ffffff;
                             margin: 10px;
                             filter: ${options.colorMode === 'mono' ? 'grayscale(100%) !important' : 'none'};
-                            ${options.fitToPaper ? 'zoom: 90%; max-width: 100%;' : ''}
+                            ${options.fitToPaper ? 'zoom: 92%; max-width: 100%;' : ''}
                             -webkit-print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
                             print-color-adjust: ${options.bgGraphics ? 'exact' : 'unset'} !important;
                         }
@@ -439,11 +439,11 @@ export function DataTable<T extends { id: string }>({
                                 border-color: #000000 !important;
                             }
                         ` : ''}
-                        h1 { text-align: left; color: #0f172a; margin-bottom: 4px; font-weight: 800; font-size: 24px; font-family: sans-serif; }
-                        p { text-align: left; color: #64748b; margin-top: 0; margin-bottom: 24px; font-size: 11px; font-weight: 500; font-family: sans-serif; border-bottom: 1.5px solid #e2e8f0; padding-bottom: 12px; }
+                        h1 { text-align: left; color: #000000; margin-bottom: 4px; font-weight: 800; font-size: 26px; font-family: sans-serif; }
+                        p { text-align: left; color: #334155; margin-top: 0; margin-bottom: 24px; font-size: 13px; font-weight: 600; font-family: sans-serif; border-bottom: 2px solid #475569; padding-bottom: 12px; }
                         table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
-                        th { background-color: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 7px 8px; font-weight: 700; text-transform: uppercase; font-size: 8px; }
-                        td { border: 1px solid #e2e8f0; padding: 6px 8px; font-size: 9px; line-height: 1.3; }
+                        th { background-color: #f1f5f9; color: #000000; border: 1.5px solid #475569; padding: 10px 8px; font-weight: 900; text-transform: uppercase; font-size: 11px; }
+                        td { border: 1px solid #64748b; padding: 10px 8px; font-size: 11.5px; line-height: 1.4; color: #000000; }
                         tr:nth-child(even) { background-color: #f8fafc; }
                     </style>
                 </head>
@@ -492,7 +492,7 @@ export function DataTable<T extends { id: string }>({
                                         }
 
                                         const colStyle = getColumnStyle(colKey, false);
-                                        let tdStyle = `border: 1px solid #cbd5e1; ${colStyle}`;
+                                        let tdStyle = `border: 1px solid #64748b; ${colStyle}`;
                                         if (!isCurrency && colKey !== 'hours' && colKey !== 'srNo') {
                                             tdStyle += ' font-family: system-ui, sans-serif;';
                                         }
@@ -502,9 +502,9 @@ export function DataTable<T extends { id: string }>({
                                             const isReceivedOrPaid = statusStr.includes('received') || statusStr.includes('paid');
                                             const isPending = statusStr.includes('pending');
                                             if (isReceivedOrPaid) {
-                                                tdStyle += ' color: #16a34a; font-weight: bold; background-color: #f0fdf4;';
+                                                tdStyle += ' color: #15803d; font-weight: bold; background-color: #f0fdf4;';
                                             } else if (isPending) {
-                                                tdStyle += ' color: #ea580c; font-weight: bold; background-color: #fff7ed;';
+                                                tdStyle += ' color: #c2410c; font-weight: bold; background-color: #fff7ed;';
                                             }
                                         }
 
@@ -514,13 +514,13 @@ export function DataTable<T extends { id: string }>({
                             `).join('')}
                             
                             <!-- Professional Styled Grand Totals Row -->
-                            <tr style="background-color: #f1f5f9; font-weight: bold; border-top: 2px solid #94a3b8; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                            <tr style="background-color: #e2e8f0; font-weight: bold; border-top: 2.5px solid #1e293b; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
                                 ${columns.map((col, idx) => {
                                     const colKey = String(col.key);
                                     const colStyle = getColumnStyle(colKey, false);
                                     
                                     if (idx === 0) {
-                                        return `<td style="font-size: 9px; padding: 7px 8px; border: 1px solid #cbd5e1; font-family: system-ui, sans-serif; font-weight: 800; text-transform: uppercase; text-align: center;">TOTALS</td>`;
+                                        return `<td style="font-size: 11.5px; padding: 10px 8px; border: 1.5px solid #475569; font-family: system-ui, sans-serif; font-weight: 900; text-transform: uppercase; text-align: center; color: #000000;">TOTALS</td>`;
                                     }
                                     if (sumKeys.includes(colKey)) {
                                         const val = totalSums[colKey] || 0;
@@ -529,9 +529,9 @@ export function DataTable<T extends { id: string }>({
                                             ? val.toLocaleString() 
                                             : 'AED ' + val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                         
-                                        return `<td style="font-size: 9px; padding: 7px 8px; border: 1px solid #cbd5e1; font-weight: bold; ${colStyle}">${formattedVal}</td>`;
+                                        return `<td style="font-size: 11.5px; padding: 10px 8px; border: 1.5px solid #475569; font-weight: 900; color: #000000; ${colStyle}">${formattedVal}</td>`;
                                     }
-                                    return `<td style="font-size: 9px; padding: 7px 8px; border: 1px solid #cbd5e1; font-family: system-ui, sans-serif; text-align: left; font-weight: bold; color: #475569; ${colStyle}">-</td>`;
+                                    return `<td style="font-size: 11.5px; padding: 10px 8px; border: 1.5px solid #475569; font-family: system-ui, sans-serif; text-align: left; font-weight: bold; color: #000000; ${colStyle}">-</td>`;
                                 }).join('')}
                             </tr>
                         </tbody>
@@ -1022,6 +1022,7 @@ export function DataTable<T extends { id: string }>({
                 onClose={() => setIsPrintModalOpen(false)}
                 onPrint={handlePrintWithConfig}
                 title={`Print ${title}`}
+                defaultOrientation={columns.length > 6 ? "landscape" : "portrait"}
             />
         </div>
     );
@@ -12191,6 +12192,20 @@ export const formatDisplayDate = (dateStr?: string) => {
     return dateStr;
 };
 
+export const sanitizePdfText = (text: string): string => {
+    if (!text) return "";
+    let sanitized = text.split("").map(char => {
+        const code = char.charCodeAt(0);
+        if (code >= 32 && code <= 126) {
+            return char;
+        }
+        return "";
+    }).join("");
+    sanitized = sanitized.replace(/\s+/g, ' ').trim();
+    sanitized = sanitized.replace(/\(\s*\)/g, '');
+    return sanitized.trim();
+};
+
 export const generateEmployeeTallyPdf = (tally: any) => {
     const doc = new jsPDF({
         orientation: 'p',
@@ -12283,11 +12298,11 @@ export const generateEmployeeTallyPdf = (tally: any) => {
     doc.setFontSize(8.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(71, 85, 105);
-    doc.text("DATE", 18, 81);
-    doc.text("TYPE & REFERENCE", 40, 81);
-    doc.text("DESCRIPTION / SHOP / SUPPLIER", 85, 81);
-    doc.text("CREDIT (IN)", 150, 81);
-    doc.text("DEBIT (OUT)", 175, 81);
+    doc.text("DATE", 16, 81);
+    doc.text("TYPE & REFERENCE", 38, 81);
+    doc.text("DESCRIPTION / SHOP / SUPPLIER", 82, 81);
+    doc.text("CREDIT (IN)", 170, 81, { align: "right" });
+    doc.text("DEBIT (OUT)", 194, 81, { align: "right" });
 
     // Let's merge both Petty Cash items and Everyday Expenses sorted chronologically
     const ledgerEntries: any[] = [];
@@ -12311,8 +12326,8 @@ export const generateEmployeeTallyPdf = (tally: any) => {
         });
     });
 
-    // Sort entries by date ascending
-    ledgerEntries.sort((a, b) => a.date.localeCompare(b.date));
+    // Sort entries by date ascending safely
+    ledgerEntries.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
     let y = 88;
     doc.setFont("helvetica", "normal");
@@ -12320,32 +12335,69 @@ export const generateEmployeeTallyPdf = (tally: any) => {
     doc.setTextColor(51, 65, 85);
 
     ledgerEntries.forEach((entry, idx) => {
-        // Alternating row background
-        if (idx % 2 === 1) {
-            doc.setFillColor(248, 250, 252);
-            doc.rect(15, y - 4, 180, 6, 'F');
-        }
+        // Sanitize ref and desc
+        const cleanRef = sanitizePdfText(entry.ref);
+        const cleanDesc = sanitizePdfText(entry.desc);
 
-        doc.text(entry.date, 18, y);
-        
-        // Truncate ref and desc to fit paper
-        const refText = entry.ref.length > 25 ? entry.ref.substring(0, 22) + '...' : entry.ref;
-        doc.text(refText, 40, y);
+        // Split ref and desc to fit their respective column widths
+        const refLines = doc.splitTextToSize(cleanRef, 40);
+        const descLines = doc.splitTextToSize(cleanDesc, 80);
 
-        const descText = entry.desc.length > 38 ? entry.desc.substring(0, 35) + '...' : entry.desc;
-        doc.text(descText, 85, y);
+        // Find the height needed for this row
+        const lineCount = Math.max(refLines.length, descLines.length, 1);
+        const rowHeight = lineCount * 5.2 + 2.8; // some padding
 
-        doc.text(entry.credit > 0 ? `AED ${entry.credit.toLocaleString()}` : "-", 150, y);
-        doc.text(entry.debit > 0 ? `AED ${entry.debit.toLocaleString()}` : "-", 175, y);
-
-        y += 6;
-        if (y > 275) {
+        // Check if we need a new page
+        if (y + rowHeight > 280) {
             doc.addPage();
             // Reprint Header
             doc.setFillColor(37, 99, 235);
             doc.rect(0, 0, 210, 6, 'F');
-            y = 20;
+            
+            // Reprint Table Headers on the new page!
+            doc.setFillColor(248, 250, 252);
+            doc.rect(15, 12, 180, 8, 'F');
+            doc.setFontSize(8.5);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(71, 85, 105);
+            doc.text("DATE", 16, 17);
+            doc.text("TYPE & REFERENCE", 38, 17);
+            doc.text("DESCRIPTION / SHOP / SUPPLIER", 82, 17);
+            doc.text("CREDIT (IN)", 170, 17, { align: "right" });
+            doc.text("DEBIT (OUT)", 194, 17, { align: "right" });
+            
+            y = 25;
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(8);
+            doc.setTextColor(51, 65, 85);
         }
+
+        // Alternating row background
+        if (idx % 2 === 1) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(15, y - 4, 180, rowHeight, 'F');
+        }
+
+        // Print Date
+        doc.text(entry.date || '-', 16, y);
+
+        // Print Type & Reference lines
+        refLines.forEach((line: string, i: number) => {
+            doc.text(line, 38, y + (i * 5.2));
+        });
+
+        // Print Description lines
+        descLines.forEach((line: string, i: number) => {
+            doc.text(line, 82, y + (i * 5.2));
+        });
+
+        // Print Credit & Debit right aligned
+        const creditText = entry.credit > 0 ? `AED ${entry.credit.toLocaleString(undefined, {minimumFractionDigits: 2})}` : "-";
+        const debitText = entry.debit > 0 ? `AED ${entry.debit.toLocaleString(undefined, {minimumFractionDigits: 2})}` : "-";
+        doc.text(creditText, 170, y, { align: "right" });
+        doc.text(debitText, 194, y, { align: "right" });
+
+        y += rowHeight;
     });
 
     // Draw End Line
@@ -12355,9 +12407,9 @@ export const generateEmployeeTallyPdf = (tally: any) => {
     // Grand Totals Row
     y += 6;
     doc.setFont("helvetica", "bold");
-    doc.text("GRAND RECONCILIATION TOTALS:", 18, y);
-    doc.text(`AED ${tally.totalAdvanced.toLocaleString()}`, 150, y);
-    doc.text(`AED ${tally.totalSpending.toLocaleString()}`, 175, y);
+    doc.text("GRAND RECONCILIATION TOTALS:", 16, y);
+    doc.text(`AED ${tally.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 170, y, { align: "right" });
+    doc.text(`AED ${tally.totalSpending.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 194, y, { align: "right" });
 
     doc.save(`Reconciliation_Tally_${empName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
 };
@@ -12529,6 +12581,7 @@ export const EverydayExpenseView: React.FC<{
     const tallies = useMemo(() => {
         const activePCBooks = Array.from(new Set((pettyCash || []).map(item => item.category).filter(Boolean)));
         const resolvedTalliesMap = new Map<string, any>();
+        const matchedEmployeeIds = new Set<string>();
 
         const getMatchesDate = (dateStr?: string) => {
             if (!dateStr) return true;
@@ -12554,6 +12607,10 @@ export const EverydayExpenseView: React.FC<{
                 )
             );
 
+            if (matchedEmp && matchedEmp.id) {
+                matchedEmployeeIds.add(matchedEmp.id);
+            }
+
             const empObject = matchedEmp ? {
                 ...matchedEmp,
                 id: matchedEmp.id || book,
@@ -12569,8 +12626,9 @@ export const EverydayExpenseView: React.FC<{
             };
 
             const employeePettyCash = targetPCs.filter(item => 
-                item.employeeId === (matchedEmp?.id || book) || 
-                (item.category && item.category.toLowerCase().trim() === bookKey)
+                (item.category && item.category.toLowerCase().trim() === bookKey) ||
+                (item.employeeId && matchedEmp?.id && item.employeeId === matchedEmp.id) ||
+                (item.requestedBy && bookKey && item.requestedBy.toLowerCase().trim() === bookKey)
             );
 
             const totalAdvanced = employeePettyCash
@@ -12585,12 +12643,8 @@ export const EverydayExpenseView: React.FC<{
                 const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
                 const cleanUploader = uploaderRaw.split('(')[0].trim();
                 
-                return item.employeeId === matchedEmp?.id ||
-                       item.employeeId === book ||
-                       (matchedEmp?.userId && item.uploadedByUid === matchedEmp.userId) ||
-                       (matchedEmp?.id && item.uploadedByUid === matchedEmp.id) ||
-                       cleanUploader === bookKey ||
-                       uploaderRaw.includes(bookKey) ||
+                return cleanUploader === bookKey || 
+                       uploaderRaw.includes(bookKey) || 
                        bookKey.includes(cleanUploader) ||
                        (cleanUploader === 'jamel' && bookKey === 'jamil') ||
                        (cleanUploader === 'jamil' && bookKey === 'jamel');
@@ -12616,10 +12670,11 @@ export const EverydayExpenseView: React.FC<{
         // Match remaining registered employees if they have logs (to keep registry comprehensive)
         (employees || []).forEach(emp => {
             const empKey = (emp.name || '').toLowerCase().trim();
-            if (!empKey || resolvedTalliesMap.has(empKey)) return;
+            if (!empKey || resolvedTalliesMap.has(empKey) || (emp.id && matchedEmployeeIds.has(emp.id))) return;
 
             const employeePettyCash = targetPCs.filter(item => 
-                item.employeeId === emp.id || 
+                (item.category && item.category.toLowerCase().trim() === empKey) ||
+                (item.employeeId && emp.id && item.employeeId === emp.id) ||
                 (item.requestedBy && emp.name && item.requestedBy.toLowerCase().trim() === empKey)
             );
 
@@ -12631,12 +12686,16 @@ export const EverydayExpenseView: React.FC<{
                 .filter(item => item.type === 'Expense')
                 .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
-            const employeeEverydayExpenses = targetEverydayExpenses.filter(item => 
-                item.employeeId === emp.id || 
-                item.uploadedByUid === emp.userId || 
-                item.uploadedByUid === emp.id || 
-                (item.uploadedBy && emp.name && item.uploadedBy.toLowerCase().trim() === empKey)
-            );
+            const employeeEverydayExpenses = targetEverydayExpenses.filter(item => {
+                const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
+                const cleanUploader = uploaderRaw.split('(')[0].trim();
+                
+                return cleanUploader === empKey || 
+                       uploaderRaw.includes(empKey) || 
+                       empKey.includes(cleanUploader) ||
+                       (cleanUploader === 'jamel' && empKey === 'jamil') ||
+                       (cleanUploader === 'jamil' && empKey === 'jamel');
+            });
 
             const totalEverydaySpent = employeeEverydayExpenses.reduce((sum, item) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
 
@@ -12955,7 +13014,7 @@ export const EverydayExpenseView: React.FC<{
                                         {filteredTallies.map((item: any) => {
                                             const isBalanced = item.netBalance >= 0;
                                             return (
-                                                <tr key={item.employee.id} className="hover:bg-slate-50/50 transition-colors">
+                                                <tr key={`${item.employee.id || ''}-${item.employee.name || ''}`} className="hover:bg-slate-50/50 transition-colors">
                                                     <td className="py-4 px-6">
                                                         <div className="flex items-center gap-3">
                                                             <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-black text-slate-600">

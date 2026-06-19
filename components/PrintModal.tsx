@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Printer, X, Layout, Check, Palette, Minimize2, Sliders, Settings } from 'lucide-react';
 
@@ -16,15 +16,17 @@ interface PrintModalProps {
     onClose: () => void;
     onPrint: (options: PrintOptions) => void;
     title?: string;
+    defaultOrientation?: 'portrait' | 'landscape';
 }
 
 export const PrintModal: React.FC<PrintModalProps> = ({
     isOpen,
     onClose,
     onPrint,
-    title = "Print Settings"
+    title = "Print Settings",
+    defaultOrientation = 'portrait'
 }) => {
-    const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+    const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(defaultOrientation);
     const [colorMode, setColorMode] = useState<'color' | 'mono'>('color');
     const [fitToPaper, setFitToPaper] = useState<boolean>(true);
     
@@ -33,6 +35,12 @@ export const PrintModal: React.FC<PrintModalProps> = ({
     const [margins, setMargins] = useState<'none' | 'minimum' | 'standard'>('standard');
     const [bgGraphics, setBgGraphics] = useState<boolean>(true);
     const [highContrast, setHighContrast] = useState<boolean>(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            setOrientation(defaultOrientation);
+        }
+    }, [isOpen, defaultOrientation]);
 
     const handlePrintClick = () => {
         onClose();
