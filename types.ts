@@ -253,6 +253,7 @@ export interface AccountsPayable {
     supplierCode?: string;
     excelBatchId?: string;
     excelFileName?: string;
+    invoiceReceivedStatus?: 'Received' | 'Waiting';
     siteInvoices?: {
         id: string;
         invoiceNumber: string;
@@ -283,6 +284,7 @@ export interface AccountsReceivable {
     dueDate?: string;
     receivedDate?: string;
     attachment?: string;
+    invoiceCreationStatus?: 'Created' | 'To Be Created';
     companyId?: string;
     companyName?: string;
     companyTrn?: string;

@@ -1098,6 +1098,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [minAmount, setMinAmount] = useState('');
     const [maxAmount, setMaxAmount] = useState('');
     const [filterStatus, setFilterStatus] = useState('All');
+    const [filterInvoiceDoc, setFilterInvoiceDoc] = useState('All');
     const [filterVendor, setFilterVendor] = useState('All');
     const [filterProject, setFilterProject] = useState('All');
     const [filterMonth, setFilterMonth] = useState('All');
@@ -1232,6 +1233,12 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             if (maxAmount !== '' && amount > Number(maxAmount)) return false;
 
             if (filterStatus !== 'All' && item.status !== filterStatus) return false;
+            
+            if (filterInvoiceDoc !== 'All') {
+                const docStatus = item.invoiceReceivedStatus || (item.attachment ? 'Received' : 'Waiting');
+                if (docStatus !== filterInvoiceDoc) return false;
+            }
+
             if (filterProject !== 'All' && item.projectId !== filterProject) return false;
             
             if (filterVendor !== 'All') {
@@ -1247,7 +1254,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
             return true;
         });
-    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, filterCompany, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
+    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterInvoiceDoc, filterVendor, filterProject, filterMonth, filterCompany, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
 
     const ledgerFilteredData = useMemo(() => {
         if (!kpiFilter || kpiFilter === 'all') return filteredData;
@@ -1273,13 +1280,14 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         if (minAmount !== '') count++;
         if (maxAmount !== '') count++;
         if (filterStatus !== 'All') count++;
+        if (filterInvoiceDoc !== 'All') count++;
         if (filterVendor !== 'All') count++;
         if (filterProject !== 'All') count++;
         if (filterMonth !== 'All') count++;
         if (filterCompany !== 'All') count++;
         if (kpiFilter && kpiFilter !== 'all') count++;
         return count;
-    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterVendor, filterProject, filterMonth, filterCompany, dateFilterMode, kpiFilter]);
+    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterInvoiceDoc, filterVendor, filterProject, filterMonth, filterCompany, dateFilterMode, kpiFilter]);
 
     const handleClearAdvFilters = () => {
         setStartDate('');
@@ -1287,6 +1295,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         setMinAmount('');
         setMaxAmount('');
         setFilterStatus('All');
+        setFilterInvoiceDoc('All');
         setFilterVendor('All');
         setFilterProject('All');
         setFilterMonth('All');
@@ -1305,6 +1314,10 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         let totalPaid = 0;
         let totalPending = 0;
         let totalVat = 0;
+        let receivedInvoiceCount = 0;
+        let receivedInvoiceAmount = 0;
+        let waitingInvoiceCount = 0;
+        let waitingInvoiceAmount = 0;
 
         (filteredData || []).forEach((item: any) => {
             const amount = item.totalAmount || item.amount || 0;
@@ -1317,6 +1330,15 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             } else {
                 totalPending += amount;
             }
+
+            const docStatus = item.invoiceReceivedStatus || (item.attachment ? 'Received' : 'Waiting');
+            if (docStatus === 'Received') {
+                receivedInvoiceCount += 1;
+                receivedInvoiceAmount += amount;
+            } else {
+                waitingInvoiceCount += 1;
+                waitingInvoiceAmount += amount;
+            }
         });
 
         return {
@@ -1324,6 +1346,10 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             totalPaid,
             totalPending,
             totalVat,
+            receivedInvoiceCount,
+            receivedInvoiceAmount,
+            waitingInvoiceCount,
+            waitingInvoiceAmount,
             count: filteredData?.length || 0,
             pendingCount: (filteredData || []).filter((item: any) => item.status !== 'Paid').length,
             paidCount: (filteredData || []).filter((item: any) => item.status === 'Paid').length
@@ -1935,10 +1961,87 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         </div>
                     </div>
                     <p className="text-2xl font-black text-slate-900 leading-none">AED {metrics.totalVat.toLocaleString()}</p>
-                    <p className="text-[10px] text-indigo-600 font-bold mt-2 font-mono font-bold font-bold">Claimable VAT on ledger</p>
+                    <p className="text-[10px] text-indigo-600 font-bold mt-2 font-mono font-bold">Claimable VAT on ledger</p>
                     {(kpiFilter === 'vat') && (
                         <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
                     )}
+                </div>
+            </div>
+
+            {/* INVOICE DOCUMENT RECEIPT STATUS TRACKER (Supplier Invoice copies checker) */}
+            <div className="bg-slate-50 border border-slate-200/60 p-5 rounded-3xl shadow-xs">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                    <div className="shrink-0">
+                        <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-1.5">
+                            <span className="p-1 bg-indigo-100 text-indigo-700 rounded-lg">📥</span>
+                            Supplier Tax Invoice Document Tracker
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-bold mt-1 max-w-sm">
+                            Track which entered bills you have physical or scanned invoice documents for, and which ones are pending. Click to filter.
+                        </p>
+                    </div>
+                    
+                    <div className="flex flex-wrap lg:flex-nowrap gap-3 w-full lg:w-auto items-stretch">
+                        <button
+                            onClick={() => setFilterInvoiceDoc('All')}
+                            className={cn(
+                                "flex-1 lg:flex-none px-4 py-2.5 rounded-2xl border transition-all text-xs font-black flex items-center justify-between lg:justify-start gap-4 cursor-pointer",
+                                filterInvoiceDoc === 'All'
+                                    ? "bg-indigo-600 text-white border-indigo-700 shadow-sm"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-350"
+                            )}
+                        >
+                            <span className="flex items-center gap-1.5">🌐 All Bills</span>
+                            <span className={cn(
+                                "px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 font-mono",
+                                filterInvoiceDoc === 'All' ? "bg-indigo-700 text-indigo-150" : "bg-slate-100 text-slate-500"
+                            )}>
+                                {(data || []).length}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={() => setFilterInvoiceDoc(filterInvoiceDoc === 'Received' ? 'All' : 'Received')}
+                            className={cn(
+                                "flex-1 lg:flex-none px-4 py-2.5 rounded-2xl border transition-all text-xs font-black flex items-center justify-between lg:justify-start gap-4 cursor-pointer",
+                                filterInvoiceDoc === 'Received'
+                                    ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-emerald-50/50 hover:border-emerald-200"
+                            )}
+                        >
+                            <span className="flex items-center gap-1.5 font-sans">📥 Received Copies ({metrics.totalBills > 0 ? ((metrics.receivedInvoiceAmount / metrics.totalBills) * 100).toFixed(0) : 0}%)</span>
+                            <div className="flex items-center gap-2 font-mono shrink-0 font-bold">
+                                <span className={cn(
+                                    "px-2 py-0.5 rounded-full text-[10px] font-black",
+                                    filterInvoiceDoc === 'Received' ? "bg-emerald-700 text-emerald-100" : "bg-emerald-50 text-emerald-700"
+                                )}>
+                                    {metrics.receivedInvoiceCount}
+                                </span>
+                                <span className="text-[10px]">AED {metrics.receivedInvoiceAmount.toLocaleString()}</span>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => setFilterInvoiceDoc(filterInvoiceDoc === 'Waiting' ? 'All' : 'Waiting')}
+                            className={cn(
+                                "flex-1 lg:flex-none px-4 py-2.5 rounded-2xl border transition-all text-xs font-black flex items-center justify-between lg:justify-start gap-4 cursor-pointer",
+                                filterInvoiceDoc === 'Waiting'
+                                    ? "bg-amber-600 text-white border-amber-700 shadow-sm"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-amber-50/50 hover:border-amber-200"
+                            )}
+                        >
+                            <span className="flex items-center gap-1.5 font-sans">⏳ Waiting for Document</span>
+                            <div className="flex items-center gap-2 font-mono shrink-0 font-bold">
+                                <span className={cn(
+                                    "px-2 py-0.5 rounded-full text-[10px] font-black",
+                                    filterInvoiceDoc === 'Waiting' ? "bg-amber-750 text-amber-100" : "bg-amber-50 text-amber-700"
+                                )}>
+                                    {metrics.waitingInvoiceCount}
+                                </span>
+                                <span className="text-[10px] text-rose-600 font-extrabold font-bold">AED {metrics.waitingInvoiceAmount.toLocaleString()}</span>
+                            </div>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -2287,6 +2390,25 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     <span className="font-mono font-black text-slate-900 block whitespace-nowrap">{item.invoiceNumber || '-'}</span>
                                 ),
                                 exportText: (item) => item.invoiceNumber || ''
+                            },
+                            { 
+                                key: 'invoiceReceivedStatus', 
+                                label: 'Invoice Document', 
+                                sortable: true,
+                                render: (item) => {
+                                    const docReceived = item.invoiceReceivedStatus || (item.attachment ? 'Received' : 'Waiting');
+                                    return (
+                                        <span className={cn(
+                                            "inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-lg border whitespace-nowrap",
+                                            docReceived === 'Received' 
+                                                ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
+                                                : "bg-amber-50 text-amber-700 border-amber-200/65 animate-pulse-subtle font-black"
+                                        )}>
+                                            {docReceived === 'Received' ? '📥 Received' : '⏳ Waiting'}
+                                        </span>
+                                    );
+                                },
+                                exportText: (item) => item.invoiceReceivedStatus || (item.attachment ? 'Received' : 'Waiting')
                             },
                             { 
                                 key: 'companyId', 
@@ -4546,6 +4668,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const [minAmount, setMinAmount] = useState('');
     const [maxAmount, setMaxAmount] = useState('');
     const [filterStatus, setFilterStatus] = useState('All');
+    const [filterInvoiceCreation, setFilterInvoiceCreation] = useState('All');
     const [filterEntity, setFilterEntity] = useState('All');
     const [filterProject, setFilterProject] = useState('All');
     const [filterCompany, setFilterCompany] = useState('All');
@@ -4664,6 +4787,11 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
             if (filterStatus !== 'All' && item.status !== filterStatus) return false;
             
+            if (filterInvoiceCreation !== 'All') {
+                const docStatus = item.invoiceCreationStatus || 'Created';
+                if (docStatus !== filterInvoiceCreation) return false;
+            }
+            
             if (filterEntity !== 'All') {
                 if (item.entityId !== filterEntity) return false;
             }
@@ -4683,7 +4811,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
             return true;
         });
-    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
+    }, [data, startDate, endDate, minAmount, maxAmount, filterStatus, filterInvoiceCreation, filterEntity, filterProject, filterCompany, filterMonth, dateFilterMode, selectedYearValue, selectedMonthValue, customRangeStart, customRangeEnd]);
 
     const ledgerFilteredData = useMemo(() => {
         if (!kpiFilter || kpiFilter === 'all') return filteredData;
@@ -4709,13 +4837,14 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         if (minAmount !== '') count++;
         if (maxAmount !== '') count++;
         if (filterStatus !== 'All') count++;
+        if (filterInvoiceCreation !== 'All') count++;
         if (filterEntity !== 'All') count++;
         if (filterProject !== 'All') count++;
         if (filterCompany !== 'All') count++;
         if (filterMonth !== 'All') count++;
         if (kpiFilter && kpiFilter !== 'all') count++;
         return count;
-    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterEntity, filterProject, filterCompany, filterMonth, dateFilterMode, kpiFilter]);
+    }, [startDate, endDate, minAmount, maxAmount, filterStatus, filterInvoiceCreation, filterEntity, filterProject, filterCompany, filterMonth, dateFilterMode, kpiFilter]);
 
     const handleClearAdvFilters = () => {
         setStartDate('');
@@ -4723,6 +4852,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         setMinAmount('');
         setMaxAmount('');
         setFilterStatus('All');
+        setFilterInvoiceCreation('All');
         setFilterEntity('All');
         setFilterProject('All');
         setFilterCompany('All');
@@ -5091,6 +5221,10 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         let totalCollected = 0;
         let totalPending = 0;
         let totalVat = 0;
+        let createdInvoiceCount = 0;
+        let createdInvoiceAmount = 0;
+        let toBeCreatedInvoiceCount = 0;
+        let toBeCreatedInvoiceAmount = 0;
         
         (filteredData || []).forEach((item: any) => {
             const amount = item.totalAmount || item.amount || 0;
@@ -5103,6 +5237,15 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             } else {
                 totalPending += amount;
             }
+
+            const genStatus = item.invoiceCreationStatus || 'Created';
+            if (genStatus === 'Created') {
+                createdInvoiceCount += 1;
+                createdInvoiceAmount += amount;
+            } else {
+                toBeCreatedInvoiceCount += 1;
+                toBeCreatedInvoiceAmount += amount;
+            }
         });
 
         return {
@@ -5110,6 +5253,10 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             totalCollected,
             totalPending,
             totalVat,
+            createdInvoiceCount,
+            createdInvoiceAmount,
+            toBeCreatedInvoiceCount,
+            toBeCreatedInvoiceAmount,
             count: filteredData?.length || 0,
             pendingCount: (filteredData || []).filter((item: any) => item.status !== 'Received').length,
             collectedCount: (filteredData || []).filter((item: any) => item.status === 'Received').length
@@ -5367,6 +5514,83 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     {(kpiFilter === 'vat') && (
                         <span className="absolute top-3 right-3 w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                     )}
+                </div>
+            </div>
+
+            {/* CLIENT INVOICE GENERATION TRACKER (Client Invoices checks) */}
+            <div className="bg-slate-50 border border-slate-200/60 p-5 rounded-3xl shadow-xs">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                    <div className="shrink-0">
+                        <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest flex items-center gap-1.5 font-sans">
+                            <span className="p-1 bg-indigo-100 text-indigo-700 rounded-lg font-bold">📜</span>
+                            Client Invoice Generation Status Tracker
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-bold mt-1 max-w-sm font-sans">
+                            Track client invoices you have created vs those you need to create. Click to filter.
+                        </p>
+                    </div>
+                    
+                    <div className="flex flex-wrap lg:flex-nowrap gap-3 w-full lg:w-auto items-stretch">
+                        <button
+                            onClick={() => setFilterInvoiceCreation('All')}
+                            className={cn(
+                                "flex-1 lg:flex-none px-4 py-2.5 rounded-2xl border transition-all text-xs font-black flex items-center justify-between lg:justify-start gap-4 cursor-pointer",
+                                filterInvoiceCreation === 'All'
+                                    ? "bg-indigo-600 text-white border-indigo-700 shadow-sm"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:border-slate-350"
+                            )}
+                        >
+                            <span className="flex items-center gap-1.5 font-sans">🌐 All Receivables</span>
+                            <span className={cn(
+                                "px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 font-mono",
+                                filterInvoiceCreation === 'All' ? "bg-indigo-700 text-indigo-150" : "bg-slate-100 text-slate-500"
+                            )}>
+                                {(data || []).length}
+                            </span>
+                        </button>
+
+                        <button
+                            onClick={() => setFilterInvoiceCreation(filterInvoiceCreation === 'Created' ? 'All' : 'Created')}
+                            className={cn(
+                                "flex-1 lg:flex-none px-4 py-2.5 rounded-2xl border transition-all text-xs font-black flex items-center justify-between lg:justify-start gap-4 cursor-pointer",
+                                filterInvoiceCreation === 'Created'
+                                    ? "bg-indigo-600 text-white border-indigo-700 shadow-sm"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-indigo-50/50 hover:border-indigo-200"
+                            )}
+                        >
+                            <span className="flex items-center gap-1.5 font-sans">📜 Created ({metrics.totalBilled > 0 ? ((metrics.createdInvoiceAmount / metrics.totalBilled) * 100).toFixed(0) : 0}%)</span>
+                            <div className="flex items-center gap-2 font-mono shrink-0 font-bold">
+                                <span className={cn(
+                                    "px-2 py-0.5 rounded-full text-[10px] font-black",
+                                    filterInvoiceCreation === 'Created' ? "bg-indigo-700 text-indigo-100" : "bg-indigo-50 text-indigo-750"
+                                )}>
+                                    {metrics.createdInvoiceCount}
+                                </span>
+                                <span className="text-[10px]">AED {metrics.createdInvoiceAmount.toLocaleString()}</span>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => setFilterInvoiceCreation(filterInvoiceCreation === 'To Be Created' ? 'All' : 'To Be Created')}
+                            className={cn(
+                                "flex-1 lg:flex-none px-4 py-2.5 rounded-2xl border transition-all text-xs font-black flex items-center justify-between lg:justify-start gap-4 cursor-pointer",
+                                filterInvoiceCreation === 'To Be Created'
+                                    ? "bg-rose-600 text-white border-rose-700 shadow-sm"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-rose-50/50 hover:border-rose-200"
+                            )}
+                        >
+                            <span className="flex items-center gap-1.5 font-sans">⏳ To Be Created</span>
+                            <div className="flex items-center gap-2 font-mono shrink-0 font-bold">
+                                <span className={cn(
+                                    "px-2 py-0.5 rounded-full text-[10px] font-black",
+                                    filterInvoiceCreation === 'To Be Created' ? "bg-rose-700 text-rose-100" : "bg-rose-50 text-rose-750"
+                                )}>
+                                    {metrics.toBeCreatedInvoiceCount}
+                                </span>
+                                <span className="text-[10px] text-rose-600 font-extrabold font-bold">AED {metrics.toBeCreatedInvoiceAmount.toLocaleString()}</span>
+                            </div>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -5646,6 +5870,25 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                         columns={[
                         { key: 'date', label: 'Date', sortable: true },
                         { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
+                        { 
+                            key: 'invoiceCreationStatus', 
+                            label: 'Generation',
+                            sortable: true,
+                            render: (item) => {
+                                const genStatus = item.invoiceCreationStatus || 'Created';
+                                return (
+                                    <span className={cn(
+                                        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] uppercase border whitespace-nowrap",
+                                        genStatus === 'Created' 
+                                            ? "bg-indigo-50 border-indigo-150 text-indigo-700 font-extrabold" 
+                                            : "bg-rose-50 border-rose-200/65 text-rose-700 font-black animate-pulse-subtle"
+                                    )}>
+                                        {genStatus === 'Created' ? '📜 Created' : '⏳ To Be Created'}
+                                    </span>
+                                );
+                            },
+                            exportText: (item) => item.invoiceCreationStatus || 'Created'
+                        },
                         { 
                             key: 'companyId', 
                             label: 'Seller Company',
@@ -8815,7 +9058,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         const reader = new FileReader();
         reader.onload = () => {
             const base64 = reader.result as string;
-            handleRecalculate({ attachment: base64 });
+            handleRecalculate({ attachment: base64, invoiceReceivedStatus: 'Received' });
         };
         reader.readAsDataURL(file);
     };
@@ -9473,6 +9716,19 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                 <option value="Pending">Pending</option>
                                 <option value="Paid">Paid</option>
                                 <option value="Partially Paid">Partially Paid</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-indigo-600 ml-1 flex items-center gap-1">
+                                📥 Invoice Copy Document Status
+                            </label>
+                            <select 
+                                value={formData.invoiceReceivedStatus || (formData.attachment ? 'Received' : 'Waiting')}
+                                onChange={e => handleRecalculate({ invoiceReceivedStatus: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all font-sans text-indigo-950"
+                            >
+                                <option value="Received">📥 Invoice Received (Copy Uploaded / Secured)</option>
+                                <option value="Waiting">⏳ Waiting for Invoice (Pending Receipt)</option>
                             </select>
                         </div>
                     </div>
@@ -10633,7 +10889,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                     </div>
 
                     {/* Section 3: CUSTOMER / CLIENT LINK SELECTION */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Entity Type</label>
                             <select 
@@ -10718,6 +10974,19 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                 <option value="Pending">Pending</option>
                                 <option value="Received">Received</option>
                                 <option value="Partially Received">Partially Received</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-indigo-600 ml-1 flex items-center gap-1">
+                                📜 Invoice Generation Status
+                            </label>
+                            <select 
+                                value={formData.invoiceCreationStatus || 'Created'}
+                                onChange={e => setFormData({ ...formData, invoiceCreationStatus: e.target.value as any })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all font-sans text-indigo-950"
+                            >
+                                <option value="Created">📜 Invoice Created & Issued</option>
+                                <option value="To Be Created">⏳ Pending Generation (To Be Created)</option>
                             </select>
                         </div>
                     </div>
