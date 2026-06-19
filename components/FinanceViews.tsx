@@ -12525,12 +12525,52 @@ export const EverydayExpenseView: React.FC<{
         }
     ];
 
-    // Compute tallies for ALL employees
+    // Compute tallies for ALL employees dynamically from both registered staff profiles and active petty cash categories/books
     const tallies = useMemo(() => {
-        return (employees || []).map(emp => {
-            const employeePettyCash = (pettyCash || []).filter(item => 
-                item.employeeId === emp.id || 
-                (item.requestedBy && emp.name && item.requestedBy.toLowerCase().trim() === emp.name.toLowerCase().trim())
+        const activePCBooks = Array.from(new Set((pettyCash || []).map(item => item.category).filter(Boolean)));
+        const resolvedTalliesMap = new Map<string, any>();
+
+        const getMatchesDate = (dateStr?: string) => {
+            if (!dateStr) return true;
+            const [year, month] = dateStr.split('-');
+            const matchesMonth = selectedMonth ? month === selectedMonth : true;
+            const matchesYear = selectedYear ? year === selectedYear : true;
+            return matchesMonth && matchesYear;
+        };
+
+        const targetPCs = (pettyCash || []).filter(item => getMatchesDate(item.date));
+        const targetEverydayExpenses = (data || []).filter(item => getMatchesDate(item.date));
+
+        activePCBooks.forEach(bookRaw => {
+            const book = bookRaw.trim();
+            const bookKey = book.toLowerCase();
+
+            // Try to find a matching registered employee
+            const matchedEmp = (employees || []).find(emp => 
+                emp.name && (
+                    emp.name.toLowerCase().trim() === bookKey ||
+                    emp.name.toLowerCase().includes(bookKey) ||
+                    bookKey.includes(emp.name.toLowerCase().trim())
+                )
+            );
+
+            const empObject = matchedEmp ? {
+                ...matchedEmp,
+                id: matchedEmp.id || book,
+                name: matchedEmp.name || book,
+                designation: matchedEmp.designation || 'Field Operational Handler',
+                code: matchedEmp.code || 'PC-BOOK'
+            } : {
+                id: book,
+                name: book,
+                designation: 'Special Cash Handler',
+                code: 'PC-BOOK',
+                userId: book
+            };
+
+            const employeePettyCash = targetPCs.filter(item => 
+                item.employeeId === (matchedEmp?.id || book) || 
+                (item.category && item.category.toLowerCase().trim() === bookKey)
             );
 
             const totalAdvanced = employeePettyCash
@@ -12541,20 +12581,28 @@ export const EverydayExpenseView: React.FC<{
                 .filter(item => item.type === 'Expense')
                 .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
-            const employeeEverydayExpenses = (data || []).filter(item => 
-                item.employeeId === emp.id || 
-                item.uploadedByUid === emp.userId || 
-                item.uploadedByUid === emp.id || 
-                (item.uploadedBy && emp.name && item.uploadedBy.toLowerCase().trim() === emp.name.toLowerCase().trim())
-            );
+            const employeeEverydayExpenses = targetEverydayExpenses.filter(item => {
+                const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
+                const cleanUploader = uploaderRaw.split('(')[0].trim();
+                
+                return item.employeeId === matchedEmp?.id ||
+                       item.employeeId === book ||
+                       (matchedEmp?.userId && item.uploadedByUid === matchedEmp.userId) ||
+                       (matchedEmp?.id && item.uploadedByUid === matchedEmp.id) ||
+                       cleanUploader === bookKey ||
+                       uploaderRaw.includes(bookKey) ||
+                       bookKey.includes(cleanUploader) ||
+                       (cleanUploader === 'jamel' && bookKey === 'jamil') ||
+                       (cleanUploader === 'jamil' && bookKey === 'jamel');
+            });
 
             const totalEverydaySpent = employeeEverydayExpenses.reduce((sum, item) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
 
             const totalSpending = totalDirectSpent + totalEverydaySpent;
             const netBalance = totalAdvanced - totalSpending;
 
-            return {
-                employee: emp,
+            resolvedTalliesMap.set(bookKey, {
+                employee: empObject,
                 pettyCashItems: employeePettyCash,
                 everydayItems: employeeEverydayExpenses,
                 totalAdvanced,
@@ -12562,9 +12610,55 @@ export const EverydayExpenseView: React.FC<{
                 totalEverydaySpent,
                 totalSpending,
                 netBalance
-            };
+            });
         });
-    }, [employees, pettyCash, data]);
+
+        // Match remaining registered employees if they have logs (to keep registry comprehensive)
+        (employees || []).forEach(emp => {
+            const empKey = (emp.name || '').toLowerCase().trim();
+            if (!empKey || resolvedTalliesMap.has(empKey)) return;
+
+            const employeePettyCash = targetPCs.filter(item => 
+                item.employeeId === emp.id || 
+                (item.requestedBy && emp.name && item.requestedBy.toLowerCase().trim() === empKey)
+            );
+
+            const totalAdvanced = employeePettyCash
+                .filter(item => item.type === 'Income')
+                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+            const totalDirectSpent = employeePettyCash
+                .filter(item => item.type === 'Expense')
+                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+            const employeeEverydayExpenses = targetEverydayExpenses.filter(item => 
+                item.employeeId === emp.id || 
+                item.uploadedByUid === emp.userId || 
+                item.uploadedByUid === emp.id || 
+                (item.uploadedBy && emp.name && item.uploadedBy.toLowerCase().trim() === empKey)
+            );
+
+            const totalEverydaySpent = employeeEverydayExpenses.reduce((sum, item) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
+
+            const totalSpending = totalDirectSpent + totalEverydaySpent;
+            const netBalance = totalAdvanced - totalSpending;
+
+            if (totalAdvanced > 0 || totalSpending > 0) {
+                resolvedTalliesMap.set(empKey, {
+                    employee: emp,
+                    pettyCashItems: employeePettyCash,
+                    everydayItems: employeeEverydayExpenses,
+                    totalAdvanced,
+                    totalDirectSpent,
+                    totalEverydaySpent,
+                    totalSpending,
+                    netBalance
+                });
+            }
+        });
+
+        return Array.from(resolvedTalliesMap.values());
+    }, [employees, pettyCash, data, selectedMonth, selectedYear]);
 
     const isEmployeeUser = useMemo(() => user?.role === 'Employee' || user?.role?.toLowerCase() === 'employee', [user]);
 
@@ -12601,6 +12695,19 @@ export const EverydayExpenseView: React.FC<{
     }, [tallies, isEmployeeUser, currentEmployeeTally]);
 
     const overallRemaining = useMemo(() => overallAdvanced - overallExpended, [overallAdvanced, overallExpended]);
+
+    // Track how many unique employees/handlers have entered everyday expense records
+    const uniqueUploadersCount = useMemo(() => {
+        const uploaders = new Set<string>();
+        data.forEach(item => {
+            const who = item.uploadedBy || item.updatedBy;
+            if (who) {
+                const clean = who.split('(')[0].trim().toLowerCase();
+                if (clean) uploaders.add(clean);
+            }
+        });
+        return uploaders.size;
+    }, [data]);
 
     // Filter tallies by search term
     const filteredTallies = useMemo(() => {
@@ -12740,15 +12847,19 @@ export const EverydayExpenseView: React.FC<{
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                             <div className="p-4 bg-slate-50/60 rounded-2xl border border-slate-100">
                                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Total Accountable Handlers</p>
-                                <p className="text-2xl font-black text-slate-905 mt-1">{staffWithTallyCount} Employees</p>
+                                <p className="text-2xl font-black text-slate-900 mt-1">{staffWithTallyCount} Handlers</p>
+                                <p className="text-[10px] text-brand-600 font-extrabold mt-1.5 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500 inline-block animate-pulse"></span>
+                                    {uniqueUploadersCount} Active Contributors
+                                </p>
                             </div>
                             <div className="p-4 bg-sky-50/40 rounded-2xl border border-sky-150">
                                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-sky-600">Total Petty Cash Allocated</p>
-                                <p className="text-2xl font-black text-slate-905 mt-1">AED {overallAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                <p className="text-2xl font-black text-slate-900 mt-1">AED {overallAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                             </div>
                             <div className="p-4 bg-rose-50/40 rounded-2xl border border-rose-150">
                                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-[#ef4444]">Total Spendings Tally</p>
-                                <p className="text-2xl font-black text-slate-905 mt-1">AED {overallExpended.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                                <p className="text-2xl font-black text-slate-900 mt-1">AED {overallExpended.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
                             </div>
                             <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-150">
                                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-600">Net Leftover Balance</p>
@@ -12856,12 +12967,33 @@ export const EverydayExpenseView: React.FC<{
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className="py-4 px-4 text-center font-bold text-sky-700">AED {item.totalAdvanced.toLocaleString()}</td>
-                                                    <td className="py-4 px-4 text-center text-slate-500">AED {item.totalDirectSpent.toLocaleString()}</td>
-                                                    <td className="py-4 px-4 text-center text-slate-500">AED {item.totalEverydaySpent.toLocaleString()}</td>
-                                                    <td className="py-4 px-4 text-center font-bold text-slate-800">AED {item.totalSpending.toLocaleString()}</td>
+                                                    <td className="py-4 px-4 text-center">
+                                                        <span className="font-bold text-sky-700 block text-xs">AED {item.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                                        {item.pettyCashItems.filter((i: any) => i.type === 'Income').length > 0 && (
+                                                            <span className="text-[9px] bg-slate-50 text-slate-500 border border-slate-100/85 px-1.5 py-0.5 rounded-md font-bold mt-1 inline-block">
+                                                                {item.pettyCashItems.filter((i: any) => i.type === 'Income').length} credits
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center">
+                                                        <span className="text-slate-600 block text-xs">AED {item.totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                                        {item.pettyCashItems.filter((i: any) => i.type === 'Expense').length > 0 && (
+                                                            <span className="text-[9px] bg-slate-50 text-slate-500 border border-slate-100/85 px-1.5 py-0.5 rounded-md font-semibold mt-1 inline-block">
+                                                                {item.pettyCashItems.filter((i: any) => i.type === 'Expense').length} vouchers
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center">
+                                                        <span className="text-slate-900 font-extrabold block text-xs">AED {item.totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                                        {item.everydayItems.length > 0 && (
+                                                            <span className="text-[9px] bg-brand-50 text-brand-700 border border-brand-100 px-1.5 py-0.5 rounded-md font-extrabold mt-1 inline-block">
+                                                                {item.everydayItems.length} bills uploaded
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center font-bold text-slate-800 text-xs">AED {item.totalSpending.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                                                     <td className={`py-4 px-4 text-center font-black ${isBalanced ? "text-emerald-600" : "text-rose-500"}`}>
-                                                        AED {item.netBalance.toLocaleString()}
+                                                        AED {item.netBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                                     </td>
                                                     <td className="py-4 px-4 text-center">
                                                         {isBalanced ? (
