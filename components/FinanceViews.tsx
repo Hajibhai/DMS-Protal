@@ -1118,6 +1118,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [soaEndDate, setSoaEndDate] = useState('');
     const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending'>('All');
     const [soaCompanyId, setSoaCompanyId] = useState('All');
+    const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
 
     const apPartnerOptions = useMemo(() => {
         const supplierGroups: { [name: string]: any[] } = {};
@@ -1454,6 +1455,75 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             .map(key => ({
                 key,
                 ...trends[key]
+            }));
+    }, [filteredData]);
+
+    const monthlyAuditBreakdown = useMemo(() => {
+        const monthsData: { 
+            [monthKey: string]: { 
+                label: string; 
+                suppliers: Set<string>; 
+                updatedCount: number; 
+                updatedAmount: number; 
+                pendingCount: number; 
+                pendingAmount: number;
+                totalCount: number;
+                totalAmount: number;
+            } 
+        } = {};
+
+        (filteredData || []).forEach((item: any) => {
+            const dateStr = item.date;
+            if (!dateStr) return;
+            const monthKey = dateStr.substring(0, 7); // "YYYY-MM"
+            if (!monthsData[monthKey]) {
+                const [yr, mn] = monthKey.split('-');
+                const d = new Date(parseInt(yr), parseInt(mn) - 1, 1);
+                const humanLabel = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
+                monthsData[monthKey] = {
+                    label: humanLabel,
+                    suppliers: new Set<string>(),
+                    updatedCount: 0,
+                    updatedAmount: 0,
+                    pendingCount: 0,
+                    pendingAmount: 0,
+                    totalCount: 0,
+                    totalAmount: 0,
+                };
+            }
+            
+            const amount = item.totalAmount || item.amount || 0;
+            const entry = monthsData[monthKey];
+            
+            if (item.vendorId) {
+                entry.suppliers.add(String(item.vendorId));
+            }
+            
+            entry.totalCount += 1;
+            entry.totalAmount += amount;
+            
+            const isUpdated = (item.invoiceReceivedStatus || (item.attachment ? 'Received' : 'Waiting')) === 'Received';
+            if (isUpdated) {
+                entry.updatedCount += 1;
+                entry.updatedAmount += amount;
+            } else {
+                entry.pendingCount += 1;
+                entry.pendingAmount += amount;
+            }
+        });
+
+        return Object.keys(monthsData)
+            .sort((a, b) => b.localeCompare(a))
+            .map(key => ({
+                key,
+                label: monthsData[key].label,
+                suppliersCount: monthsData[key].suppliers.size,
+                updatedCount: monthsData[key].updatedCount,
+                updatedAmount: monthsData[key].updatedAmount,
+                pendingCount: monthsData[key].pendingCount,
+                pendingAmount: monthsData[key].pendingAmount,
+                totalCount: monthsData[key].totalCount,
+                totalAmount: monthsData[key].totalAmount,
             }));
     }, [filteredData]);
 
@@ -2041,8 +2111,102 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 <span className="text-[10px] text-rose-600 font-extrabold font-bold">AED {metrics.waitingInvoiceAmount.toLocaleString()}</span>
                             </div>
                         </button>
+
+                        <button
+                            onClick={() => setShowMonthlyAuditBreakdown(!showMonthlyAuditBreakdown)}
+                            className={cn(
+                                "flex-1 lg:flex-none px-4 py-2.5 rounded-2xl border transition-all text-xs font-black flex items-center justify-between lg:justify-start gap-2 cursor-pointer shadow-2xs",
+                                showMonthlyAuditBreakdown
+                                    ? "bg-[#a855f7] text-white border-purple-700"
+                                    : "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                            )}
+                        >
+                            <span className="flex items-center gap-1.5 font-sans">
+                                📊 {showMonthlyAuditBreakdown ? "Hide Monthly Audit" : "Show Monthly Audit Table"}
+                            </span>
+                        </button>
                     </div>
                 </div>
+
+                {/* Expandable Monthly Audit Table */}
+                {showMonthlyAuditBreakdown && (
+                    <div className="mt-5 border-t border-slate-200/60 pt-5 space-y-3">
+                        <div className="flex justify-between items-center">
+                            <h5 className="text-[11px] font-black uppercase tracking-widest text-[#a855f7] flex items-center gap-1.5 font-sans">
+                                📋 Month-by-Month Supplier Record Update Audit
+                            </h5>
+                            <span className="text-[10px] text-slate-400 font-bold font-mono">
+                                Showing data based on active ledger filters
+                            </span>
+                        </div>
+                        
+                        {monthlyAuditBreakdown.length === 0 ? (
+                            <div className="text-center py-6 text-xs text-slate-400 font-semibold font-sans">
+                                No records found to perform monthly auditing.
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto border border-slate-100 rounded-2xl bg-white shadow-2xs">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-150 text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">
+                                            <th className="py-3 px-4">Billing Month</th>
+                                            <th className="py-3 px-4 text-center">Active Suppliers</th>
+                                            <th className="py-3 px-4 text-center">Invoices count</th>
+                                            <th className="py-3 px-4">Total Amount</th>
+                                            <th className="py-3 px-4 text-emerald-600 bg-emerald-50/30">📥 Records Updated (Copies)</th>
+                                            <th className="py-3 px-4 text-amber-600 bg-amber-50/30">⏳ Balance To Update</th>
+                                            <th className="py-3 px-4 text-center">Update Progress</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                                        {monthlyAuditBreakdown.map((row) => {
+                                            const completionPct = row.totalCount > 0 ? (row.updatedCount / row.totalCount) * 100 : 0;
+                                            return (
+                                                <tr key={row.key} className="hover:bg-slate-50/55 transition-colors font-sans">
+                                                    <td className="py-3 px-4 font-extrabold text-slate-900">{row.label}</td>
+                                                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-700">
+                                                        <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px] font-extrabold font-mono">
+                                                            {row.suppliersCount}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-650">
+                                                        {row.totalCount} bills
+                                                    </td>
+                                                    <td className="py-3 px-4 font-bold text-slate-500 font-mono">
+                                                        AED {row.totalAmount.toLocaleString()}
+                                                    </td>
+                                                    <td className="py-3 px-4 bg-emerald-50/10">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-extrabold text-emerald-650 font-mono text-emerald-600">{row.updatedCount} uploaded</span>
+                                                            <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.updatedAmount.toLocaleString()}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4 bg-amber-50/10">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-extrabold text-amber-600 font-mono">{row.pendingCount} pending</span>
+                                                            <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.pendingAmount.toLocaleString()}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-20 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
+                                                                <div 
+                                                                    className="h-full rounded-full bg-emerald-500"
+                                                                    style={{ width: `${completionPct}%` }}
+                                                                />
+                                                            </div>
+                                                            <span className="text-[11px] font-black text-slate-700 font-mono">{completionPct.toFixed(0)}%</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Main Dynamic Panel */}
@@ -4688,6 +4852,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const [soaStartDate, setSoaStartDate] = useState('');
     const [soaEndDate, setSoaEndDate] = useState('');
     const [soaScope, setSoaScope] = useState<'All' | 'Received' | 'Pending'>('All');
+    const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
 
     const arClientOptions = useMemo(() => {
         const groups: { [name: string]: any[] } = {};
@@ -5357,6 +5522,75 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             }));
     }, [filteredData]);
 
+    const monthlyAuditBreakdown = useMemo(() => {
+        const monthsData: { 
+            [monthKey: string]: { 
+                label: string; 
+                clients: Set<string>; 
+                createdCount: number; 
+                createdAmount: number; 
+                pendingCount: number; 
+                pendingAmount: number;
+                totalCount: number;
+                totalAmount: number;
+            } 
+        } = {};
+
+        (filteredData || []).forEach((item: any) => {
+            const dateStr = item.date;
+            if (!dateStr) return;
+            const monthKey = dateStr.substring(0, 7); // "YYYY-MM"
+            if (!monthsData[monthKey]) {
+                const [yr, mn] = monthKey.split('-');
+                const d = new Date(parseInt(yr), parseInt(mn) - 1, 1);
+                const humanLabel = d.toLocaleDateString('default', { month: 'long', year: 'numeric' });
+                monthsData[monthKey] = {
+                    label: humanLabel,
+                    clients: new Set<string>(),
+                    createdCount: 0,
+                    createdAmount: 0,
+                    pendingCount: 0,
+                    pendingAmount: 0,
+                    totalCount: 0,
+                    totalAmount: 0,
+                };
+            }
+            
+            const amount = item.totalAmount || item.amount || 0;
+            const entry = monthsData[monthKey];
+            
+            if (item.entityId) {
+                entry.clients.add(String(item.entityId));
+            }
+            
+            entry.totalCount += 1;
+            entry.totalAmount += amount;
+            
+            const isCreated = (item.invoiceCreationStatus || 'Created') === 'Created';
+            if (isCreated) {
+                entry.createdCount += 1;
+                entry.createdAmount += amount;
+            } else {
+                entry.pendingCount += 1;
+                entry.pendingAmount += amount;
+            }
+        });
+
+        return Object.keys(monthsData)
+            .sort((a, b) => b.localeCompare(a))
+            .map(key => ({
+                key,
+                label: monthsData[key].label,
+                clientsCount: monthsData[key].clients.size,
+                createdCount: monthsData[key].createdCount,
+                createdAmount: monthsData[key].createdAmount,
+                pendingCount: monthsData[key].pendingCount,
+                pendingAmount: monthsData[key].pendingAmount,
+                totalCount: monthsData[key].totalCount,
+                totalAmount: monthsData[key].totalAmount,
+            }));
+    }, [filteredData]);
+
     // Outstanding items helper for list below aging selectors
     const totalAgingAmount = Object.values(agingBuckets).reduce((acc, curr) => acc + curr.amount, 0);
 
@@ -5590,8 +5824,102 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                 <span className="text-[10px] text-rose-600 font-extrabold font-bold">AED {metrics.toBeCreatedInvoiceAmount.toLocaleString()}</span>
                             </div>
                         </button>
+
+                        <button
+                            onClick={() => setShowMonthlyAuditBreakdown(!showMonthlyAuditBreakdown)}
+                            className={cn(
+                                "flex-1 lg:flex-none px-4 py-2.5 rounded-2xl border transition-all text-xs font-black flex items-center justify-between lg:justify-start gap-2 cursor-pointer shadow-2xs",
+                                showMonthlyAuditBreakdown
+                                    ? "bg-[#a855f7] text-white border-purple-700"
+                                    : "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100"
+                            )}
+                        >
+                            <span className="flex items-center gap-1.5 font-sans">
+                                📊 {showMonthlyAuditBreakdown ? "Hide Monthly Audit" : "Show Monthly Audit Table"}
+                            </span>
+                        </button>
                     </div>
                 </div>
+
+                {/* Expandable Monthly Audit Table */}
+                {showMonthlyAuditBreakdown && (
+                    <div className="mt-5 border-t border-slate-200/60 pt-5 space-y-3">
+                        <div className="flex justify-between items-center">
+                            <h5 className="text-[11px] font-black uppercase tracking-widest text-[#a855f7] flex items-center gap-1.5 font-sans">
+                                📋 Month-by-Month Client Invoice Generation Audit
+                            </h5>
+                            <span className="text-[10px] text-slate-400 font-bold font-mono">
+                                Showing data based on active ledger filters
+                            </span>
+                        </div>
+                        
+                        {monthlyAuditBreakdown.length === 0 ? (
+                            <div className="text-center py-6 text-xs text-slate-400 font-semibold font-sans">
+                                No records found to perform monthly auditing.
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto border border-slate-100 rounded-2xl bg-white shadow-2xs">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-150 text-[10px] font-black uppercase tracking-widest text-slate-400 font-mono">
+                                            <th className="py-3 px-4">Billing Month</th>
+                                            <th className="py-3 px-4 text-center">Active Clients</th>
+                                            <th className="py-3 px-4 text-center">Invoices count</th>
+                                            <th className="py-3 px-4">Total Amount</th>
+                                            <th className="py-3 px-4 text-indigo-700 bg-indigo-50/30">📜 Already Created</th>
+                                            <th className="py-3 px-4 text-rose-700 bg-rose-50/30">⏳ Balance To Be Created</th>
+                                            <th className="py-3 px-4 text-center">Generation Progress</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                                        {monthlyAuditBreakdown.map((row) => {
+                                            const completionPct = row.totalCount > 0 ? (row.createdCount / row.totalCount) * 100 : 0;
+                                            return (
+                                                <tr key={row.key} className="hover:bg-slate-50/55 transition-colors font-sans">
+                                                    <td className="py-3 px-4 font-extrabold text-slate-900">{row.label}</td>
+                                                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-700">
+                                                        <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px] font-extrabold font-mono">
+                                                            {row.clientsCount}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-650">
+                                                        {row.totalCount} invoices
+                                                    </td>
+                                                    <td className="py-3 px-4 font-bold text-slate-500 font-mono">
+                                                        AED {row.totalAmount.toLocaleString()}
+                                                    </td>
+                                                    <td className="py-3 px-4 bg-indigo-50/10">
+                                                        <div className="flex flex-col font-sans">
+                                                            <span className="font-extrabold text-indigo-700 font-mono">{row.createdCount} created</span>
+                                                            <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.createdAmount.toLocaleString()}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4 bg-rose-50/10">
+                                                        <div className="flex flex-col font-sans">
+                                                            <span className="font-extrabold text-rose-600 font-mono">{row.pendingCount} pending</span>
+                                                            <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.pendingAmount.toLocaleString()}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-20 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
+                                                                <div 
+                                                                    className="h-full rounded-full bg-indigo-600"
+                                                                    style={{ width: `${completionPct}%` }}
+                                                                />
+                                                            </div>
+                                                            <span className="text-[11px] font-black text-slate-700 font-mono">{completionPct.toFixed(0)}%</span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Main Dynamic Panel */}
