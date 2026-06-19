@@ -13477,8 +13477,11 @@ export const EverydayExpenseModal: React.FC<{
                             <button 
                                 type="button"
                                 onClick={() => {
-                                    if (cameraInputRef.current) {
+                                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                                    if (isMobile && cameraInputRef.current) {
                                         cameraInputRef.current.click();
+                                    } else {
+                                        setShowCamera(true);
                                     }
                                 }}
                                 className="w-full sm:w-auto px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
