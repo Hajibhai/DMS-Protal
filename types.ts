@@ -729,5 +729,36 @@ export interface Voucher {
     uploadedDate?: string;
 }
 
+export interface VehicleDocument {
+    id: string;
+    name: string;
+    category: 'Registration' | 'Insurance' | 'Inspection' | 'Other';
+    fileData: string; // base64
+    fileType: string;
+    uploadedDate: string;
+}
+
+export interface Vehicle {
+    id: string;
+    vehicleNumber: string; // Plate Number (e.g., DXB 12345)
+    model?: string; // Make/Model
+    chassisNumber?: string;
+    mulkiyaIssueDate?: string; // registration issue date YYYY-MM-DD
+    mulkiyaExpiryDate?: string; // registration expiry date YYYY-MM-DD
+    insuranceCompany?: string;
+    insurancePolicyNo?: string;
+    insuranceExpiryDate?: string;
+    inspectionDate?: string; // last inspection date YYYY-MM-DD
+    inspectionExpiryDate?: string; // inspection expiry date YYYY-MM-DD
+    inspectionStatus?: 'Passed' | 'Failed' | 'Pending' | 'Needed' | 'N/A';
+    status: 'Active' | 'Inactive' | 'Under Maintenance' | 'Sold';
+    driverName?: string;
+    remarks?: string;
+    documents?: VehicleDocument[];
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+
 
 

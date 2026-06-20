@@ -68,7 +68,7 @@ import {
   MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, GripVertical,
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle, LayoutDashboard,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
-  ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator,
+  ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator, Car,
   Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home, Mail,
   Database, HardDrive, Sparkles
 } from 'lucide-react';
@@ -115,7 +115,9 @@ import {
   CampExpense,
   Task,
   Note,
-  Voucher
+  Voucher,
+  Vehicle,
+  VehicleDocument
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -134,7 +136,8 @@ import {
   saveEverydayExpense, deleteEverydayExpense,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType,
   saveHoliday, deleteHoliday, saveEngineerDocument, deleteEngineerDocument,
-  saveCamp, deleteCamp, saveVoucher, deleteVoucher
+  saveCamp, deleteCamp, saveVoucher, deleteVoucher,
+  saveVehicle, deleteVehicle
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
 import SmartCommand from './components/SmartCommand';
@@ -148,6 +151,7 @@ import {
 import { CampView, CampModal } from './components/CampView';
 import { HolidayManagementModal } from './components/HolidayManagementModal';
 import { SafetyView } from './components/SafetyView';
+import { VehiclesView } from './components/VehiclesView';
 import { JobOfferView } from './components/JobOfferView';
 import { EngineerView } from './components/EngineerView';
 import TasksNotesView from './components/TasksNotesView';
@@ -4175,6 +4179,7 @@ export default function App() {
   const [projectedExpenses, setProjectedExpenses] = useState<ProjectedExpense[]>([]);
   const [everydayExpenses, setEverydayExpenses] = useState<EverydayExpense[]>([]);
   const [camps, setCamps] = useState<CampExpense[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [showCampModal, setShowCampModal] = useState<CampExpense | boolean>(false);
   const [engineerDocuments, setEngineerDocuments] = useState<EngineerDocument[]>([]);
@@ -4588,6 +4593,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'vouchers');
     });
 
+    const unsubVehicles = onSnapshot(collection(db, 'vehicles'), (snap) => {
+      setVehicles(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Vehicle));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'vehicles');
+    });
+
     const unsubEngineerDocs = onSnapshot(collection(db, 'engineer_documents'), (snap) => {
       setEngineerDocuments(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EngineerDocument));
     }, (error) => {
@@ -4665,6 +4676,7 @@ export default function App() {
       unsubEverydayExpenses();
       unsubCamps();
       unsubVouchers();
+      unsubVehicles();
       unsubEngineerDocs();
       unsubCICPA();
       unsubSafety();
@@ -5338,6 +5350,7 @@ export default function App() {
           { id: 'suppliers', label: 'Suppliers', icon: Truck, permission: 'canManageSuppliers' },
           { id: 'projects', label: 'Projects', icon: Briefcase, permission: 'canManageProjects' },
           { id: 'camp', label: 'Camp', icon: Home, permission: 'canManageFinance' },
+          { id: 'vehicles', label: 'Vehicles', icon: Car, permission: 'canManageProjects' },
           { id: 'cicpa', label: 'CICPA', icon: ShieldCheck, permission: 'canManageEmployees' },
           { id: 'safety', label: 'Safety', icon: ShieldAlert, permission: 'canManageEmployees' },
           { id: 'vendors', label: 'Clients', icon: Truck, permission: 'canManageProjects' },
@@ -6127,6 +6140,24 @@ export default function App() {
             }}
             user={systemUser}
             initialSearchTerm={safetySearchTerm}
+        />
+      )}
+      {activeTab === 'vehicles' && (
+        <VehiclesView 
+            vehicles={vehicles} 
+            onSave={async (data) => {
+                const isUpdate = !!vehicles.some(v => v.id === data.id);
+                await saveVehicle(data);
+                handleLogAction(isUpdate ? 'Vehicle Record Updated' : 'Vehicle Record Added', `Vehicle [${data.vehicleNumber}] ${data.model} was ${isUpdate ? 'updated' : 'enrolled'}.`, isUpdate ? 'update' : 'create');
+            }}
+            onDelete={async (id) => {
+                const plate = vehicles.find(v => v.id === id)?.vehicleNumber || 'Unknown';
+                openConfirm("Delete Vehicle Record", "Are you sure you want to delete this vehicle? This cannot be undone.", async () => {
+                    await deleteVehicle(id);
+                    handleLogAction('Vehicle Record Deleted', `Vehicle ${plate} was permanently removed.`, 'delete');
+                });
+            }}
+            user={systemUser}
         />
       )}
       {activeTab === 'profile' && systemUser && (

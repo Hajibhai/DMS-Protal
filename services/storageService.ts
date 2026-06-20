@@ -38,7 +38,8 @@ import {
   UserRole,
   EngineerDocument,
   CampExpense,
-  Voucher
+  Voucher,
+  Vehicle
 } from "../types";
 
 // Helper for error handling as per spec
@@ -748,4 +749,22 @@ export const deleteVoucher = async (id: string) => {
     handleFirestoreError(error, OperationType.DELETE, `vouchers/${id}`);
   }
 };
+
+// --- Vehicles ---
+export const saveVehicle = async (data: Vehicle) => {
+  try {
+    await setDoc(doc(db, 'vehicles', data.id), cleanData(data));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `vehicles/${data.id}`);
+  }
+};
+
+export const deleteVehicle = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'vehicles', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `vehicles/${id}`);
+  }
+};
+
 
