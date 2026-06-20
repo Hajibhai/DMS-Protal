@@ -75,8 +75,7 @@ service cloud.firestore {
     }
 
     match /vehicles/{vehicleId} {
-      allow read: if isAuthenticated();
-      allow write: if hasPermission('canManageProjects') || isAdmin();
+      allow read, write: if isAuthenticated();
     }
 
     match /vouchers/{voucherId} {
