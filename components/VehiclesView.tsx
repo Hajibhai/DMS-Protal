@@ -150,24 +150,77 @@ export const VehiclesView = ({
     setIsExporting(false);
   };
 
+  const compressImage = (base64Str: string, maxWidth = 850, maxHeight = 850): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!base64Str || !base64Str.startsWith('data:image/')) {
+        resolve(base64Str);
+        return;
+      }
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        } else {
+          resolve(base64Str);
+        }
+      };
+      img.onerror = () => {
+        resolve(base64Str);
+      };
+    });
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 3 * 1024 * 1024) {
-      setDocUploadError("File exceeds maximum size of 3MB.");
+    // Enforce safe database limits:
+    if (file.type === 'application/pdf' && file.size > 750 * 1024) {
+      setDocUploadError("PDF attachments cannot exceed 750KB for secure cloud database storage. Please optimize your PDF or upload a smaller copy.");
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setDocUploadError("File exceeds the maximum limit of 8MB.");
       return;
     }
 
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setNewDocFile(reader.result as string);
-      setNewDocFileType(file.type);
-      setDocUploadError(null);
-      if (!newDocName) {
-        // Set fallback neat document name
-        const cleanName = file.name.split('.')[0].replace(/[-_]/g, ' ');
-        setNewDocName(cleanName.charAt(0).toUpperCase() + cleanName.slice(1));
+    reader.onloadend = async () => {
+      try {
+        const rawBase64 = reader.result as string;
+        const compressedBase64 = await compressImage(rawBase64);
+        setNewDocFile(compressedBase64);
+        setNewDocFileType(file.type);
+        setDocUploadError(null);
+        if (!newDocName) {
+          // Set fallback neat document name
+          const cleanName = file.name.split('.')[0].replace(/[-_]/g, ' ');
+          setNewDocName(cleanName.charAt(0).toUpperCase() + cleanName.slice(1));
+        }
+      } catch (err) {
+        setDocUploadError("Failed to process attachment file.");
       }
     };
     reader.readAsDataURL(file);
@@ -213,29 +266,39 @@ export const VehiclesView = ({
     e.preventDefault();
     if (!showModal?.vehicleNumber) return;
 
-    const dataToSave: Vehicle = {
-      id: showModal.id || Math.random().toString(36).substr(2, 9),
-      vehicleNumber: showModal.vehicleNumber.trim(),
-      model: showModal.model?.trim() || '',
-      chassisNumber: showModal.chassisNumber?.trim() || '',
-      mulkiyaIssueDate: showModal.mulkiyaIssueDate || '',
-      mulkiyaExpiryDate: showModal.mulkiyaExpiryDate || '',
-      insuranceCompany: showModal.insuranceCompany?.trim() || '',
-      insurancePolicyNo: showModal.insurancePolicyNo?.trim() || '',
-      insuranceExpiryDate: showModal.insuranceExpiryDate || '',
-      inspectionDate: showModal.inspectionDate || '',
-      inspectionExpiryDate: showModal.inspectionExpiryDate || '',
-      inspectionStatus: showModal.inspectionStatus || 'N/A',
-      status: showModal.status || 'Active',
-      driverName: showModal.driverName?.trim() || '',
-      remarks: showModal.remarks?.trim() || '',
-      documents: showModal.documents || [],
-      createdAt: showModal.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    try {
+      const dataToSave: Vehicle = {
+        id: showModal.id || Math.random().toString(36).substr(2, 9),
+        vehicleNumber: showModal.vehicleNumber.trim(),
+        model: showModal.model?.trim() || '',
+        chassisNumber: showModal.chassisNumber?.trim() || '',
+        mulkiyaIssueDate: showModal.mulkiyaIssueDate || '',
+        mulkiyaExpiryDate: showModal.mulkiyaExpiryDate || '',
+        insuranceCompany: showModal.insuranceCompany?.trim() || '',
+        insurancePolicyNo: showModal.insurancePolicyNo?.trim() || '',
+        insuranceExpiryDate: showModal.insuranceExpiryDate || '',
+        inspectionDate: showModal.inspectionDate || '',
+        inspectionExpiryDate: showModal.inspectionExpiryDate || '',
+        inspectionStatus: showModal.inspectionStatus || 'N/A',
+        status: showModal.status || 'Active',
+        driverName: showModal.driverName?.trim() || '',
+        remarks: showModal.remarks?.trim() || '',
+        documents: showModal.documents || [],
+        createdAt: showModal.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
 
-    await onSave(dataToSave);
-    setShowModal(null);
+      await onSave(dataToSave);
+      setShowModal(null);
+    } catch (err: any) {
+      console.error("Failed to save vehicle record in Firestore: ", err);
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes("size") || errMsg.includes("too large") || errMsg.includes("limit") || errMsg.includes("exceeds")) {
+        alert("Unable to save vehicle record: The attached document file size is too large for database storage. Please compress your files, remove some large attachments, or select smaller files before retrying.");
+      } else {
+        alert("Failed to save vehicle record: " + (errMsg.substring(0, 150) || "Unknown Error"));
+      }
+    }
   };
 
   return (
