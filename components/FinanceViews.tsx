@@ -1119,6 +1119,20 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending'>('All');
     const [soaCompanyId, setSoaCompanyId] = useState('All');
     const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
+    const [expandedMonthDetails, setExpandedMonthDetails] = useState<string | null>(null);
+
+    const handleGoToInvoice = (vendorId: string, monthKey: string) => {
+        setActiveTabMode('ledger');
+        setFilterVendor(vendorId);
+        setFilterMonth(monthKey);
+        setDateFilterMode('all');
+        setTimeout(() => {
+            const element = document.getElementById('accounts-payable-ledger-section');
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100);
+    };
 
     const apPartnerOptions = useMemo(() => {
         const supplierGroups: { [name: string]: any[] } = {};
@@ -1469,7 +1483,20 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                 pendingAmount: number;
                 totalCount: number;
                 totalAmount: number;
-            } 
+                supplierStats: {
+                    [supplierId: string]: {
+                        id: string;
+                        name: string;
+                        totalCount: number;
+                        updatedCount: number;
+                        pendingCount: number;
+                        totalAmount: number;
+                        pendingAmount: number;
+                        paidCount: number;
+                        unpaidCount: number;
+                    };
+                };
+            };
         } = {};
 
         (filteredData || []).forEach((item: any) => {
@@ -1489,20 +1516,52 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                     pendingAmount: 0,
                     totalCount: 0,
                     totalAmount: 0,
+                    supplierStats: {},
                 };
             }
             
             const amount = item.totalAmount || item.amount || 0;
             const entry = monthsData[monthKey];
+            const isUpdated = (item.invoiceReceivedStatus || (item.attachment ? 'Received' : 'Waiting')) === 'Received';
+            const isPaid = item.status === 'Paid';
             
-            if (item.vendorId) {
-                entry.suppliers.add(String(item.vendorId));
+            if (item.vendorId && (item.vendorType === 'Supplier' || suppliers.some((s: any) => String(s.id) === String(item.vendorId)))) {
+                const sId = String(item.vendorId);
+                entry.suppliers.add(sId);
+                if (!entry.supplierStats[sId]) {
+                    const supObj = (suppliers || []).find((s: any) => String(s.id) === String(item.vendorId)) || (vendors || []).find((v: any) => String(v.id) === String(item.vendorId));
+                    const supName = item.supplierName || (supObj ? supObj.name : 'Unknown Supplier');
+                    entry.supplierStats[sId] = {
+                        id: sId,
+                        name: supName,
+                        totalCount: 0,
+                        updatedCount: 0,
+                        pendingCount: 0,
+                        totalAmount: 0,
+                        pendingAmount: 0,
+                        paidCount: 0,
+                        unpaidCount: 0,
+                    };
+                }
+                const stat = entry.supplierStats[sId];
+                stat.totalCount += 1;
+                stat.totalAmount += amount;
+                if (isUpdated) {
+                    stat.updatedCount += 1;
+                } else {
+                    stat.pendingCount += 1;
+                    stat.pendingAmount += amount;
+                }
+                if (isPaid) {
+                    stat.paidCount += 1;
+                } else {
+                    stat.unpaidCount += 1;
+                }
             }
             
             entry.totalCount += 1;
             entry.totalAmount += amount;
             
-            const isUpdated = (item.invoiceReceivedStatus || (item.attachment ? 'Received' : 'Waiting')) === 'Received';
             if (isUpdated) {
                 entry.updatedCount += 1;
                 entry.updatedAmount += amount;
@@ -1514,18 +1573,30 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
         return Object.keys(monthsData)
             .sort((a, b) => b.localeCompare(a))
-            .map(key => ({
-                key,
-                label: monthsData[key].label,
-                suppliersCount: monthsData[key].suppliers.size,
-                updatedCount: monthsData[key].updatedCount,
-                updatedAmount: monthsData[key].updatedAmount,
-                pendingCount: monthsData[key].pendingCount,
-                pendingAmount: monthsData[key].pendingAmount,
-                totalCount: monthsData[key].totalCount,
-                totalAmount: monthsData[key].totalAmount,
-            }));
-    }, [filteredData]);
+            .map(key => {
+                const supplierStatsList = Object.values(monthsData[key].supplierStats);
+                const fullyUpdatedSuppliersCount = supplierStatsList.filter((s: any) => s.pendingCount === 0).length;
+                const pendingSuppliersCount = supplierStatsList.filter((s: any) => s.pendingCount > 0).length;
+                const fullyPaidSuppliersCount = supplierStatsList.filter((s: any) => s.unpaidCount === 0).length;
+                const unpaidSuppliersCount = supplierStatsList.filter((s: any) => s.unpaidCount > 0).length;
+                return {
+                    key,
+                    label: monthsData[key].label,
+                    suppliersCount: monthsData[key].suppliers.size,
+                    fullyUpdatedSuppliersCount,
+                    pendingSuppliersCount,
+                    fullyPaidSuppliersCount,
+                    unpaidSuppliersCount,
+                    updatedCount: monthsData[key].updatedCount,
+                    updatedAmount: monthsData[key].updatedAmount,
+                    pendingCount: monthsData[key].pendingCount,
+                    pendingAmount: monthsData[key].pendingAmount,
+                    totalCount: monthsData[key].totalCount,
+                    totalAmount: monthsData[key].totalAmount,
+                    supplierList: supplierStatsList.sort((x: any, y: any) => y.pendingAmount - x.pendingAmount)
+                };
+            });
+    }, [filteredData, suppliers]);
 
     // Statement of Account Items filter logic
     const soaFilteredItems = useMemo(() => {
@@ -2161,44 +2232,139 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     <tbody className="divide-y divide-slate-100 text-xs font-sans">
                                         {monthlyAuditBreakdown.map((row) => {
                                             const completionPct = row.totalCount > 0 ? (row.updatedCount / row.totalCount) * 100 : 0;
+                                            const isExpanded = expandedMonthDetails === row.key;
                                             return (
-                                                <tr key={row.key} className="hover:bg-slate-50/55 transition-colors font-sans">
-                                                    <td className="py-3 px-4 font-extrabold text-slate-900">{row.label}</td>
-                                                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-700">
-                                                        <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px] font-extrabold font-mono">
-                                                            {row.suppliersCount}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-650">
-                                                        {row.totalCount} bills
-                                                    </td>
-                                                    <td className="py-3 px-4 font-bold text-slate-500 font-mono">
-                                                        AED {row.totalAmount.toLocaleString()}
-                                                    </td>
-                                                    <td className="py-3 px-4 bg-emerald-50/10">
-                                                        <div className="flex flex-col">
-                                                            <span className="font-extrabold text-emerald-650 font-mono text-emerald-600">{row.updatedCount} uploaded</span>
-                                                            <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.updatedAmount.toLocaleString()}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-3 px-4 bg-amber-50/10">
-                                                        <div className="flex flex-col">
-                                                            <span className="font-extrabold text-amber-600 font-mono">{row.pendingCount} pending</span>
-                                                            <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.pendingAmount.toLocaleString()}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-3 px-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-20 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
-                                                                <div 
-                                                                    className="h-full rounded-full bg-emerald-500"
-                                                                    style={{ width: `${completionPct}%` }}
-                                                                />
+                                                <React.Fragment key={row.key}>
+                                                    <tr className={cn("hover:bg-slate-50/55 transition-colors font-sans", isExpanded && "bg-purple-50/10")}>
+                                                        <td className="py-3 px-4 font-extrabold text-slate-900">
+                                                            <div className="flex flex-col">
+                                                                <span>{row.label}</span>
+                                                                <button
+                                                                    onClick={() => setExpandedMonthDetails(isExpanded ? null : row.key)}
+                                                                    className="text-[10px] text-[#a855f7] hover:underline cursor-pointer font-bold text-left flex items-center gap-0.5 mt-0.5"
+                                                                >
+                                                                    {isExpanded ? 'hide breakdown ▴' : 'show breakdown ▾'}
+                                                                </button>
                                                             </div>
-                                                            <span className="text-[11px] font-black text-slate-700 font-mono">{completionPct.toFixed(0)}%</span>
-                                                        </div>
-                                                    </td>
-                                                </tr>
+                                                        </td>
+                                                        <td className="py-3 px-4 text-center">
+                                                            <div className="flex flex-col items-center gap-1.5">
+                                                                <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px] font-extrabold font-mono">
+                                                                    {row.suppliersCount} / {suppliers?.length || 0} active
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 font-bold font-mono">
+                                                                    {row.fullyPaidSuppliersCount} paid, {row.unpaidSuppliersCount} pending
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3 px-4 text-center font-mono font-bold text-slate-650">
+                                                            {row.totalCount} bills
+                                                        </td>
+                                                        <td className="py-3 px-4 font-bold text-slate-500 font-mono">
+                                                            AED {row.totalAmount.toLocaleString()}
+                                                        </td>
+                                                        <td className="py-3 px-4 bg-emerald-50/10">
+                                                            <div className="flex flex-col">
+                                                                <span className="font-extrabold text-emerald-650 font-mono text-emerald-600">{row.updatedCount} uploaded</span>
+                                                                <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.updatedAmount.toLocaleString()}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3 px-4 bg-amber-50/10">
+                                                            <div className="flex flex-col w-full">
+                                                                <span className="font-extrabold text-amber-600 font-mono">{row.pendingCount} pending</span>
+                                                                <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.pendingAmount.toLocaleString()}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-20 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
+                                                                    <div 
+                                                                        className="h-full rounded-full bg-emerald-500"
+                                                                        style={{ width: `${completionPct}%` }}
+                                                                    />
+                                                                </div>
+                                                                <span className="text-[11px] font-black text-slate-700 font-mono">{completionPct.toFixed(0)}%</span>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr className="bg-purple-50/10 border-b border-purple-100">
+                                                            <td colSpan={7} className="p-4 bg-slate-50/50">
+                                                                <div className="border border-purple-100/60 rounded-xl p-4 bg-white shadow-2xs space-y-3">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-700 font-sans flex items-center gap-1.5 font-bold">
+                                                                            🔍 Active Suppliers Invoice Copy Audit Breakdown — {row.label}
+                                                                        </span>
+                                                                        <span className="text-[10px] text-slate-500 font-sans font-extrabold bg-[#f1f5f9] px-2.5 py-1 rounded-lg">
+                                                                            Paid/Settled: <span className="text-emerald-700 font-mono font-black">{row.fullyPaidSuppliersCount}</span> / Pending: <span className="text-amber-700 font-mono font-black">{row.unpaidSuppliersCount}</span>
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="overflow-hidden border border-slate-100 rounded-lg">
+                                                                        <table className="w-full text-left border-collapse">
+                                                                            <thead>
+                                                                                <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-black uppercase text-slate-400 tracking-wider font-mono">
+                                                                                    <th className="py-2 px-3">Supplier Name</th>
+                                                                                    <th className="py-2 px-3 text-center">Invoices Total</th>
+                                                                                    <th className="py-2 px-3 text-center text-indigo-650 bg-indigo-50/10 font-bold font-sans">Payment / Settlement Status</th>
+                                                                                    <th className="py-2 px-3 text-center text-emerald-600 font-sans font-bold">Recorded Copies</th>
+                                                                                    <th className="py-2 px-3 text-center text-amber-600 font-sans font-bold">Pending Copies</th>
+                                                                                    <th className="py-2 px-3 text-right font-sans font-bold">Pending Balance Amount</th>
+                                                                                    <th className="py-2 px-3 text-center font-sans font-bold">Status Check</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-slate-100 text-[11px] font-sans">
+                                                                                {row.supplierList.map((sup: any) => (
+                                                                                    <tr 
+                                                                                        key={sup.id} 
+                                                                                        className="hover:bg-indigo-50/40 cursor-pointer group/row transition-colors"
+                                                                                        onClick={() => handleGoToInvoice(sup.id, row.key)}
+                                                                                        title="Click to filter the ledger for this supplier's invoices"
+                                                                                    >
+                                                                                        <td className="py-2 px-3 font-extrabold text-slate-800 group-hover/row:text-indigo-700 transition-colors">
+                                                                                            <span className="flex items-center gap-1 flex-wrap">
+                                                                                                <span>{sup.name}</span>
+                                                                                                <span className="opacity-0 group-hover/row:opacity-100 text-[9px] text-indigo-650 font-semibold transition-opacity bg-indigo-50 px-1 rounded-sm">
+                                                                                                    click to view ➔
+                                                                                                </span>
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td className="py-2 px-3 text-center font-bold text-slate-600 font-mono">{sup.totalCount} bills</td>
+                                                                                        <td className="py-2 px-3 text-center font-mono">
+                                                                                            <span className={cn(
+                                                                                                "inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg",
+                                                                                                sup.unpaidCount === 0
+                                                                                                    ? "text-emerald-700 bg-emerald-100/40"
+                                                                                                    : "text-amber-700 bg-amber-100/40"
+                                                                                            )}>
+                                                                                                {sup.paidCount} Paid / {sup.unpaidCount} Pending
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td className="py-2 px-3 text-center font-semibold text-emerald-600 font-mono">{sup.updatedCount} uploaded</td>
+                                                                                        <td className="py-2 px-3 text-center font-semibold text-amber-600 font-mono">{sup.pendingCount} pending</td>
+                                                                                        <td className="py-2 px-3 text-right font-bold text-slate-650 font-mono">
+                                                                                            {sup.pendingAmount > 0 ? `AED ${sup.pendingAmount.toLocaleString()}` : '—'}
+                                                                                        </td>
+                                                                                        <td className="py-2 px-3 text-center">
+                                                                                            {sup.pendingCount === 0 ? (
+                                                                                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-650 bg-emerald-50 px-2 py-0.5 rounded-full font-mono font-bold font-sans">
+                                                                                                    ✓ Completed
+                                                                                                </span>
+                                                                                            ) : (
+                                                                                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-amber-655 bg-amber-50 px-2 py-0.5 rounded-full font-mono font-bold font-sans">
+                                                                                                    ⏳ {sup.pendingCount} to record
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
                                             );
                                         })}
                                     </tbody>
@@ -2211,7 +2377,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
 
             {/* Main Dynamic Panel */}
             {activeTabMode === 'ledger' ? (
-                <div className="space-y-4">
+                <div id="accounts-payable-ledger-section" className="space-y-4">
                     {/* Professional Date Filtering Bar: Month wise / Year wise / Range wise & Current / Last month */}
                     <div className="bg-white border border-slate-100 p-5 rounded-3xl shadow-xs space-y-4">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -4126,89 +4292,99 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
     doc.rect(0, 0, 210, 6, 'F');
 
-    let headerOffset = 35;
+    let textX = 38;
     if (company?.logo && company.logo.startsWith('data:image')) {
         try {
-            doc.addImage(company.logo, 'PNG', 15, 12, 25, 25);
-            headerOffset = 42;
+            doc.addImage(company.logo, 'PNG', 15, 12, 18, 18);
+            textX = 38;
         } catch (e) {
             console.error("Error drawing logo on pdf:", e);
+            textX = 15;
         }
     } else {
         doc.setFillColor(59, 130, 246);
-        doc.circle(27, 24, 12, 'F');
+        doc.circle(24, 21, 9, 'F');
         doc.setFont("Helvetica", "bold");
-        doc.setFontSize(14);
+        doc.setFontSize(12);
         doc.setTextColor(255, 255, 255);
         const initial = company?.name ? company.name.substring(0, 2).toUpperCase() : 'CO';
-        doc.text(initial, 27, 26, { align: 'center' });
-        headerOffset = 42;
+        doc.text(initial, 24, 24, { align: 'center' });
+        textX = 38;
     }
 
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(13);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text(company?.name || "PIONEER DMS GROUP LTD", 15, headerOffset - 4);
+    doc.text(company?.name || "PIONEER DMS GROUP LTD", textX, 16);
 
     doc.setFont("Helvetica", "normal");
-    doc.setFontSize(8.5);
+    doc.setFontSize(8.2);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    const sellerDetails = [
-        company?.address || "United Arab Emirates",
-        company?.email ? `Email: ${company.email}` : "Email: accounts@pioneer.ae",
-        company?.phone ? `Phone: ${company.phone}` : "Phone: +971 4 000 0000"
-    ];
+    
+    let sellerDetailsY = 21;
+    doc.text(company?.address || "United Arab Emirates", textX, sellerDetailsY);
+    sellerDetailsY += 4.2;
+    
+    const emailStr = company?.email ? `Email: ${company.email}` : "Email: accounts@pioneer.ae";
+    doc.text(emailStr, textX, sellerDetailsY);
+    sellerDetailsY += 4.2;
+    
+    const phoneStr = company?.phone ? `Phone: ${company.phone}` : "Phone: +971 4 000 0000";
+    doc.text(phoneStr, textX, sellerDetailsY);
+    sellerDetailsY += 4.2;
+    
+    let trnStr = "";
     if (company?.trn || item.companyTrn) {
-        sellerDetails.push(`Supplier TRN (VAT ID): ${company?.trn || item.companyTrn}`);
+        trnStr = `Supplier TRN (VAT ID): ${company?.trn || item.companyTrn}`;
     } else {
-        sellerDetails.push(`Supplier TRN (VAT ID): 100459382100003`);
+        trnStr = `Supplier TRN (VAT ID): 100459382100003`;
     }
-    doc.text(sellerDetails, 15, headerOffset);
+    doc.text(trnStr, textX, sellerDetailsY);
 
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(22);
+    doc.setFontSize(18);
     doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
-    doc.text("TAX INVOICE", 195, 24, { align: 'right' });
+    doc.text("TAX INVOICE", 195, 16, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(8.2);
     doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
     
-    doc.text(`Invoice No:`, 140, 32);
+    doc.text(`Invoice No:`, 140, 21);
     doc.setFont("Helvetica", "bold");
-    doc.text(`${item.invoiceNumber || 'INV-NA'}`, 195, 32, { align: 'right' });
+    doc.text(`${item.invoiceNumber || 'INV-NA'}`, 195, 21, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.text(`Date:`, 140, 38);
-    doc.text(`${item.date}`, 195, 38, { align: 'right' });
+    doc.text(`Date:`, 140, 25.2);
+    doc.text(`${item.date}`, 195, 25.2, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.text(`Due Date:`, 140, 44);
-    doc.text(`${item.dueDate || item.date}`, 195, 44, { align: 'right' });
+    doc.text(`Due Date:`, 140, 29.4);
+    doc.text(`${item.dueDate || item.date}`, 195, 29.4, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
-    doc.text(`Status:`, 140, 50);
+    doc.text(`Status:`, 140, 33.6);
     doc.setFont("Helvetica", "bold");
     if (item.status === 'Received') {
         doc.setTextColor(16, 124, 65);
     } else {
         doc.setTextColor(220, 95, 0);
     }
-    doc.text(`${item.status || 'Pending'}`.toUpperCase(), 195, 50, { align: 'right' });
+    doc.text(`${item.status || 'Pending'}`.toUpperCase(), 195, 33.6, { align: 'right' });
 
     doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
     doc.setLineWidth(0.4);
-    doc.line(15, 60, 195, 60);
+    doc.line(15, 39, 195, 39);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("BILLED TO", 15, 68);
+    doc.text("BILLED TO", 15, 46);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
-    doc.text(client?.name || item.contact || "Valued Client", 15, 74);
+    doc.text(client?.name || item.contact || "Valued Client", 15, 52);
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(9);
@@ -4223,9 +4399,9 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     } else {
         clientDetails.push(`Recipient TRN (VAT ID): 100389423100003`);
     }
-    doc.text(clientDetails.filter(Boolean), 15, 80);
+    doc.text(clientDetails.filter(Boolean), 15, 58);
 
-    let yPos = 105;
+    let yPos = 85;
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
@@ -4326,35 +4502,63 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
 
     const totalsStartY = yPos;
 
-    // Draw Totals Block (Right column)
+    // Gross Subtotal
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    doc.text("Sub Total:", 145, yPos);
+    doc.text("Sub Total (Gross):", 120, yPos);
     doc.setFont("Helvetica", "bold");
     doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
-    doc.text(`AED ${Number(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos, { align: 'right' });
+    doc.text(`AED ${Number(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos, { align: 'right' });
 
+    // VAT
     yPos += 6;
     doc.setFont("Helvetica", "normal");
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    doc.text("VAT (5.0%):", 145, yPos);
+    doc.text("VAT (5.0%):", 120, yPos);
     doc.setFont("Helvetica", "bold");
     doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
     doc.text(`AED ${Number(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos, { align: 'right' });
 
+    // Deduction / Retention if applicable
+    if (item.deduction && item.deduction > 0) {
+        yPos += 6;
+        doc.setFont("Helvetica", "normal");
+        doc.setTextColor(185, 28, 28); // red/rose text
+        doc.text("Deduction/Retention (-):", 120, yPos);
+        doc.setFont("Helvetica", "bold");
+        doc.text(`AED -${Number(item.deduction).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos, { align: 'right' });
+    }
+
+    // Adjustment: ONLY visible if entered (not 0, not undefined)
+    if (item.adjustmentAmount && item.adjustmentAmount > 0) {
+        yPos += 6;
+        const sign = item.adjustmentType === '-' ? '-' : '+';
+        doc.setFont("Helvetica", "normal");
+        if (item.adjustmentType === '-') {
+            doc.setTextColor(185, 28, 28); // rose
+            doc.text(`Adjustment (-):`, 120, yPos);
+        } else {
+            doc.setTextColor(16, 124, 65); // emerald
+            doc.text(`Adjustment (+):`, 120, yPos);
+        }
+        doc.setFont("Helvetica", "bold");
+        doc.text(`AED ${sign}${Number(item.adjustmentAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos, { align: 'right' });
+    }
+
+    // Total Amount Box
     yPos += 8;
     doc.setFillColor(240, 246, 255);
     doc.setDrawColor(200, 220, 255);
-    doc.rect(125, yPos - 5, 70, 10, 'F');
-    doc.rect(125, yPos - 5, 70, 10, 'D');
+    doc.rect(115, yPos - 5, 80, 10, 'F');
+    doc.rect(115, yPos - 5, 80, 10, 'D');
 
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(10);
+    doc.setFontSize(9.5);
     doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
-    doc.text("Total Amount:", 129, yPos + 1.5);
-    doc.setFontSize(10.5);
-    doc.text(`AED ${Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1.5, { align: 'right' });
+    doc.text("Grand Total (Incl. VAT):", 119, yPos + 1.2);
+    doc.setFontSize(10);
+    doc.text(`AED ${Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1.2, { align: 'right' });
 
     // Draw Bank Details Box (Left column, parallel to Totals)
     const boxY = totalsStartY - 2;
@@ -4853,6 +5057,20 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const [soaEndDate, setSoaEndDate] = useState('');
     const [soaScope, setSoaScope] = useState<'All' | 'Received' | 'Pending'>('All');
     const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
+    const [expandedMonthDetails, setExpandedMonthDetails] = useState<string | null>(null);
+
+    const handleGoToInvoice = (clientId: string, monthKey: string) => {
+        setActiveTabMode('ledger');
+        setFilterEntity(clientId);
+        setFilterMonth(monthKey);
+        setDateFilterMode('all');
+        setTimeout(() => {
+            const element = document.getElementById('accounts-receivable-ledger-section');
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100);
+    };
 
     const arClientOptions = useMemo(() => {
         const groups: { [name: string]: any[] } = {};
@@ -5533,7 +5751,18 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                 pendingAmount: number;
                 totalCount: number;
                 totalAmount: number;
-            } 
+                clientStats: {
+                    [clientId: string]: {
+                        id: string;
+                        name: string;
+                        totalCount: number;
+                        createdCount: number;
+                        pendingCount: number;
+                        totalAmount: number;
+                        pendingAmount: number;
+                    };
+                };
+            };
         } = {};
 
         (filteredData || []).forEach((item: any) => {
@@ -5553,20 +5782,44 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     pendingAmount: 0,
                     totalCount: 0,
                     totalAmount: 0,
+                    clientStats: {},
                 };
             }
             
             const amount = item.totalAmount || item.amount || 0;
             const entry = monthsData[monthKey];
+            const isCreated = (item.invoiceCreationStatus || 'Created') === 'Created';
             
-            if (item.entityId) {
-                entry.clients.add(String(item.entityId));
+            if (item.entityId && (item.entityType === 'Vendor' || vendors.some((v: any) => String(v.id) === String(item.entityId)))) {
+                const cId = String(item.entityId);
+                entry.clients.add(cId);
+                if (!entry.clientStats[cId]) {
+                    const clientObj = (vendors || []).find((v: any) => String(v.id) === String(item.entityId)) || (suppliers || []).find((s: any) => String(s.id) === String(item.entityId));
+                    const clientName = item.clientName || (clientObj ? clientObj.name : 'Unknown Client');
+                    entry.clientStats[cId] = {
+                        id: cId,
+                        name: clientName,
+                        totalCount: 0,
+                        createdCount: 0,
+                        pendingCount: 0,
+                        totalAmount: 0,
+                        pendingAmount: 0,
+                    };
+                }
+                const stat = entry.clientStats[cId];
+                stat.totalCount += 1;
+                stat.totalAmount += amount;
+                if (isCreated) {
+                    stat.createdCount += 1;
+                } else {
+                    stat.pendingCount += 1;
+                    stat.pendingAmount += amount;
+                }
             }
             
             entry.totalCount += 1;
             entry.totalAmount += amount;
             
-            const isCreated = (item.invoiceCreationStatus || 'Created') === 'Created';
             if (isCreated) {
                 entry.createdCount += 1;
                 entry.createdAmount += amount;
@@ -5578,18 +5831,26 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
         return Object.keys(monthsData)
             .sort((a, b) => b.localeCompare(a))
-            .map(key => ({
-                key,
-                label: monthsData[key].label,
-                clientsCount: monthsData[key].clients.size,
-                createdCount: monthsData[key].createdCount,
-                createdAmount: monthsData[key].createdAmount,
-                pendingCount: monthsData[key].pendingCount,
-                pendingAmount: monthsData[key].pendingAmount,
-                totalCount: monthsData[key].totalCount,
-                totalAmount: monthsData[key].totalAmount,
-            }));
-    }, [filteredData]);
+            .map(key => {
+                const clientStatsList = Object.values(monthsData[key].clientStats);
+                const fullyCreatedClientsCount = clientStatsList.filter((c: any) => c.pendingCount === 0).length;
+                const pendingClientsCount = clientStatsList.filter((c: any) => c.pendingCount > 0).length;
+                return {
+                    key,
+                    label: monthsData[key].label,
+                    clientsCount: monthsData[key].clients.size,
+                    fullyCreatedClientsCount,
+                    pendingClientsCount,
+                    createdCount: monthsData[key].createdCount,
+                    createdAmount: monthsData[key].createdAmount,
+                    pendingCount: monthsData[key].pendingCount,
+                    pendingAmount: monthsData[key].pendingAmount,
+                    totalCount: monthsData[key].totalCount,
+                    totalAmount: monthsData[key].totalAmount,
+                    clientList: clientStatsList.sort((x: any, y: any) => y.pendingAmount - x.pendingAmount)
+                };
+            });
+    }, [filteredData, vendors]);
 
     // Outstanding items helper for list below aging selectors
     const totalAgingAmount = Object.values(agingBuckets).reduce((acc, curr) => acc + curr.amount, 0);
@@ -5874,44 +6135,128 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                     <tbody className="divide-y divide-slate-100 text-xs font-sans">
                                         {monthlyAuditBreakdown.map((row) => {
                                             const completionPct = row.totalCount > 0 ? (row.createdCount / row.totalCount) * 100 : 0;
+                                            const isExpanded = expandedMonthDetails === row.key;
                                             return (
-                                                <tr key={row.key} className="hover:bg-slate-50/55 transition-colors font-sans">
-                                                    <td className="py-3 px-4 font-extrabold text-slate-900">{row.label}</td>
-                                                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-700">
-                                                        <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px] font-extrabold font-mono">
-                                                            {row.clientsCount}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-3 px-4 text-center font-mono font-bold text-slate-650">
-                                                        {row.totalCount} invoices
-                                                    </td>
-                                                    <td className="py-3 px-4 font-bold text-slate-500 font-mono">
-                                                        AED {row.totalAmount.toLocaleString()}
-                                                    </td>
-                                                    <td className="py-3 px-4 bg-indigo-50/10">
-                                                        <div className="flex flex-col font-sans">
-                                                            <span className="font-extrabold text-indigo-700 font-mono">{row.createdCount} created</span>
-                                                            <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.createdAmount.toLocaleString()}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-3 px-4 bg-rose-50/10">
-                                                        <div className="flex flex-col font-sans">
-                                                            <span className="font-extrabold text-rose-600 font-mono">{row.pendingCount} pending</span>
-                                                            <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.pendingAmount.toLocaleString()}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-3 px-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-20 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
-                                                                <div 
-                                                                    className="h-full rounded-full bg-indigo-600"
-                                                                    style={{ width: `${completionPct}%` }}
-                                                                />
+                                                <React.Fragment key={row.key}>
+                                                    <tr className={cn("hover:bg-slate-50/55 transition-colors font-sans", isExpanded && "bg-purple-50/10")}>
+                                                        <td className="py-3 px-4 font-extrabold text-slate-900">
+                                                            <div className="flex flex-col">
+                                                                <span>{row.label}</span>
+                                                                <button
+                                                                    onClick={() => setExpandedMonthDetails(isExpanded ? null : row.key)}
+                                                                    className="text-[10px] text-[#a855f7] hover:underline cursor-pointer font-bold text-left flex items-center gap-0.5 mt-0.5"
+                                                                >
+                                                                    {isExpanded ? 'hide breakdown ▴' : 'show breakdown ▾'}
+                                                                </button>
                                                             </div>
-                                                            <span className="text-[11px] font-black text-slate-700 font-mono">{completionPct.toFixed(0)}%</span>
-                                                        </div>
-                                                    </td>
-                                                </tr>
+                                                        </td>
+                                                        <td className="py-3 px-4 text-center">
+                                                            <div className="flex flex-col items-center gap-1.5">
+                                                                <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg text-[11px] font-extrabold font-mono">
+                                                                    {row.clientsCount} / {vendors?.length || 0} active
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400 font-bold font-mono">
+                                                                    {row.fullyCreatedClientsCount} created, {row.pendingClientsCount} pending
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3 px-4 text-center font-mono font-bold text-slate-650">
+                                                            {row.totalCount} invoices
+                                                        </td>
+                                                        <td className="py-3 px-4 font-bold text-slate-500 font-mono">
+                                                            AED {row.totalAmount.toLocaleString()}
+                                                        </td>
+                                                        <td className="py-3 px-4 bg-indigo-50/10">
+                                                            <div className="flex flex-col font-sans">
+                                                                <span className="font-extrabold text-indigo-700 font-mono">{row.createdCount} created</span>
+                                                                <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.createdAmount.toLocaleString()}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3 px-4 bg-rose-50/10">
+                                                            <div className="flex flex-col font-sans">
+                                                                <span className="font-extrabold text-rose-600 font-mono">{row.pendingCount} pending</span>
+                                                                <span className="text-[10px] text-slate-400 font-semibold font-mono">AED {row.pendingAmount.toLocaleString()}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="py-3 px-4">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-20 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
+                                                                    <div 
+                                                                        className="h-full rounded-full bg-indigo-600"
+                                                                        style={{ width: `${completionPct}%` }}
+                                                                    />
+                                                                </div>
+                                                                <span className="text-[11px] font-black text-slate-700 font-mono">{completionPct.toFixed(0)}%</span>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr className="bg-purple-50/10 border-b border-purple-100">
+                                                            <td colSpan={7} className="p-4 bg-slate-50/50">
+                                                                <div className="border border-purple-100/60 rounded-xl p-4 bg-white shadow-2xs space-y-3">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-purple-700 font-sans flex items-center gap-1.5">
+                                                                            🔍 Active Clients Invoice Generation Audit Breakdown — {row.label}
+                                                                        </span>
+                                                                        <span className="text-[10px] text-slate-400 font-bold font-sans">
+                                                                            {row.fullyCreatedClientsCount} of {row.clientsCount} active clients fully generated
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="overflow-hidden border border-slate-100 rounded-lg">
+                                                                        <table className="w-full text-left border-collapse">
+                                                                            <thead>
+                                                                                <tr className="bg-slate-50 border-b border-slate-100 text-[9px] font-black uppercase text-slate-400 tracking-wider font-mono">
+                                                                                    <th className="py-2 px-3">Client Name</th>
+                                                                                    <th className="py-2 px-3 text-center">Invoices Total</th>
+                                                                                    <th className="py-2 px-3 text-center text-indigo-700">Created Invoices</th>
+                                                                                    <th className="py-2 px-3 text-center text-rose-600">Pending Invoices</th>
+                                                                                    <th className="py-2 px-3 text-right">Pending Balance Amount</th>
+                                                                                    <th className="py-2 px-3 text-center">Status Check</th>
+                                                                                </tr>
+                                                                            </thead>
+                                                                            <tbody className="divide-y divide-slate-100 text-[11px] font-sans">
+                                                                                {row.clientList.map((client: any) => (
+                                                                                    <tr 
+                                                                                        key={client.id} 
+                                                                                        className="hover:bg-indigo-50/40 cursor-pointer group/row transition-colors"
+                                                                                        onClick={() => handleGoToInvoice(client.id, row.key)}
+                                                                                        title="Click to filter the main ledger for this client's invoices"
+                                                                                    >
+                                                                                        <td className="py-2 px-3 font-extrabold text-slate-800 group-hover/row:text-indigo-700 transition-colors">
+                                                                                            <span className="flex items-center gap-1 flex-wrap">
+                                                                                                <span>{client.name}</span>
+                                                                                                <span className="opacity-0 group-hover/row:opacity-100 text-[9px] text-[#a855f7] font-semibold transition-opacity bg-purple-50 px-1 rounded-sm">
+                                                                                                    click to view ➔
+                                                                                                </span>
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td className="py-2 px-3 text-center font-bold text-slate-600 font-mono">{client.totalCount} bills</td>
+                                                                                        <td className="py-2 px-3 text-center font-semibold text-indigo-700 font-mono">{client.createdCount} created</td>
+                                                                                        <td className="py-2 px-3 text-center font-semibold text-rose-650 text-rose-600 font-mono">{client.pendingCount} pending</td>
+                                                                                        <td className="py-2 px-3 text-right font-bold text-slate-655 text-slate-650 font-mono">
+                                                                                            {client.pendingAmount > 0 ? `AED ${client.pendingAmount.toLocaleString()}` : '—'}
+                                                                                        </td>
+                                                                                        <td className="py-2 px-3 text-center font-sans">
+                                                                                            {client.pendingCount === 0 ? (
+                                                                                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-[#a855f7] bg-[#f3e8ff] px-2 py-0.5 rounded-full">
+                                                                                                    ✓ Completed
+                                                                                                </span>
+                                                                                            ) : (
+                                                                                                <span className="inline-flex items-center gap-1 text-[10px] font-black text-rose-650 bg-rose-50 px-2 py-0.5 rounded-full">
+                                                                                                    ⏳ {client.pendingCount} to generate
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                ))}
+                                                                            </tbody>
+                                                                        </table>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </React.Fragment>
                                             );
                                         })}
                                     </tbody>
@@ -5924,7 +6269,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
             {/* Main Dynamic Panel */}
             {activeTabMode === 'ledger' ? (
-                <div className="space-y-4">
+                <div id="accounts-receivable-ledger-section" className="space-y-4">
                     {/* Professional Date Filtering Bar: Month wise / Year wise / Range wise & Current / Last month */}
                     <div className="bg-white border border-slate-100 p-5 rounded-3xl shadow-xs space-y-4">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -6281,6 +6626,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                             render: (item: any) => {
                                 const comp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
                                 const client = getEntityObject(item.entityId, item.entityType);
+
                                 return (
                                     <div className="flex items-center gap-1.5 whitespace-nowrap">
                                         <button
@@ -6322,7 +6668,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     onBulkDelete={onDeleteMultiple}
                     onBulkUpdateDate={onBulkUpdateDate}
                     enableMultiSelect={true}
-                    customSearch={(item, query) => {
+                    customSearch={(item: any, query: any) => {
                         try {
                             const clientNameStr = (item.clientName || '').toLowerCase();
                             const invoiceNumber = (item.invoiceNumber || '').toLowerCase();
@@ -7154,13 +7500,28 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                             {/* Totals compilation box */}
                                             <div className="space-y-2 text-xs flex flex-col justify-end">
                                                 <div className="flex justify-between items-center text-slate-500 font-medium">
-                                                    <span>Sub Total:</span>
-                                                    <span className="font-bold text-slate-800">AED {Number(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    <span>Sub Total (Gross):</span>
+                                                    <span className="font-bold text-slate-800">AED {Number(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                 </div>
                                                 <div className="flex justify-between items-center text-slate-500 font-medium">
                                                     <span>VAT (5.00%):</span>
                                                     <span className="font-bold text-slate-800">AED {Number(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                 </div>
+                                                {item.deduction !== undefined && item.deduction > 0 && (
+                                                    <div className="flex justify-between items-center text-rose-600 font-medium">
+                                                        <span>Deduction/Retention (-):</span>
+                                                        <span className="font-bold">AED -{Number(item.deduction).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                )}
+                                                {item.adjustmentAmount !== undefined && item.adjustmentAmount > 0 && (
+                                                    <div className={cn(
+                                                        "flex justify-between items-center font-bold",
+                                                        item.adjustmentType === '-' ? "text-rose-600" : "text-emerald-600"
+                                                    )}>
+                                                        <span>Adjustment ({item.adjustmentType || '+'}):</span>
+                                                        <span>AED {((item.adjustmentType || '+') === '-' ? '-' : '+') + Number(item.adjustmentAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                )}
                                                 <div className="flex justify-between items-center bg-blue-50/50 border border-blue-100 text-blue-700 p-3 rounded-xl font-black text-sm mt-3">
                                                     <span>Total Due:</span>
                                                     <span className="text-base text-blue-600">AED {Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -10051,7 +10412,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                 📥 Invoice Copy Document Status
                             </label>
                             <select 
-                                value={formData.invoiceReceivedStatus || (formData.attachment ? 'Received' : 'Waiting')}
+                                value={(formData as any).invoiceReceivedStatus || (formData.attachment ? 'Received' : 'Waiting')}
                                 onChange={e => handleRecalculate({ invoiceReceivedStatus: e.target.value })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all font-sans text-indigo-950"
                             >
@@ -10985,14 +11346,27 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
     const [formData, setFormData] = useState(() => {
         const defaultItem = { id: Math.random().toString(36).substr(2, 9), name: '', description: '', quantity: 1, rate: 0, total: 0 };
         if (ar) {
+            const subtotal = ar.amount || 0;
+            const ded = ar.deduction || 0;
+            const actual = ar.actualAmount !== undefined ? ar.actualAmount : Math.max(0, subtotal - ded);
+            const adjAmt = ar.adjustmentAmount || 0;
+            const adjType = ar.adjustmentType || '+';
+            const vatAmt = ar.vatAmount !== undefined ? ar.vatAmount : Number((subtotal * 0.05).toFixed(2));
+            const baseTotal = subtotal + vatAmt - ded;
+            const adjEffect = adjType === '+' ? adjAmt : -adjAmt;
+            const totalAmt = ar.totalAmount !== undefined ? ar.totalAmount : Number(Math.max(0, baseTotal + adjEffect).toFixed(2));
             return {
                 ...ar,
                 companyId: ar.companyId || '',
                 companyName: ar.companyName || '',
                 entityId: ar.entityId || ar.projectId || '',
                 entityType: ar.entityType || 'Project',
-                vatAmount: ar.vatAmount || 0,
-                totalAmount: ar.totalAmount || ar.amount || 0,
+                deduction: ded,
+                actualAmount: actual,
+                adjustmentAmount: adjAmt,
+                adjustmentType: adjType,
+                vatAmount: vatAmt,
+                totalAmount: totalAmt,
                 dueDate: ar.dueDate || ar.date || new Date().toISOString().split('T')[0],
                 items: ar.items && ar.items.length > 0 ? ar.items : [
                     { id: Math.random().toString(36).substr(2, 9), name: ar.description || 'General Services', description: 'Technical works as agreed', quantity: 1, rate: ar.amount || 0, total: ar.amount || 0 }
@@ -11020,6 +11394,10 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             amount: 0,
             vatAmount: 0,
             totalAmount: 0,
+            deduction: 0,
+            actualAmount: 0,
+            adjustmentAmount: 0,
+            adjustmentType: '+',
             description: '',
             status: 'Pending',
             companyId: companies && companies.length > 0 ? companies[0].id : '',
@@ -11043,6 +11421,39 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
         return null;
     }, [formData.entityType, formData.entityId, projects, suppliers, vendors]);
 
+    const recalculateInvoiceTotals = (
+        nextItems: any[], 
+        nextDeduction?: number, 
+        nextAdjustmentAmount?: number, 
+        nextAdjustmentType?: '+' | '-'
+    ) => {
+        setFormData(prev => {
+            const subtotal = nextItems.reduce((acc: number, it: any) => acc + (Number(it.total) || 0), 0);
+            const ded = nextDeduction !== undefined ? nextDeduction : (prev?.deduction || 0);
+            const actual = Math.max(0, subtotal - ded);
+            const vat = subtotal * 0.05;
+
+            const adjAmt = nextAdjustmentAmount !== undefined ? nextAdjustmentAmount : (prev?.adjustmentAmount || 0);
+            const adjType = nextAdjustmentType !== undefined ? nextAdjustmentType : (prev?.adjustmentType || '+');
+
+            const baseTotal = subtotal + vat - ded;
+            const adjEffect = adjType === '+' ? adjAmt : -adjAmt;
+            const total = Math.max(0, baseTotal + adjEffect);
+
+            return {
+                ...prev,
+                items: nextItems,
+                deduction: ded,
+                actualAmount: Number(actual.toFixed(2)),
+                adjustmentAmount: adjAmt,
+                adjustmentType: adjType,
+                amount: Number(subtotal.toFixed(2)),
+                vatAmount: Number(vat.toFixed(2)),
+                totalAmount: Number(total.toFixed(2))
+            };
+        });
+    };
+
     // Update individual items and auto recalculate totals
     const updateItemValue = (id: string, field: string, val: any) => {
         const nextItems = formData.items.map((it: any) => {
@@ -11061,6 +11472,21 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
         recalculateInvoiceTotals(nextItems);
     };
 
+    const handleDeductionChange = (val: number) => {
+        const ded = Math.max(0, val);
+        recalculateInvoiceTotals(formData.items, ded);
+    };
+
+    const handleAdjustmentAmountChange = (val: number) => {
+        const adjAmt = Math.max(0, val);
+        recalculateInvoiceTotals(formData.items, undefined, adjAmt);
+    };
+
+    const handleAdjustmentTypeToggle = () => {
+        const nextType = (formData.adjustmentType || '+') === '+' ? '-' : '+';
+        recalculateInvoiceTotals(formData.items, undefined, undefined, nextType);
+    };
+
     const addInvoiceRow = () => {
         const newItem = { id: Math.random().toString(36).substr(2, 9), name: '', description: '', quantity: 1, rate: 0, total: 0 };
         recalculateInvoiceTotals([...formData.items, newItem]);
@@ -11075,20 +11501,6 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
         }
         const nextItems = formData.items.filter((it: any) => it.id !== id);
         recalculateInvoiceTotals(nextItems);
-    };
-
-    const recalculateInvoiceTotals = (nextItems: any[]) => {
-        const subtotal = nextItems.reduce((acc: number, it: any) => acc + (Number(it.total) || 0), 0);
-        const vat = subtotal * 0.05;
-        const total = subtotal + vat;
-
-        setFormData({
-            ...formData,
-            items: nextItems,
-            amount: Number(subtotal.toFixed(2)),
-            vatAmount: Number(vat.toFixed(2)),
-            totalAmount: Number(total.toFixed(2))
-        });
     };
 
     const handleCompanyChange = (id: string) => {
@@ -11464,18 +11876,100 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                         </div>
 
                         {/* Calculation Panel */}
-                        <div className="bg-slate-50/50 border border-slate-150 rounded-[2rem] p-6 space-y-3.5">
+                        <div className="bg-slate-50/50 border border-slate-150 rounded-[2rem] p-6 space-y-4">
                             <div className="flex justify-between items-center text-xs text-slate-500 font-bold px-1">
-                                <span>TAXABLE SUB TOTAL:</span>
-                                <span>AED {formData.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                <span>TAXABLE SUB TOTAL (GROSS):</span>
+                                <span className="font-mono">AED {formData.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
+
+                            <div className="bg-rose-50/30 border border-rose-100 p-4 rounded-2xl space-y-2">
+                                <div className="flex justify-between items-center text-[10px] font-black uppercase text-rose-600 tracking-wider">
+                                    <span>DEDUCTION / RETENTION AMOUNT</span>
+                                    {formData.deduction > 0 && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => handleDeductionChange(0)}
+                                            className="text-[9px] text-rose-500 hover:text-rose-700 underline capitalize font-normal transition"
+                                        >
+                                            Reset
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="relative flex items-center">
+                                    <span className="absolute left-3.5 text-xs font-black text-rose-500 font-mono">AED</span>
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        placeholder="Enter deduction/retention..."
+                                        value={formData.deduction || ''}
+                                        onChange={e => handleDeductionChange(Number(e.target.value))}
+                                        className="w-full pl-12 pr-4 py-2.5 bg-white border border-rose-200 focus:border-rose-500 rounded-xl text-xs font-bold text-rose-700 outline-none transition-all shadow-xs"
+                                    />
+                                </div>
+                            </div>
+
+                            {formData.deduction > 0 && (
+                                <div className="flex justify-between items-center text-xs text-slate-600 font-bold px-1 bg-slate-100/50 py-1 px-2 rounded-lg border border-slate-200/55">
+                                    <span>NET ACTUAL WORK VALUE:</span>
+                                    <span className="font-mono">AED {(formData.actualAmount ?? (formData.amount - formData.deduction)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                </div>
+                            )}
+
+                            <div className="bg-amber-50/30 border border-amber-100 p-4 rounded-2xl space-y-2">
+                                <div className="flex justify-between items-center text-[10px] font-black uppercase text-amber-700 tracking-wider">
+                                    <span>ADJUSTMENT AMOUNT (+ / -)</span>
+                                    {formData.adjustmentAmount > 0 && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => handleAdjustmentAmountChange(0)}
+                                            className="text-[9px] text-amber-600 hover:text-amber-800 underline capitalize font-normal transition"
+                                        >
+                                            Reset
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleAdjustmentTypeToggle()}
+                                        title="Click to toggle between Addition (+) and Deduction (-)"
+                                        className={`w-12 h-9 flex items-center justify-center font-extrabold text-sm rounded-xl transition-all border outline-none ${
+                                            formData.adjustmentType === '+' 
+                                                ? 'bg-emerald-500 border-emerald-500 text-white shadow-xs hover:bg-emerald-600' 
+                                                : 'bg-rose-500 border-rose-500 text-white shadow-xs hover:bg-rose-600'
+                                        }`}
+                                    >
+                                        {formData.adjustmentType || '+'}
+                                    </button>
+                                    <div className="relative flex-1 flex items-center">
+                                        <span className="absolute left-3.5 text-xs font-black text-amber-600 font-mono">AED</span>
+                                        <input 
+                                            type="number" 
+                                            min="0"
+                                            placeholder="Enter adjustment..."
+                                            value={formData.adjustmentAmount || ''}
+                                            onChange={e => handleAdjustmentAmountChange(Number(e.target.value))}
+                                            className="w-full pl-12 pr-4 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-xl text-xs font-bold text-amber-800 outline-none transition-all shadow-xs"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {formData.adjustmentAmount > 0 && (
+                                <div className="flex justify-between items-center text-xs text-slate-600 font-bold px-1 bg-amber-50/45 py-1 px-2 rounded-lg border border-amber-100/50">
+                                    <span>ADJUSTMENT ({formData.adjustmentType || '+'}):</span>
+                                    <span className="font-mono text-amber-700 font-bold">AED {((formData.adjustmentType || '+') === '-' ? '-' : '+') + formData.adjustmentAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                </div>
+                            )}
+
                             <div className="flex justify-between items-center text-xs text-slate-500 font-bold px-1 border-b border-dashed border-slate-200 pb-3">
                                 <span>UAE VAT STANDARD (5%):</span>
-                                <span>AED {formData.vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                <span className="font-mono">AED {formData.vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
+
                             <div className="flex justify-between items-center bg-blue-600 text-white rounded-2xl p-4 shadow-lg shadow-blue-500/10">
                                 <span className="text-xs font-black uppercase tracking-wide">GRAND TOTAL (INCL. VAT):</span>
-                                <span className="text-lg font-black">AED {formData.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                <span className="text-lg font-black font-mono">AED {formData.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
                         </div>
                     </div>
@@ -13399,6 +13893,22 @@ export const EverydayExpenseView: React.FC<{
                                 )}
                             </div>
                         )}
+                        {item.isVehicleFuel && (item.vehicleDriver || item.vehicleRemarks) && (
+                            <div className="flex flex-col gap-0.5 mt-0.5 text-[10px] text-amber-900 bg-amber-500/5 px-2 py-1.5 border border-amber-500/10 rounded-lg space-y-0.5 max-w-sm">
+                                {item.vehicleDriver && (
+                                    <div className="flex items-center gap-1">
+                                        <span className="font-bold text-amber-800">Driver:</span>
+                                        <span className="font-semibold text-slate-700">{item.vehicleDriver}</span>
+                                    </div>
+                                )}
+                                {item.vehicleRemarks && (
+                                    <div className="flex items-start gap-1">
+                                        <span className="font-bold text-amber-800 whitespace-nowrap font-sans">Remarks:</span>
+                                        <span className="text-slate-650 leading-normal font-sans">{item.vehicleRemarks}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         {(item.startTime || item.endTime || item.endDate) && (
                             <div className="inline-flex self-start flex-wrap items-center gap-1.5 px-2 py-0.5 bg-indigo-50 border border-indigo-100/70 rounded-lg text-[10px] text-indigo-850 font-black font-sans">
                                 <span className="flex items-center gap-1">
@@ -13756,7 +14266,7 @@ export const EverydayExpenseView: React.FC<{
                         onEdit={onEdit}
                         onDelete={onDelete}
                         onViewBill={(item) => setViewingBill(item.attachment || null)}
-                        searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date', 'vehicleNumber', 'category']}
+                        searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date', 'vehicleNumber', 'category', 'vehicleDriver', 'vehicleRemarks']}
                         exportFileName="Everyday_Expenses"
                         user={user}
                         filterOptions={filterOptions}
@@ -14322,6 +14832,18 @@ export const EverydayExpenseView: React.FC<{
                                             <span className="text-[10px] text-amber-700 block font-bold">Ending Odometer</span>
                                             <span className="font-extrabold text-[11px]">{selectedLedgerEntry.kmEnd !== undefined ? `${selectedLedgerEntry.kmEnd} km` : "N/A"}</span>
                                         </div>
+                                        {selectedLedgerEntry.vehicleDriver && (
+                                            <div className="col-span-2 border-t border-amber-250/20 pt-1.5">
+                                                <span className="text-[10px] text-amber-700 block font-bold">Driver Name</span>
+                                                <span className="font-extrabold text-[11px] text-slate-800">{selectedLedgerEntry.vehicleDriver}</span>
+                                            </div>
+                                        )}
+                                        {selectedLedgerEntry.vehicleRemarks && (
+                                            <div className="col-span-2 border-t border-amber-250/20 pt-1.5">
+                                                <span className="text-[10px] text-amber-700 block font-bold">Vehicle Remarks / Notes</span>
+                                                <span className="font-semibold text-[11px] text-slate-700 whitespace-normal leading-normal">{selectedLedgerEntry.vehicleRemarks}</span>
+                                            </div>
+                                        )}
                                         <div className="col-span-2 border-t border-amber-200/50 pt-2 flex justify-between items-center">
                                             <span className="text-[10px] text-amber-700 font-extrabold">Total Distance Covered:</span>
                                             <span className="font-black text-[11.5px] text-amber-900 bg-amber-100/60 px-2 py-0.5 rounded-lg border border-amber-200">
@@ -14685,7 +15207,8 @@ export const EverydayExpenseModal: React.FC<{
                         uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
                         updatedBy: nameToSuggest,
                         updatedByUid: user?.uid || '',
-                        attachment: base64
+                        attachment: base64,
+                        isVehicleFuel: !!(data && data.vehicleNumber && data.vehicleNumber.trim()) || prev.isVehicleFuel
                     };
                     const duplicate = findDuplicateEntry(updated);
                     if (duplicate) {
@@ -14773,7 +15296,8 @@ export const EverydayExpenseModal: React.FC<{
                     uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
                     updatedBy: uploaderName,
                     updatedByUid: user?.uid || '',
-                    attachment: tempImageData.image
+                    attachment: tempImageData.image,
+                    isVehicleFuel: !!(data && data.vehicleNumber && data.vehicleNumber.trim()) || prev.isVehicleFuel
                 };
                 const duplicate = findDuplicateEntry(updated);
                 if (duplicate) {
@@ -15157,77 +15681,106 @@ export const EverydayExpenseModal: React.FC<{
                         </div>
 
                         {formData.isVehicleFuel && (
-                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-3 border-t border-amber-500/10 animate-in fade-in duration-200">
-                                <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
-                                        Vehicle No <span className="text-rose-500">*</span>
-                                    </label>
-                                    <input 
-                                        type="text"
-                                        placeholder="e.g. DXB 12345"
-                                        value={formData.vehicleNumber || ''}
-                                        onChange={e => {
-                                            setFormData({ ...formData, vehicleNumber: e.target.value });
-                                            setValidationError(null);
-                                        }}
-                                        className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all font-mono"
-                                    />
+                            <div className="space-y-3 pt-3 border-t border-amber-500/10 animate-in fade-in duration-200">
+                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                            Vehicle No <span className="text-rose-500">*</span>
+                                        </label>
+                                        <input 
+                                            type="text"
+                                            placeholder="e.g. DXB 12345"
+                                            value={formData.vehicleNumber || ''}
+                                            onChange={e => {
+                                                setFormData({ ...formData, vehicleNumber: e.target.value });
+                                                setValidationError(null);
+                                            }}
+                                            className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all font-mono"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                            KM Start {formData.attachment && <span className="text-rose-500">*</span>}
+                                        </label>
+                                        <input 
+                                            type="number"
+                                            placeholder="Starting KM"
+                                            value={formData.kmStart !== undefined ? formData.kmStart : ''}
+                                            onChange={e => {
+                                                const startVal = e.target.value === '' ? undefined : Number(e.target.value);
+                                                const endVal = formData.kmEnd;
+                                                const runVal = (startVal !== undefined && endVal !== undefined) ? (endVal - startVal) : undefined;
+                                                setFormData({ 
+                                                    ...formData, 
+                                                    kmStart: startVal,
+                                                    kmRun: runVal
+                                                });
+                                                setValidationError(null);
+                                            }}
+                                            className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all font-mono"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                            KM End {formData.attachment && <span className="text-rose-500">*</span>}
+                                        </label>
+                                        <input 
+                                            type="number"
+                                            placeholder="Ending KM"
+                                            value={formData.kmEnd !== undefined ? formData.kmEnd : ''}
+                                            onChange={e => {
+                                                const endVal = e.target.value === '' ? undefined : Number(e.target.value);
+                                                const startVal = formData.kmStart;
+                                                const runVal = (startVal !== undefined && endVal !== undefined) ? (endVal - startVal) : undefined;
+                                                setFormData({ 
+                                                    ...formData, 
+                                                    kmEnd: endVal,
+                                                    kmRun: runVal
+                                                });
+                                                setValidationError(null);
+                                            }}
+                                            className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all font-mono"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1 font-sans">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                            Total Run
+                                        </label>
+                                        <div className="w-full px-3 py-2 bg-amber-500/10 border border-amber-500/15 rounded-xl text-xs font-black text-amber-900 font-mono text-center">
+                                            {(formData.kmStart !== undefined && formData.kmEnd !== undefined) 
+                                                ? `${formData.kmEnd - formData.kmStart} KM` 
+                                                : '--'}
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
-                                        KM Start {formData.attachment && <span className="text-rose-500">*</span>}
-                                    </label>
-                                    <input 
-                                        type="number"
-                                        placeholder="Starting KM"
-                                        value={formData.kmStart !== undefined ? formData.kmStart : ''}
-                                        onChange={e => {
-                                            const startVal = e.target.value === '' ? undefined : Number(e.target.value);
-                                            const endVal = formData.kmEnd;
-                                            const runVal = (startVal !== undefined && endVal !== undefined) ? (endVal - startVal) : undefined;
-                                            setFormData({ 
-                                                ...formData, 
-                                                kmStart: startVal,
-                                                kmRun: runVal
-                                            });
-                                            setValidationError(null);
-                                        }}
-                                        className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all"
-                                    />
-                                </div>
-
-                                <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
-                                        KM End {formData.attachment && <span className="text-rose-500">*</span>}
-                                    </label>
-                                    <input 
-                                        type="number"
-                                        placeholder="Ending KM"
-                                        value={formData.kmEnd !== undefined ? formData.kmEnd : ''}
-                                        onChange={e => {
-                                            const endVal = e.target.value === '' ? undefined : Number(e.target.value);
-                                            const startVal = formData.kmStart;
-                                            const runVal = (startVal !== undefined && endVal !== undefined) ? (endVal - startVal) : undefined;
-                                            setFormData({ 
-                                                ...formData, 
-                                                kmEnd: endVal,
-                                                kmRun: runVal
-                                            });
-                                            setValidationError(null);
-                                        }}
-                                        className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all"
-                                    />
-                                </div>
-
-                                <div className="space-y-1 font-sans">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
-                                        Total Run
-                                    </label>
-                                    <div className="w-full px-3 py-2 bg-amber-500/10 border border-amber-500/15 rounded-xl text-xs font-black text-amber-900 font-mono text-center">
-                                        {(formData.kmStart !== undefined && formData.kmEnd !== undefined) 
-                                            ? `${formData.kmEnd - formData.kmStart} KM` 
-                                            : '--'}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                            Vehicle Driver Name <span className="text-slate-400 font-normal">(Optional)</span>
+                                        </label>
+                                        <input 
+                                            type="text"
+                                            placeholder="e.g. Ali Ahmed"
+                                            value={formData.vehicleDriver || ''}
+                                            onChange={e => setFormData({ ...formData, vehicleDriver: e.target.value })}
+                                            className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
+                                            Vehicle Remarks / Notes <span className="text-slate-400 font-normal">(Optional)</span>
+                                        </label>
+                                        <input 
+                                            type="text"
+                                            placeholder="e.g. ADNOC fuel card used, site trip"
+                                            value={formData.vehicleRemarks || ''}
+                                            onChange={e => setFormData({ ...formData, vehicleRemarks: e.target.value })}
+                                            className="w-full px-3 py-2 bg-white border border-amber-500/20 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+                                        />
                                     </div>
                                 </div>
                             </div>

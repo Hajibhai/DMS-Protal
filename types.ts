@@ -290,6 +290,10 @@ export interface AccountsReceivable {
     companyTrn?: string;
     clientTrn?: string;
     items?: { id: string; name: string; description: string; quantity: number; rate: number; total: number }[];
+    deduction?: number; // Deduction / Retention Amount
+    actualAmount?: number; // Work value after deduction
+    adjustmentAmount?: number; // Adjustment Amount (+/-)
+    adjustmentType?: '+' | '-'; // Adjustment Type (Addition/Deduction)
 }
 
 export interface PettyCash {
@@ -362,6 +366,8 @@ export interface EverydayExpense {
     startTime?: string;
     endDate?: string;
     endTime?: string;
+    vehicleDriver?: string;
+    vehicleRemarks?: string;
 }
 
 export interface DashboardStats {

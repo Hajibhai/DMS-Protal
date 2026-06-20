@@ -86,13 +86,15 @@ export default async function handler(req: any, res: any) {
           startTime: { type: Type.STRING, description: "Start time on the bill in HH:MM 24-hour style if present (e.g., '17:35'), else empty" },
           endDate: { type: Type.STRING, description: "End date in YYYY-MM-DD format if present, else empty string" },
           endTime: { type: Type.STRING, description: "End time on the bill in HH:MM 24-hour style if present (e.g., '17:35'), else empty" },
+          vehicleNumber: { type: Type.STRING, description: "Vehicle plate number/code or car number if printed on the petrol/refuel/fuel receipt (e.g., 'DXB 12345', 'M 98765', '12345', 'G 54321'), or empty string if not found" },
         },
         required: ["date", "billAmount", "totalAmount"]
       };
       prompt = "Analyze this receipt image and extract the following everyday operational invoice details into a JSON object. " +
-               "CRITICAL INSTRUCTIONS FOR DATE & TIMEFRAME: " +
+               "CRITICAL INSTRUCTIONS FOR DATE & TIMEFRAME & VEHICLES: " +
                "1. UAE / Dubai receipts write dates in Day/Month/Year (DD/MM/YY) format. For example, '22/05/26' means May 22, 2026. You MUST extract this carefully as '2026-05-22' for the 'date' field. Do not swap month and date! " +
-               "2. For parking tickets stating 'START' and 'END' with times (e.g., '17:35') and dates (e.g., '22/05/26' and '23/05/26'), extract the 'startTime' as '17:35', the 'endDate' as '2026-05-23', and the 'endTime' as '17:35'. Ensure dates are formatted as YYYY-MM-DD.";
+               "2. For parking tickets stating 'START' and 'END' with times (e.g., '17:35') and dates (e.g., '22/05/26' and '23/05/26'), extract the 'startTime' as '17:35', the 'endDate' as '2026-05-23', and the 'endTime' as '17:35'. Ensure dates are formatted as YYYY-MM-DD. " +
+               "3. VEHICLE CODES: Carefully look for any vehicle registration number, plate code, or card plate details printed on the receipt (especially fuel bills from ENOC/ADNOC). Extract it verbatim (e.g., 'DXB 12345' or '12345') into the 'vehicleNumber' field.";
     } else if (type === "safety") {
       responseSchema = {
         type: Type.OBJECT,
