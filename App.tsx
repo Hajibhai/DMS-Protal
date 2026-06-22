@@ -5212,6 +5212,204 @@ export default function App() {
     reader.readAsBinaryString(file);
   };
 
+  const handleUploadExcelEveryday = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const roleLower = systemUser?.role?.toLowerCase() || '';
+    const isCreatorUser = roleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
+    const isAppAdmin = roleLower === 'admin' || isCreatorUser;
+    
+    if (!isAppAdmin) {
+      alert("Error: Only full site access users (like super admin or development team) can upload excel data.");
+      return;
+    }
+    
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        
+        const rawData: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        if (!rawData || rawData.length < 2) {
+          alert("No data found or columns missing in Excel sheet.");
+          return;
+        }
+
+        let headerRowIndex = 0;
+        for (let i = 0; i < Math.min(rawData.length, 10); i++) {
+          const row = rawData[i];
+          if (row && row.some((cell: any) => {
+            const val = String(cell).toLowerCase().trim();
+            return val.includes('bill amount') || val.includes('shop name') || val.includes('invoice no') || val.includes('trn');
+          })) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+
+        const headers = rawData[headerRowIndex].map((h: any) => String(h || '').trim().toLowerCase());
+        
+        const idxDate = headers.findIndex((h: string) => h.includes('date') || h === 'day');
+        const idxInvoiceNo = headers.findIndex((h: string) => h.includes('invoice no') || h.includes('invoice #') || h.includes('invoice number') || h.includes('bill no') || h.includes('bill number') || h === 'ref');
+        const idxTrnNo = headers.findIndex((h: string) => h.includes('trn') || h.includes('trn no') || h.includes('trn number'));
+        const idxClientName = headers.findIndex((h: string) => h.includes('client') || h.includes('client name'));
+        const idxSupplierName = headers.findIndex((h: string) => h.includes('supplier') || h.includes('supplier name') || h.includes('vendor'));
+        const idxShopName = headers.findIndex((h: string) => h.includes('shop') || h.includes('shop name') || h.includes('store'));
+        const idxBillAmount = headers.findIndex((h: string) => h === 'amount' || h.includes('bill amount') || h.includes('base amount') || h.includes('subtotal'));
+        const idxVatAmount = headers.findIndex((h: string) => h === 'vat' || h.includes('vat amount') || h.includes('tax'));
+        const idxTotalAmount = headers.findIndex((h: string) => h.includes('total') || h.includes('total amount') || h.includes('net amount'));
+        const idxDescription = headers.findIndex((h: string) => h.includes('description') || h.includes('details') || h.includes('purpose') || h.includes('remarks'));
+        const idxCategory = headers.findIndex((h: string) => h.includes('category') || h.includes('exp type') || h.includes('type'));
+        const idxProject = headers.findIndex((h: string) => h.includes('project') || h.includes('job'));
+        const idxVehicle = headers.findIndex((h: string) => h.includes('vehicle') || h.includes('plate no') || h.includes('plate number') || h.includes('car'));
+        const idxDriver = headers.findIndex((h: string) => h.includes('driver') || h.includes('vehicle driver'));
+        const idxVehicleRemarks = headers.findIndex((h: string) => h.includes('vehicle remarks') || h.includes('remarks'));
+
+        const importedList: EverydayExpense[] = [];
+        const uploaderName = systemUser?.name || '';
+        const uploaderUid = systemUser?.uid || '';
+        
+        const userExpenses = everydayExpenses.filter(ee => 
+          (ee.uploadedByUid && uploaderUid && ee.uploadedByUid === uploaderUid) || 
+          (ee.uploadedBy && uploaderName && ee.uploadedBy.toLowerCase() === uploaderName.toLowerCase())
+        );
+        let siNoCounter = userExpenses.length + 1;
+
+        for (let r = headerRowIndex + 1; r < rawData.length; r++) {
+          const row = rawData[r];
+          if (!row || row.length === 0) continue;
+
+          const hasContent = row.some((c: any) => c !== undefined && c !== null && String(c).trim() !== '');
+          if (!hasContent) continue;
+
+          let expenseDate = new Date().toISOString().split('T')[0];
+          if (idxDate !== -1 && row[idxDate] !== undefined) {
+            try {
+              let rawDate = String(row[idxDate]).trim();
+              if (rawDate && rawDate !== 'undefined') {
+                if (!isNaN(Number(rawDate))) {
+                  const serial = Number(rawDate);
+                  const dateObj = new Date((serial - 25569) * 86400 * 1000);
+                  expenseDate = dateObj.toISOString().split('T')[0];
+                } else {
+                  expenseDate = new Date(rawDate).toISOString().split('T')[0];
+                }
+              }
+            } catch (e) {
+              // fallback remains today
+            }
+          }
+
+          const invoiceNo = idxInvoiceNo !== -1 && row[idxInvoiceNo] !== undefined ? String(row[idxInvoiceNo]).trim() : '';
+          const trnNo = idxTrnNo !== -1 && row[idxTrnNo] !== undefined ? String(row[idxTrnNo]).trim() : '';
+          const clientName = idxClientName !== -1 && row[idxClientName] !== undefined ? String(row[idxClientName]).trim() : '-';
+          const supplierName = idxSupplierName !== -1 && row[idxSupplierName] !== undefined ? String(row[idxSupplierName]).trim() : '';
+          const shopName = idxShopName !== -1 && row[idxShopName] !== undefined ? String(row[idxShopName]).trim() : '';
+          
+          const rawBillAmt = idxBillAmount !== -1 && row[idxBillAmount] !== undefined ? Number(String(row[idxBillAmount]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          const rawVatAmt = idxVatAmount !== -1 && row[idxVatAmount] !== undefined ? Number(String(row[idxVatAmount]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          const rawTotalAmt = idxTotalAmount !== -1 && row[idxTotalAmount] !== undefined ? Number(String(row[idxTotalAmount]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+          
+          let billAmount = rawBillAmt;
+          let vatAmount = rawVatAmt;
+          let totalAmount = rawTotalAmt;
+
+          if (totalAmount > 0 && billAmount === 0) {
+            vatAmount = Number((totalAmount * 0.05 / 1.05).toFixed(2));
+            billAmount = Number((totalAmount - vatAmount).toFixed(2));
+          } else if (billAmount > 0 && totalAmount === 0) {
+            if (vatAmount === 0) {
+              vatAmount = Number((billAmount * 0.05).toFixed(2));
+            }
+            totalAmount = Number((billAmount + vatAmount).toFixed(2));
+          } else if (billAmount > 0 && vatAmount > 0 && totalAmount === 0) {
+            totalAmount = Number((billAmount + vatAmount).toFixed(2));
+          }
+
+          const description = idxDescription !== -1 && row[idxDescription] !== undefined ? String(row[idxDescription]).trim() : 'Imported via Excel';
+          let category = idxCategory !== -1 && row[idxCategory] !== undefined ? String(row[idxCategory]).trim() : '';
+          if (!category) {
+            const descLower = description.toLowerCase();
+            if (descLower.includes('fuel') || descLower.includes('petrol') || descLower.includes('diesel') || descLower.includes('refuel') || descLower.includes('adnoc')) {
+              category = 'Fuel';
+            } else if (descLower.includes('repair') || descLower.includes('maintenance') || descLower.includes('service') || descLower.includes('parts')) {
+              category = 'Repair';
+            } else if (descLower.includes('stationery') || descLower.includes('office') || descLower.includes('cleaning') || descLower.includes('pantry') || descLower.includes('water')) {
+              category = 'Supplies';
+            } else {
+              category = 'General';
+            }
+          }
+
+          let projectId = '';
+          if (idxProject !== -1 && row[idxProject] !== undefined) {
+            const projVal = String(row[idxProject]).trim().toLowerCase();
+            const matchedProj = (projects || []).find((p: any) => 
+              p.name?.toLowerCase().includes(projVal) || 
+              projVal.includes(p.name?.toLowerCase())
+            );
+            if (matchedProj) {
+              projectId = matchedProj.id;
+            }
+          }
+
+          const vehicleNumber = idxVehicle !== -1 && row[idxVehicle] !== undefined ? String(row[idxVehicle]).trim() : '';
+          const vehicleDriver = idxDriver !== -1 && row[idxDriver] !== undefined ? String(row[idxDriver]).trim() : '';
+          const vehicleRemarks = idxVehicleRemarks !== -1 && row[idxVehicleRemarks] !== undefined ? String(row[idxVehicleRemarks]).trim() : '';
+          const isVehicleFuel = category.toLowerCase() === 'fuel';
+
+          const newEe: EverydayExpense = {
+            id: 'ee_' + Math.random().toString(36).substr(2, 9),
+            siNo: String(siNoCounter++),
+            date: expenseDate,
+            invoiceNo: invoiceNo || `INV-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+            trnNo,
+            clientName,
+            supplierName,
+            shopName,
+            billAmount,
+            vatAmount,
+            totalAmount,
+            description,
+            category,
+            projectId: projectId || undefined,
+            uploadedBy: uploaderName,
+            uploadedByUid: uploaderUid,
+            uploadedDate: new Date().toISOString().split('T')[0],
+            updatedBy: uploaderName,
+            updatedByUid: uploaderUid,
+            isVehicleFuel,
+            vehicleNumber: vehicleNumber || undefined,
+            vehicleDriver: vehicleDriver || undefined,
+            vehicleRemarks: vehicleRemarks || undefined
+          };
+
+          importedList.push(newEe);
+        }
+
+        if (importedList.length === 0) {
+          alert("No valid rows imported from the selected Excel sheet.");
+          return;
+        }
+
+        for (const eeItem of importedList) {
+          await saveEverydayExpense(eeItem);
+        }
+
+        handleLogAction('Everyday Expenses Imported', `Imported ${importedList.length} Everyday Expense entries via Excel.`, 'create');
+        alert(`Successfully imported ${importedList.length} Everyday Expense entries via Excel!`);
+      } catch (err: any) {
+        console.error("Error importing everyday expenses excel: ", err);
+        alert("Failed to parse the Excel file. Please check that column names match typical expense fields.");
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   const handleSaveAR = async (data: AccountsReceivable) => {
     const isDuplicate = accountsReceivable.some(
       ar => ar.id !== data.id && 
@@ -6033,29 +6231,28 @@ export default function App() {
           openConfirm={openConfirm}
         />
       )}
-      {activeTab === 'everyday-expenses' && (
-        <EverydayExpenseView 
-          data={
-            (() => {
-              const roleLower = systemUser?.role?.toLowerCase() || '';
-              const isCreatorUser = roleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
-              const isAppAdmin = roleLower === 'admin' || isCreatorUser;
-              if (isAppAdmin) {
-                return everydayExpenses;
-              } else {
-                return everydayExpenses.filter(ee => ee.uploadedByUid === systemUser.uid || ee.uploadedBy === systemUser.name || ee.updatedBy === systemUser.name);
-              }
-            })()
-          }
-          projects={projects}
-          onAdd={() => setShowEverydayExpenseModal(true)}
-          onEdit={(ee: EverydayExpense) => setShowEverydayExpenseModal(ee)}
-          onDelete={handleDeleteEverydayExpense}
-          user={systemUser}
-          employees={employees}
-          pettyCash={pettyCash}
-        />
-      )}
+      {activeTab === 'everyday-expenses' && (() => {
+        const roleLower = systemUser?.role?.toLowerCase() || '';
+        const isCreatorUser = roleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
+        const isAppAdmin = roleLower === 'admin' || isCreatorUser;
+        return (
+          <EverydayExpenseView 
+            data={
+              isAppAdmin 
+                ? everydayExpenses 
+                : everydayExpenses.filter(ee => ee.uploadedByUid === systemUser.uid || ee.uploadedBy === systemUser.name || ee.updatedBy === systemUser.name)
+            }
+            projects={projects}
+            onAdd={() => setShowEverydayExpenseModal(true)}
+            onEdit={(ee: EverydayExpense) => setShowEverydayExpenseModal(ee)}
+            onDelete={handleDeleteEverydayExpense}
+            user={systemUser}
+            employees={employees}
+            pettyCash={pettyCash}
+            onUploadExcel={isAppAdmin ? handleUploadExcelEveryday : undefined}
+          />
+        );
+      })()}
       {activeTab === 'camp' && (
         <CampView
           data={camps}

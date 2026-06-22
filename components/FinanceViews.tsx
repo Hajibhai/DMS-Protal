@@ -13799,7 +13799,8 @@ export const EverydayExpenseView: React.FC<{
     user: SystemUser;
     employees?: any[];
     pettyCash?: any[];
-}> = ({ data, projects, onAdd, onEdit, onDelete, user, employees = [], pettyCash = [] }) => {
+    onUploadExcel?: (event: React.ChangeEvent<HTMLInputElement>) => void;
+}> = ({ data, projects, onAdd, onEdit, onDelete, user, employees = [], pettyCash = [], onUploadExcel }) => {
     const [viewingBill, setViewingBill] = useState<string | null>(null);
     const [activeViewTab, setActiveViewTab] = useState<'ledger' | 'tally'>('ledger');
     const [tallySearch, setTallySearch] = useState('');
@@ -14270,6 +14271,7 @@ export const EverydayExpenseView: React.FC<{
                         exportFileName="Everyday_Expenses"
                         user={user}
                         filterOptions={filterOptions}
+                        onUploadExcel={onUploadExcel}
                     />
                 </div>
             ) : (
