@@ -5292,6 +5292,10 @@ export default function App() {
   };
 
   const handleDeleteEverydayExpense = async (ee: EverydayExpense) => {
+    if (systemUser?.role?.toLowerCase() === 'employee') {
+      alert("Error: Employees are not authorized to delete expense records.");
+      return;
+    }
     openConfirm("Delete Entry", `Are you sure you want to delete everyday expense: ${ee.invoiceNo}?`, async () => {
       await deleteEverydayExpense(ee.id);
       handleLogAction('Everyday Expense Deleted', `Everyday expense ${ee.invoiceNo} was deleted.`, 'delete');

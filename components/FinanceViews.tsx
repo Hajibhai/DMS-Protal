@@ -14264,7 +14264,7 @@ export const EverydayExpenseView: React.FC<{
                         columns={columns}
                         onAdd={onAdd}
                         onEdit={onEdit}
-                        onDelete={onDelete}
+                        onDelete={user?.role?.toLowerCase() === 'employee' ? undefined : onDelete}
                         onViewBill={(item) => setViewingBill(item.attachment || null)}
                         searchFields={['invoiceNo', 'clientName', 'supplierName', 'shopName', 'description', 'trnNo', 'uploadedBy', 'siNo', 'date', 'vehicleNumber', 'category', 'vehicleDriver', 'vehicleRemarks']}
                         exportFileName="Everyday_Expenses"
@@ -15198,9 +15198,16 @@ export const EverydayExpenseModal: React.FC<{
             .then((data) => {
                 setFormData(prev => {
                     const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', nameToSuggest);
+                    const isEmployeeAndEditing = user?.role?.toLowerCase() === 'employee' && !!expense;
+                    const cleanData = { ...data };
+                    if (isEmployeeAndEditing) {
+                        delete cleanData.billAmount;
+                        delete cleanData.vatAmount;
+                        delete cleanData.totalAmount;
+                    }
                     const updated = {
                         ...prev,
-                        ...data,
+                        ...cleanData,
                         siNo: calculatedSiNo,
                         uploadedBy: nameToSuggest,
                         uploadedByUid: user?.uid || '',
@@ -15287,9 +15294,16 @@ export const EverydayExpenseModal: React.FC<{
 
             setFormData(prev => {
                 const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', uploaderName);
+                const isEmployeeAndEditing = user?.role?.toLowerCase() === 'employee' && !!expense;
+                const cleanData = { ...data };
+                if (isEmployeeAndEditing) {
+                    delete cleanData.billAmount;
+                    delete cleanData.vatAmount;
+                    delete cleanData.totalAmount;
+                }
                 const updated = {
                     ...prev,
-                    ...data,
+                    ...cleanData,
                     siNo: calculatedSiNo,
                     uploadedBy: uploaderName,
                     uploadedByUid: user?.uid || '',
@@ -15828,9 +15842,10 @@ export const EverydayExpenseModal: React.FC<{
                             <label className="text-[10px] font-black uppercase tracking-widest text-brand-600 ml-1">Bill Amount</label>
                             <input 
                                 type="number"
+                                disabled={user?.role?.toLowerCase() === 'employee' && !!expense}
                                 value={formData.billAmount}
                                 onChange={e => handleAmountChange(Number(e.target.value))}
-                                className="w-full px-4 py-3 bg-white border-none rounded-xl text-sm font-black text-slate-900 outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className={`w-full px-4 py-3 border-none rounded-xl text-sm font-black text-slate-900 outline-none focus:ring-2 focus:ring-brand-500 transition-all ${user?.role?.toLowerCase() === 'employee' && !!expense ? 'bg-slate-100 text-slate-450 cursor-not-allowed' : 'bg-white'}`}
                             />
                         </div>
                         <div className="space-y-1">
