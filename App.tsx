@@ -6145,6 +6145,7 @@ export default function App() {
       {activeTab === 'vehicles' && (
         <VehiclesView 
             vehicles={vehicles} 
+            everydayExpenses={everydayExpenses}
             onSave={async (data) => {
                 const isUpdate = !!vehicles.some(v => v.id === data.id);
                 await saveVehicle(data);

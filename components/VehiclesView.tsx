@@ -3,13 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, Plus, Eye, Edit, Trash2, Download, Car, Calendar, 
   FileText, Shield, Sparkles, Paperclip, Upload, X, ShieldAlert, 
-  CheckCircle, AlertCircle, Wrench, RefreshCw, FileCheck
+  CheckCircle, AlertCircle, Wrench, RefreshCw, FileCheck, TrendingUp
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Vehicle, VehicleDocument } from '../types';
+import { Vehicle, VehicleDocument, EverydayExpense } from '../types';
 
 interface VehiclesViewProps {
   vehicles: Vehicle[];
+  everydayExpenses?: EverydayExpense[];
   onSave: (data: Vehicle) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   user: any;
@@ -18,6 +19,7 @@ interface VehiclesViewProps {
 
 export const VehiclesView = ({ 
   vehicles = [], 
+  everydayExpenses = [],
   onSave, 
   onDelete, 
   user, 
@@ -28,6 +30,10 @@ export const VehiclesView = ({
   const [viewMode, setViewMode] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'Active' | 'Under Maintenance' | 'Inactive' | 'expiring'>('all');
+  const [ownershipFilter, setOwnershipFilter] = useState<'all' | 'Company' | 'Personal' | 'Other'>('all');
+  const [showExpensesModal, setShowExpensesModal] = useState<{ vehicle: Vehicle; expenses: EverydayExpense[] } | null>(null);
+  const [viewingExpenseBill, setViewingExpenseBill] = useState<EverydayExpense | null>(null);
+  const [selectedExpenseDetail, setSelectedExpenseDetail] = useState<EverydayExpense | null>(null);
   
   // Document upload state inside Add/Edit modal
   const [newDocCategory, setNewDocCategory] = useState<'Registration' | 'Insurance' | 'Inspection' | 'Other'>('Registration');
@@ -57,7 +63,7 @@ export const VehiclesView = ({
 
   // Helper to determine vehicle overall expiration warnings
   const getVehicleExpiryStatus = (v: Vehicle) => {
-    const alerts: { type: 'reg' | 'ins' | 'insp'; days: number; dateStr: string }[] = [];
+    const alerts: { type: 'reg' | 'ins' | 'insp' | 'permit'; days: number; dateStr: string }[] = [];
     
     if (v.mulkiyaExpiryDate) {
       const days = getDaysLeft(v.mulkiyaExpiryDate);
@@ -77,7 +83,46 @@ export const VehiclesView = ({
         alerts.push({ type: 'insp', days, dateStr: v.inspectionExpiryDate });
       }
     }
+    if (v.parkingPermitExpiryDate) {
+      const days = getDaysLeft(v.parkingPermitExpiryDate);
+      if (days !== null && days <= 30) {
+        alerts.push({ type: 'permit', days, dateStr: v.parkingPermitExpiryDate });
+      }
+    }
     return alerts;
+  };
+
+  // Match vehicle numbers robustly as described:
+  // (e.g., 10/94221 matching expense vehicleNumber 94221)
+  const getVehicleExpenses = (v: Vehicle, expenses: EverydayExpense[] = []) => {
+    if (!v.vehicleNumber) return [];
+    return expenses.filter(exp => {
+      const expVehicleNo = (exp.vehicleNumber || '').trim();
+      if (!expVehicleNo) {
+        // Also check in description if it contains the vehicle number
+        const desc = (exp.description || '').toLowerCase();
+        const plate = v.vehicleNumber.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const numPart = v.vehicleNumber.replace(/\D/g, '');
+        if (plate && desc.includes(plate)) return true;
+        if (numPart && numPart.length >= 4 && desc.includes(numPart)) return true;
+        return false;
+      }
+      
+      const cleanFleet = v.vehicleNumber.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const cleanExpense = expVehicleNo.toLowerCase().replace(/[^a-z0-9]/g, '');
+      
+      if (cleanFleet === cleanExpense) return true;
+      if (cleanFleet.includes(cleanExpense) || cleanExpense.includes(cleanFleet)) return true;
+      
+      // Try comparing purely numerical ends to match "10/94221" with "94221"
+      const dFleet = v.vehicleNumber.replace(/\D/g, '');
+      const dExpense = expVehicleNo.replace(/\D/g, '');
+      if (dFleet && dExpense && (dFleet.endsWith(dExpense) || dExpense.endsWith(dFleet))) {
+        return true;
+      }
+      
+      return false;
+    });
   };
 
   // Process and Filter records
@@ -90,6 +135,12 @@ export const VehiclesView = ({
       (v.chassisNumber || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     if (!matchesSearch) return false;
+
+    // Ownership classification filter
+    if (ownershipFilter !== 'all') {
+      const vOwnership = v.ownershipType || 'Company';
+      if (vOwnership !== ownershipFilter) return false;
+    }
 
     // Tabs filter
     if (activeFilter === 'all') return true;
@@ -106,10 +157,18 @@ export const VehiclesView = ({
     let active = 0;
     let maintenance = 0;
     let expiringSoon = 0;
+    let company = 0;
+    let personal = 0;
+    let other = 0;
 
     vehicles.forEach(v => {
       if (v.status === 'Active') active++;
       if (v.status === 'Under Maintenance') maintenance++;
+      
+      const ownership = v.ownershipType || 'Company';
+      if (ownership === 'Company') company++;
+      else if (ownership === 'Personal') personal++;
+      else other++;
       
       const alerts = getVehicleExpiryStatus(v);
       if (alerts.length > 0) {
@@ -117,7 +176,7 @@ export const VehiclesView = ({
       }
     });
 
-    return { total, active, maintenance, expiringSoon };
+    return { total, active, maintenance, expiringSoon, company, personal, other };
   }, [vehicles]);
 
   const handleExport = () => {
@@ -150,7 +209,7 @@ export const VehiclesView = ({
     setIsExporting(false);
   };
 
-  const compressImage = (base64Str: string, maxWidth = 850, maxHeight = 850): Promise<string> => {
+  const compressImage = (base64Str: string, maxWidth = 650, maxHeight = 650): Promise<string> => {
     return new Promise((resolve) => {
       if (!base64Str || !base64Str.startsWith('data:image/')) {
         resolve(base64Str);
@@ -180,7 +239,7 @@ export const VehiclesView = ({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.7));
+          resolve(canvas.toDataURL('image/jpeg', 0.55));
         } else {
           resolve(base64Str);
         }
@@ -196,8 +255,13 @@ export const VehiclesView = ({
     if (!file) return;
 
     // Enforce safe database limits:
-    if (file.type === 'application/pdf' && file.size > 750 * 1024) {
-      setDocUploadError("PDF attachments cannot exceed 750KB for secure cloud database storage. Please optimize your PDF or upload a smaller copy.");
+    if (file.type === 'application/pdf' && file.size > 400 * 1024) {
+      setDocUploadError("PDF documents cannot exceed 400KB to ensure secure cloud storage. Please optimize or upload a smaller copy.");
+      return;
+    }
+
+    if (!file.type.startsWith('image/') && file.size > 400 * 1024) {
+      setDocUploadError("Non-image attachments cannot exceed 400KB to ensure secure cloud storage.");
       return;
     }
 
@@ -211,6 +275,13 @@ export const VehiclesView = ({
       try {
         const rawBase64 = reader.result as string;
         const compressedBase64 = await compressImage(rawBase64);
+        
+        if (compressedBase64.length > 550000) {
+          setDocUploadError("The file after processing is still too large. Please select a smaller or lower-resolution file.");
+          setNewDocFile(null);
+          return;
+        }
+
         setNewDocFile(compressedBase64);
         setNewDocFileType(file.type);
         setDocUploadError(null);
@@ -232,6 +303,18 @@ export const VehiclesView = ({
       return;
     }
 
+    const currentDocs = showModal?.documents || [];
+    
+    // Compute current cumulative size of all documents
+    const currentTotalSize = currentDocs.reduce((sum, d) => sum + (d.fileData?.length || 0), 0);
+    const incomingSize = newDocFile.length;
+
+    // Limit cumulative base64 length to 800,000 characters (~600KB)
+    if (currentTotalSize + incomingSize > 800000) {
+      setDocUploadError("Unable to attach: The cumulative size of all attachments would exceed the database safety limit. Please remove existing attachments or optimize files before adding more.");
+      return;
+    }
+
     const newDoc: VehicleDocument = {
       id: Math.random().toString(36).substr(2, 9),
       name: newDocName,
@@ -241,7 +324,6 @@ export const VehiclesView = ({
       uploadedDate: new Date().toISOString().split('T')[0]
     };
 
-    const currentDocs = showModal?.documents || [];
     setShowModal({
       ...showModal,
       documents: [...currentDocs, newDoc]
@@ -281,8 +363,11 @@ export const VehiclesView = ({
         inspectionExpiryDate: showModal.inspectionExpiryDate || '',
         inspectionStatus: showModal.inspectionStatus || 'N/A',
         status: showModal.status || 'Active',
+        ownershipType: showModal.ownershipType || 'Company',
         driverName: showModal.driverName?.trim() || '',
         remarks: showModal.remarks?.trim() || '',
+        parkingPermitIssueDate: showModal.parkingPermitIssueDate || '',
+        parkingPermitExpiryDate: showModal.parkingPermitExpiryDate || '',
         documents: showModal.documents || [],
         createdAt: showModal.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -341,8 +426,11 @@ export const VehiclesView = ({
                   inspectionExpiryDate: '',
                   inspectionStatus: 'N/A',
                   status: 'Active',
+                  ownershipType: 'Company',
                   driverName: '',
                   remarks: '',
+                  parkingPermitIssueDate: '',
+                  parkingPermitExpiryDate: '',
                   documents: []
                 });
               }}
@@ -363,6 +451,11 @@ export const VehiclesView = ({
           <div>
             <span className="text-[10px] uppercase font-black text-slate-400 tracking-widest block">Total Fleet</span>
             <span className="text-2xl font-black text-slate-800">{stats.total} Vehicles</span>
+            <div className="flex gap-1.5 mt-1 text-[9px] font-bold text-slate-500 select-none">
+              <span className="bg-slate-100 px-1.5 py-0.5 rounded-md" title={`${stats.company} Company Vehicles`}>Co: {stats.company}</span>
+              <span className="bg-slate-100 px-1.5 py-0.5 rounded-md" title={`${stats.personal} Personal Vehicles`}>Pers: {stats.personal}</span>
+              <span className="bg-slate-100 px-1.5 py-0.5 rounded-md" title={`${stats.other} Other Vehicles`}>Oth: {stats.other}</span>
+            </div>
           </div>
         </div>
 
@@ -398,55 +491,97 @@ export const VehiclesView = ({
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-white border border-slate-150 rounded-3xl shadow-sm">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setActiveFilter('all')}
-            className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${activeFilter === 'all' ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            All Fleet
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter('Active')}
-            className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${activeFilter === 'Active' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            Active
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter('Under Maintenance')}
-            className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${activeFilter === 'Under Maintenance' ? 'bg-amber-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            Maintenance
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter('Inactive')}
-            className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${activeFilter === 'Inactive' ? 'bg-slate-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            Inactive
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveFilter('expiring')}
-            className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${activeFilter === 'expiring' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-100 text-rose-600 hover:bg-rose-50'}`}
-          >
-            <ShieldAlert className="w-3.5 h-3.5" />
-            Expiring / Alerts
-          </button>
+      <div className="flex flex-col gap-4 p-5 bg-white border border-slate-150 rounded-3xl shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveFilter('all')}
+              className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${activeFilter === 'all' ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              All Fleet
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveFilter('Active')}
+              className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${activeFilter === 'Active' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              Active
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveFilter('Under Maintenance')}
+              className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${activeFilter === 'Under Maintenance' ? 'bg-amber-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              Maintenance
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveFilter('Inactive')}
+              className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer ${activeFilter === 'Inactive' ? 'bg-slate-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              Inactive
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveFilter('expiring')}
+              className={`px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${activeFilter === 'expiring' ? 'bg-rose-600 text-white shadow-md' : 'bg-slate-100 text-rose-600 hover:bg-rose-50'}`}
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              Expiring / Alerts
+            </button>
+          </div>
+
+          <div className="relative w-full max-w-sm">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search by plate no, driver, model..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 hover:bg-slate-50 transition-all font-sans"
+            />
+          </div>
         </div>
 
-        <div className="relative w-full max-w-sm">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search by plate no, driver, model..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 hover:bg-slate-50 transition-all font-sans"
-          />
+        {/* Ownership Segment Controls */}
+        <div className="border-t border-slate-100 pt-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <span className="text-[10px] uppercase font-black text-slate-400 tracking-widest block ml-1 select-none">Ownership Section:</span>
+            <div className="flex flex-wrap items-center gap-1 bg-slate-100 p-1 rounded-2xl w-max">
+              <button
+                type="button"
+                onClick={() => setOwnershipFilter('all')}
+                className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer ${ownershipFilter === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+              >
+                All Fleet ({stats.total})
+              </button>
+              <button
+                type="button"
+                onClick={() => setOwnershipFilter('Company')}
+                className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer ${ownershipFilter === 'Company' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+              >
+                Company Vehicles ({stats.company})
+              </button>
+              <button
+                type="button"
+                onClick={() => setOwnershipFilter('Personal')}
+                className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer ${ownershipFilter === 'Personal' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+              >
+                Personal Vehicles ({stats.personal})
+              </button>
+              <button
+                type="button"
+                onClick={() => setOwnershipFilter('Other')}
+                className={`px-3.5 py-1.5 text-xs font-black rounded-xl transition-all cursor-pointer ${ownershipFilter === 'Other' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+              >
+                Other Vehicles ({stats.other})
+              </button>
+            </div>
+          </div>
+          <div className="text-[11px] font-bold text-slate-400 mr-2">
+            Showing <span className="text-slate-700 font-extrabold">{filteredVehicles.length}</span> of {vehicles.length}
+          </div>
         </div>
       </div>
 
@@ -460,6 +595,8 @@ export const VehiclesView = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredVehicles.map((v) => {
             const alerts = getVehicleExpiryStatus(v);
+            const matchedExps = getVehicleExpenses(v, everydayExpenses);
+            const totalExpenseAmount = matchedExps.reduce((sum, exp) => sum + (exp.totalAmount || exp.billAmount || 0), 0);
             
             return (
               <motion.div
@@ -471,8 +608,17 @@ export const VehiclesView = ({
                 <div className="p-6 pb-4 border-b border-slate-100 space-y-3">
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-950 font-mono text-sm font-black rounded-lg inline-block shadow-sm">
-                        {v.vehicleNumber}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-950 font-mono text-sm font-black rounded-lg inline-block shadow-sm">
+                          {v.vehicleNumber}
+                        </div>
+                        <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border ${
+                          v.ownershipType === 'Personal' ? 'bg-indigo-50 text-indigo-800 border-indigo-200' :
+                          v.ownershipType === 'Other' ? 'bg-fuchsia-50 text-fuchsia-800 border-fuchsia-200' :
+                          'bg-sky-50 text-sky-800 border-sky-200'
+                        }`}>
+                          {v.ownershipType || 'Company'}
+                        </span>
                       </div>
                       <h3 className="text-slate-800 font-black text-sm mt-1.5 flex items-center gap-1.5">
                         {v.model || "Unknown Model"}
@@ -536,6 +682,24 @@ export const VehiclesView = ({
                         {v.documents?.length || 0} Attached
                       </span>
                     </div>
+
+                    <div className="space-y-0.5 col-span-2 border-t border-slate-100/70 pt-2.5 mt-1 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="text-[9px] uppercase font-black text-slate-400 block tracking-widest">Parking Permit Expiry</span>
+                        <span className={`font-mono font-bold block ${
+                          v.parkingPermitExpiryDate && getDaysLeft(v.parkingPermitExpiryDate) !== null && (getDaysLeft(v.parkingPermitExpiryDate) || 0) <= 0 ? 'text-rose-650 font-extrabold animate-pulse' : 
+                          v.parkingPermitExpiryDate && getDaysLeft(v.parkingPermitExpiryDate) !== null && (getDaysLeft(v.parkingPermitExpiryDate) || 0) <= 30 ? 'text-amber-600 font-extrabold' : 'text-slate-700'
+                        }`}>
+                          {v.parkingPermitExpiryDate || "N/A"}
+                        </span>
+                      </div>
+                      {v.parkingPermitIssueDate && (
+                        <div className="text-right">
+                          <span className="text-[8px] uppercase font-black text-slate-400 block tracking-widest">Issue Date</span>
+                          <span className="font-mono text-slate-500 font-bold block">{v.parkingPermitIssueDate}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {alerts.length > 0 && (
@@ -548,7 +712,12 @@ export const VehiclesView = ({
                           const statusTxt = a.days < 0 ? `EXPIRED by ${Math.abs(a.days)} days` : `expiring in ${a.days} days`;
                           return (
                             <div key={i} className="flex justify-between">
-                              <span className="capitalize">{a.type === 'reg' ? 'Mulkiya Card' : a.type === 'ins' ? 'Insurance' : 'Vehicle Inspection'}</span>
+                              <span className="capitalize">
+                                {a.type === 'reg' ? 'Mulkiya Card' : 
+                                 a.type === 'ins' ? 'Insurance' : 
+                                 a.type === 'insp' ? 'Vehicle Inspection' : 
+                                 'Parking Permit'}
+                              </span>
                               <span className="font-bold font-mono">{statusTxt}</span>
                             </div>
                           );
@@ -562,6 +731,40 @@ export const VehiclesView = ({
                       {v.remarks}
                     </p>
                   )}
+
+                  {/* Everyday Expenses Connection block */}
+                  <div className="pt-3 border-t border-slate-100">
+                    {matchedExps.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowExpensesModal({ vehicle: v, expenses: matchedExps })}
+                        className="w-full p-3 bg-emerald-50/40 hover:bg-emerald-50/80 border border-emerald-100/70 rounded-2xl flex items-center justify-between text-left group transition-all cursor-pointer shadow-sm"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-750 font-black group-hover:scale-105 transition-all text-xs">
+                            {matchedExps.length}
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black uppercase text-emerald-900 tracking-wider block">View Bills</span>
+                            <span className="text-[10px] font-bold text-slate-500 block leading-tight font-sans">View matched transactions & slips</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[9px] text-slate-400 block font-black uppercase tracking-widest">Total cost</span>
+                          <span className="text-xs font-black text-emerald-950 font-mono">
+                            AED {totalExpenseAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </button>
+                    ) : (
+                      <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between text-[11px] text-slate-400 font-semibold select-none">
+                        <span className="flex items-center gap-1">
+                          <Car className="w-3.5 h-3.5 text-slate-300" /> No recorded expenses matching
+                        </span>
+                        <span className="font-mono text-[10px]">AED 0.00</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Footer buttons */}
@@ -713,7 +916,7 @@ export const VehiclesView = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block ml-1">
                         Assigned Driver
@@ -726,6 +929,22 @@ export const VehiclesView = ({
                         onChange={e => setShowModal({ ...showModal, driverName: e.target.value })}
                         className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 hover:bg-slate-50 transition-all disabled:bg-slate-50 disabled:text-slate-800"
                       />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block ml-1">
+                        Vehicle Ownership
+                      </label>
+                      <select
+                        disabled={viewMode}
+                        value={showModal.ownershipType || 'Company'}
+                        onChange={e => setShowModal({ ...showModal, ownershipType: e.target.value as any })}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 hover:bg-slate-50 transition-all disabled:bg-slate-50 disabled:text-slate-800 cursor-pointer"
+                      >
+                        <option value="Company">Company Vehicle</option>
+                        <option value="Personal">Personal Vehicle</option>
+                        <option value="Other">Other Vehicle</option>
+                      </select>
                     </div>
 
                     <div className="space-y-1">
@@ -842,6 +1061,42 @@ export const VehiclesView = ({
                         value={showModal.insuranceExpiryDate || ''}
                         onChange={e => setShowModal({ ...showModal, insuranceExpiryDate: e.target.value })}
                         className="w-full px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2.5: Parking Permit Particulars */}
+                <div className="space-y-4 p-5 bg-slate-50/50 border border-slate-150 rounded-2xl">
+                  <h3 className="text-xs font-black uppercase text-indigo-900 tracking-wider flex items-center gap-1.5 border-b border-indigo-100/50 pb-2 select-none">
+                    <Calendar className="w-4 h-4 text-amber-600" />
+                    Parking Permit Particulars
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block ml-0.5">
+                        Parking Permit Issue Date
+                      </label>
+                      <input
+                        type="date"
+                        disabled={viewMode}
+                        value={showModal.parkingPermitIssueDate || ''}
+                        onChange={e => setShowModal({ ...showModal, parkingPermitIssueDate: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 block ml-0.5">
+                        Parking Permit Expiration Date
+                      </label>
+                      <input
+                        type="date"
+                        disabled={viewMode}
+                        value={showModal.parkingPermitExpiryDate || ''}
+                        onChange={e => setShowModal({ ...showModal, parkingPermitExpiryDate: e.target.value })}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                     </div>
                   </div>
@@ -1130,6 +1385,471 @@ export const VehiclesView = ({
                   className="py-1.5 px-4 bg-slate-200 hover:bg-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
                 >
                   Close Preview
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Vehicle Expenses / Bills List Modal */}
+      <AnimatePresence>
+        {showExpensesModal && (() => {
+          const now = new Date();
+          const currentYearStr = now.getFullYear().toString();
+          const currentMonthStr = (now.getMonth() + 1).toString().padStart(2, '0');
+          const currentYearMonth = `${currentYearStr}-${currentMonthStr}`;
+
+          const getMonthYearString = (dateStr: string) => {
+            if (!dateStr) return 'Unknown Month';
+            const parts = dateStr.split('-');
+            if (parts.length >= 2) {
+              const year = parts[0];
+              const monthIndex = parseInt(parts[1], 10) - 1;
+              if (monthIndex >= 0 && monthIndex < 12) {
+                const monthNames = [
+                  'January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December'
+                ];
+                return `${monthNames[monthIndex]} ${year}`;
+              }
+            }
+            return 'Unknown Month';
+          };
+
+          const groupedExpenses: { [key: string]: number } = {};
+          const currentMonthLabel = getMonthYearString(`${currentYearStr}-${currentMonthStr}-01`);
+          let currentMonthTotal = 0;
+
+          showExpensesModal.expenses.forEach(exp => {
+            const amount = exp.totalAmount || exp.billAmount || 0;
+            if (exp.date && exp.date.startsWith(currentYearMonth)) {
+              currentMonthTotal += amount;
+            }
+            const monthKey = getMonthYearString(exp.date);
+            groupedExpenses[monthKey] = (groupedExpenses[monthKey] || 0) + amount;
+          });
+
+          const totalLifetimeAmount = showExpensesModal.expenses.reduce((sum, exp) => sum + (exp.totalAmount || exp.billAmount || 0), 0);
+
+          return (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl relative overflow-hidden border border-slate-150 flex flex-col max-h-[90vh]"
+              >
+                {/* Header */}
+                <div className="p-6 bg-slate-50 border-b border-slate-150 flex items-center justify-between animate-none">
+                  <div>
+                    <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                      <Car className="w-5 h-5 text-emerald-600" />
+                      Expense Records for Plate: {showExpensesModal.vehicle.vehicleNumber}
+                    </h3>
+                    <p className="text-xs font-semibold text-slate-500 mt-0.5 animate-none">
+                      {showExpensesModal.vehicle.model || "Unknown Model"} &bull; {showExpensesModal.expenses.length} Matched bills / cash records
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowExpensesModal(null)}
+                    className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-700 rounded-lg transition-all cursor-pointer"
+                  >
+                    <X className="w-5 h-5 flex-shrink-0" />
+                  </button>
+                </div>
+
+                {/* Table / List & Charts Layout */}
+                <div className="flex-grow p-6 overflow-y-auto space-y-6">
+                  {/* Point 1: Monthly / Lifetime summary card */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Current Month & Lifetime Overview */}
+                    <div className="bg-gradient-to-br from-indigo-50/50 to-indigo-100/40 p-5 rounded-2xl border border-indigo-100 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 text-indigo-900">
+                          <Calendar className="w-4 h-4 text-indigo-600" />
+                          <span className="text-xs font-black uppercase tracking-wider">Expenditure Focus</span>
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-4">
+                          <div>
+                            <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Current Month ({currentMonthLabel})</span>
+                            <span className="text-lg font-black text-indigo-950 font-mono mt-0.5 block">
+                              AED {currentMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Lifetime Verified</span>
+                            <span className="text-lg font-black text-slate-800 font-mono mt-0.5 block">
+                              AED {totalLifetimeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Month-Wise Trend Breakdown */}
+                    <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-150 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 text-slate-700">
+                          <TrendingUp className="w-4 h-4 text-slate-500" />
+                          <span className="text-xs font-black uppercase tracking-wider">Month-Wise Distribution</span>
+                        </div>
+                        <div className="mt-3.5 max-h-[85px] overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                          {Object.entries(groupedExpenses).length > 0 ? (
+                            Object.entries(groupedExpenses).map(([monthLabel, totalAmt]) => (
+                              <div key={monthLabel} className="flex items-center justify-between text-xs py-1 border-b border-dashed border-slate-200 last:border-0 hover:bg-slate-100/40 px-1 rounded-md transition-all">
+                                <span className="font-extrabold text-slate-600">{monthLabel}</span>
+                                <span className="font-black text-slate-900 font-mono">AED {totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <span className="text-xs font-medium text-slate-400 italic block">No month data available</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* List / Table of matched transactions */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Transaction History</h4>
+                      <span className="text-[11px] text-indigo-650 font-bold hidden sm:inline">Tip: Click on any record row to view voucher details & receipt</span>
+                    </div>
+
+                    <div className="overflow-hidden border border-slate-150 rounded-2xl bg-white shadow-sm">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-150 text-[10px] uppercase font-black text-slate-400 tracking-wider">
+                            <th className="p-4">Date</th>
+                            <th className="p-4">Supplier / Shop</th>
+                            <th className="p-4">Description</th>
+                            <th className="p-4 text-right">Total Amount</th>
+                            <th className="p-4 text-center">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium text-slate-750">
+                          {showExpensesModal.expenses.map((exp) => (
+                            <tr 
+                              key={exp.id} 
+                              onClick={() => setSelectedExpenseDetail(exp)}
+                              className="hover:bg-indigo-50/40 transition bg-white cursor-pointer group/row"
+                            >
+                              <td className="p-4 font-mono font-bold text-slate-650">{exp.date}</td>
+                              <td className="p-4 truncate max-w-[140px] font-black text-slate-800">
+                                {exp.shopName || exp.supplierName || "-"}
+                              </td>
+                              <td className="p-4 font-semibold text-slate-500 truncate max-w-[200px]" title={exp.description}>
+                                {exp.description || "-"}
+                              </td>
+                              <td className="p-4 text-right font-black text-emerald-600 font-mono">
+                                AED {(exp.totalAmount || exp.billAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td className="p-4 text-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedExpenseDetail(exp);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-[10px] font-black rounded-lg transition"
+                                >
+                                  <Eye className="w-3.5 h-3.5" /> View details
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-6 bg-slate-50 border-t border-slate-150 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-black text-slate-400 tracking-widest block">Aggregate Fuel/Expense Total</span>
+                    <span className="text-base font-black text-emerald-950 font-mono">
+                      AED {totalLifetimeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowExpensesModal(null)}
+                    className="px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-55 text-slate-600 font-bold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* Transaction Details Modal */}
+      <AnimatePresence>
+        {selectedExpenseDetail && (
+          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-[55] p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl relative overflow-hidden border border-slate-200 flex flex-col max-h-[85vh] font-sans"
+            >
+              {/* Header */}
+              <div className="p-6 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-black uppercase text-indigo-600 tracking-widest block">Transaction Voucher & Details</span>
+                  <h3 className="text-base font-black text-slate-800 flex items-center gap-2 mt-0.5 animate-none">
+                    <FileText className="w-5 h-5 text-indigo-600 animate-none" />
+                    SI No: {selectedExpenseDetail.siNo || "N/A"} &bull; Invoice No: {selectedExpenseDetail.invoiceNo || "N/A"}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedExpenseDetail(null)}
+                  className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-700 rounded-lg transition-all cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Info grid & File display side-by-side */}
+              <div className="flex-grow overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Information Fields Column */}
+                <div className="lg:col-span-7 space-y-6">
+                  {/* Summary Metric Block */}
+                  <div className="p-4 bg-emerald-50/40 rounded-2xl border border-emerald-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-emerald-800 tracking-wider block">Total Amount Paid</span>
+                      <span className="text-2xl font-black text-emerald-950 font-mono block mt-0.5">
+                        AED {selectedExpenseDetail.totalAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
+                      </span>
+                    </div>
+                    <div className="text-right text-xs">
+                      <span className="text-slate-400 font-semibold block">VAT Amount</span>
+                      <span className="font-bold text-slate-750 font-mono block">
+                        AED {selectedExpenseDetail.vatAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
+                      </span>
+                      <span className="text-slate-400 font-semibold block mt-1">Net Base Bill</span>
+                      <span className="font-bold text-slate-500 font-mono block">
+                        AED {selectedExpenseDetail.billAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* General Fields Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider block">Transaction Date</span>
+                      <span className="text-xs font-black text-slate-800 block mt-1 bg-slate-50 px-3 py-2 rounded-xl border border-slate-150 font-mono">{selectedExpenseDetail.date || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider block font-sans">Category Tag</span>
+                      <span className="text-xs font-black text-indigo-700 block mt-1 bg-indigo-50 px-3 py-2 rounded-xl border border-indigo-100 uppercase tracking-widest text-[10px] duration-150 w-max">{selectedExpenseDetail.category || 'General Expense'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider block">Vendor / Shop Name</span>
+                      <span className="text-xs font-bold text-slate-800 block mt-1 bg-slate-50 px-3 py-2 rounded-xl border border-slate-150">{selectedExpenseDetail.shopName || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider block">Supplier Registered</span>
+                      <span className="text-xs font-bold text-slate-800 block mt-1 bg-slate-50 px-3 py-2 rounded-xl border border-slate-150">{selectedExpenseDetail.supplierName || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider block">TRN Number</span>
+                      <span className="text-xs font-bold font-mono text-slate-800 block mt-1 bg-slate-50 px-3 py-2 rounded-xl border border-slate-150">{selectedExpenseDetail.trnNo || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider block">Client Reference</span>
+                      <span className="text-xs font-bold text-slate-800 block mt-1 bg-slate-50 px-3 py-2 rounded-xl border border-slate-150">{selectedExpenseDetail.clientName || 'N/A'}</span>
+                    </div>
+                  </div>
+
+                  {/* Description Box */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider block">Expense Description</span>
+                    <div className="p-3 bg-slate-50 border border-slate-150 rounded-xl text-xs font-semibold text-slate-700 leading-relaxed font-sans">
+                      {selectedExpenseDetail.description || 'No detailed instructions or descriptions specified.'}
+                    </div>
+                  </div>
+
+                  {/* Mileage / Vehicle Tracking Fields */}
+                  {selectedExpenseDetail.isVehicleFuel && (
+                    <div className="space-y-2.5 pt-4 border-t border-slate-150">
+                      <span className="text-[10px] uppercase font-black text-amber-800 tracking-wider block">Vehicle Fuel & Log Tracking</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="p-2.5 bg-amber-50/20 border border-amber-100 rounded-xl">
+                          <span className="text-[9px] uppercase font-black text-slate-400 block">Km Start</span>
+                          <span className="text-xs font-bold text-slate-800 font-mono block mt-0.5">{selectedExpenseDetail.kmStart !== undefined ? selectedExpenseDetail.kmStart.toLocaleString() : 'N/A'}</span>
+                        </div>
+                        <div className="p-2.5 bg-amber-50/20 border border-amber-100 rounded-xl">
+                          <span className="text-[9px] uppercase font-black text-slate-400 block">Km End</span>
+                          <span className="text-xs font-bold text-slate-800 font-mono block mt-0.5">{selectedExpenseDetail.kmEnd !== undefined ? selectedExpenseDetail.kmEnd.toLocaleString() : 'N/A'}</span>
+                        </div>
+                        <div className="p-2.5 bg-amber-50/20 border border-amber-100 rounded-xl">
+                          <span className="text-[9px] uppercase font-black text-slate-400 block">Km Run</span>
+                          <span className="text-xs font-black text-emerald-800 font-mono block mt-0.5">{selectedExpenseDetail.kmRun !== undefined ? `${selectedExpenseDetail.kmRun.toLocaleString()} KM` : 'N/A'}</span>
+                        </div>
+                        <div className="p-2.5 bg-amber-50/20 border border-amber-100 rounded-xl">
+                          <span className="text-[9px] uppercase font-black text-slate-400 block">Driver Sign</span>
+                          <span className="text-xs font-bold text-slate-800 truncate block mt-0.5">{selectedExpenseDetail.vehicleDriver || 'N/A'}</span>
+                        </div>
+                      </div>
+                      
+                      {selectedExpenseDetail.vehicleRemarks && (
+                        <div className="p-3 bg-amber-50/10 border border-amber-100/50 rounded-xl text-[11px] font-semibold text-amber-955 mt-2">
+                          <span className="font-bold">Log Remarks: </span>{selectedExpenseDetail.vehicleRemarks}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Digital Attachment Preview Column */}
+                <div className="lg:col-span-5 flex flex-col space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Receipt Bill Slip / Image</span>
+                    {selectedExpenseDetail.attachment && (
+                      <button
+                        type="button"
+                        onClick={() => setViewingExpenseBill(selectedExpenseDetail)}
+                        className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-indigo-650 hover:text-indigo-850 cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Fullscreen Lightbox
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex-grow border border-slate-200 rounded-2xl bg-slate-50 overflow-hidden flex flex-col justify-center items-center p-3 relative min-h-[300px] max-h-[500px]">
+                    {selectedExpenseDetail.attachment ? (
+                      selectedExpenseDetail.attachment.startsWith('data:image/') ? (
+                        <img
+                          src={selectedExpenseDetail.attachment}
+                          alt="Bill slip thumbnail"
+                          referrerPolicy="no-referrer"
+                          className="max-h-full max-w-full rounded-xl object-contain shadow-sm cursor-pointer hover:opacity-95 transition"
+                          onClick={() => setViewingExpenseBill(selectedExpenseDetail)}
+                        />
+                      ) : selectedExpenseDetail.attachment.startsWith('data:application/pdf') ? (
+                        <div className="text-center p-4 space-y-3">
+                          <FileText className="w-12 h-12 text-indigo-500 mx-auto" />
+                          <span className="text-xs font-bold text-slate-700 block">PDF Document Bill Uploaded</span>
+                          <a
+                            href={selectedExpenseDetail.attachment}
+                            download={`Receipt_${selectedExpenseDetail.invoiceNo || selectedExpenseDetail.id}.pdf`}
+                            className="inline-block px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black shadow-sm transition mt-2 cursor-pointer"
+                          >
+                            Download PDF Attachment
+                          </a>
+                        </div>
+                      ) : (
+                        <iframe
+                          src={selectedExpenseDetail.attachment}
+                          title="Voucher document inline copy"
+                          className="w-full h-full border-none rounded-xl"
+                        />
+                      )
+                    ) : (
+                      <div className="text-center p-6 space-y-2 select-none">
+                        <Paperclip className="w-10 h-10 text-slate-300 mx-auto" />
+                        <span className="text-xs font-bold text-slate-400 block uppercase tracking-wider">No Attachment Slips</span>
+                        <p className="text-[10px] font-semibold text-slate-400">This transaction was logged physically without digital receipts.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-[10px] font-bold font-mono text-slate-500">Date Logged: {selectedExpenseDetail.uploadedDate || selectedExpenseDetail.date || 'N/A'}</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedExpenseDetail(null)}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-md shadow-indigo-100"
+                  >
+                    Close Voucher
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Bill Image / Slip Lightbox Viewer Modal */}
+      <AnimatePresence>
+        {viewingExpenseBill && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-[70] p-4 font-sans">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl relative flex flex-col max-h-[85vh] border border-slate-200"
+            >
+              <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between animate-none">
+                <div>
+                  <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-indigo-650" />
+                    Receipt Bill Voucher: {viewingExpenseBill.invoiceNo || viewingExpenseBill.id}
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-bold block mt-0.5 uppercase tracking-wide">
+                    Amount: AED {(viewingExpenseBill.totalAmount || viewingExpenseBill.billAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} &bull; Supplier: {viewingExpenseBill.shopName || viewingExpenseBill.supplierName || "-"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingExpenseBill(null)}
+                  className="p-1.5 hover:bg-slate-200 text-slate-400 hover:text-slate-705 rounded-lg transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-grow p-4 bg-slate-100 flex items-center justify-center overflow-auto min-h-[350px]">
+                {viewingExpenseBill.attachment && viewingExpenseBill.attachment.startsWith('data:image/') ? (
+                  <img
+                    src={viewingExpenseBill.attachment}
+                    alt="Expense Slip voucher receipt"
+                    referrerPolicy="no-referrer"
+                    className="max-w-full max-h-[60vh] object-contain rounded-xl shadow-md border border-slate-200"
+                  />
+                ) : viewingExpenseBill.attachment && viewingExpenseBill.attachment.startsWith('data:application/pdf') ? (
+                  <div className="w-full h-full flex flex-col justify-center items-center p-6 text-center space-y-3">
+                    <FileText className="w-16 h-16 text-indigo-600" />
+                    <p className="text-sm font-bold text-slate-700">PDF Document Attachment Included</p>
+                    <p className="text-xs text-slate-500">Embedded PDF rendering might be restricted, click below to safely download your copy.</p>
+                    <a
+                      href={viewingExpenseBill.attachment}
+                      download={`Bill_${viewingExpenseBill.invoiceNo || viewingExpenseBill.id}.pdf`}
+                      className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:bg-indigo-700 transition cursor-pointer"
+                    >
+                      Retrieve / Download PDF
+                    </a>
+                  </div>
+                ) : viewingExpenseBill.attachment ? (
+                  <iframe
+                    src={viewingExpenseBill.attachment}
+                    title="Voucher document copy"
+                    className="w-full h-full min-h-[450px] border-none rounded-xl"
+                  />
+                ) : (
+                  <div className="p-8 text-center text-slate-400 font-bold">No attachment file associated.</div>
+                )}
+              </div>
+
+              <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-[10px] text-slate-500 font-bold font-mono">Date Recorded: {viewingExpenseBill.date}</span>
+                <button
+                  type="button"
+                  onClick={() => setViewingExpenseBill(null)}
+                  className="py-1.5 px-4 bg-slate-200 hover:bg-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Close Bill
                 </button>
               </div>
             </motion.div>

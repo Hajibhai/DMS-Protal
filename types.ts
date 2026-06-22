@@ -752,8 +752,11 @@ export interface Vehicle {
     inspectionExpiryDate?: string; // inspection expiry date YYYY-MM-DD
     inspectionStatus?: 'Passed' | 'Failed' | 'Pending' | 'Needed' | 'N/A';
     status: 'Active' | 'Inactive' | 'Under Maintenance' | 'Sold';
+    ownershipType?: 'Company' | 'Personal' | 'Other';
     driverName?: string;
     remarks?: string;
+    parkingPermitIssueDate?: string;
+    parkingPermitExpiryDate?: string;
     documents?: VehicleDocument[];
     createdAt?: string;
     updatedAt?: string;
