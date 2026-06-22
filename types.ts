@@ -368,6 +368,10 @@ export interface EverydayExpense {
     endTime?: string;
     vehicleDriver?: string;
     vehicleRemarks?: string;
+    invoiceNoOriginal?: string;
+    invoiceChanged?: boolean;
+    invoiceChangedBy?: string;
+    invoiceChangedTime?: string;
 }
 
 export interface DashboardStats {

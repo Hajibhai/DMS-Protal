@@ -58,6 +58,7 @@ import { Vendor, AccountsPayable, AccountsReceivable, PettyCash,
 } from '../types';
 import { PrintModal, PrintOptions } from './PrintModal';
 import { GoogleDriveManager } from './GoogleDriveManager';
+import { saveEverydayExpense } from '../services/storageService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 
 /**
@@ -197,6 +198,7 @@ interface DataTableProps<T> {
         options: { label: string; value: string }[];
     }[];
     onUploadExcel?: (event: React.ChangeEvent<HTMLInputElement>) => void;
+    onUploadClick?: () => void;
     customSearch?: (item: T, query: string) => boolean;
     enableMultiSelect?: boolean;
     onBulkDelete?: (items: T[]) => void | Promise<void>;
@@ -225,6 +227,7 @@ export function DataTable<T extends { id: string }>({
     user,
     filterOptions = [],
     onUploadExcel,
+    onUploadClick,
     customSearch,
     enableMultiSelect,
     onBulkDelete,
@@ -576,7 +579,15 @@ export function DataTable<T extends { id: string }>({
                         <Printer className="w-4 h-4" />
                         Print A4
                     </button>
-                    {onUploadExcel && (
+                    {onUploadClick ? (
+                        <button 
+                            onClick={onUploadClick}
+                            className="flex items-center gap-2 px-5 py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-2xl text-sm font-bold transition-all active:scale-95 shadow-sm whitespace-nowrap"
+                        >
+                            <Upload className="w-4 h-4 text-indigo-600" />
+                            Upload Excel
+                        </button>
+                    ) : onUploadExcel ? (
                         <label className="flex items-center gap-2 px-5 py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-2xl text-sm font-bold transition-all active:scale-95 shadow-sm cursor-pointer whitespace-nowrap">
                             <Upload className="w-4 h-4 text-indigo-600" />
                             <span>Upload Excel</span>
@@ -587,7 +598,7 @@ export function DataTable<T extends { id: string }>({
                                 onChange={onUploadExcel}
                             />
                         </label>
-                    )}
+                    ) : null}
                     {onAdd && (
                         <button 
                             onClick={onAdd}
@@ -13809,6 +13820,315 @@ export const EverydayExpenseView: React.FC<{
     const [selectedMonth, setSelectedMonth] = useState<string>('');
     const [selectedYear, setSelectedYear] = useState<string>('');
 
+    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [uploadStep, setUploadStep] = useState<'instructions' | 'parsing' | 'uploading' | 'completed'>('instructions');
+    const [excelRows, setExcelRows] = useState<any[]>([]);
+    const [uploadProgress, setUploadProgress] = useState<number>(0);
+    const [uploadLogs, setUploadLogs] = useState<string[]>([]);
+    const [stats, setStats] = useState({ total: 0, valid: 0, warnings: 0, invalid: 0 });
+
+    const downloadExcelTemplate = () => {
+        const sampleData = [
+            {
+                "Date": "2026-06-22",
+                "Invoice No": "INV-100235",
+                "TRN No": "100223502500003",
+                "Client Name": "PIONEER CORP",
+                "Supplier Name": "ADNOC Distribution",
+                "Shop Name": "676 AL NOWAYS",
+                "Bill Amount": 149.52,
+                "VAT Amount": 7.48,
+                "Total Amount": 157.00,
+                "Description": "ULS-95 octane vehicle refuel",
+                "Category": "Fuel",
+                "Project": "All Projects",
+                "Vehicle Number": "AD-12405",
+                "Vehicle Driver": "Riyas",
+                "Vehicle Remarks": "Main maintenance car"
+            },
+            {
+                "Date": "2026-06-23",
+                "Invoice No": "INV-15702",
+                "TRN No": "100069993200003",
+                "Client Name": "-",
+                "Supplier Name": "Moon Flower Buildings",
+                "Shop Name": "Main Br.",
+                "Bill Amount": 190.48,
+                "VAT Amount": 9.52,
+                "Total Amount": 200.00,
+                "Description": "Corporate office cleaning tools",
+                "Category": "Supplies",
+                "Project": "",
+                "Vehicle Number": "",
+                "Vehicle Driver": "",
+                "Vehicle Remarks": ""
+            }
+        ];
+        const ws = XLSX.utils.json_to_sheet(sampleData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Everyday Expenses Template");
+        ws['!cols'] = Object.keys(sampleData[0]).map(() => ({ wch: 18 }));
+        XLSX.writeFile(wb, "Everyday_Expenses_Import_Template.xlsx");
+    };
+
+    const handleReadFile = (file: File) => {
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const bstr = evt.target?.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                
+                const rawData: any[] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+                if (!rawData || rawData.length < 2) {
+                    alert("No data found or columns missing in Excel sheet.");
+                    return;
+                }
+
+                let headerRowIndex = 0;
+                for (let i = 0; i < Math.min(rawData.length, 10); i++) {
+                    const row = rawData[i];
+                    if (row && row.some((cell: any) => {
+                        const val = String(cell).toLowerCase().trim();
+                        return val.includes('bill amount') || val.includes('shop name') || val.includes('invoice no') || val.includes('trn');
+                    })) {
+                        headerRowIndex = i;
+                        break;
+                    }
+                }
+
+                const headers = rawData[headerRowIndex].map((h: any) => String(h || '').trim().toLowerCase());
+                
+                const idxDate = headers.findIndex((h: string) => h.includes('date') || h === 'day');
+                const idxInvoiceNo = headers.findIndex((h: string) => h.includes('invoice no') || h.includes('invoice #') || h.includes('invoice number') || h.includes('bill no') || h.includes('bill number') || h === 'ref');
+                const idxTrnNo = headers.findIndex((h: string) => h.includes('trn') || h.includes('trn no') || h.includes('trn number'));
+                const idxClientName = headers.findIndex((h: string) => h.includes('client') || h.includes('client name'));
+                const idxSupplierName = headers.findIndex((h: string) => h.includes('supplier') || h.includes('supplier name') || h.includes('vendor'));
+                const idxShopName = headers.findIndex((h: string) => h.includes('shop') || h.includes('shop name') || h.includes('store'));
+                const idxBillAmount = headers.findIndex((h: string) => h === 'amount' || h.includes('bill amount') || h.includes('base amount') || h.includes('subtotal'));
+                const idxVatAmount = headers.findIndex((h: string) => h === 'vat' || h.includes('vat amount') || h.includes('tax'));
+                const idxTotalAmount = headers.findIndex((h: string) => h.includes('total') || h.includes('total amount') || h.includes('net amount'));
+                const idxDescription = headers.findIndex((h: string) => h.includes('description') || h.includes('details') || h.includes('purpose') || h.includes('remarks'));
+                const idxCategory = headers.findIndex((h: string) => h.includes('category') || h.includes('exp type') || h.includes('type'));
+                const idxProject = headers.findIndex((h: string) => h.includes('project') || h.includes('job'));
+                const idxVehicle = headers.findIndex((h: string) => h.includes('vehicle') || h.includes('plate no') || h.includes('plate number') || h.includes('car'));
+                const idxDriver = headers.findIndex((h: string) => h.includes('driver') || h.includes('vehicle driver'));
+                const idxVehicleRemarks = headers.findIndex((h: string) => h.includes('vehicle remarks') || h.includes('remarks'));
+
+                const evaluatedList: any[] = [];
+                let validCount = 0;
+                let warningCount = 0;
+                let invalidCount = 0;
+
+                const uploaderName = user?.name || '';
+                const uploaderUid = user?.uid || '';
+                
+                const userExpenses = data.filter(ee => 
+                  (ee.uploadedByUid && uploaderUid && ee.uploadedByUid === uploaderUid) || 
+                  (ee.uploadedBy && uploaderName && ee.uploadedBy.toLowerCase() === uploaderName.toLowerCase())
+                );
+                let siNoCounter = userExpenses.length + 1;
+
+                for (let r = headerRowIndex + 1; r < rawData.length; r++) {
+                    const row = rawData[r];
+                    if (!row || row.length === 0) continue;
+
+                    const hasContent = row.some((c: any) => c !== undefined && c !== null && String(c).trim() !== '');
+                    if (!hasContent) continue;
+
+                    let rowWarnings: string[] = [];
+                    let rowErrors: string[] = [];
+
+                    let expenseDate = new Date().toISOString().split('T')[0];
+                    if (idxDate !== -1 && row[idxDate] !== undefined) {
+                        try {
+                            let rawDate = String(row[idxDate]).trim();
+                            if (rawDate && rawDate !== 'undefined') {
+                                if (!isNaN(Number(rawDate))) {
+                                    const serial = Number(rawDate);
+                                    const dateObj = new Date((serial - 25569) * 86400 * 1000);
+                                    expenseDate = dateObj.toISOString().split('T')[0];
+                                } else {
+                                    expenseDate = new Date(rawDate).toISOString().split('T')[0];
+                                }
+                            } else {
+                                rowWarnings.push("No date provided; fallback to today's date");
+                            }
+                        } catch (e) {
+                            rowWarnings.push("Invalid date format; fallback to today's date");
+                        }
+                    } else {
+                        rowWarnings.push("No date column resolved; default to today's date");
+                    }
+
+                    const invoiceNo = idxInvoiceNo !== -1 && row[idxInvoiceNo] !== undefined ? String(row[idxInvoiceNo]).trim() : '';
+                    if (!invoiceNo) {
+                        rowWarnings.push("Invoice No missing; auto-generating temporary reference");
+                    }
+                    const finalInvoiceNo = invoiceNo || `MOCK-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+
+                    const trnNo = idxTrnNo !== -1 && row[idxTrnNo] !== undefined ? String(row[idxTrnNo]).trim() : '';
+                    const clientName = idxClientName !== -1 && row[idxClientName] !== undefined ? String(row[idxClientName]).trim() : '-';
+                    const supplierName = idxSupplierName !== -1 && row[idxSupplierName] !== undefined ? String(row[idxSupplierName]).trim() : '';
+                    const shopName = idxShopName !== -1 && row[idxShopName] !== undefined ? String(row[idxShopName]).trim() : '';
+                    
+                    const rawBillAmt = idxBillAmount !== -1 && row[idxBillAmount] !== undefined ? Number(String(row[idxBillAmount]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+                    const rawVatAmt = idxVatAmount !== -1 && row[idxVatAmount] !== undefined ? Number(String(row[idxVatAmount]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+                    const rawTotalAmt = idxTotalAmount !== -1 && row[idxTotalAmount] !== undefined ? Number(String(row[idxTotalAmount]).replace(/[^0-9.-]/g, '')) || 0 : 0;
+                    
+                    let billAmount = rawBillAmt;
+                    let vatAmount = rawVatAmt;
+                    let totalAmount = rawTotalAmt;
+
+                    if (totalAmount > 0 && billAmount === 0) {
+                        vatAmount = Number((totalAmount * 0.05 / 1.05).toFixed(2));
+                        billAmount = Number((totalAmount - vatAmount).toFixed(2));
+                        rowWarnings.push("Calculated subtotal/VAT amounts dynamically based on Total Amount");
+                    } else if (billAmount > 0 && totalAmount === 0) {
+                        if (vatAmount === 0) {
+                            vatAmount = Number((billAmount * 0.05).toFixed(2));
+                            rowWarnings.push("Calculated 5% VAT automatically based on Bill Amount");
+                        }
+                        totalAmount = Number((billAmount + vatAmount).toFixed(2));
+                    } else if (billAmount > 0 && vatAmount > 0 && totalAmount === 0) {
+                        totalAmount = Number((billAmount + vatAmount).toFixed(2));
+                    }
+
+                    if (totalAmount === 0 && billAmount === 0) {
+                        rowErrors.push("Amount statistics missing: Both Bill Amount and Total Amount are 0");
+                    }
+
+                    const description = idxDescription !== -1 && row[idxDescription] !== undefined ? String(row[idxDescription]).trim() : 'Imported via Excel';
+                    let category = idxCategory !== -1 && row[idxCategory] !== undefined ? String(row[idxCategory]).trim() : '';
+                    if (!category) {
+                        const descLower = description.toLowerCase();
+                        if (descLower.includes('fuel') || descLower.includes('petrol') || descLower.includes('diesel') || descLower.includes('refuel') || descLower.includes('adnoc')) {
+                            category = 'Fuel';
+                        } else if (descLower.includes('repair') || descLower.includes('maintenance') || descLower.includes('service') || descLower.includes('parts')) {
+                            category = 'Repair';
+                        } else if (descLower.includes('stationery') || descLower.includes('office') || descLower.includes('cleaning') || descLower.includes('pantry') || descLower.includes('water')) {
+                            category = 'Supplies';
+                        } else {
+                            category = 'General';
+                        }
+                        rowWarnings.push(`No category mapped; classified as '${category}' based on description scan`);
+                    }
+
+                    let projectId = '';
+                    if (idxProject !== -1 && row[idxProject] !== undefined) {
+                        const projVal = String(row[idxProject]).trim().toLowerCase();
+                        if (projVal) {
+                            const matchedProj = (projects || []).find((p: any) => 
+                                p.name?.toLowerCase().includes(projVal) || 
+                                projVal.includes(p.name?.toLowerCase())
+                            );
+                            if (matchedProj) {
+                                projectId = matchedProj.id;
+                            } else {
+                                rowWarnings.push(`Could not map project named '${row[idxProject]}' to database`);
+                            }
+                        }
+                    }
+
+                    const vehicleNumber = idxVehicle !== -1 && row[idxVehicle] !== undefined ? String(row[idxVehicle]).trim() : '';
+                    const vehicleDriver = idxDriver !== -1 && row[idxDriver] !== undefined ? String(row[idxDriver]).trim() : '';
+                    const vehicleRemarks = idxVehicleRemarks !== -1 && row[idxVehicleRemarks] !== undefined ? String(row[idxVehicleRemarks]).trim() : '';
+                    const isVehicleFuel = category.toLowerCase() === 'fuel';
+
+                    if (isVehicleFuel && !vehicleNumber) {
+                        rowWarnings.push(`Fuel expense row lacks an identifying Vehicle Plate Number`);
+                    }
+
+                    const status = rowErrors.length > 0 ? 'invalid' : (rowWarnings.length > 0 ? 'warning' : 'valid');
+                    if (status === 'invalid') invalidCount++;
+                    else if (status === 'warning') warningCount++;
+                    else validCount++;
+
+                    evaluatedList.push({
+                        record: {
+                            id: 'ee_' + Math.random().toString(36).substr(2, 9),
+                            siNo: String(siNoCounter++),
+                            date: expenseDate,
+                            invoiceNo: finalInvoiceNo,
+                            trnNo,
+                            clientName,
+                            supplierName,
+                            shopName,
+                            billAmount,
+                            vatAmount,
+                            totalAmount,
+                            description,
+                            category,
+                            projectId: projectId || undefined,
+                            uploadedBy: uploaderName,
+                            uploadedByUid: uploaderUid,
+                            uploadedDate: new Date().toISOString().split('T')[0],
+                            updatedBy: uploaderName,
+                            updatedByUid: uploaderUid,
+                            isVehicleFuel,
+                            vehicleNumber: vehicleNumber || undefined,
+                            vehicleDriver: vehicleDriver || undefined,
+                            vehicleRemarks: vehicleRemarks || undefined
+                        },
+                        status,
+                        warnings: rowWarnings,
+                        errors: rowErrors,
+                        rawLine: r + 1
+                    });
+                }
+
+                setExcelRows(evaluatedList);
+                setStats({ total: evaluatedList.length, valid: validCount, warnings: warningCount, invalid: invalidCount });
+                setUploadStep('parsing');
+            } catch (err: any) {
+                console.error("Error evaluating excel file: ", err);
+                alert("Failed to parse the Excel file structure. Make sure it isn't password protected.");
+            }
+        };
+        reader.readAsBinaryString(file);
+    };
+
+    const executeBulkImport = async () => {
+        if (excelRows.length === 0) return;
+        setUploadStep('uploading');
+        setUploadProgress(0);
+        setUploadLogs(["Initiating secure database synchronize loop..."]);
+
+        const validRows = excelRows.filter(r => r.status !== 'invalid');
+        if (validRows.length === 0) {
+            setUploadLogs(prev => [...prev, "ERROR: No valid entries found to import.", "Aborted."]);
+            return;
+        }
+
+        let completed = 0;
+        for (let i = 0; i < validRows.length; i++) {
+            const item = validRows[i];
+            try {
+                setUploadLogs(prev => [
+                    ...prev, 
+                    `[Row ${item.rawLine}] Committing Invoice #${item.record.invoiceNo} (${item.record.category}) - Amount: AED ${item.record.totalAmount}...`
+                ]);
+                await saveEverydayExpense(item.record);
+                completed++;
+                setUploadProgress(Math.round(((i + 1) / validRows.length) * 100));
+            } catch (err: any) {
+                setUploadLogs(prev => [
+                    ...prev, 
+                    `❌ [Row ${item.rawLine}] Failed to write: ${err.message || 'Firestore Write Permission Denied'}`
+                ]);
+            }
+        }
+
+        setUploadLogs(prev => [
+            ...prev, 
+            `----------------------------------------`,
+            `🎉 SYNC COMPLETED SUCCESSFULLY!`,
+            `Successfully imported ${completed} of ${validRows.length} expense entries to Firestore.`
+        ]);
+        setUploadStep('completed');
+    };
+
     const months = [
         { label: 'All Months', value: '' },
         { label: 'January', value: '01' },
@@ -13854,7 +14174,23 @@ export const EverydayExpenseView: React.FC<{
     const columns = [
         { key: 'siNo', label: 'SI No', sortable: true },
         { key: 'date', label: 'Date', sortable: true },
-        { key: 'invoiceNo', label: 'Invoice No', sortable: true },
+        { 
+            key: 'invoiceNo', 
+            label: 'Invoice No', 
+            sortable: true,
+            render: (item: EverydayExpense) => (
+                <div className="space-y-0.5 py-1">
+                    <span className="font-extrabold text-slate-850 font-mono text-xs">{item.invoiceNo || 'N/A'}</span>
+                    {item.invoiceChanged && (
+                        <div className="text-[9px] text-amber-800 bg-amber-500/5 border border-amber-500/10 rounded px-1.5 py-0.5 mt-0.5 leading-normal max-w-[155px] font-sans">
+                            <span className="font-black text-amber-900 block truncate">⚠️ Modified Invoice</span>
+                            <span className="text-slate-500 block truncate">By {item.invoiceChangedBy}</span>
+                            <span className="text-slate-400 block font-mono leading-none mt-0.5">{item.invoiceChangedTime ? new Date(item.invoiceChangedTime).toLocaleDateString() : '-'}</span>
+                        </div>
+                    )}
+                </div>
+            )
+        },
         { key: 'trnNo', label: 'TRN No', sortable: true },
         { key: 'clientName', label: 'Client Name', sortable: true },
         { key: 'supplierName', label: 'Supplier Name', sortable: true },
@@ -14271,7 +14607,13 @@ export const EverydayExpenseView: React.FC<{
                         exportFileName="Everyday_Expenses"
                         user={user}
                         filterOptions={filterOptions}
-                        onUploadExcel={onUploadExcel}
+                        onUploadClick={isAdmin ? () => {
+                            setIsUploadModalOpen(true);
+                            setUploadStep('instructions');
+                            setExcelRows([]);
+                            setUploadProgress(0);
+                            setUploadLogs([]);
+                        } : undefined}
                     />
                 </div>
             ) : (
@@ -14784,6 +15126,24 @@ export const EverydayExpenseView: React.FC<{
                                                 <span className="text-[10px] text-slate-400 block font-bold">Uploaded By</span>
                                                 <span className="font-extrabold text-slate-805 text-[11px]">{selectedLedgerEntry.uploadedBy || "-"}</span>
                                             </div>
+                                            {selectedLedgerEntry.invoiceChanged && (
+                                                <div className="col-span-2 p-3 bg-amber-500/5 border border-amber-500/10 rounded-2xl flex flex-col gap-1 text-left">
+                                                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">⚠️ Invoice Mismatch Audited</span>
+                                                    <p className="text-[11px] text-slate-650 leading-relaxed font-semibold">
+                                                        The invoice number was altered manually from the scanned receipt.
+                                                    </p>
+                                                    <div className="grid grid-cols-2 gap-2 mt-1 border-t border-amber-500/10 pt-1.5 text-[10px]">
+                                                        <div>
+                                                            <span className="text-slate-400 block font-bold">Modified By</span>
+                                                            <span className="font-extrabold text-slate-700">{selectedLedgerEntry.invoiceChangedBy || "Staff"}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-slate-400 block font-bold font-mono">Modified Time</span>
+                                                            <span className="font-extrabold text-slate-750 font-mono text-[10px]">{selectedLedgerEntry.invoiceChangedTime ? new Date(selectedLedgerEntry.invoiceChangedTime).toLocaleString() : "-"}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </>
                                     )}
 
@@ -14972,6 +15332,276 @@ export const EverydayExpenseView: React.FC<{
                     </motion.div>
                 </div>
             )}
+
+            {isUploadModalOpen && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md no-print overflow-y-auto">
+                    <motion.div 
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh] border border-slate-100"
+                    >
+                        {/* Header */}
+                        <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-3 bg-indigo-50 border border-indigo-100/50 rounded-2xl text-indigo-600">
+                                    <FileSpreadsheet className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Everyday Expenses Batch Import Portal</h3>
+                                    <p className="text-slate-500 text-xs font-semibold">Bulk upload operational costs, petrol invoices, and office supplies.</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setIsUploadModalOpen(false)}
+                                className="p-2.5 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm cursor-pointer"
+                                disabled={uploadStep === 'uploading'}
+                            >
+                                <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                            </button>
+                        </div>
+
+                        {/* Step content */}
+                        <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
+                            {uploadStep === 'instructions' && (
+                                <div className="space-y-6">
+                                    {/* Action Buttons: Download Template */}
+                                    <div className="p-5 bg-gradient-to-br from-indigo-50/50 to-brand-50/20 border border-indigo-100 rounded-3xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                        <div className="space-y-1">
+                                            <h4 className="text-sm font-black text-slate-800">Need the correct Excel format?</h4>
+                                            <p className="text-xs text-slate-500 font-semibold leading-relaxed font-semibold">Download our pre-configured template with exact column headings to ensure flawless matching.</p>
+                                        </div>
+                                        <button
+                                            onClick={downloadExcelTemplate}
+                                            className="flex items-center gap-2 px-5 py-3 bg-indigo-650 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md shadow-indigo-600/10 shrink-0"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Download XLSX Template
+                                        </button>
+                                    </div>
+
+                                    {/* Excel Schema Definition Details */}
+                                    <div className="space-y-3">
+                                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Expected Column Schema & Field Rules</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                                    <span className="text-xs font-bold text-slate-800">Required Headers</span>
+                                                </div>
+                                                <ul className="space-y-1.5 text-xs text-slate-500 list-disc list-inside">
+                                                    <li><strong className="text-slate-700 font-bold">Date</strong>: Expense date (e.g. YYYY-MM-DD or excel date)</li>
+                                                    <li><strong className="text-slate-700 font-bold">Invoice No</strong>: Receipt reference number</li>
+                                                    <li><strong className="text-slate-700 font-bold">Supplier Name</strong> / <strong className="text-slate-700 font-bold">Shop Name</strong></li>
+                                                    <li><strong className="text-slate-700 font-bold">Total Amount</strong>: Gross transaction value (numerical)</li>
+                                                </ul>
+                                            </div>
+
+                                            <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                                    <span className="text-xs font-bold text-slate-800">Optional / Smart Fields</span>
+                                                </div>
+                                                <ul className="space-y-1.5 text-xs text-slate-500 list-disc list-inside">
+                                                    <li><strong className="text-slate-700 font-bold">TRN No</strong>: Standard 15-digit Tax registration #</li>
+                                                    <li><strong className="text-slate-700 font-bold">Bill Amount</strong> & <strong className="text-slate-700 font-bold">VAT Amount</strong> (Auto-computed if empty)</li>
+                                                    <li><strong className="text-slate-700 font-bold">Category</strong>: Fuel, Repair, Supplies, General</li>
+                                                    <li><strong className="text-slate-700 font-bold">Vehicle Number</strong>, <strong className="text-slate-700 font-bold">Vehicle Driver</strong> (For fuel category)</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Drop box */}
+                                    <div className="space-y-2">
+                                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Select File to Parse</h4>
+                                        <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-indigo-300 bg-slate-50/50 hover:bg-indigo-50/10 rounded-3xl p-8 text-center cursor-pointer transition-all group">
+                                            <Upload className="w-10 h-10 text-slate-400 group-hover:text-indigo-600 transition-colors mb-3" />
+                                            <p className="text-sm font-bold text-slate-700 mb-1">Drag and drop file here, or click to browse</p>
+                                            <p className="text-xs text-slate-400 font-semibold">Supports .xlsx, .xls, and .csv files up to 25MB</p>
+                                            <input 
+                                                type="file" 
+                                                accept=".xlsx, .xls, .csv" 
+                                                className="hidden" 
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file) handleReadFile(file);
+                                                }}
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+
+                            {uploadStep === 'parsing' && (
+                                <div className="space-y-6">
+                                    {/* Metadata Stats */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                        <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Total Checked</span>
+                                            <span className="text-xl font-black text-slate-800">{stats.total} Rows</span>
+                                        </div>
+                                        <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 block">Perfect Match</span>
+                                            <span className="text-xl font-black text-emerald-700">{stats.valid} Rows</span>
+                                        </div>
+                                        <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-600 block">Warnings (Auto-resolved)</span>
+                                            <span className="text-xl font-black text-amber-700">{stats.warnings} Rows</span>
+                                        </div>
+                                        <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl">
+                                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 block">Fatal Errors (Skipped)</span>
+                                            <span className="text-xl font-black text-rose-700">{stats.invalid} Rows</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Log Breakdown / Records Grid */}
+                                    <div className="space-y-3">
+                                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Rows Inspection List</h4>
+                                        <div className="border border-slate-100 rounded-2xl overflow-hidden max-h-[300px] overflow-y-auto">
+                                            <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                                                <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 sticky top-0">
+                                                    <tr>
+                                                        <th className="p-3">Excel Line</th>
+                                                        <th className="p-3">Date</th>
+                                                        <th className="p-3">Invoice No</th>
+                                                        <th className="p-3">Supplier / Shop</th>
+                                                        <th className="p-3 text-right">Total (AED)</th>
+                                                        <th className="p-3">Inspection Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-50 bg-white">
+                                                    {excelRows.map((row, i) => (
+                                                        <tr key={i} className="hover:bg-slate-50/50">
+                                                            <td className="p-3 font-bold text-slate-400">Line {row.rawLine}</td>
+                                                            <td className="p-3 font-semibold">{row.record.date}</td>
+                                                            <td className="p-3 font-sans font-extrabold text-slate-700">{row.record.invoiceNo}</td>
+                                                            <td className="p-3 font-medium">
+                                                                {row.record.supplierName || '-'}{row.record.shopName ? ` (${row.record.shopName})` : ''}
+                                                            </td>
+                                                            <td className="p-3 text-right font-black text-slate-800">
+                                                                AED {Number(row.record.totalAmount || 0).toFixed(2)}
+                                                            </td>
+                                                            <td className="p-3">
+                                                                {row.status === 'valid' && (
+                                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 px-2 py-0.5 bg-emerald-50 rounded-lg">
+                                                                        <Check className="w-3 h-3" /> Ready
+                                                                    </span>
+                                                                )}
+                                                                {row.status === 'warning' && (
+                                                                    <div className="space-y-1">
+                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 px-2 py-0.5 bg-amber-50 rounded-lg">
+                                                                            <AlertTriangle className="w-3 h-3" /> {row.warnings.length} Warnings
+                                                                        </span>
+                                                                        <p className="text-[9px] text-amber-500 font-semibold leading-tight max-w-xs">{row.warnings[0]}</p>
+                                                                    </div>
+                                                                )}
+                                                                {row.status === 'invalid' && (
+                                                                    <div className="space-y-1">
+                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-600 px-2 py-0.5 bg-rose-50 rounded-lg">
+                                                                            <X className="w-3 h-3" /> Skipped
+                                                                        </span>
+                                                                        <p className="text-[9px] text-rose-500 font-semibold leading-tight max-w-xs">{row.errors.join(', ')}</p>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex items-center justify-between border-t border-slate-100 pt-5">
+                                        <button 
+                                            onClick={() => setUploadStep('instructions')}
+                                            className="px-6 py-3 border border-slate-200 hover:bg-slate-50 rounded-2xl text-xs font-bold text-slate-600 transition-all active:scale-[0.98]"
+                                        >
+                                            Select Different File
+                                        </button>
+                                        <button 
+                                            onClick={executeBulkImport}
+                                            className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.98]"
+                                            disabled={stats.valid + stats.warnings === 0}
+                                        >
+                                            Synchronize {stats.valid + stats.warnings} Records to Firestore
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {uploadStep === 'uploading' && (
+                                <div className="space-y-6 py-4">
+                                    {/* Visual Progress Bar */}
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-xs font-bold text-slate-600">
+                                            <span>Database Import Sync Progression</span>
+                                            <span>{uploadProgress}%</span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden border border-slate-100 shadow-inner">
+                                            <motion.div 
+                                                className="bg-indigo-600 h-full rounded-full"
+                                                initial={{ width: '0%' }}
+                                                animate={{ width: `${uploadProgress}%` }}
+                                                transition={{ duration: 0.1 }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Live sync logs terminal list */}
+                                    <div className="space-y-2">
+                                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Live Sync Logs</h4>
+                                        <div className="p-5 bg-slate-900 border border-slate-950 rounded-2xl h-[240px] overflow-y-auto font-mono text-[11px] text-emerald-450 leading-relaxed shadow-inner">
+                                            {uploadLogs.map((log, index) => (
+                                                <div key={index} className="opacity-90">
+                                                    <span className="text-slate-500 mr-2 select-none">[{index + 1}]</span>
+                                                    {log}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {uploadStep === 'completed' && (
+                                <div className="text-center py-8 space-y-6 max-w-md mx-auto">
+                                    <div className="w-16 h-16 bg-emerald-50 border-2 border-emerald-500 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-md">
+                                        <Check className="w-9 h-9" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h4 className="text-xl sm:text-2xl font-black text-slate-900">Import Synchronized!</h4>
+                                        <p className="text-xs text-slate-500 font-semibold leading-relaxed font-semibold">
+                                            Successfully synchronized <strong className="text-slate-800 font-bold">{stats.valid + stats.warnings}</strong> operational records into your secure cloud Firestore storage perfectly.
+                                        </p>
+                                    </div>
+
+                                    <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex justify-around text-xs font-semibold text-slate-500">
+                                        <div>
+                                            <span className="block text-slate-400 text-[10px] uppercase font-bold">Total Imported</span>
+                                            <strong className="text-base text-slate-800 font-black">{stats.valid + stats.warnings}</strong>
+                                        </div>
+                                        <div className="border-l border-slate-200" />
+                                        <div>
+                                            <span className="block text-slate-400 text-[10px] uppercase font-bold">Failed / Skipped</span>
+                                            <strong className="text-base text-slate-800 font-black">{stats.invalid}</strong>
+                                        </div>
+                                    </div>
+
+                                    <button 
+                                        onClick={() => {
+                                            setIsUploadModalOpen(false);
+                                            window.location.reload();
+                                        }}
+                                        className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all active:scale-[0.98] cursor-pointer shadow-lg shadow-brand-600/10"
+                                    >
+                                        Close and Refresh Dashboard
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                </div>
+            )}
         </>
     );
 };
@@ -15000,7 +15630,11 @@ export const EverydayExpenseModal: React.FC<{
                 category: expense.category || '',
                 startTime: expense.startTime || '',
                 endDate: expense.endDate || '',
-                endTime: expense.endTime || ''
+                endTime: expense.endTime || '',
+                invoiceNoOriginal: expense.invoiceNoOriginal || expense.invoiceNo || '',
+                invoiceChanged: expense.invoiceChanged || false,
+                invoiceChangedBy: expense.invoiceChangedBy || '',
+                invoiceChangedTime: expense.invoiceChangedTime || ''
             };
         }
         return {
@@ -15024,11 +15658,18 @@ export const EverydayExpenseModal: React.FC<{
             employeeId: '',
             startTime: '',
             endDate: '',
-            endTime: ''
+            endTime: '',
+            invoiceNoOriginal: '',
+            invoiceChanged: false,
+            invoiceChangedBy: '',
+            invoiceChangedTime: ''
         };
     });
 
     const [isCategoryManuallyEdited, setIsCategoryManuallyEdited] = useState(!!(expense && expense.category));
+    const isEmployee = user?.role?.toLowerCase() === 'employee';
+    const isSavedExpense = !!expense;
+    const isDeleteBillLocked = isEmployee && isSavedExpense;
 
     // Simple pattern matching for category auto-suggestion
     const suggestCategoryFromDescription = (description: string): string => {
@@ -15217,7 +15858,11 @@ export const EverydayExpenseModal: React.FC<{
                         updatedBy: nameToSuggest,
                         updatedByUid: user?.uid || '',
                         attachment: base64,
-                        isVehicleFuel: !!(data && data.vehicleNumber && data.vehicleNumber.trim()) || prev.isVehicleFuel
+                        isVehicleFuel: !!(data && data.vehicleNumber && data.vehicleNumber.trim()) || prev.isVehicleFuel,
+                        invoiceNoOriginal: data.invoiceNo || '',
+                        invoiceChanged: false,
+                        invoiceChangedBy: '',
+                        invoiceChangedTime: ''
                     };
                     const duplicate = findDuplicateEntry(updated);
                     if (duplicate) {
@@ -15313,7 +15958,11 @@ export const EverydayExpenseModal: React.FC<{
                     updatedBy: uploaderName,
                     updatedByUid: user?.uid || '',
                     attachment: tempImageData.image,
-                    isVehicleFuel: !!(data && data.vehicleNumber && data.vehicleNumber.trim()) || prev.isVehicleFuel
+                    isVehicleFuel: !!(data && data.vehicleNumber && data.vehicleNumber.trim()) || prev.isVehicleFuel,
+                    invoiceNoOriginal: data.invoiceNo || '',
+                    invoiceChanged: false,
+                    invoiceChangedBy: '',
+                    invoiceChangedTime: ''
                 };
                 const duplicate = findDuplicateEntry(updated);
                 if (duplicate) {
@@ -15387,19 +16036,25 @@ export const EverydayExpenseModal: React.FC<{
                         <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
                             <button 
                                 type="button"
+                                disabled={isDeleteBillLocked}
                                 onClick={() => {
                                     if (fileInputRef.current) {
                                         fileInputRef.current.value = '';
                                         fileInputRef.current.click();
                                     }
                                 }}
-                                className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                                className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 ${
+                                    isDeleteBillLocked 
+                                        ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed" 
+                                        : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                                }`}
                             >
                                 <Upload className="w-3.5 h-3.5" />
                                 Upload Photo
                             </button>
                             <button 
                                 type="button"
+                                disabled={isDeleteBillLocked}
                                 onClick={() => {
                                     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
                                     if (isMobile && cameraInputRef.current) {
@@ -15409,7 +16064,11 @@ export const EverydayExpenseModal: React.FC<{
                                         setShowCamera(true);
                                     }
                                 }}
-                                className="w-full sm:w-auto px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                                className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 ${
+                                    isDeleteBillLocked 
+                                        ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed" 
+                                        : "bg-brand-600 hover:bg-brand-700 text-white cursor-pointer"
+                                }`}
                             >
                                 <Camera className="w-3.5 h-3.5" />
                                 Take Photo
@@ -15463,14 +16122,20 @@ export const EverydayExpenseModal: React.FC<{
                                     <Eye className="w-3.5 h-3.5" />
                                     Preview
                                 </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setFormData(prev => ({ ...prev, attachment: undefined }))}
-                                    className="p-2 hover:bg-rose-50 text-rose-500 hover:text-rose-600 rounded-xl transition-all cursor-pointer"
-                                    title="Remove attachment"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
+                                {isDeleteBillLocked ? (
+                                    <div className="p-1 px-2.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase select-none" title="Employees are not permitted to delete or replace saved receipt attachments.">
+                                        🔒 Locked
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData(prev => ({ ...prev, attachment: undefined }))}
+                                        className="p-2 hover:bg-rose-50 text-rose-500 hover:text-rose-600 rounded-xl transition-all cursor-pointer"
+                                        title="Remove attachment"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )}
@@ -15502,9 +16167,25 @@ export const EverydayExpenseModal: React.FC<{
                             <input 
                                 type="text"
                                 value={formData.invoiceNo}
-                                onChange={e => setFormData({ ...formData, invoiceNo: e.target.value })}
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    const original = formData.invoiceNoOriginal || '';
+                                    const hasDiff = val.trim() !== '' && original.trim() !== '' && val.trim().toLowerCase() !== original.trim().toLowerCase();
+                                    setFormData(prev => ({
+                                        ...prev,
+                                        invoiceNo: val,
+                                        invoiceChanged: hasDiff,
+                                        invoiceChangedBy: hasDiff ? (user?.name || 'Staff') : '',
+                                        invoiceChangedTime: hasDiff ? new Date().toISOString() : ''
+                                    }));
+                                }}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all font-mono"
                             />
+                            {formData.invoiceChanged && (
+                                <p className="text-[10px] font-semibold text-amber-600 mt-1 pl-1">
+                                    ⚠️ Differs from scanned receipt. Modification tracked under {user?.name || 'Staff'}.
+                                </p>
+                            )}
                         </div>
                     </div>
 
