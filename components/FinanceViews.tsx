@@ -9789,7 +9789,13 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                 const itemHrs = Number(item.hours) || 0;
                 
                 const itemActual = Number((itemAmt - itemDed).toFixed(2));
-                const itemVat = Number((itemActual * 0.05).toFixed(2));
+                
+                let itemVat = 0;
+                if (item.isVatCustom) {
+                    itemVat = item.vatAmount === '' || item.vatAmount === undefined ? 0 : Number(item.vatAmount);
+                } else {
+                    itemVat = Number((itemActual * 0.05).toFixed(2));
+                }
                 
                 sumAmount += itemAmt;
                 sumDeduction += itemDed;
@@ -9802,8 +9808,8 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                 item.advance = itemAdv;
                 item.paid = itemPaid;
                 item.actualAmount = itemActual;
-                item.vatAmount = itemVat;
-                item.totalAmount = Number((itemActual + itemVat).toFixed(2));
+                item.vatAmount = item.isVatCustom && (item.vatAmount === '' || item.vatAmount === undefined) ? '' : itemVat;
+                item.totalAmount = Number((itemActual + (Number(itemVat) || 0)).toFixed(2));
             });
             amount = Number(sumAmount.toFixed(2));
             deduction = Number(sumDeduction.toFixed(2));
@@ -10168,91 +10174,123 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                 />
                                             </div>
                                         </div>
- 
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 items-end">
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Bill Amount (AED)</label>
-                                                <input
-                                                    type="number"
-                                                    step="any"
-                                                    placeholder="0.00"
-                                                    value={row.amount || ''}
-                                                    onChange={e => {
-                                                        const list = [...formData.siteInvoices];
-                                                        list[idx] = { ...list[idx], amount: Number(e.target.value) };
-                                                        handleRecalculate({ siteInvoices: list });
-                                                    }}
-                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
-                                                />
-                                            </div>
- 
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-wider text-rose-500">Deduction (-)</label>
-                                                <input
-                                                    type="number"
-                                                    step="any"
-                                                    placeholder="0"
-                                                    value={row.deduction || ''}
-                                                    onChange={e => {
-                                                        const list = [...formData.siteInvoices];
-                                                        list[idx] = { ...list[idx], deduction: Number(e.target.value) };
-                                                        handleRecalculate({ siteInvoices: list });
-                                                    }}
-                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-rose-600 font-mono"
-                                                />
+
+                                        <div className="space-y-3">
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Bill Amount (AED)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        placeholder="0.00"
+                                                        value={row.amount || ''}
+                                                        onChange={e => {
+                                                            const list = [...formData.siteInvoices];
+                                                            list[idx] = { ...list[idx], amount: Number(e.target.value) };
+                                                            handleRecalculate({ siteInvoices: list });
+                                                        }}
+                                                        className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-wider text-rose-500">Deduction (-)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        placeholder="0"
+                                                        value={row.deduction || ''}
+                                                        onChange={e => {
+                                                            const list = [...formData.siteInvoices];
+                                                            list[idx] = { ...list[idx], deduction: Number(e.target.value) };
+                                                            handleRecalculate({ siteInvoices: list });
+                                                        }}
+                                                        className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-rose-600 font-mono"
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-wider text-amber-600">Advance (-)</label>
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        placeholder="0"
+                                                        value={row.advance || ''}
+                                                        onChange={e => {
+                                                            const list = [...formData.siteInvoices];
+                                                            list[idx] = { ...list[idx], advance: Number(e.target.value) };
+                                                            handleRecalculate({ siteInvoices: list });
+                                                        }}
+                                                        className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-amber-600 font-mono"
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Paid Amount</label>
+                                                    <input
+                                                        type="number"
+                                                        step="any"
+                                                        placeholder="0"
+                                                        value={row.paid || ''}
+                                                        onChange={e => {
+                                                            const list = [...formData.siteInvoices];
+                                                            list[idx] = { ...list[idx], paid: Number(e.target.value) };
+                                                            handleRecalculate({ siteInvoices: list });
+                                                        }}
+                                                        className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-emerald-600 font-mono"
+                                                    />
+                                                </div>
                                             </div>
 
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-wider text-amber-600">Advance (-)</label>
-                                                <input
-                                                    type="number"
-                                                    step="any"
-                                                    placeholder="0"
-                                                    value={row.advance || ''}
-                                                    onChange={e => {
-                                                        const list = [...formData.siteInvoices];
-                                                        list[idx] = { ...list[idx], advance: Number(e.target.value) };
-                                                        handleRecalculate({ siteInvoices: list });
-                                                    }}
-                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-amber-600 font-mono"
-                                                />
-                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 items-center">
+                                                <div className="space-y-0.5">
+                                                    <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-tight">Actual Amt</span>
+                                                    <span className="text-xs font-bold text-slate-700 block font-mono">
+                                                        AED {Number((row.amount || 0) - (row.deduction || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
 
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Paid Amount</label>
-                                                <input
-                                                    type="number"
-                                                    step="any"
-                                                    placeholder="0"
-                                                    value={row.paid || ''}
-                                                    onChange={e => {
-                                                        const list = [...formData.siteInvoices];
-                                                        list[idx] = { ...list[idx], paid: Number(e.target.value) };
-                                                        handleRecalculate({ siteInvoices: list });
-                                                    }}
-                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 text-emerald-600 font-mono"
-                                                />
-                                            </div>
- 
-                                            <div className="space-y-0.5">
-                                                <span className="text-[9px] font-bold text-slate-400 block whitespace-nowrap">Actual Amt</span>
-                                                <span className="text-xs font-bold text-slate-700 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono whitespace-nowrap">
-                                                    AED {Number((row.amount || 0) - (row.deduction || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </span>
-                                            </div>
+                                                <div className="space-y-0.5">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-tight">VAT Amount</span>
+                                                        {row.isVatCustom && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const list = [...formData.siteInvoices];
+                                                                    list[idx] = { ...list[idx], isVatCustom: false };
+                                                                    handleRecalculate({ siteInvoices: list });
+                                                                }}
+                                                                className="text-[9px] text-brand-600 hover:text-brand-800 font-bold underline cursor-pointer"
+                                                            >
+                                                                Auto (5%)
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className="text-[9px] font-semibold text-slate-400 font-mono bg-slate-200/50 px-1 py-0.5 rounded">AED</span>
+                                                        <input
+                                                            type="number"
+                                                            step="any"
+                                                            placeholder="0.00"
+                                                            value={row.vatAmount === '' || row.vatAmount === undefined ? '' : row.vatAmount}
+                                                            onChange={e => {
+                                                                const list = [...formData.siteInvoices];
+                                                                const val = e.target.value === '' ? '' : Number(e.target.value);
+                                                                list[idx] = { ...list[idx], vatAmount: val, isVatCustom: true };
+                                                                handleRecalculate({ siteInvoices: list });
+                                                            }}
+                                                            className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs font-bold text-slate-600 outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono"
+                                                        />
+                                                    </div>
+                                                </div>
 
-                                            <div className="space-y-0.5">
-                                                <span className="text-[9px] font-bold text-slate-400 block uppercase tracking-tight whitespace-nowrap">VAT Amount (5%)</span>
-                                                <span className="text-xs font-bold text-slate-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono whitespace-nowrap">
-                                                    AED {Number(row.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </span>
-                                            </div>
- 
-                                            <div className="space-y-0.5">
-                                                <span className="text-[9px] font-black text-slate-400 block uppercase tracking-tight whitespace-nowrap">Total Amount</span>
-                                                <span className="text-xs font-black text-brand-600 block bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 font-mono whitespace-nowrap">
-                                                    AED {Number(row.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </span>
+                                                <div className="space-y-0.5">
+                                                    <span className="text-[9px] font-black text-slate-400 block uppercase tracking-tight">Total Amount</span>
+                                                    <span className="text-xs font-black text-brand-600 block font-mono">
+                                                        AED {Number(row.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

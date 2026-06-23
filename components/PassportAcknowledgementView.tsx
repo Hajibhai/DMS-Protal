@@ -203,12 +203,11 @@ export const PassportAcknowledgementView: React.FC<{
         const unsubOffers = onSnapshot(qOffers, (snap) => {
             const list: JobOffer[] = [];
             snap.forEach((d) => {
-                list.push({ id: d.id, ...d.data() } as JobOffer);
+                list.push({ ...d.data(), id: d.id } as JobOffer);
             });
             setJobOffers(list);
         }, (err) => {
             console.error(err);
-            handleFirestoreError(err, OperationType.LIST, 'job_offers');
         });
 
         // 2. Subscribe to Saved Acknowledgements
@@ -216,13 +215,12 @@ export const PassportAcknowledgementView: React.FC<{
         const unsubPP = onSnapshot(qPP, (snap) => {
             const list: PassportAcknowledgement[] = [];
             snap.forEach((d) => {
-                list.push({ id: d.id, ...d.data() } as PassportAcknowledgement);
+                list.push({ ...d.data(), id: d.id } as PassportAcknowledgement);
             });
             setSavedRecords(list);
             setLoading(false);
         }, (err) => {
             console.error(err);
-            handleFirestoreError(err, OperationType.LIST, 'passport_acknowledgements');
             setLoading(false);
         });
 
@@ -354,9 +352,9 @@ export const PassportAcknowledgementView: React.FC<{
             setActiveSavedId(recordId);
             setTimeout(() => setSuccessMsg(null), 4000);
         } catch (err) {
-            console.error(err);
-            handleFirestoreError(err, OperationType.WRITE, `passport_acknowledgements/${recordId}`);
-            setErrorMsg("A system processing error occurred while attempting to write to the cloud database storage.");
+            console.error("Failed to save record:", err);
+            setErrorMsg("A system processing error occurred while attempting to write to cloud database storage.");
+            setTimeout(() => setErrorMsg(null), 5000);
         } finally {
             setSaving(false);
         }
@@ -370,14 +368,20 @@ export const PassportAcknowledgementView: React.FC<{
                 // reset fields
                 setActiveSavedId(null);
                 setSelectedEntity(null);
+                setRefNo('');
+                setEmployeeName('');
+                setEmployeeId('');
+                setPassportNumber('');
+                setNationality('');
+                setPurpose('Visa / Labor / Immigration / Official Processing');
             }
             setDeleteConfirmId(null);
             setSuccessMsg("PASSPORT CUSTODY DISCARDED SUCCESSFULLY.");
             setTimeout(() => setSuccessMsg(null), 3000);
         } catch (err) {
-            console.error(err);
-            handleFirestoreError(err, OperationType.DELETE, `passport_acknowledgements/${id}`);
-            setErrorMsg("An error occurred. Unable to delete custody profile.");
+            console.error("Failed to delete record:", err);
+            setErrorMsg("An error occurred. Unable to delete custody profile. Please make sure you have permissions.");
+            setTimeout(() => setErrorMsg(null), 5000);
         }
     };
 
