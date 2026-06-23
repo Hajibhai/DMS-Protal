@@ -244,11 +244,13 @@ export interface AccountsPayable {
     paymentDate?: string;
     attachment?: string;
     hours?: number;
+    hoursFormula?: string;
     actualAmount?: number;
     advance?: number;
     deduction?: number;
     paid?: number;
     payableAmount?: number;
+    amountFormula?: string;
     supplierName?: string;
     supplierCode?: string;
     excelBatchId?: string;
@@ -264,9 +266,11 @@ export interface AccountsPayable {
         totalAmount: number;
         description: string;
         hours?: number;
+        hoursFormula?: string;
         actualAmount?: number;
         advance?: number;
         paid?: number;
+        amountFormula?: string;
     }[];
 }
 

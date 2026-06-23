@@ -170,6 +170,241 @@ const getMonthYear = (dateStr: string): string => {
     return foundMonth !== 'Unknown' ? `${foundMonth} ${foundYear}` : 'Unknown';
 };
 
+/**
+ * Safe, robust parser for mathematical addition, subtraction, division, and multiplication of numbers.
+ * Supports formulas starting with '=' (e.g. "=10+20-5") and simple arithmetic strings (e.g. "10+20")
+ * Uses a safe recursive descent parser that is 100% CSP-safe and avoids any evaluate/new Function blocks.
+ */
+export const evaluateFormula = (expr: string): { success: boolean; value: number } => {
+    if (!expr) return { success: false, value: 0 };
+    let clean = expr.trim();
+    if (clean.startsWith('=')) {
+        clean = clean.substring(1).trim();
+    }
+    // Remove spaces
+    clean = clean.replace(/\s+/g, '');
+    
+    // Only allow safe characters: numbers, +, -, *, /, ., (, )
+    if (!/^[0-9+\-*/.()]+$/.test(clean)) {
+        return { success: false, value: 0 };
+    }
+    
+    try {
+        let pos = 0;
+        
+        const peek = () => clean[pos] || '';
+        const consume = () => clean[pos++] || '';
+        
+        const parsePrimary = (): number => {
+            const next = peek();
+            if (next === '(') {
+                consume(); // '('
+                const val = parseExpression();
+                if (consume() !== ')') {
+                    throw new Error('Mismatched parenthesis');
+                }
+                return val;
+            }
+            if (next === '-' || next === '+') {
+                const op = consume();
+                const val = parsePrimary();
+                return op === '-' ? -val : val;
+            }
+            
+            let numStr = '';
+            while (/[0-9.]/.test(peek())) {
+                numStr += consume();
+            }
+            if (numStr === '') {
+                throw new Error('Expected number');
+            }
+            const parsed = parseFloat(numStr);
+            if (isNaN(parsed)) throw new Error('Invalid number');
+            return parsed;
+        };
+        
+        const parseMultiplicative = (): number => {
+            let val = parsePrimary();
+            while (true) {
+                const op = peek();
+                if (op === '*' || op === '/') {
+                    consume();
+                    const right = parsePrimary();
+                    if (op === '*') {
+                        val *= right;
+                    } else {
+                        if (right === 0) throw new Error('Division by zero');
+                        val /= right;
+                    }
+                } else {
+                    break;
+                }
+            }
+            return val;
+        };
+        
+        const parseExpression = (): number => {
+            let val = parseMultiplicative();
+            while (true) {
+                const op = peek();
+                if (op === '+' || op === '-') {
+                    consume();
+                    const right = parseMultiplicative();
+                    if (op === '+') {
+                        val += right;
+                    } else {
+                        val -= right;
+                    }
+                } else {
+                    break;
+                }
+            }
+            return val;
+        };
+        
+        const result = parseExpression();
+        if (pos < clean.length) {
+            throw new Error('Extra characters at end');
+        }
+        if (typeof result === 'number' && !isNaN(result) && isFinite(result)) {
+            return { success: true, value: Number(result.toFixed(4)) };
+        }
+    } catch (e) {
+        // Parse error
+    }
+    return { success: false, value: 0 };
+};
+
+interface FormulaInputProps {
+    value: number;
+    formula?: string;
+    onChange: (numValue: number, formulaStr: string) => void;
+    placeholder?: string;
+    className?: string;
+    disabled?: boolean;
+}
+
+export const FormulaInput = ({
+    value,
+    formula,
+    onChange,
+    placeholder,
+    className,
+    disabled
+}: FormulaInputProps) => {
+    const [isFocused, setIsFocused] = useState(false);
+    const [displayVal, setDisplayVal] = useState<string>('');
+
+    // Update displayVal when props change from outside (only if not focused)
+    useEffect(() => {
+        if (!isFocused) {
+            if (formula) {
+                setDisplayVal(formula);
+            } else {
+                setDisplayVal(value ? String(value) : '');
+            }
+        }
+    }, [value, formula, isFocused]);
+
+    const handleFocus = () => {
+        if (disabled) return;
+        setIsFocused(true);
+        setDisplayVal(formula || (value ? String(value) : ''));
+    };
+
+    const handleBlur = () => {
+        setIsFocused(false);
+        const trimmed = displayVal.trim();
+        let finalNum = value;
+        let finalFormula = formula || '';
+
+        if (trimmed === '') {
+            finalNum = 0;
+            finalFormula = '';
+        } else if (trimmed.startsWith('=')) {
+            const res = evaluateFormula(trimmed);
+            if (res.success) {
+                finalNum = res.value;
+                finalFormula = trimmed;
+            } else {
+                // If invalid formula, fallback to 0 or clear formula representation
+                finalNum = 0;
+                finalFormula = '';
+            }
+        } else {
+            // No '=' symbol. Is it a math expression (e.g. "10+20")?
+            if (/[+\-*/]/.test(trimmed)) {
+                const res = evaluateFormula(trimmed);
+                if (res.success) {
+                    finalNum = res.value;
+                    finalFormula = '=' + trimmed;
+                } else {
+                    const parsed = parseFloat(trimmed);
+                    finalNum = isNaN(parsed) ? 0 : parsed;
+                    finalFormula = '';
+                }
+            } else {
+                const parsed = parseFloat(trimmed);
+                finalNum = isNaN(parsed) ? 0 : parsed;
+                finalFormula = '';
+            }
+        }
+
+        onChange(finalNum, finalFormula);
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const text = e.target.value;
+        setDisplayVal(text);
+
+        const trimmed = text.trim();
+        if (trimmed === '') {
+            onChange(0, '');
+        } else if (trimmed.startsWith('=')) {
+            const res = evaluateFormula(trimmed);
+            if (res.success) {
+                onChange(res.value, trimmed);
+            }
+        } else {
+            if (/[+\-*/]/.test(trimmed)) {
+                const res = evaluateFormula(trimmed);
+                if (res.success) {
+                    onChange(res.value, '=' + trimmed);
+                }
+            } else {
+                const parsed = parseFloat(trimmed);
+                if (!isNaN(parsed)) {
+                    onChange(parsed, '');
+                }
+            }
+        }
+    };
+
+    const displayOnBlur = !isFocused ? (value !== undefined && value !== null ? Number(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 }).replace(/,/g, '') : '') : displayVal;
+
+    return (
+        <div className="relative group w-full">
+            <input
+                type="text"
+                disabled={disabled}
+                value={isFocused ? displayVal : displayOnBlur}
+                onChange={handleChange}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                placeholder={placeholder}
+                className={className}
+            />
+            {formula && !isFocused && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-60 group-hover:opacity-100 pointer-events-none transition-opacity">
+                    <span className="text-[9px] px-1 py-0.5 bg-slate-200/60 text-slate-650 font-mono rounded font-black cursor-help" title={formula}>
+                        fx
+                    </span>
+                </div>
+            )}
+        </div>
+    );
+};
+
 interface DataTableProps<T> {
     title: string;
     description: string;
@@ -9739,6 +9974,8 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             supplierName: base.supplierName || '',
             supplierCode: base.supplierCode || '',
             attachment: base.attachment || '',
+            hoursFormula: base.hoursFormula || '',
+            amountFormula: base.amountFormula || '',
             siteInvoices: base.siteInvoices || []
         };
     });
@@ -10160,18 +10397,17 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
 
                                             <div className="space-y-1">
                                                 <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Hours</label>
-                                                <input
-                                                    type="number"
-                                                    step="any"
-                                                    placeholder="0"
-                                                    value={row.hours || ''}
-                                                    onChange={e => {
-                                                        const list = [...formData.siteInvoices];
-                                                        list[idx] = { ...list[idx], hours: Number(e.target.value) };
-                                                        handleRecalculate({ siteInvoices: list });
-                                                    }}
-                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
-                                                />
+                                                 <FormulaInput
+                                                     value={row.hours || 0}
+                                                     formula={row.hoursFormula || ''}
+                                                     onChange={(val, fStr) => {
+                                                         const list = [...formData.siteInvoices];
+                                                         list[idx] = { ...list[idx], hours: val, hoursFormula: fStr };
+                                                         handleRecalculate({ siteInvoices: list });
+                                                     }}
+                                                     placeholder="0"
+                                                     className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
+                                                 />
                                             </div>
                                         </div>
 
@@ -10179,18 +10415,17 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                                 <div className="space-y-1">
                                                     <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Bill Amount (AED)</label>
-                                                    <input
-                                                        type="number"
-                                                        step="any"
-                                                        placeholder="0.00"
-                                                        value={row.amount || ''}
-                                                        onChange={e => {
-                                                            const list = [...formData.siteInvoices];
-                                                            list[idx] = { ...list[idx], amount: Number(e.target.value) };
-                                                            handleRecalculate({ siteInvoices: list });
-                                                        }}
-                                                        className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
-                                                    />
+                                                     <FormulaInput
+                                                         value={row.amount || 0}
+                                                         formula={row.amountFormula || ''}
+                                                         onChange={(val, fStr) => {
+                                                             const list = [...formData.siteInvoices];
+                                                             list[idx] = { ...list[idx], amount: val, amountFormula: fStr };
+                                                             handleRecalculate({ siteInvoices: list });
+                                                         }}
+                                                         placeholder="0.00"
+                                                         className="w-full px-2.5 py-1.5 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none ring-1 ring-slate-200 focus:ring-brand-500 font-mono text-slate-700"
+                                                     />
                                                 </div>
 
                                                 <div className="space-y-1">
@@ -10308,24 +10543,22 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Hours</label>
-                                <input 
-                                    type="number"
-                                    step="any"
+                                <FormulaInput 
+                                    value={formData.hours || 0}
+                                    formula={formData.hoursFormula || ''}
+                                    onChange={(val, fStr) => handleRecalculate({ hours: val, hoursFormula: fStr })}
                                     placeholder="0"
-                                    value={formData.hours || ''}
-                                    onChange={e => handleRecalculate({ hours: Number(e.target.value) })}
                                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500"
                                 />
                             </div>
                             <div className="space-y-1 font-sans">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Bill Amount</label>
-                                <input 
-                                    type="number"
-                                    step="any"
-                                    placeholder="0.00"
-                                    value={formData.amount || ''}
-                                    onChange={e => handleRecalculate({ amount: Number(e.target.value) })}
+                                <FormulaInput 
+                                    value={formData.amount || 0}
+                                    formula={formData.amountFormula || ''}
+                                    onChange={(val, fStr) => handleRecalculate({ amount: val, amountFormula: fStr })}
                                     disabled={formData.siteInvoices?.length > 0}
+                                    placeholder="0.00"
                                     className={cn(
                                         "w-full px-3 py-2 border rounded-xl text-sm font-bold outline-none focus:ring-1 focus:ring-indigo-500 font-mono",
                                         formData.siteInvoices?.length > 0 ? "bg-indigo-50/30 text-indigo-900 border-indigo-100 cursor-not-allowed" : "bg-white border-slate-200"
@@ -11233,8 +11466,14 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                                                     <td className="p-3 text-slate-800 font-black whitespace-nowrap">{projName}</td>
                                                     <td className="p-3 font-mono font-bold text-slate-500 whitespace-nowrap">#{inv.invoiceNumber || '-'}</td>
                                                     <td className="p-3 text-slate-500 font-medium max-w-[120px] truncate" title={inv.description}>{inv.description || '-'}</td>
-                                                    <td className="p-3 text-right font-mono text-slate-700">{inv.hours !== undefined ? inv.hours : 0} hrs</td>
-                                                    <td className="p-3 text-right font-mono text-slate-800">AED {(inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="p-3 text-right font-mono text-slate-700">
+                                                         <div>{inv.hours !== undefined ? inv.hours : 0} hrs</div>
+                                                         {inv.hoursFormula && <div className="text-[10px] text-slate-400 font-normal mt-0.5">{inv.hoursFormula}</div>}
+                                                     </td>
+                                                    <td className="p-3 text-right font-mono text-slate-800">
+                                                         <div>AED {(inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                                         {inv.amountFormula && <div className="text-[10px] text-slate-400 font-normal mt-0.5">{inv.amountFormula}</div>}
+                                                     </td>
                                                     <td className="p-3 text-right font-mono text-rose-500">AED {(inv.deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                                     <td className="p-3 text-right font-mono text-amber-600">AED {(inv.advance || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                                     <td className="p-3 text-right font-mono text-emerald-600">AED {(inv.paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
