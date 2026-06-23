@@ -550,6 +550,20 @@ export interface JobOffer {
   signedAcceptanceChunksCount?: number;
 }
 
+export interface PassportAcknowledgement {
+  id: string;
+  refNo: string;
+  date: string;
+  employeeId?: string; // Optional links to Employee.id or JobOffer.id
+  employeeName: string;
+  passportNumber: string;
+  nationality: string;
+  purpose: string;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  createdAt: string;
+}
+
 export interface DocumentItem {
   id: string;
   name: string;

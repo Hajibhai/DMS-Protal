@@ -14185,7 +14185,11 @@ export const EverydayExpenseView: React.FC<{
                         <div className="text-[9px] text-amber-800 bg-amber-500/5 border border-amber-500/10 rounded px-1.5 py-0.5 mt-0.5 leading-normal max-w-[155px] font-sans">
                             <span className="font-black text-amber-900 block truncate">⚠️ Modified Invoice</span>
                             <span className="text-slate-500 block truncate">By {item.invoiceChangedBy}</span>
-                            <span className="text-slate-400 block font-mono leading-none mt-0.5">{item.invoiceChangedTime ? new Date(item.invoiceChangedTime).toLocaleDateString() : '-'}</span>
+                            <span className="text-slate-400 block font-mono leading-none mt-0.5">
+                                {item.invoiceChangedTime && !isNaN(new Date(item.invoiceChangedTime).getTime()) 
+                                    ? new Date(item.invoiceChangedTime).toLocaleDateString() 
+                                    : '-'}
+                            </span>
                         </div>
                     )}
                 </div>
@@ -14261,9 +14265,9 @@ export const EverydayExpenseView: React.FC<{
                 </div>
             )
         },
-        { key: 'billAmount', label: 'Bill Amount', sortable: true, render: (item: EverydayExpense) => item.billAmount.toLocaleString() },
-        { key: 'vatAmount', label: 'VAT Amount', sortable: true, render: (item: EverydayExpense) => item.vatAmount.toLocaleString() },
-        { key: 'totalAmount', label: 'Total Amount', sortable: true, render: (item: EverydayExpense) => item.totalAmount.toLocaleString() },
+        { key: 'billAmount', label: 'Bill Amount', sortable: true, render: (item: EverydayExpense) => Number(item.billAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { key: 'vatAmount', label: 'VAT Amount', sortable: true, render: (item: EverydayExpense) => Number(item.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
+        { key: 'totalAmount', label: 'Total Amount', sortable: true, render: (item: EverydayExpense) => Number(item.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
         { 
             key: 'uploadedBy', 
             label: 'Uploaded/Updated By', 
@@ -15139,7 +15143,11 @@ export const EverydayExpenseView: React.FC<{
                                                         </div>
                                                         <div>
                                                             <span className="text-slate-400 block font-bold font-mono">Modified Time</span>
-                                                            <span className="font-extrabold text-slate-750 font-mono text-[10px]">{selectedLedgerEntry.invoiceChangedTime ? new Date(selectedLedgerEntry.invoiceChangedTime).toLocaleString() : "-"}</span>
+                                                            <span className="font-extrabold text-slate-750 font-mono text-[10px]">
+                                                                {selectedLedgerEntry.invoiceChangedTime && !isNaN(new Date(selectedLedgerEntry.invoiceChangedTime).getTime()) 
+                                                                    ? new Date(selectedLedgerEntry.invoiceChangedTime).toLocaleString() 
+                                                                    : "-"}
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 </div>

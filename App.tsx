@@ -157,6 +157,7 @@ import { EngineerView } from './components/EngineerView';
 import TasksNotesView from './components/TasksNotesView';
 import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/ExperienceLetterView';
 import { NocView } from './components/NocView';
+import { PassportAcknowledgementView } from './components/PassportAcknowledgementView';
 import { VouchersView } from './components/VouchersView';
 
 // --- Image Compression Helper ---
@@ -5579,6 +5580,7 @@ export default function App() {
           { id: 'job-offer', label: 'Job Offer', icon: FileSignature, permission: 'canManageEmployees' },
           { id: 'experience', label: 'Experience Letter', icon: FileText, permission: 'canManageEmployees' },
           { id: 'noc', label: 'No Objection Certificate (NOC)', icon: FileText, permission: 'canManageEmployees' },
+          { id: 'passport-acknowledgement', label: 'Passport Collection Acknowledgement', icon: ShieldCheck, permission: 'canManageEmployees' },
         ]
       },
       { 
@@ -6091,6 +6093,11 @@ export default function App() {
       )}
       {activeTab === 'noc' && (
         <NocView 
+          employees={employees} 
+        />
+      )}
+      {activeTab === 'passport-acknowledgement' && (
+        <PassportAcknowledgementView 
           employees={employees} 
         />
       )}

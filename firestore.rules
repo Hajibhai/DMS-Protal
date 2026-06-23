@@ -218,6 +218,10 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /passport_acknowledgements/{ackId} {
+      allow read, write: if isAuthenticated();
+    }
+
     match /developer_settings/{settingsId} {
       allow read: if true;
       allow write: if isAuthenticated() && (
