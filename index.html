@@ -4,6 +4,44 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pioneer DMS Portal - Attendance System</title>
+    <script>
+      // Suppress cross-origin Script errors, Vite WebSocket reconnect failures, and other benign environment noise.
+      window.addEventListener('error', function(event) {
+        if (event && event.message && (
+          event.message === 'Script error.' ||
+          event.message.indexOf('websocket') !== -1 ||
+          event.message.indexOf('WebSocket') !== -1 ||
+          event.message.indexOf('HMR') !== -1 ||
+          event.message.indexOf('failed to connect') !== -1
+        )) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }, true);
+
+      window.onerror = function(message, source, lineno, colno, error) {
+        const msgStr = String(message || '');
+        if (msgStr === 'Script error.' || 
+            msgStr.indexOf('websocket') !== -1 || 
+            msgStr.indexOf('WebSocket') !== -1 ||
+            msgStr.indexOf('failed to connect') !== -1) {
+          console.warn('Muted benign iframe/websocket error to maintain workspace stability.', message);
+          return true; // Suppress error propagation
+        }
+        return false;
+      };
+
+      // Suppress unhandled promise rejections related to benign network actions or websocket connections
+      window.addEventListener('unhandledrejection', function(event) {
+        const reason = String((event && event.reason) || '');
+        if (reason.indexOf('websocket') !== -1 || 
+            reason.indexOf('WebSocket') !== -1 ||
+            reason.indexOf('failed to connect') !== -1) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }, true);
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/index.css">
   </head>

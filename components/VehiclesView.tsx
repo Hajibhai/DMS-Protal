@@ -1513,8 +1513,46 @@ export const VehiclesView = ({
 
                   {/* List / Table of matched transactions */}
                   <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Transaction History</h4>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Transaction History</h4>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!showExpensesModal || !showExpensesModal.expenses || showExpensesModal.expenses.length === 0) return;
+                            const exportData = showExpensesModal.expenses.map((exp, idx) => ({
+                              'Sl. No.': idx + 1,
+                              'Date': exp.date || '-',
+                              'SI No': exp.siNo || '-',
+                              'Invoice No': exp.invoiceNo || '-',
+                              'Category': exp.category || 'General Expense',
+                              'Total Amount (AED)': exp.totalAmount || exp.billAmount || 0,
+                              'VAT Amount (AED)': exp.vatAmount || 0,
+                              'Net Bill Amount (AED)': exp.billAmount || 0,
+                              'Shop Name / Vendor': exp.shopName || '-',
+                              'Supplier Registered': exp.supplierName || '-',
+                              'TRN Number': exp.trnNo || '-',
+                              'Client Reference': exp.clientName || '-',
+                              'Expense Description': exp.description || '-',
+                              'Is Vehicle Fuel Log?': exp.isVehicleFuel ? 'Yes' : 'No',
+                              'Km Start': exp.kmStart !== undefined ? exp.kmStart : '-',
+                              'Km End': exp.kmEnd !== undefined ? exp.kmEnd : '-',
+                              'Km Run': exp.kmRun !== undefined ? exp.kmRun : '-',
+                              'Assigned Driver': exp.vehicleDriver || '-',
+                              'Log Remarks': exp.vehicleRemarks || '-'
+                            }));
+
+                            const ws = XLSX.utils.json_to_sheet(exportData);
+                            const wb = XLSX.utils.book_new();
+                            XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+                            XLSX.writeFile(wb, `Plate_${showExpensesModal.vehicle.vehicleNumber}_Expenses_${new Date().toISOString().slice(0, 10)}.xlsx`);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[10px] font-black rounded-lg transition-all cursor-pointer shadow-sm active:scale-95"
+                        >
+                          <Download className="w-3 h-3" /> Download Details
+                        </button>
+                      </div>
                       <span className="text-[11px] text-indigo-650 font-bold hidden sm:inline">Tip: Click on any record row to view voucher details & receipt</span>
                     </div>
 
