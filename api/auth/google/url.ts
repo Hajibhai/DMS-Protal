@@ -5,7 +5,12 @@ const SCOPES = [
   'https://www.googleapis.com/auth/drive.metadata.readonly',
   'https://www.googleapis.com/auth/chat.spaces',
   'https://www.googleapis.com/auth/chat.memberships',
-  'https://www.googleapis.com/auth/chat.messages.create'
+  'https://www.googleapis.com/auth/chat.messages.create',
+  'https://www.googleapis.com/auth/classroom.courses',
+  'https://www.googleapis.com/auth/classroom.coursework.me',
+  'https://www.googleapis.com/auth/classroom.announcements',
+  'https://www.googleapis.com/auth/classroom.rosters',
+  'https://www.googleapis.com/auth/classroom.topics'
 ];
 
 export const getOAuth2Client = (req?: any) => {

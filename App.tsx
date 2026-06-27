@@ -70,7 +70,7 @@ import {
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator, Car,
   Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home, Mail,
-  Database, HardDrive, Sparkles, MessageSquare
+  Database, HardDrive, Sparkles, MessageSquare, GraduationCap
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -156,6 +156,7 @@ import { JobOfferView } from './components/JobOfferView';
 import { EngineerView } from './components/EngineerView';
 import TasksNotesView from './components/TasksNotesView';
 import { GoogleChatView } from './components/GoogleChatView';
+import { GoogleClassroomView } from './components/GoogleClassroomView';
 import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/ExperienceLetterView';
 import { NocView } from './components/NocView';
 import { PassportAcknowledgementView } from './components/PassportAcknowledgementView';
@@ -5603,6 +5604,7 @@ export default function App() {
       { id: 'engineer-hub', label: 'Procurement', icon: HardHat, roleCheck: ['engineer', 'accountant', 'admin', 'creator'] },
       { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
       { id: 'google-chat', label: 'Google Chat', icon: MessageSquare },
+      { id: 'google-classroom', label: 'Classroom Academy', icon: GraduationCap },
       { id: 'reports', label: 'Reports', icon: BarChart3, permission: 'canViewReports' },
       { id: 'about', label: 'About', icon: AlertCircle, creatorOnly: true },
     ];
@@ -5613,7 +5615,8 @@ export default function App() {
         return [
             { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet },
             { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
-            { id: 'google-chat', label: 'Google Chat', icon: MessageSquare }
+            { id: 'google-chat', label: 'Google Chat', icon: MessageSquare },
+            { id: 'google-classroom', label: 'Classroom Academy', icon: GraduationCap }
         ];
     }
     
@@ -6309,6 +6312,14 @@ export default function App() {
       )}
       {activeTab === 'google-chat' && (
         <GoogleChatView 
+          employees={employees}
+          companies={companies}
+          projects={projects}
+          user={systemUser}
+        />
+      )}
+      {activeTab === 'google-classroom' && (
+        <GoogleClassroomView 
           employees={employees}
           companies={companies}
           projects={projects}

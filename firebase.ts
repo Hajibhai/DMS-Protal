@@ -23,6 +23,11 @@ googleProvider.addScope("https://www.googleapis.com/auth/meetings.space.readonly
 googleProvider.addScope("https://www.googleapis.com/auth/chat.spaces");
 googleProvider.addScope("https://www.googleapis.com/auth/chat.memberships");
 googleProvider.addScope("https://www.googleapis.com/auth/chat.messages.create");
+googleProvider.addScope("https://www.googleapis.com/auth/classroom.courses");
+googleProvider.addScope("https://www.googleapis.com/auth/classroom.coursework.me");
+googleProvider.addScope("https://www.googleapis.com/auth/classroom.announcements");
+googleProvider.addScope("https://www.googleapis.com/auth/classroom.rosters");
+googleProvider.addScope("https://www.googleapis.com/auth/classroom.topics");
 googleProvider.setCustomParameters({
   prompt: 'select_account'
 });
