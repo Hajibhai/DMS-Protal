@@ -65,7 +65,7 @@ import {
   ChevronLeft, ChevronRight,
   Settings, Search, Bell, LogOut as SignOut, UserCog,
   Briefcase, HardHat, ShieldCheck, Download, Printer,
-  MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, Lock, GripVertical,
+  MoreVertical, Check, X as CloseIcon, Filter, Shield, Key, GripVertical,
   Activity, LayoutGrid, ListFilter, ChevronDown, Globe, HelpCircle, LayoutDashboard,
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator, Car,
@@ -159,8 +159,6 @@ import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/
 import { NocView } from './components/NocView';
 import { PassportAcknowledgementView } from './components/PassportAcknowledgementView';
 import { VouchersView } from './components/VouchersView';
-import { PasswordManagerView } from './components/PasswordManagerView';
-import { VisaCostView } from './components/VisaCostView';
 
 // --- Image Compression Helper ---
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
@@ -5546,16 +5544,7 @@ export default function App() {
   const navItems = useMemo(() => {
     const baseItems = [
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3, permission: 'canViewDashboard' },
-      { 
-        id: 'company-group', 
-        label: 'Company', 
-        icon: Building2, 
-        subItems: [
-          { id: 'company', label: 'Company Dashboard', icon: Building2, permission: 'canViewCompanyDashboard' },
-          { id: 'password-manager', label: 'Password Manager', icon: ShieldCheck, permission: 'canViewCompanyDashboard', adminOnly: true },
-          { id: 'visa-cost', label: 'Visa Cost', icon: CreditCard, permission: 'canViewCompanyDashboard', adminOnly: true }
-        ]
-      },
+      { id: 'company', label: 'Company', icon: Building2, permission: 'canViewCompanyDashboard' },
       { 
         id: 'clients-group', 
         label: 'Works', 
@@ -5631,7 +5620,6 @@ export default function App() {
     
     const filterItem = (item: any) => {
         if (item.creatorOnly && !isCreator) return false;
-        if (item.adminOnly && !isAdmin) return false;
         if (isAdmin) return true;
         if (item.roleCheck) {
             const matches = item.roleCheck.some((r: string) => r.toLowerCase() === systemUserRoleLower);
@@ -6013,19 +6001,6 @@ export default function App() {
           onAdd={handleCreateCompany}
           user={systemUser!}
           initialSearchTerm={companySearchTerm}
-        />
-      )}
-      {activeTab === 'password-manager' && (
-        <PasswordManagerView 
-          user={systemUser!}
-          openConfirm={openConfirm}
-        />
-      )}
-      {activeTab === 'visa-cost' && (
-        <VisaCostView 
-          user={systemUser!}
-          employees={employees}
-          openConfirm={openConfirm}
         />
       )}
       {activeTab === 'suppliers' && (
@@ -7430,58 +7405,6 @@ const ProfileView = ({ user, onUpdate }: { user: SystemUser, onUpdate: (updated:
     const [isSaving, setIsSaving] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Secret Code Management states
-    const [isEditingCode, setIsEditingCode] = useState(false);
-    const [codeForm, setCodeForm] = useState({
-        currentCode: '',
-        newCode: '',
-        confirmNewCode: ''
-    });
-    const [codeError, setCodeError] = useState('');
-    const [codeSuccess, setCodeSuccess] = useState('');
-    const [isSavingCode, setIsSavingCode] = useState(false);
-
-    const systemUserRoleLower = user?.role?.toLowerCase() || '';
-    const isAdmin = systemUserRoleLower === 'admin' || systemUserRoleLower === 'creator' || user.email === 'abdulkaderp3010@gmail.com';
-
-    const handleSaveCode = async () => {
-        setCodeError('');
-        setCodeSuccess('');
-
-        // If code is already set, verify current code
-        if (user.secretCode && codeForm.currentCode !== user.secretCode) {
-            setCodeError('Incorrect current secret code.');
-            return;
-        }
-
-        // Validate new code
-        if (!/^\d{4}$/.test(codeForm.newCode)) {
-            setCodeError('Secret code must be exactly 4 digits (numeric only).');
-            return;
-        }
-
-        if (codeForm.newCode !== codeForm.confirmNewCode) {
-            setCodeError('New secret codes do not match.');
-            return;
-        }
-
-        setIsSavingCode(true);
-        try {
-            await onUpdate({
-                ...user,
-                secretCode: codeForm.newCode
-            });
-            setCodeSuccess('Secret code updated successfully!');
-            setIsEditingCode(false);
-            setCodeForm({ currentCode: '', newCode: '', confirmNewCode: '' });
-        } catch (err) {
-            console.error("Error saving secret code:", err);
-            setCodeError('Failed to save secret code. Please try again.');
-        } finally {
-            setIsSavingCode(false);
-        }
-    };
-
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -7621,115 +7544,6 @@ const ProfileView = ({ user, onUpdate }: { user: SystemUser, onUpdate: (updated:
                     </div>
                 </div>
             </div>
-
-            {/* Password Manager Secret Code Card */}
-            {isAdmin && (
-                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm space-y-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                                <Lock className="w-5 h-5 text-indigo-600" />
-                                <h3 className="text-lg font-black text-slate-900">Password Manager Secret Code</h3>
-                            </div>
-                            <p className="text-slate-500 text-xs font-medium">Manage your 4-digit PIN used to authorize viewing, editing or deleting administrative password records.</p>
-                        </div>
-                        {!isEditingCode && (
-                            <button
-                                onClick={() => {
-                                    setIsEditingCode(true);
-                                    setCodeError('');
-                                    setCodeSuccess('');
-                                    setCodeForm({ currentCode: '', newCode: '', confirmNewCode: '' });
-                                }}
-                                className="px-5 py-2.5 bg-brand-50 text-brand-700 hover:bg-brand-100 rounded-xl font-bold text-xs transition-all flex items-center gap-2"
-                            >
-                                <Key className="w-3.5 h-3.5" />
-                                {user.secretCode ? 'Change Secret Code' : 'Setup Secret Code'}
-                            </button>
-                        )}
-                    </div>
-
-                    {codeSuccess && (
-                        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-bold flex items-center gap-2">
-                            <CheckCircle className="w-4 h-4 text-emerald-600" />
-                            {codeSuccess}
-                        </div>
-                    )}
-
-                    {isEditingCode ? (
-                        <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100/80 space-y-4 max-w-md">
-                            <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Configure Secret Code</h4>
-                            
-                            {user.secretCode && (
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Current Secret Code *</label>
-                                    <input
-                                        type="password"
-                                        maxLength={4}
-                                        placeholder="Enter current 4-digit PIN"
-                                        value={codeForm.currentCode}
-                                        onChange={(e) => setCodeForm(prev => ({ ...prev, currentCode: e.target.value.replace(/\D/g, '') }))}
-                                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-brand-500 text-slate-850"
-                                    />
-                                </div>
-                            )}
-
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">New 4-Digit Secret Code *</label>
-                                <input
-                                    type="password"
-                                    maxLength={4}
-                                    placeholder="Enter new 4-digit PIN"
-                                    value={codeForm.newCode}
-                                    onChange={(e) => setCodeForm(prev => ({ ...prev, newCode: e.target.value.replace(/\D/g, '') }))}
-                                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-brand-500 text-slate-850"
-                                />
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Confirm New 4-Digit Secret Code *</label>
-                                <input
-                                    type="password"
-                                    maxLength={4}
-                                    placeholder="Confirm new 4-digit PIN"
-                                    value={codeForm.confirmNewCode}
-                                    onChange={(e) => setCodeForm(prev => ({ ...prev, confirmNewCode: e.target.value.replace(/\D/g, '') }))}
-                                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-brand-500 text-slate-850"
-                                />
-                            </div>
-
-                            {codeError && (
-                                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold">
-                                    {codeError}
-                                </div>
-                            )}
-
-                            <div className="flex items-center gap-2 pt-2">
-                                <button
-                                    onClick={() => setIsEditingCode(false)}
-                                    className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleSaveCode}
-                                    disabled={isSavingCode}
-                                    className="px-5 py-2 bg-brand-600 text-white rounded-xl text-xs font-black hover:bg-brand-700 transition-all shadow-md active:scale-95 flex items-center gap-1.5"
-                                >
-                                    {isSavingCode ? 'Saving...' : 'Save Secret Code'}
-                                </button>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="p-5 bg-slate-50/50 border border-slate-100 rounded-2xl flex items-center gap-3">
-                            <div className={`w-3.5 h-3.5 rounded-full ${user.secretCode ? 'bg-emerald-500 shadow-md shadow-emerald-500/20' : 'bg-amber-500 shadow-md shadow-amber-500/20'}`}></div>
-                            <span className="text-xs font-bold text-slate-700">
-                                {user.secretCode ? 'Secret code is active and protecting your credentials.' : 'Secret code is not configured. Please setup a 4-digit code.'}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            )}
 
             <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200/60 shadow-sm">
                 <h3 className="text-lg font-black text-slate-900 mb-6">Your Permissions</h3>

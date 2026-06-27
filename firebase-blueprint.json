@@ -543,45 +543,6 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "refNo", "date", "employeeName", "passportNumber", "nationality"]
-    },
-    "PasswordRecord": {
-      "title": "Password Record",
-      "description": "Administrative system login and credentials storage for external web applications",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "appName": { "type": "string" },
-        "websiteLink": { "type": "string" },
-        "username": { "type": "string" },
-        "password": { "type": "string" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" },
-        "createdBy": { "type": "string" }
-      },
-      "required": ["id", "appName", "username"]
-    },
-    "VisaCostRecord": {
-      "title": "Visa Cost Record",
-      "description": "Log of visa application fees and overall government/residency acquisition costs for employees",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "employeeId": { "type": "string" },
-        "employeeCode": { "type": "string" },
-        "employeeName": { "type": "string" },
-        "nationality": { "type": "string" },
-        "company": { "type": "string" },
-        "designation": { "type": "string" },
-        "initialAppFee": { "type": "number" },
-        "totalCost": { "type": "number" },
-        "status": { "type": "string" },
-        "notes": { "type": "string" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" },
-        "createdBy": { "type": "string" }
-      },
-      "required": ["id", "employeeId", "employeeName", "totalCost", "status"]
     }
   },
   "firestore": {
@@ -696,14 +657,6 @@
     "/passport_acknowledgements/{ackId}": {
       "schema": "PassportAcknowledgement",
       "description": "Ledger of all passport custody collection acknowledgements"
-    },
-    "/password_records/{recordId}": {
-      "schema": "PasswordRecord",
-      "description": "Administrative system login and credentials storage for external web applications"
-    },
-    "/visa_costs/{costId}": {
-      "schema": "VisaCostRecord",
-      "description": "Log of visa application fees and overall government/residency acquisition costs for employees"
     }
   }
 }
