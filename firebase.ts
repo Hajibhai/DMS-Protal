@@ -20,6 +20,9 @@ export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("https://www.googleapis.com/auth/meetings.space.created");
 googleProvider.addScope("https://www.googleapis.com/auth/meetings.space.readonly");
+googleProvider.addScope("https://www.googleapis.com/auth/chat.spaces");
+googleProvider.addScope("https://www.googleapis.com/auth/chat.memberships");
+googleProvider.addScope("https://www.googleapis.com/auth/chat.messages.create");
 googleProvider.setCustomParameters({
   prompt: 'select_account'
 });

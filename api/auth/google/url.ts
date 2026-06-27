@@ -2,7 +2,10 @@ import { google } from "googleapis";
 
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/drive.metadata.readonly'
+  'https://www.googleapis.com/auth/drive.metadata.readonly',
+  'https://www.googleapis.com/auth/chat.spaces',
+  'https://www.googleapis.com/auth/chat.memberships',
+  'https://www.googleapis.com/auth/chat.messages.create'
 ];
 
 export const getOAuth2Client = (req?: any) => {

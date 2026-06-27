@@ -70,7 +70,7 @@ import {
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator, Car,
   Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home, Mail,
-  Database, HardDrive, Sparkles
+  Database, HardDrive, Sparkles, MessageSquare
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -155,6 +155,7 @@ import { VehiclesView } from './components/VehiclesView';
 import { JobOfferView } from './components/JobOfferView';
 import { EngineerView } from './components/EngineerView';
 import TasksNotesView from './components/TasksNotesView';
+import { GoogleChatView } from './components/GoogleChatView';
 import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/ExperienceLetterView';
 import { NocView } from './components/NocView';
 import { PassportAcknowledgementView } from './components/PassportAcknowledgementView';
@@ -5601,6 +5602,7 @@ export default function App() {
       },
       { id: 'engineer-hub', label: 'Procurement', icon: HardHat, roleCheck: ['engineer', 'accountant', 'admin', 'creator'] },
       { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
+      { id: 'google-chat', label: 'Google Chat', icon: MessageSquare },
       { id: 'reports', label: 'Reports', icon: BarChart3, permission: 'canViewReports' },
       { id: 'about', label: 'About', icon: AlertCircle, creatorOnly: true },
     ];
@@ -5610,7 +5612,8 @@ export default function App() {
     if (systemUser.role === UserRole.EMPLOYEE || systemUser.role?.toLowerCase() === 'employee') {
         return [
             { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet },
-            { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote }
+            { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
+            { id: 'google-chat', label: 'Google Chat', icon: MessageSquare }
         ];
     }
     
@@ -6303,6 +6306,14 @@ export default function App() {
       )}
       {activeTab === 'tasks-notes' && (
         <TasksNotesView systemUser={systemUser} />
+      )}
+      {activeTab === 'google-chat' && (
+        <GoogleChatView 
+          employees={employees}
+          companies={companies}
+          projects={projects}
+          user={systemUser}
+        />
       )}
       {activeTab === 'about' && (
         <AboutView />
