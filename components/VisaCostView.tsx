@@ -5,8 +5,9 @@ import {
   CreditCard, Coins, User, ArrowUpRight, FileSpreadsheet, Building, 
   HelpCircle, Sparkles, Filter, CheckCircle, Clock, Receipt, FileText
 } from 'lucide-react';
-import { collection, onSnapshot, query, addDoc, deleteDoc, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, addDoc, deleteDoc, updateDoc, doc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { handleFirestoreError, OperationType } from '../services/storageService';
 import { Employee } from '../types';
 import * as XLSX from 'xlsx';
 
@@ -94,10 +95,12 @@ export const VisaCostView: React.FC<VisaCostViewProps> = ({ user, employees, ope
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Load records on mount
-  useEffect(() => {
-    const q = query(collection(db, 'visa_costs'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+  const fetchRecords = async () => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const q = query(collection(db, 'visa_costs'));
+      const snapshot = await getDocs(q);
       const loaded: VisaCostRecord[] = [];
       snapshot.forEach((docSnap) => {
         loaded.push({
@@ -105,17 +108,36 @@ export const VisaCostView: React.FC<VisaCostViewProps> = ({ user, employees, ope
           ...docSnap.data()
         } as VisaCostRecord);
       });
-      // Sort by creation date descending
       loaded.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setRecords(loaded);
+    } catch (error) {
+      console.warn("Retrying visa cost fetch due to initialization delay...");
+      setTimeout(async () => {
+        try {
+          const q = query(collection(db, 'visa_costs'));
+          const snapshot = await getDocs(q);
+          const loaded: VisaCostRecord[] = [];
+          snapshot.forEach((docSnap) => {
+            loaded.push({
+              id: docSnap.id,
+              ...docSnap.data()
+            } as VisaCostRecord);
+          });
+          loaded.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setRecords(loaded);
+        } catch (retryErr) {
+          console.error("Error loading visa costs:", retryErr);
+        }
+      }, 1500);
+    } finally {
       setIsLoading(false);
-    }, (error) => {
-      console.error("Error loading visa cost records:", error);
-      setIsLoading(false);
-    });
+    }
+  };
 
-    return () => unsubscribe();
-  }, []);
+  // Load records on mount or when user changes
+  useEffect(() => {
+    fetchRecords();
+  }, [user?.uid]);
 
   // Filter existing employees for autocomplete search
   const filteredEmployees = useMemo(() => {
@@ -284,6 +306,8 @@ export const VisaCostView: React.FC<VisaCostViewProps> = ({ user, employees, ope
         status: 'Pending',
         notes: ''
       });
+      // Refetch
+      fetchRecords();
     } catch (err: any) {
       console.error("Error saving visa cost record:", err);
       showToast(`Failed to save record: ${err?.message || err}`, 'error');
@@ -338,6 +362,7 @@ export const VisaCostView: React.FC<VisaCostViewProps> = ({ user, employees, ope
         try {
           await deleteDoc(doc(db, 'visa_costs', id));
           showToast('Record deleted successfully');
+          fetchRecords();
         } catch (err: any) {
           console.error("Error deleting record:", err);
           showToast(`Failed to delete record: ${err?.message || err}`, 'error');

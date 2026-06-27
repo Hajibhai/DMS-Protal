@@ -5,8 +5,9 @@ import {
   ExternalLink, Share2, Printer, Download, Lock, Unlock, 
   Copy, Check, X, ShieldAlert, Key, HelpCircle
 } from 'lucide-react';
-import { collection, onSnapshot, query, addDoc, deleteDoc, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, addDoc, deleteDoc, updateDoc, doc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
+import { handleFirestoreError, OperationType } from '../services/storageService';
 import * as XLSX from 'xlsx';
 
 interface PasswordRecord {
@@ -66,10 +67,12 @@ export const PasswordManagerView: React.FC<PasswordManagerViewProps> = ({ user, 
   // Check if secret code is configured in user profile
   const isSecretCodeSet = !!user?.secretCode;
 
-  // Load records on mount
-  useEffect(() => {
-    const q = query(collection(db, 'password_records'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+  const fetchRecords = async () => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const q = query(collection(db, 'password_records'));
+      const snapshot = await getDocs(q);
       const loaded: PasswordRecord[] = [];
       snapshot.forEach((docSnap) => {
         loaded.push({
@@ -77,17 +80,37 @@ export const PasswordManagerView: React.FC<PasswordManagerViewProps> = ({ user, 
           ...docSnap.data()
         } as PasswordRecord);
       });
-      // Sort alphabetically by appName
       loaded.sort((a, b) => (a.appName || '').localeCompare(b.appName || ''));
       setRecords(loaded);
+    } catch (error) {
+      console.warn("Retrying fetch due to initialization delay...");
+      // Silent retry fallback after a brief delay
+      setTimeout(async () => {
+        try {
+          const q = query(collection(db, 'password_records'));
+          const snapshot = await getDocs(q);
+          const loaded: PasswordRecord[] = [];
+          snapshot.forEach((docSnap) => {
+            loaded.push({
+              id: docSnap.id,
+              ...docSnap.data()
+            } as PasswordRecord);
+          });
+          loaded.sort((a, b) => (a.appName || '').localeCompare(b.appName || ''));
+          setRecords(loaded);
+        } catch (retryErr) {
+          console.error("Error loading password records:", retryErr);
+        }
+      }, 1500);
+    } finally {
       setIsLoading(false);
-    }, (error) => {
-      console.error("Error loading password records:", error);
-      setIsLoading(false);
-    });
+    }
+  };
 
-    return () => unsubscribe();
-  }, []);
+  // Load records on mount or when user changes
+  useEffect(() => {
+    fetchRecords();
+  }, [user?.uid]);
 
   // Filter records
   const filteredRecords = useMemo(() => {
@@ -224,6 +247,8 @@ export const PasswordManagerView: React.FC<PasswordManagerViewProps> = ({ user, 
         password: '',
         notes: ''
       });
+      // Refetch
+      fetchRecords();
     } catch (err: any) {
       console.error("Error saving password record:", err);
       showToast(`Failed to save record: ${err?.message || err}`, 'error');
@@ -241,6 +266,7 @@ export const PasswordManagerView: React.FC<PasswordManagerViewProps> = ({ user, 
         try {
           await deleteDoc(doc(db, 'password_records', id));
           showToast('Record deleted successfully');
+          fetchRecords();
         } catch (err: any) {
           console.error("Error deleting record:", err);
           showToast(`Failed to delete record: ${err?.message || err}`, 'error');

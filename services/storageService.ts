@@ -91,10 +91,6 @@ export const handleFirestoreError = (error: unknown, operationType: OperationTyp
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  if (operationType === OperationType.LIST || operationType === OperationType.GET) {
-    // Logging is sufficient for fetch and sync errors. Do not crash running UI or throw unhandled async exceptions.
-    return;
-  }
   throw new Error(JSON.stringify(errInfo));
 };
 
