@@ -442,6 +442,7 @@ export interface SystemUser {
     permissions: UserPermissions;
     theme?: 'light' | 'dark';
     photoURL?: string; // Base64 or URL
+    secretCode?: string; // 4-digit secret pin
 }
 
 export interface CICPARecord {
