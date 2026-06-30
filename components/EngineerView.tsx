@@ -1604,8 +1604,8 @@ export const EngineerView: React.FC<EngineerViewProps> = ({
                         className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                       >
                         <option value="">-- Choose Existing Supplier --</option>
-                        {suppliers.map(s => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
+                        {suppliers.filter(s => s.id === formData.supplierId || !s.status || s.status === 'Active').map(s => (
+                          <option key={s.id} value={s.id}>{s.name}{s.status === 'Inactive' ? ' (Inactive)' : ''}</option>
                         ))}
                       </select>
                     )}

@@ -10229,9 +10229,13 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             >
                                 <option value="">Select...</option>
                                 {(formData.vendorType === 'Supplier' ? suppliers : vendors)
-                                    .filter((v: any) => !payeeSearch || v.name?.toLowerCase().includes(payeeSearch.toLowerCase()) || v.code?.toLowerCase().includes(payeeSearch.toLowerCase()))
+                                    .filter((v: any) => {
+                                        const matchesSearch = !payeeSearch || v.name?.toLowerCase().includes(payeeSearch.toLowerCase()) || v.code?.toLowerCase().includes(payeeSearch.toLowerCase());
+                                        const isActiveOrSelected = v.id === formData.vendorId || !v.status || v.status === 'Active';
+                                        return matchesSearch && isActiveOrSelected;
+                                    })
                                     .map((v: any) => (
-                                        <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>
+                                        <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}{v.status === 'Inactive' ? ' (Inactive)' : ''}</option>
                                     ))
                                 }
                             </select>

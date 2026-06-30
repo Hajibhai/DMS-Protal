@@ -188,6 +188,7 @@ export interface Supplier {
     driveFolderId?: string;
     order?: number;
     trn?: string;
+    status?: 'Active' | 'Inactive';
 }
 
 export interface Project {

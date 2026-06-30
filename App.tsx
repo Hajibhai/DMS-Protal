@@ -70,7 +70,7 @@ import {
   TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight, BarChart2, Phone,
   ShieldAlert, Truck, StickyNote, Camera, Scale, Landmark, RefreshCw, Calculator, Car,
   Paperclip, Upload, FileDown, ExternalLink, FileSpreadsheet, Home, Mail,
-  Database, HardDrive, Sparkles, MessageSquare, GraduationCap
+  Database, HardDrive, Sparkles
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { 
@@ -155,8 +155,6 @@ import { VehiclesView } from './components/VehiclesView';
 import { JobOfferView } from './components/JobOfferView';
 import { EngineerView } from './components/EngineerView';
 import TasksNotesView from './components/TasksNotesView';
-import { GoogleChatView } from './components/GoogleChatView';
-import { GoogleClassroomView } from './components/GoogleClassroomView';
 import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/ExperienceLetterView';
 import { NocView } from './components/NocView';
 import { PassportAcknowledgementView } from './components/PassportAcknowledgementView';
@@ -5603,8 +5601,6 @@ export default function App() {
       },
       { id: 'engineer-hub', label: 'Procurement', icon: HardHat, roleCheck: ['engineer', 'accountant', 'admin', 'creator'] },
       { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
-      { id: 'google-chat', label: 'Google Chat', icon: MessageSquare },
-      { id: 'google-classroom', label: 'Classroom Academy', icon: GraduationCap },
       { id: 'reports', label: 'Reports', icon: BarChart3, permission: 'canViewReports' },
       { id: 'about', label: 'About', icon: AlertCircle, creatorOnly: true },
     ];
@@ -5614,9 +5610,7 @@ export default function App() {
     if (systemUser.role === UserRole.EMPLOYEE || systemUser.role?.toLowerCase() === 'employee') {
         return [
             { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet },
-            { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
-            { id: 'google-chat', label: 'Google Chat', icon: MessageSquare },
-            { id: 'google-classroom', label: 'Classroom Academy', icon: GraduationCap }
+            { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote }
         ];
     }
     
@@ -6016,6 +6010,7 @@ export default function App() {
           onUpdate={handleUpdateSupplier}
           onAdd={handleCreateSupplier}
           user={systemUser!}
+          accountsPayable={accountsPayable}
         />
       )}
       {activeTab === 'projects' && (
@@ -6309,22 +6304,6 @@ export default function App() {
       )}
       {activeTab === 'tasks-notes' && (
         <TasksNotesView systemUser={systemUser} />
-      )}
-      {activeTab === 'google-chat' && (
-        <GoogleChatView 
-          employees={employees}
-          companies={companies}
-          projects={projects}
-          user={systemUser}
-        />
-      )}
-      {activeTab === 'google-classroom' && (
-        <GoogleClassroomView 
-          employees={employees}
-          companies={companies}
-          projects={projects}
-          user={systemUser}
-        />
       )}
       {activeTab === 'about' && (
         <AboutView />
@@ -9883,8 +9862,8 @@ const SupplierDocumentsModal = ({ supplier, onClose, onUpdate, openConfirm }: { 
     );
 };
 
-const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppliers: Supplier[], openConfirm: any, onUpdate: (s: Supplier) => void, onAdd: (s: any) => Promise<void>, user: SystemUser }) => {
-    const [formData, setFormData] = useState({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', logo: '', trn: '' });
+const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user, accountsPayable }: { suppliers: Supplier[], openConfirm: any, onUpdate: (s: Supplier) => void, onAdd: (s: any) => Promise<void>, user: SystemUser, accountsPayable?: AccountsPayable[] }) => {
+    const [formData, setFormData] = useState({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', logo: '', trn: '', status: 'Active' });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isReordering, setIsReordering] = useState(false);
@@ -9988,7 +9967,7 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
         setError(null);
         try {
             await onAdd(formData);
-            setFormData({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', logo: '', trn: '' });
+            setFormData({ code: '', name: '', contactPerson: '', address: '', email: '', phone: '', category: '', notes: '', logo: '', trn: '', status: 'Active' });
             setIsAdding(false);
         } catch (err: any) {
             setError("Failed to save supplier. Please check your connection and permissions.");
@@ -10183,6 +10162,17 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                                 onChange={e => setFormData({ ...formData, trn: e.target.value })}
                             />
                         </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supplier Status</label>
+                            <select 
+                                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all cursor-pointer text-slate-700"
+                                value={formData.status || 'Active'}
+                                onChange={e => setFormData({ ...formData, status: e.target.value })}
+                            >
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                            </select>
+                        </div>
                         <div className="space-y-2 lg:col-span-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Address</label>
                             <input 
@@ -10330,6 +10320,14 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                                         value={supplier.trn || ''}
                                         onChange={e => updateSupplier({ ...supplier, trn: e.target.value })}
                                     />
+                                    <select 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer text-slate-700"
+                                        value={supplier.status || 'Active'}
+                                        onChange={e => updateSupplier({ ...supplier, status: e.target.value as any })}
+                                    >
+                                        <option value="Active">Active</option>
+                                        <option value="Inactive">Inactive</option>
+                                    </select>
                                     <textarea 
                                         className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 min-h-[80px]"
                                         placeholder="Notes / Remarks"
@@ -10346,8 +10344,16 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                                     <div className="flex items-center gap-2 mb-1">
                                         <span className="text-[10px] font-black bg-brand-600 text-white px-2 py-0.5 rounded-md uppercase tracking-wider">{supplier.code}</span>
                                         <h3 className="text-xl font-black text-slate-900 tracking-tight truncate">{supplier.name}</h3>
+                                        <span className={cn(
+                                            "ml-auto text-[9px] font-black uppercase px-2.5 py-1 rounded-full border shadow-xs shrink-0",
+                                            (!supplier.status || supplier.status === 'Active')
+                                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                : "bg-rose-50 text-rose-700 border-rose-200"
+                                        )}>
+                                            {supplier.status || 'Active'}
+                                        </span>
                                         {getExpiryStatus(supplier) && (
-                                            <span className={cn("ml-auto text-[8px] font-black uppercase px-2 py-0.5 rounded-full border", getExpiryStatus(supplier)?.color)}>
+                                            <span className={cn("text-[8px] font-black uppercase px-2 py-0.5 rounded-full border", getExpiryStatus(supplier)?.color)}>
                                                 {getExpiryStatus(supplier)?.label}
                                             </span>
                                         )}
@@ -10392,6 +10398,41 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                                             </div>
                                         )}
                                     </div>
+                                    {(() => {
+                                        const supplierAP = (accountsPayable || []).filter((ap: any) => ap.vendorId === supplier.id && ap.vendorType === 'Supplier');
+                                        const totalPending = supplierAP.filter((ap: any) => ap.status !== 'Paid').reduce((acc: number, ap: any) => acc + (ap.totalAmount || 0), 0);
+                                        const totalPaid = supplierAP.filter((ap: any) => ap.status === 'Paid').reduce((acc: number, ap: any) => acc + (ap.totalAmount || 0), 0);
+                                        
+                                        const isActive = !supplier.status || supplier.status === 'Active';
+                                        return (
+                                            <div className={cn(
+                                                "mt-4 p-4 border rounded-2xl space-y-2",
+                                                isActive 
+                                                    ? "bg-indigo-50/40 border-indigo-100/50" 
+                                                    : "bg-slate-50/70 border-slate-100"
+                                            )}>
+                                                <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                    <span className="flex items-center gap-1">
+                                                        <span className={cn("w-1.5 h-1.5 rounded-full", isActive ? "bg-emerald-500" : "bg-slate-400")} />
+                                                        Accounts Payable
+                                                    </span>
+                                                    <span className={isActive ? "text-emerald-600 font-extrabold" : "text-rose-500 font-extrabold"}>
+                                                        {isActive ? "Active" : "Inactive"}
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                                    <div className="bg-white/80 p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                                                        <div className="text-[9px] font-bold text-slate-400 uppercase">Outstanding</div>
+                                                        <div className="text-xs font-black text-slate-900">AED {totalPending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                                    </div>
+                                                    <div className="bg-white/80 p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                                                        <div className="text-[9px] font-bold text-slate-400 uppercase">Total Paid</div>
+                                                        <div className="text-xs font-black text-slate-600">AED {totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                     <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <div className="flex -space-x-2">
@@ -10493,8 +10534,74 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user }: { suppl
                             <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Phone</label><div className="font-bold">{viewingSupplier.phone || '-'}</div></div>
                             <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Category</label><div className="font-bold">{viewingSupplier.category || '-'}</div></div>
                             <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">TRN No (VAT Registry)</label><div className="font-bold text-brand-600 font-mono">{viewingSupplier.trn || '-'}</div></div>
+                            <div><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Status</label>
+                                <span className={cn(
+                                    "text-[9px] font-black uppercase px-2.5 py-1 rounded-full border shadow-sm inline-block mt-0.5",
+                                    (!viewingSupplier.status || viewingSupplier.status === 'Active')
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : "bg-rose-50 text-rose-700 border-rose-200"
+                                )}>
+                                    {viewingSupplier.status || 'Active'}
+                                </span>
+                            </div>
                             <div className="col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Address</label><div className="font-bold italic">{viewingSupplier.address || '-'}</div></div>
                             <div className="col-span-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Notes</label><div className="font-medium text-slate-500 italic leading-relaxed">{viewingSupplier.notes || '-'}</div></div>
+                            
+                            {(() => {
+                                const supplierAP = (accountsPayable || []).filter((ap: any) => ap.vendorId === viewingSupplier.id && ap.vendorType === 'Supplier');
+                                const isActive = !viewingSupplier.status || viewingSupplier.status === 'Active';
+                                
+                                return (
+                                    <div className="col-span-2 border-t border-slate-100 pt-6 mt-2">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                <span className={cn("w-2 h-2 rounded-full", isActive ? "bg-emerald-500" : "bg-rose-500 animate-pulse")} />
+                                                Supplier Accounts Payable Ledgers ({supplierAP.length})
+                                            </h3>
+                                            {!isActive && (
+                                                <span className="text-[9px] font-black text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                                    Inactive (Locked for new bills)
+                                                </span>
+                                            )}
+                                        </div>
+                                        {supplierAP.length === 0 ? (
+                                            <div className="p-4 bg-slate-50 rounded-2xl text-center text-xs font-bold text-slate-400">
+                                                No active billing records or outstanding entries.
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2.5 max-h-[250px] overflow-y-auto pr-1">
+                                                {supplierAP.map((ap: any) => (
+                                                    <div key={ap.id} className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-slate-100/50 transition-all">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="px-2.5 py-1 bg-white rounded-lg text-[10px] font-black border border-slate-200 uppercase font-mono tracking-wider">
+                                                                {ap.invoiceNumber || 'N/A'}
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-xs font-black text-slate-800">{ap.date}</div>
+                                                                <div className="text-[10px] text-slate-400 font-bold">Due: {ap.dueDate}</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="text-right">
+                                                                <div className="text-xs font-black text-slate-900">AED {Number(ap.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                                                <div className="text-[9px] text-brand-600 font-extrabold uppercase tracking-wide">Payable: AED {Number(ap.payableAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                                            </div>
+                                                            <span className={cn(
+                                                                "text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-md border shrink-0",
+                                                                ap.status === 'Paid' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                                                                ap.status === 'Partially Paid' ? "bg-orange-50 text-orange-700 border-orange-100" :
+                                                                "bg-rose-50 text-rose-700 border-rose-100"
+                                                            )}>
+                                                                {ap.status}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </motion.div>
                 </div>

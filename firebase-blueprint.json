@@ -132,7 +132,8 @@
         "phone": { "type": "string" },
         "category": { "type": "string" },
         "notes": { "type": "string" },
-        "order": { "type": "number" }
+        "order": { "type": "number" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"] }
       },
       "required": ["id", "code", "name", "contactPerson"]
     },
