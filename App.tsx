@@ -9871,6 +9871,7 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user, accountsP
     const [viewingDocsSupplier, setViewingDocsSupplier] = useState<Supplier | null>(null);
     const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
     const [error, setError] = useState<string | null>(null);
     const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
@@ -9924,9 +9925,16 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user, accountsP
     }, [suppliers]);
 
     const filteredSuppliers = useMemo(() => {
-        if (!searchTerm.trim()) return sortedSuppliers;
+        let baseList = sortedSuppliers;
+        if (statusFilter !== 'All') {
+            baseList = baseList.filter(supplier => {
+                const isActive = !supplier.status || supplier.status === 'Active';
+                return statusFilter === 'Active' ? isActive : !isActive;
+            });
+        }
+        if (!searchTerm.trim()) return baseList;
         const query = searchTerm.toLowerCase();
-        return sortedSuppliers.filter(supplier => {
+        return baseList.filter(supplier => {
             const matchesName = (supplier.name?.toLowerCase() || '').includes(query);
             const matchesCode = (supplier.code?.toLowerCase() || '').includes(query);
             const matchesContact = (supplier.contactPerson?.toLowerCase() || '').includes(query);
@@ -9935,7 +9943,7 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user, accountsP
             );
             return matchesName || matchesCode || matchesContact || matchesDocuments;
         });
-    }, [sortedSuppliers, searchTerm]);
+    }, [sortedSuppliers, searchTerm, statusFilter]);
 
     const getExpiryStatus = (supplier: Supplier) => {
         const files = supplier.driveFiles || [];
@@ -10219,6 +10227,50 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user, accountsP
                     </div>
                 </motion.div>
             )}
+
+            <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-5 gap-4">
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl border border-slate-200/40 w-fit">
+                    <button
+                        onClick={() => setStatusFilter('All')}
+                        className={cn(
+                            "px-4.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200",
+                            statusFilter === 'All'
+                                ? "bg-white text-slate-900 shadow-xs"
+                                : "text-slate-400 hover:text-slate-600"
+                        )}
+                    >
+                        All ({suppliers.length})
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter('Active')}
+                        className={cn(
+                            "px-4.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5",
+                            statusFilter === 'Active'
+                                ? "bg-white text-emerald-700 shadow-xs"
+                                : "text-slate-400 hover:text-slate-600"
+                        )}
+                    >
+                        <span className={cn("w-1.5 h-1.5 rounded-full bg-emerald-500", statusFilter === 'Active' ? "" : "opacity-60")} />
+                        Active ({suppliers.filter(s => !s.status || s.status === 'Active').length})
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter('Inactive')}
+                        className={cn(
+                            "px-4.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5",
+                            statusFilter === 'Inactive'
+                                ? "bg-white text-rose-700 shadow-xs"
+                                : "text-slate-400 hover:text-slate-600"
+                        )}
+                    >
+                        <span className={cn("w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse", statusFilter === 'Inactive' ? "" : "opacity-60")} />
+                        Inactive ({suppliers.filter(s => s.status === 'Inactive').length})
+                    </button>
+                </div>
+                
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Showing {filteredSuppliers.length} of {suppliers.length} Registered Suppliers
+                </div>
+            </div>
 
             <Reorder.Group 
                 axis="y" 
