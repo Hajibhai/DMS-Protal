@@ -20,6 +20,181 @@ interface TasksNotesViewProps {
   systemUser: SystemUser | null;
 }
 
+function MeetingItem({ m, canScheduleMeetings, db, setShowMeetingForm, handleDeleteMeeting }: {
+  m: Meeting;
+  canScheduleMeetings: boolean;
+  db: any;
+  setShowMeetingForm: any;
+  handleDeleteMeeting: any;
+}) {
+  const [showDetails, setShowDetails] = useState(!m.completed);
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.25 }}
+      className={`p-6 bg-white border border-slate-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-full ${
+        m.completed ? 'bg-slate-50/40 border-slate-200/50' : ''
+      }`}
+    >
+      <div>
+        {/* Meeting Header */}
+        <div className="flex justify-between items-start gap-2 mb-3">
+          <div className="flex flex-wrap gap-1.5 items-center">
+            <span className="px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-full text-[10px] font-black text-indigo-700 uppercase tracking-widest">
+              {m.duration} Min Session
+            </span>
+            {m.completed ? (
+              <span className="px-3 py-1 bg-emerald-50 border border-emerald-100 rounded-full text-[10px] font-black text-emerald-700 uppercase tracking-widest flex items-center gap-1">
+                <Check className="w-3 h-3 text-emerald-600" /> Completed
+              </span>
+            ) : (
+              <span className="px-3 py-1 bg-amber-50 border border-amber-100 rounded-full text-[10px] font-black text-amber-700 uppercase tracking-widest">
+                Scheduled
+              </span>
+            )}
+          </div>
+          
+          {/* Actions dropdown/buttons if permitted */}
+          {canScheduleMeetings && (
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <button
+                onClick={async () => {
+                  try {
+                    await updateDoc(doc(db, 'meetings', m.id), { completed: !m.completed, updatedAt: new Date().toISOString() });
+                  } catch (err) {
+                    console.error("Error toggling meeting completed state:", err);
+                  }
+                }}
+                className={`p-1.5 border border-transparent rounded-lg transition-all cursor-pointer ${
+                  m.completed 
+                    ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-200' 
+                    : 'hover:bg-slate-50 hover:border-slate-100 text-slate-400 hover:text-emerald-650'
+                }`}
+                title={m.completed ? "Mark Scheduled" : "Mark Completed"}
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowMeetingForm(m)}
+                className="p-1.5 hover:bg-slate-50 border border-transparent hover:border-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all cursor-pointer"
+                title="Edit Meeting"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleDeleteMeeting(m.id)}
+                className="px-2 py-0.5 hover:bg-rose-50 border border-transparent hover:border-rose-100 text-slate-300 hover:text-rose-600 rounded-lg transition-all cursor-pointer"
+                title="Delete Meeting"
+              >
+                <span className="text-sm font-bold leading-none">×</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Title */}
+        <h3 className="text-sm font-bold text-slate-900 leading-snug mb-1">{m.title}</h3>
+
+        {/* Details Toggle Button for Completed Meetings */}
+        {m.completed && (
+          <button
+            type="button"
+            onClick={() => setShowDetails(!showDetails)}
+            className="text-[10px] font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-wider flex items-center gap-1 mt-1.5 mb-2 transition cursor-pointer"
+          >
+            {showDetails ? 'Hide Details' : 'Show Details'}
+            <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${showDetails ? 'rotate-90' : ''}`} />
+          </button>
+        )}
+
+        <AnimatePresence initial={false}>
+          {showDetails && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              {m.description && (
+                <p className="text-slate-500 text-xs mt-1 mb-4 leading-relaxed">{m.description}</p>
+              )}
+
+              {/* Time Schedule details */}
+              <div className="space-y-2 mb-4 pt-3 border-t border-slate-100/60">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="text-xs font-semibold">
+                    {new Date(m.dateTime).toLocaleDateString(undefined, { 
+                      weekday: 'short', month: 'short', day: 'numeric' 
+                    })} at {new Date(m.dateTime).toLocaleTimeString(undefined, {
+                      hour: '2-digit', minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+
+                {/* Assignees / Team space */}
+                {m.assignedToMultiple && m.assignedToMultiple.length > 0 && (
+                  <div className="flex items-start gap-2 text-slate-500">
+                    <User className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Assigned Attendees</span>
+                      <span className="text-xs font-semibold text-slate-600">
+                        {m.assignedToMultiple.map(u => u.name).join(', ')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Google Meet Integrations space */}
+              <div>
+                {m.meetLink ? (
+                  <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-3 flex items-center justify-between gap-2 text-left">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg shrink-0">
+                        <Video className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[8px] uppercase tracking-wider font-extrabold text-emerald-700 block">Google Meet Room</span>
+                        <span className="text-[10px] font-bold text-slate-600 truncate block">{m.meetLink}</span>
+                      </div>
+                    </div>
+                    <a
+                      href={m.meetLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[9px] uppercase tracking-wider rounded-xl shadow-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                    >
+                      <Video className="w-3.5 h-3.5" /> Join Space
+                    </a>
+                  </div>
+                ) : (
+                  <div className="text-center p-2.5 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    No Meet Link Generated
+                  </div>
+                )}
+
+                {/* Creator Metadata */}
+                <div className="text-[9px] font-bold text-slate-400 mt-4 pt-2 border-t border-slate-100/60 flex items-center justify-between">
+                  <span>Scheduled by: {m.createdBy?.split(' ')[0]} ({m.createdByRole})</span>
+                  <span>
+                    {new Date(m.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<'tasks' | 'notes' | 'meetings'>('tasks');
   const [meetingFilter, setMeetingFilter] = useState<'scheduled' | 'completed'>('scheduled');
@@ -1545,142 +1720,14 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <AnimatePresence>
                 {filteredMeetings.map((m) => (
-                  <motion.div
+                  <MeetingItem
                     key={m.id}
-                    layout
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ duration: 0.25 }}
-                    className="p-6 bg-white border border-slate-100 rounded-[2rem] shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-full"
-                  >
-                    <div>
-                      {/* Meeting Header */}
-                      <div className="flex justify-between items-start gap-2 mb-3">
-                        <div className="flex flex-wrap gap-1.5 items-center">
-                          <span className="px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-full text-[10px] font-black text-indigo-700 uppercase tracking-widest">
-                            {m.duration} Min Session
-                          </span>
-                          {m.completed ? (
-                            <span className="px-3 py-1 bg-emerald-50 border border-emerald-100 rounded-full text-[10px] font-black text-emerald-700 uppercase tracking-widest flex items-center gap-1">
-                              <Check className="w-3 h-3 text-emerald-600" /> Completed
-                            </span>
-                          ) : (
-                            <span className="px-3 py-1 bg-amber-50 border border-amber-100 rounded-full text-[10px] font-black text-amber-700 uppercase tracking-widest">
-                              Scheduled
-                            </span>
-                          )}
-                        </div>
-                        
-                        {/* Actions dropdown/buttons if permitted */}
-                        {canScheduleMeetings && (
-                          <div className="flex items-center gap-1.5 overflow-hidden">
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await updateDoc(doc(db, 'meetings', m.id), { completed: !m.completed, updatedAt: new Date().toISOString() });
-                                } catch (err) {
-                                  console.error("Error toggling meeting completed state:", err);
-                                }
-                              }}
-                              className={`p-1.5 border border-transparent rounded-lg transition-all cursor-pointer ${
-                                m.completed 
-                                  ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-200' 
-                                  : 'hover:bg-slate-50 hover:border-slate-100 text-slate-400 hover:text-emerald-650'
-                              }`}
-                              title={m.completed ? "Mark Scheduled" : "Mark Completed"}
-                            >
-                              <Check className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setShowMeetingForm(m)}
-                              className="p-1.5 hover:bg-slate-50 border border-transparent hover:border-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition-all cursor-pointer"
-                              title="Edit Meeting"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteMeeting(m.id)}
-                              className="px-2 py-0.5 hover:bg-rose-50 border border-transparent hover:border-rose-100 text-slate-300 hover:text-rose-600 rounded-lg transition-all cursor-pointer"
-                              title="Delete Meeting"
-                            >
-                              <span className="text-sm font-bold leading-none">×</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Title & Description */}
-                      <h3 className="text-sm font-bold text-slate-900 leading-snug line-clamp-2 mb-1">{m.title}</h3>
-                      {m.description && (
-                        <p className="text-slate-500 text-xs line-clamp-3 mb-4">{m.description}</p>
-                      )}
-
-                      {/* Time Schedule details */}
-                      <div className="space-y-2 mb-4 pt-3 border-t border-slate-100/60">
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span className="text-xs font-semibold">
-                            {new Date(m.dateTime).toLocaleDateString(undefined, { 
-                              weekday: 'short', month: 'short', day: 'numeric' 
-                            })} at {new Date(m.dateTime).toLocaleTimeString(undefined, {
-                              hour: '2-digit', minute: '2-digit'
-                            })}
-                          </span>
-                        </div>
-
-                        {/* Assignees / Team space */}
-                        {m.assignedToMultiple && m.assignedToMultiple.length > 0 && (
-                          <div className="flex items-start gap-2 text-slate-500">
-                            <User className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                            <div className="min-w-0">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Assigned Attendees</span>
-                              <span className="text-xs font-semibold text-slate-600">
-                                {m.assignedToMultiple.map(u => u.name).join(', ')}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Google Meet Integrations space */}
-                    <div>
-                      {m.meetLink ? (
-                        <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-3 flex items-center justify-between gap-2 text-left">
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg shrink-0">
-                              <Video className="w-4 h-4 animate-pulse" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[8px] uppercase tracking-wider font-extrabold text-emerald-700 block">Google Meet Room</span>
-                              <span className="text-[10px] font-bold text-slate-600 truncate block">{m.meetLink}</span>
-                            </div>
-                          </div>
-                          <a
-                            href={m.meetLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[9px] uppercase tracking-wider rounded-xl shadow-xs transition-all flex items-center gap-1 shrink-0 cursor-pointer"
-                          >
-                            <Video className="w-3.5 h-3.5" /> Join Space
-                          </a>
-                        </div>
-                      ) : (
-                        <div className="text-center p-2.5 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                          No Meet Link Generated
-                        </div>
-                      )}
-
-                      {/* Creator Metadata */}
-                      <div className="text-[9px] font-bold text-slate-400 mt-4 pt-2 border-t border-slate-100/60 flex items-center justify-between">
-                        <span>Scheduled by: {m.createdBy?.split(' ')[0]} ({m.createdByRole})</span>
-                        <span>
-                          {new Date(m.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                        </span>
-                      </div>
-                    </div>
-                  </motion.div>
+                    m={m}
+                    canScheduleMeetings={canScheduleMeetings}
+                    db={db}
+                    setShowMeetingForm={setShowMeetingForm}
+                    handleDeleteMeeting={handleDeleteMeeting}
+                  />
                 ))}
               </AnimatePresence>
             </div>

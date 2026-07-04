@@ -5461,7 +5461,20 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             }
             
             if (filterEntity !== 'All') {
-                if (item.entityId !== filterEntity) return false;
+                const targetVendor = vendors.find((v: any) => v.id === filterEntity);
+                if (targetVendor) {
+                    const targetClientName = (targetVendor.name || '').toLowerCase().trim();
+                    if (item.entityType === 'Vendor') {
+                        if (item.entityId !== filterEntity) return false;
+                    } else if (item.entityType === 'Project') {
+                        const proj = projects.find((p: any) => p.id === item.entityId);
+                        if (!proj || (proj.clientName || '').toLowerCase().trim() !== targetClientName) return false;
+                    } else {
+                        if (item.entityId !== filterEntity) return false;
+                    }
+                } else {
+                    if (item.entityId !== filterEntity) return false;
+                }
             }
 
             if (filterProject !== 'All') {
@@ -5541,9 +5554,29 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                 if (soaEntityId.startsWith('BY_NAME:')) {
                     const targetName = soaEntityId.replace('BY_NAME:', '').toLowerCase().trim();
                     const actualClientObj = getEntityObject(item.entityId, item.entityType || 'Vendor');
-                    if (!actualClientObj || actualClientObj.name.toLowerCase().trim() !== targetName) return false;
+                    if (!actualClientObj) return false;
+                    let clientName = '';
+                    if (item.entityType === 'Project') {
+                        clientName = (actualClientObj.clientName || actualClientObj.name || '').toLowerCase().trim();
+                    } else {
+                        clientName = (actualClientObj.name || '').toLowerCase().trim();
+                    }
+                    if (clientName !== targetName && !clientName.includes(targetName) && !targetName.includes(clientName)) return false;
                 } else {
-                    if (item.entityId !== soaEntityId) return false;
+                    const targetVendor = vendors.find((v: any) => v.id === soaEntityId);
+                    if (targetVendor) {
+                        const targetClientName = (targetVendor.name || '').toLowerCase().trim();
+                        if (item.entityType === 'Vendor') {
+                            if (item.entityId !== soaEntityId) return false;
+                        } else if (item.entityType === 'Project') {
+                            const proj = projects.find((p: any) => p.id === item.entityId);
+                            if (!proj || (proj.clientName || '').toLowerCase().trim() !== targetClientName) return false;
+                        } else {
+                            if (item.entityId !== soaEntityId) return false;
+                        }
+                    } else {
+                        if (item.entityId !== soaEntityId) return false;
+                    }
                 }
             }
             
@@ -11672,6 +11705,7 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
 };
 
 export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSave, onCancel, companies, existingRecords }: any) => {
+    const [focusedItemRowId, setFocusedItemRowId] = useState<string | null>(null);
     const [duplicateConflict, setDuplicateConflict] = useState<any>(null);
     const [entitySearch, setEntitySearch] = useState('');
     const [formData, setFormData] = useState(() => {
@@ -12105,26 +12139,58 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                     <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                         <th className="px-4 py-3">Item/Service Name</th>
                                         <th className="px-4 py-3">Sub-Description (Scope)</th>
-                                        <th className="px-1.5 py-3 text-right w-32">Qty</th>
-                                        <th className="px-1.5 py-3 text-right w-32">Rate (AED)</th>
-                                        <th className="px-1.5 py-3 text-right w-36">Total (AED)</th>
+                                        <th className="px-1.5 py-3 text-right w-44">Qty</th>
+                                        <th className="px-1.5 py-3 text-right w-48">Rate (AED)</th>
+                                        <th className="px-1.5 py-3 text-right w-52">Total (AED)</th>
                                         <th className="p-3 text-center w-12"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-150">
                                     {formData.items.map((it: any) => (
                                         <tr key={it.id} className="hover:bg-slate-50/50">
-                                            <td className="p-3">
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="Item or service name"
-                                                    value={it.name}
-                                                    onChange={e => updateItemValue(it.id, 'name', e.target.value)}
-                                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
-                                                    required
-                                                    list="invoice-item-suggestions"
-                                                    autoComplete="on"
-                                                />
+                                            <td className="p-3 relative">
+                                                <div className="relative">
+                                                    <input 
+                                                        type="text" 
+                                                        placeholder="Item or service name"
+                                                        value={it.name}
+                                                        onFocus={() => setFocusedItemRowId(it.id)}
+                                                        onBlur={() => setTimeout(() => setFocusedItemRowId(null), 250)}
+                                                        onChange={e => updateItemValue(it.id, 'name', e.target.value)}
+                                                        className="w-full pr-8 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                                        required
+                                                    />
+                                                    <div className="absolute right-2.5 top-2.5 text-slate-400 pointer-events-none">
+                                                        <ChevronDown className="w-3.5 h-3.5" />
+                                                    </div>
+                                                    
+                                                    {focusedItemRowId === it.id && (
+                                                        <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50">
+                                                            {(() => {
+                                                                const filteredSuggestions = itemSuggestions.filter(s => 
+                                                                    s.toLowerCase().includes((it.name || '').toLowerCase())
+                                                                );
+                                                                if (filteredSuggestions.length === 0) {
+                                                                    return <div className="px-3 py-2 text-[10px] text-slate-400 font-semibold italic">No matches. Press Enter to add.</div>;
+                                                                }
+                                                                return filteredSuggestions.map(sug => (
+                                                                    <button
+                                                                        key={sug}
+                                                                        type="button"
+                                                                        onMouseDown={(e) => {
+                                                                            e.preventDefault();
+                                                                            updateItemValue(it.id, 'name', sug);
+                                                                            setFocusedItemRowId(null);
+                                                                        }}
+                                                                        className="w-full text-left px-3 py-2 hover:bg-slate-50 text-xs font-extrabold text-slate-700 transition-colors"
+                                                                    >
+                                                                        {sug}
+                                                                    </button>
+                                                                ));
+                                                            })()}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="p-3">
                                                 <input 
