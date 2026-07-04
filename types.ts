@@ -720,6 +720,7 @@ export interface Meeting {
   assignedToMultiple?: Array<{ uid: string; name: string }>;
   assignedTo?: string; // fallback or single person id
   assignedToName?: string; // fallback or single person name
+  completed?: boolean;
 }
 
 export interface CorporateBankAccount {

@@ -335,6 +335,7 @@ export const Layout: React.FC<LayoutProps> = ({
     
     // Find any meeting where the user is an attendee or creator, and is active now or starting in the next 1 hour
     const active = layoutMeetings.find(m => {
+      if (m.completed) return false;
       const isAttendee = (m.assignedToMultiple || []).some((u: any) => u.uid === user.uid) || m.assignedTo === user.uid;
       const isCreator = m.createdById === user.uid;
       if (!isAttendee && !isCreator) return false;
