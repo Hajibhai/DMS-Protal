@@ -66,6 +66,23 @@ export interface DriveFile {
     expiryDate?: string; // YYYY-MM-DD
 }
 
+export interface VisaFees {
+  initialApplicationFee?: number;
+  approvalFee?: number;
+  dicFee?: number;
+  iloeFee?: number;
+  lcFee?: number;
+  entryPermitFee?: number;
+  changeStatusFee?: number;
+  medicalFee?: number;
+  insuranceFee?: number;
+  biometricFee?: number;
+  visaEidFee?: number;
+  othersFee?: number;
+  othersRemarks?: string;
+  totalFee?: number;
+}
+
 export interface Employee {
   id: string;
   code: string; // e.g., 10001
@@ -99,6 +116,7 @@ export interface Employee {
   vacationScheduledDate?: string;
   driveFiles?: DriveFile[];
   driveFolderId?: string;
+  visaFees?: VisaFees;
 }
 
 export enum AttendanceStatus {

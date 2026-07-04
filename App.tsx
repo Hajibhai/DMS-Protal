@@ -117,7 +117,8 @@ import {
   Note,
   Voucher,
   Vehicle,
-  VehicleDocument
+  VehicleDocument,
+  VisaFees
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -159,6 +160,7 @@ import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/
 import { NocView } from './components/NocView';
 import { PassportAcknowledgementView } from './components/PassportAcknowledgementView';
 import { VouchersView } from './components/VouchersView';
+import { VisaFeesView } from './components/VisaFeesView';
 
 // --- Image Compression Helper ---
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
@@ -1368,6 +1370,163 @@ const OffboardingWizard = ({ employee, onComplete, onCancel }: { employee: Emplo
 
 const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm, readOnly }: { employee: Employee, onSave: (e: Employee) => void, onCancel: () => void, companies: Company[], openConfirm: any, readOnly?: boolean }) => {
     const [data, setData] = useState<Employee>(employee);
+
+    const handleVisaFeeChange = (field: keyof VisaFees, val: any) => {
+        const currentVisaFees = data.visaFees || {};
+        const updatedVisaFees = {
+            ...currentVisaFees,
+            [field]: field === 'othersRemarks' ? val : (val === '' ? undefined : Number(val))
+        };
+
+        // Calculate total automatically
+        const initialApplicationFee = Number(updatedVisaFees.initialApplicationFee) || 0;
+        const approvalFee = Number(updatedVisaFees.approvalFee) || 0;
+        const dicFee = Number(updatedVisaFees.dicFee) || 0;
+        const iloeFee = Number(updatedVisaFees.iloeFee) || 0;
+        const lcFee = Number(updatedVisaFees.lcFee) || 0;
+        const entryPermitFee = Number(updatedVisaFees.entryPermitFee) || 0;
+        const changeStatusFee = Number(updatedVisaFees.changeStatusFee) || 0;
+        const medicalFee = Number(updatedVisaFees.medicalFee) || 0;
+        const insuranceFee = Number(updatedVisaFees.insuranceFee) || 0;
+        const biometricFee = Number(updatedVisaFees.biometricFee) || 0;
+        const visaEidFee = Number(updatedVisaFees.visaEidFee) || 0;
+        const othersFee = Number(updatedVisaFees.othersFee) || 0;
+
+        const total = initialApplicationFee + approvalFee + dicFee + iloeFee + lcFee + entryPermitFee + changeStatusFee + medicalFee + insuranceFee + biometricFee + visaEidFee + othersFee;
+        updatedVisaFees.totalFee = Number(total.toFixed(2));
+
+        setData({
+            ...data,
+            visaFees: updatedVisaFees
+        });
+    };
+
+    const downloadIndividualVisaFeePDF = (emp: Employee) => {
+        const doc = new jsPDF();
+        const fees = emp.visaFees || {};
+        
+        // Brand header
+        doc.setFillColor(79, 70, 229); // Brand color (indigo-600)
+        doc.rect(0, 0, 210, 40, 'F');
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(22);
+        doc.text("PIONEER CONTRACTING", 15, 18);
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.text("INDIVIDUAL VISA & ONBOARDING FEES REPORT", 15, 26);
+        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 15, 32);
+        
+        // Employee details card
+        doc.setFillColor(248, 250, 252);
+        doc.rect(10, 48, 190, 42, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(10, 48, 190, 42, 'D');
+        
+        doc.setTextColor(15, 23, 42);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text("EMPLOYEE INFORMATION", 15, 55);
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.text(`Name: ${emp.name}`, 15, 62);
+        doc.text(`Code: ${emp.code}`, 15, 68);
+        doc.text(`Designation: ${emp.designation || 'N/A'}`, 15, 74);
+        doc.text(`Department: ${emp.department || 'N/A'}`, 15, 80);
+        doc.text(`Company: ${emp.company || 'N/A'}`, 110, 62);
+        doc.text(`Nationality: ${emp.nationality || 'N/A'}`, 110, 68);
+        doc.text(`Joining Date: ${emp.joiningDate || 'N/A'}`, 110, 74);
+        doc.text(`Status: ${emp.status || 'Active'}`, 110, 80);
+        
+        // Fee Breakdown Table
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text("FEE DESCRIPTION & BREAKDOWN", 15, 102);
+        
+        const tableData = [
+            ["1. Initial Application Fee", `AED ${(fees.initialApplicationFee || 0).toFixed(2)}`],
+            ["2. Approval Fee", `AED ${(fees.approvalFee || 0).toFixed(2)}`],
+            ["3. DIC Fee", `AED ${(fees.dicFee || 0).toFixed(2)}`],
+            ["4. ILOE Fee", `AED ${(fees.iloeFee || 0).toFixed(2)}`],
+            ["5. LC Fee", `AED ${(fees.lcFee || 0).toFixed(2)}`],
+            ["6. Entry Permit Fee", `AED ${(fees.entryPermitFee || 0).toFixed(2)}`],
+            ["7. Change Status Fee", `AED ${(fees.changeStatusFee || 0).toFixed(2)}`],
+            ["8. Medical Fee", `AED ${(fees.medicalFee || 0).toFixed(2)}`],
+            ["9. Insurance Fee", `AED ${(fees.insuranceFee || 0).toFixed(2)}`],
+            ["10. Biometric Fee - New Employee (If Applicable)", `AED ${(fees.biometricFee || 0).toFixed(2)}`],
+            ["11. Visa & EID Fee", `AED ${(fees.visaEidFee || 0).toFixed(2)}`],
+            [`12. Others Fee (${fees.othersRemarks || 'No Remarks'})`, `AED ${(fees.othersFee || 0).toFixed(2)}`],
+        ];
+        
+        let currentY = 108;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        
+        tableData.forEach(([label, value]) => {
+            doc.setDrawColor(241, 245, 249);
+            doc.line(15, currentY + 1, 195, currentY + 1);
+            doc.setTextColor(71, 85, 105);
+            doc.text(label, 15, currentY);
+            doc.setTextColor(15, 23, 42);
+            doc.setFont("helvetica", "bold");
+            doc.text(value, 160, currentY);
+            doc.setFont("helvetica", "normal");
+            currentY += 8;
+        });
+        
+        // Grand Total
+        currentY += 4;
+        doc.setFillColor(240, 249, 255);
+        doc.rect(10, currentY - 6, 190, 14, 'F');
+        doc.setDrawColor(186, 230, 253);
+        doc.rect(10, currentY - 6, 190, 14, 'D');
+        
+        doc.setTextColor(79, 70, 229);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(12);
+        doc.text("TOTAL ESTIMATED VISA & ONBOARDING FEES:", 15, currentY + 2);
+        doc.setFontSize(13);
+        doc.text(`AED ${(fees.totalFee || 0).toFixed(2)}`, 155, currentY + 2);
+        
+        doc.save(`Visa_Fees_Report_${emp.code}_${emp.name.replace(/\s+/g, '_')}.pdf`);
+    };
+
+    const downloadIndividualVisaFeeExcel = (emp: Employee) => {
+        const fees = emp.visaFees || {};
+        const dataRows = [
+            { "Detail": "Employee Name", "Value": emp.name },
+            { "Detail": "Employee Code", "Value": emp.code },
+            { "Detail": "Designation", "Value": emp.designation },
+            { "Detail": "Department", "Value": emp.department },
+            { "Detail": "Company", "Value": emp.company },
+            { "Detail": "Nationality", "Value": emp.nationality || '' },
+            { "Detail": "Joining Date", "Value": emp.joiningDate || '' },
+            { "Detail": "", "Value": "" },
+            { "Detail": "FEE ITEM", "Value": "AMOUNT (AED)" },
+            { "Detail": "Initial Application Fee", "Value": fees.initialApplicationFee || 0 },
+            { "Detail": "Approval Fee", "Value": fees.approvalFee || 0 },
+            { "Detail": "DIC Fee", "Value": fees.dicFee || 0 },
+            { "Detail": "ILOE Fee", "Value": fees.iloeFee || 0 },
+            { "Detail": "LC Fee", "Value": fees.lcFee || 0 },
+            { "Detail": "Entry Permit Fee", "Value": fees.entryPermitFee || 0 },
+            { "Detail": "Change Status Fee", "Value": fees.changeStatusFee || 0 },
+            { "Detail": "Medical Fee", "Value": fees.medicalFee || 0 },
+            { "Detail": "Insurance Fee", "Value": fees.insuranceFee || 0 },
+            { "Detail": "Biometric Fee - New Employee", "Value": fees.biometricFee || 0 },
+            { "Detail": "Visa & EID Fee", "Value": fees.visaEidFee || 0 },
+            { "Detail": `Others Fee (${fees.othersRemarks || 'None'})`, "Value": fees.othersFee || 0 },
+            { "Detail": "TOTAL FEE", "Value": fees.totalFee || 0 }
+        ];
+        
+        const ws = XLSX.utils.json_to_sheet(dataRows, { header: ["Detail", "Value"] });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Visa Fees");
+        XLSX.writeFile(wb, `Visa_Fees_${emp.code}.xlsx`);
+    };
+
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh] border border-transparent">
@@ -1511,6 +1670,182 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Temporary Labour Card Number</label><input disabled={readOnly} type="text" value={data.documents?.temporaryLabourCardNumber || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), temporaryLabourCardNumber: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Temp Labour Card Issue</label><input disabled={readOnly} type="date" value={data.documents?.temporaryLabourCardIssue || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), temporaryLabourCardIssue: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Temp Labour Card Expiry</label><input disabled={readOnly} type="date" value={data.documents?.temporaryLabourCardExpiry || ''} onChange={e => setData({...data, documents: {...(data.documents || {}), temporaryLabourCardExpiry: e.target.value}})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                        </div>
+                    </div>
+                    {/* Visa & Onboarding Fees */}
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-900 uppercase mb-3 flex items-center gap-2">
+                            <Wallet className="w-4 h-4 text-indigo-600" />
+                            Visa & Onboarding Fees (AED)
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">Initial Application Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.initialApplicationFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('initialApplicationFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">Approval Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.approvalFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('approvalFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">DIC Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.dicFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('dicFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">ILOE Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.iloeFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('iloeFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">LC Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.lcFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('lcFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">Entry Permit Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.entryPermitFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('entryPermitFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">Change Status Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.changeStatusFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('changeStatusFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">Medical Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.medicalFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('medicalFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">Insurance Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.insuranceFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('insuranceFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase text-ellipsis overflow-hidden whitespace-nowrap" title="Biometric Fee - New Employee (If Applicable)">Biometric Fee - New Employee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.biometricFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('biometricFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">Visa & EID Fee</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.visaEidFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('visaEidFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">Others Fee (+ or -)</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="number" 
+                                     value={data.visaFees?.othersFee ?? ''} 
+                                     onChange={e => handleVisaFeeChange('othersFee', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="0.00"
+                                 />
+                             </div>
+                             <div className="col-span-1 sm:col-span-2">
+                                 <label className="text-xs font-semibold text-gray-500 uppercase">Others Details / Remarks</label>
+                                 <input 
+                                     disabled={readOnly} 
+                                     type="text" 
+                                     value={data.visaFees?.othersRemarks || ''} 
+                                     onChange={e => handleVisaFeeChange('othersRemarks', e.target.value)} 
+                                     className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50 border-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
+                                     placeholder="e.g. Additional courier charges"
+                                 />
+                             </div>
+                             <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 flex flex-col justify-center items-center">
+                                 <span className="text-[10px] font-black text-indigo-700 uppercase tracking-widest">Total Fees</span>
+                                 <span className="text-lg font-black text-indigo-900 mt-1">
+                                     AED {(data.visaFees?.totalFee || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                 </span>
+                             </div>
+                        </div>
+                        <div className="mt-3 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => downloadIndividualVisaFeePDF(data)}
+                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                                <FileDown className="w-3.5 h-3.5" />
+                                Download PDF Details
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => downloadIndividualVisaFeeExcel(data)}
+                                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                                <FileSpreadsheet className="w-3.5 h-3.5" />
+                                Download Excel
+                            </button>
                         </div>
                     </div>
                     {/* Linked Documents */}
@@ -5613,6 +5948,7 @@ export default function App() {
         subItems: [
           { id: 'staff', label: 'Staff Directory', icon: Users, permission: 'canManageEmployees' },
           { id: 'ex-employees', label: 'Ex-Employees', icon: UserMinus, permission: 'canManageEmployees' },
+          { id: 'visa-fees', label: 'Visa & Onboarding Fees', icon: CreditCard, permission: 'canManageEmployees' },
         ]
       },
       { 
@@ -5657,7 +5993,8 @@ export default function App() {
     if (systemUser.role === UserRole.EMPLOYEE || systemUser.role?.toLowerCase() === 'employee') {
         return [
             { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet },
-            { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote }
+            { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
+            { id: 'visa-fees', label: 'My Visa Fees', icon: CreditCard }
         ];
     }
     
@@ -5712,7 +6049,7 @@ export default function App() {
 
   useEffect(() => {
     const isEmployee = systemUser?.role === UserRole.EMPLOYEE || systemUser?.role?.toLowerCase() === 'employee';
-    if (isEmployee && activeTab !== 'everyday-expenses' && activeTab !== 'tasks-notes') {
+    if (isEmployee && activeTab !== 'everyday-expenses' && activeTab !== 'tasks-notes' && activeTab !== 'visa-fees') {
       setActiveTab('everyday-expenses');
     }
   }, [systemUser, activeTab]);
@@ -6094,6 +6431,13 @@ export default function App() {
           user={systemUser}
           selectedId={selectedEmployeeId}
           onSelect={setSelectedEmployeeId}
+        />
+      )}
+      {activeTab === 'visa-fees' && (
+        <VisaFeesView 
+          employees={employees} 
+          companies={companies} 
+          user={systemUser} 
         />
       )}
       {activeTab === 'timesheet' && (
