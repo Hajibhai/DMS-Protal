@@ -11752,6 +11752,28 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
         return null;
     }, [formData.entityType, formData.entityId, projects, suppliers, vendors]);
 
+    const itemSuggestions = useMemo(() => {
+        const namesSet = new Set<string>();
+        const defaults = ['Helper', 'Carpenter', 'Welder', 'Mason', 'Electrician', 'Plumber', 'Steel Fixer', 'Foreman', 'Supervisor', 'Engineer', 'Driver', 'Operator', 'General Services'];
+        defaults.forEach(d => namesSet.add(d));
+
+        if (existingRecords && Array.isArray(existingRecords)) {
+            existingRecords.forEach((rec: any) => {
+                if (rec.items && Array.isArray(rec.items)) {
+                    rec.items.forEach((item: any) => {
+                        if (item.name && typeof item.name === 'string') {
+                            const trimmed = item.name.trim();
+                            if (trimmed) {
+                                namesSet.add(trimmed);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+        return Array.from(namesSet).sort();
+    }, [existingRecords]);
+
     const recalculateInvoiceTotals = (
         nextItems: any[], 
         nextDeduction?: number, 
@@ -12083,9 +12105,9 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                     <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                         <th className="px-4 py-3">Item/Service Name</th>
                                         <th className="px-4 py-3">Sub-Description (Scope)</th>
-                                        <th className="px-4 py-3 text-right w-20">Qty</th>
-                                        <th className="px-4 py-3 text-right w-32">Rate (AED)</th>
-                                        <th className="px-4 py-3 text-right w-36">Total (AED)</th>
+                                        <th className="px-1.5 py-3 text-right w-32">Qty</th>
+                                        <th className="px-1.5 py-3 text-right w-32">Rate (AED)</th>
+                                        <th className="px-1.5 py-3 text-right w-36">Total (AED)</th>
                                         <th className="p-3 text-center w-12"></th>
                                     </tr>
                                 </thead>
@@ -12100,6 +12122,8 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     onChange={e => updateItemValue(it.id, 'name', e.target.value)}
                                                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
                                                     required
+                                                    list="invoice-item-suggestions"
+                                                    autoComplete="on"
                                                 />
                                             </td>
                                             <td className="p-3">
@@ -12111,7 +12135,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none"
                                                 />
                                             </td>
-                                            <td className="p-3">
+                                            <td className="px-1.5 py-3">
                                                 <input 
                                                     type="number" 
                                                     min="1"
@@ -12122,7 +12146,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     required
                                                 />
                                             </td>
-                                            <td className="p-3">
+                                            <td className="px-1.5 py-3">
                                                 <input 
                                                     type="number" 
                                                     min="0.01" 
@@ -12134,7 +12158,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     required
                                                 />
                                             </td>
-                                            <td className="p-3 text-right font-black text-slate-800 text-xs">
+                                            <td className="px-1.5 py-3 text-right font-black text-slate-800 text-xs">
                                                 AED {Number(it.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                             </td>
                                             <td className="p-3 text-center">
@@ -12150,6 +12174,12 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                     ))}
                                 </tbody>
                             </table>
+                            {/* Datalist for automatic autocomplete helper */}
+                            <datalist id="invoice-item-suggestions">
+                                {itemSuggestions.map((name) => (
+                                    <option key={name} value={name} />
+                                ))}
+                            </datalist>
                         </div>
                     </div>
 
