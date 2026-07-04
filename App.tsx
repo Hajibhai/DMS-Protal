@@ -4889,6 +4889,53 @@ export default function App() {
     );
   };
 
+  const handleUpdateAPMultiplePaid = async (items: AccountsPayable[], paymentDate: string) => {
+    const userRoleLower = (systemUser?.role || '').toLowerCase();
+    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
+    
+    if (!isAdmin) {
+      alert("Access Denied: Only portal Admins can perform bulk updates.");
+      return;
+    }
+
+    if (items.length === 0) {
+      alert("No data records selected.");
+      return;
+    }
+
+    openConfirm(
+      "Bulk Mark as Fully Paid", 
+      `Are you sure you want to mark these ${items.length} selected accounts payable entries as fully PAID with payment date ${paymentDate}? This will set the paid amount to match the total invoice amount.`, 
+      async () => {
+        try {
+          for (const item of items) {
+            // Calculate total amount exactly like individual modal:
+            const actual = item.actualAmount !== undefined ? item.actualAmount : ((item.amount || 0) - (item.deduction || 0));
+            const vat = item.vatAmount !== undefined ? item.vatAmount : Number((actual * 0.05).toFixed(2));
+            const total = item.totalAmount !== undefined ? item.totalAmount : Number((actual + vat).toFixed(2));
+            
+            // Paid should cover everything except what was already covered by advance
+            const nextPaid = Number((total - (item.advance || 0)).toFixed(2));
+
+            const updatedItem = {
+              ...item,
+              paid: nextPaid,
+              payableAmount: 0,
+              status: 'Paid' as const,
+              paymentDate: paymentDate
+            };
+            await saveAccountsPayable(updatedItem);
+          }
+          handleLogAction('Payables Bulk Paid', `Marked ${items.length} chosen ledger entries as fully paid with date ${paymentDate}.`, 'update');
+          alert(`Successfully marked the selected ${items.length} entries as fully PAID.`);
+        } catch (err) {
+          console.error("Failed to bulk update selected items: ", err);
+          alert("An error occurred during bulk paid status update.");
+        }
+      }
+    );
+  };
+
   const handleDeleteARMultiple = async (items: AccountsReceivable[]) => {
     const userRoleLower = (systemUser?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com';
@@ -6125,6 +6172,7 @@ export default function App() {
           onBulkUpdateDate={handleUpdateAPMultipleDate}
           onBulkUpdateNotes={handleUpdateAPMultipleNotes}
           onBulkUpdateCompanyId={handleUpdateAPMultipleCompanyId}
+          onBulkUpdatePaid={handleUpdateAPMultiplePaid}
           onUploadExcel={handleUploadExcelPayable}
           user={systemUser}
           companies={companies}

@@ -440,6 +440,7 @@ interface DataTableProps<T> {
     onBulkUpdateDate?: (items: T[], newDate: string) => void | Promise<void>;
     onBulkUpdateNotes?: (items: T[], newNotes: string) => void | Promise<void>;
     onBulkUpdateCompanyId?: (items: T[], companyId: string) => void | Promise<void>;
+    onBulkUpdatePaid?: (items: T[], paymentDate: string) => void | Promise<void>;
     companies?: any[];
     renderFooter?: (filteredData: T[]) => React.ReactNode;
 }
@@ -469,6 +470,7 @@ export function DataTable<T extends { id: string }>({
     onBulkUpdateDate,
     onBulkUpdateNotes,
     onBulkUpdateCompanyId,
+    onBulkUpdatePaid,
     companies,
     renderFooter
 }: DataTableProps<T>) {
@@ -480,6 +482,7 @@ export function DataTable<T extends { id: string }>({
     const [bulkTargetDate, setBulkTargetDate] = useState('');
     const [bulkTargetNotes, setBulkTargetNotes] = useState('');
     const [bulkTargetCompanyId, setBulkTargetCompanyId] = useState('');
+    const [bulkTargetPaymentDate, setBulkTargetPaymentDate] = useState('');
 
     const userRoleLower = (user?.role || '').toLowerCase();
     const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
@@ -942,6 +945,7 @@ export function DataTable<T extends { id: string }>({
                                         onClick={() => {
                                             setSelectedIds([]);
                                             setBulkTargetDate('');
+                                            setBulkTargetPaymentDate('');
                                         }}
                                         className="px-4 py-2 hover:bg-slate-200/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 transition-all cursor-pointer bg-white"
                                     >
@@ -1106,6 +1110,40 @@ export function DataTable<T extends { id: string }>({
                                             className="px-4.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl shadow-md shadow-indigo-600/10 transition-all cursor-pointer active:scale-95"
                                         >
                                             Apply Corporate Identity to Selected
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {onBulkUpdatePaid && (
+                                <div className="p-4 bg-white/75 border border-indigo-100 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fadeIn">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-indigo-950 font-black flex items-center gap-1.5 font-sans">
+                                            <Wallet className="w-4 h-4 text-emerald-600" />
+                                            Bulk Update Paid Status (Mark as Fully Paid)
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-slate-500">Payment Date:</span>
+                                            <input 
+                                                type="date"
+                                                value={bulkTargetPaymentDate}
+                                                onChange={e => setBulkTargetPaymentDate(e.target.value)}
+                                                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-705"
+                                            />
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                const selectedItems = data.filter(item => selectedIds.includes(item.id));
+                                                onBulkUpdatePaid(selectedItems, bulkTargetPaymentDate || new Date().toISOString().split('T')[0]);
+                                                setSelectedIds([]);
+                                                setBulkTargetPaymentDate('');
+                                            }}
+                                            className="px-4.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-600/10 transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+                                        >
+                                            <Check className="w-4 h-4" />
+                                            Mark as Fully Paid
                                         </button>
                                     </div>
                                 </div>
@@ -1330,7 +1368,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
     />
 );
 
-export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, onBulkUpdateCompanyId, user, companies, onUploadExcel }: any) => {
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, onBulkUpdateCompanyId, onBulkUpdatePaid, user, companies, onUploadExcel }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa' | 'duplicates'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
     const [viewingBill, setViewingBill] = useState<string | null>(null);
@@ -3177,6 +3215,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                         onBulkUpdateDate={onBulkUpdateDate}
                         onBulkUpdateNotes={onBulkUpdateNotes}
                         onBulkUpdateCompanyId={onBulkUpdateCompanyId}
+                        onBulkUpdatePaid={onBulkUpdatePaid}
                         companies={companies}
                         enableMultiSelect={true}
                         onUploadExcel={onUploadExcel}
