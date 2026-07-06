@@ -4775,10 +4775,6 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.text(clientDetails.filter(Boolean), 15, 58);
 
     let yPos = 85;
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(10);
-    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("ITEMIZED SERVICE SUMMARY", 15, yPos - 3);
 
     doc.setFillColor(tableHeaderBg[0], tableHeaderBg[1], tableHeaderBg[2]);
     doc.rect(15, yPos, 180, 10, 'F');
@@ -4933,62 +4929,8 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setFontSize(10);
     doc.text(`AED ${Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1.2, { align: 'right' });
 
-    // Draw Bank Details Box (Left column, parallel to Totals)
-    const boxY = totalsStartY - 2;
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.35);
-    doc.roundedRect(15, boxY, 98, 30, 2, 2, 'FD');
-
-    // Box Header
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(59, 130, 246);
-    doc.text("Bank Details:", 18, boxY + 4.5);
-
-    // Beneficiary Row
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(7.0);
-    doc.setTextColor(100, 116, 139);
-    doc.text("Beneficiary:", 18, boxY + 9.5);
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(33, 37, 41);
-    doc.text(defaultBank.accountName || "N/A", 42, boxY + 9.5);
-
-    // Bank Name Row
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(100, 116, 139);
-    doc.text("Bank Name:", 18, boxY + 13.5);
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(33, 37, 41);
-    doc.text(defaultBank.bankName || "N/A", 42, boxY + 13.5);
-
-    // Account No Row
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(100, 116, 139);
-    doc.text("Account No:", 18, boxY + 17.5);
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(33, 37, 41);
-    doc.text(defaultBank.accountNumber || "N/A", 42, boxY + 17.5);
-
-    // IBAN Row
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(100, 116, 139);
-    doc.text("IBAN:", 18, boxY + 21.5);
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(59, 130, 246);
-    doc.text(defaultBank.iban || "N/A", 42, boxY + 21.5);
-
-    // Swift / Currency Row
-    doc.setFont("Helvetica", "bold");
-    doc.setTextColor(100, 116, 139);
-    doc.text("Swift / Currency:", 18, boxY + 25.5);
-    doc.setFont("Helvetica", "normal");
-    doc.setTextColor(33, 37, 41);
-    doc.text(`${defaultBank.swiftCode || "N/A"} / ${defaultBank.currency || "AED"}`, 42, boxY + 25.5);
-
-    // Advance position past the bank details / totals blocks
-    yPos = totalsStartY + 30;
+    // Advance position past the totals blocks
+    yPos += 12;
     if (yPos > 240) {
         doc.addPage();
         yPos = 30;
@@ -5025,6 +4967,65 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setFontSize(7.5);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
     doc.text("Operations / Accounts Dept", 192, yPos + 17, { align: 'right' });
+
+    // Draw Bank Details Box below Terms & Conditions and Authorized Signatory
+    let finalBoxY = yPos + 23;
+    if (finalBoxY + 30 > 280) {
+        doc.addPage();
+        finalBoxY = 25;
+    }
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(15, finalBoxY, 98, 30, 2, 2, 'FD');
+
+    // Box Header
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(59, 130, 246);
+    doc.text("Bank Details:", 18, finalBoxY + 4.5);
+
+    // Beneficiary Row
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(7.0);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Beneficiary:", 18, finalBoxY + 9.5);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(33, 37, 41);
+    doc.text(defaultBank.accountName || "N/A", 42, finalBoxY + 9.5);
+
+    // Bank Name Row
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Bank Name:", 18, finalBoxY + 13.5);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(33, 37, 41);
+    doc.text(defaultBank.bankName || "N/A", 42, finalBoxY + 13.5);
+
+    // Account No Row
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Account No:", 18, finalBoxY + 17.5);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(33, 37, 41);
+    doc.text(defaultBank.accountNumber || "N/A", 42, finalBoxY + 17.5);
+
+    // IBAN Row
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("IBAN:", 18, finalBoxY + 21.5);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(59, 130, 246);
+    doc.text(defaultBank.iban || "N/A", 42, finalBoxY + 21.5);
+
+    // Swift / Currency Row
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Swift / Currency:", 18, finalBoxY + 25.5);
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(33, 37, 41);
+    doc.text(`${defaultBank.swiftCode || "N/A"} / ${defaultBank.currency || "AED"}`, 42, finalBoxY + 25.5);
 
     doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.rect(0, 289, 210, 8, 'F');
@@ -7897,37 +7898,10 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                             </div>
                                         </div>
 
-                                        {/* Direct Banking & Totals block */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                                            {/* Bank Transfer Details Box */}
-                                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[11px] self-start">
-                                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block mb-2">Bank Details:</span>
-                                                <div className="space-y-1.5 leading-normal">
-                                                    <div className="flex justify-between gap-2">
-                                                        <span className="text-slate-400 font-semibold whitespace-nowrap">Beneficiary:</span>
-                                                        <span className="font-bold text-slate-700 text-right">{defaultBank.accountName}</span>
-                                                    </div>
-                                                    <div className="flex justify-between gap-2">
-                                                        <span className="text-slate-400 font-semibold whitespace-nowrap">Bank Name:</span>
-                                                        <span className="font-bold text-slate-700 text-right">{defaultBank.bankName}</span>
-                                                    </div>
-                                                    <div className="flex justify-between gap-2">
-                                                        <span className="text-slate-400 font-semibold">Account No:</span>
-                                                        <span className="font-bold text-slate-700 text-right font-mono">{defaultBank.accountNumber}</span>
-                                                    </div>
-                                                    <div className="flex flex-col p-1.5 bg-blue-50/70 text-blue-950 rounded-lg px-2 mt-1 gap-0.5">
-                                                        <span className="font-black text-[9px] text-blue-600 uppercase tracking-wider">IBAN:</span>
-                                                        <span className="font-extrabold font-mono tracking-tight text-[11px] select-all">{defaultBank.iban}</span>
-                                                    </div>
-                                                    <div className="flex justify-between text-[10px] pt-1">
-                                                        <span className="text-slate-400 font-semibold">Swift Bic / Currency:</span>
-                                                        <span className="font-bold text-slate-600">{defaultBank.swiftCode} / {defaultBank.currency}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
+                                        {/* Totals block */}
+                                        <div className="flex justify-end mb-6">
                                             {/* Totals compilation box */}
-                                            <div className="space-y-2 text-xs flex flex-col justify-end">
+                                            <div className="w-full md:w-1/2 space-y-2 text-xs flex flex-col justify-end">
                                                 <div className="flex justify-between items-center text-slate-500 font-medium">
                                                     <span>Sub Total (Gross):</span>
                                                     <span className="font-bold text-slate-800">AED {Number(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -7957,23 +7931,50 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* Signatures & Footer block */}
-                                    <div className="space-y-6">
-                                        <div className="flex justify-between items-end border-t border-slate-100 pt-6">
-                                            <div className="text-[10px] text-slate-400 max-w-sm leading-normal">
-                                                <span className="font-bold text-slate-600 block mb-1">TERMS & DISCLOSURES</span>
-                                                Please quote invoice numbers on your remittance. Electronic copy of invoice issued under official corporate authorization.
+                                        {/* Signatures & Footer block */}
+                                        <div className="space-y-6">
+                                            <div className="flex justify-between items-end border-t border-slate-100 pt-6">
+                                                <div className="text-[10px] text-slate-400 max-w-sm leading-normal">
+                                                    <span className="font-bold text-slate-600 block mb-1">TERMS & DISCLOSURES</span>
+                                                    Please quote invoice numbers on your remittance. Electronic copy of invoice issued under official corporate authorization.
+                                                </div>
+                                                <div className="text-right space-y-1 justify-end flex flex-col items-end">
+                                                    <div className="w-32 border-b border-slate-300 h-8"></div>
+                                                    <span className="text-[9px] font-black text-slate-950 uppercase tracking-wider block pt-2">AUTHORIZED SIGNATURE</span>
+                                                    <span className="text-[8px] text-slate-400 block">Pioneer Contracting Finance LLC</span>
+                                                </div>
                                             </div>
-                                            <div className="text-right space-y-1 justify-end flex flex-col items-end">
-                                                <div className="w-32 border-b border-slate-300 h-8"></div>
-                                                <span className="text-[9px] font-black text-slate-950 uppercase tracking-wider block pt-2">AUTHORIZED SIGNATURE</span>
-                                                <span className="text-[8px] text-slate-400 block">Pioneer Contracting Finance LLC</span>
+
+                                            {/* Bank Transfer Details Box (After Terms and Conditions) */}
+                                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-[11px] self-start max-w-sm">
+                                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block mb-2">Bank Details:</span>
+                                                <div className="space-y-1.5 leading-normal">
+                                                    <div className="flex justify-between gap-2">
+                                                        <span className="text-slate-400 font-semibold whitespace-nowrap">Beneficiary:</span>
+                                                        <span className="font-bold text-slate-700 text-right">{defaultBank.accountName}</span>
+                                                    </div>
+                                                    <div className="flex justify-between gap-2">
+                                                        <span className="text-slate-400 font-semibold whitespace-nowrap">Bank Name:</span>
+                                                        <span className="font-bold text-slate-700 text-right">{defaultBank.bankName}</span>
+                                                    </div>
+                                                    <div className="flex justify-between gap-2">
+                                                        <span className="text-slate-400 font-semibold">Account No:</span>
+                                                        <span className="font-bold text-slate-700 text-right font-mono">{defaultBank.accountNumber}</span>
+                                                    </div>
+                                                    <div className="flex flex-col p-1.5 bg-blue-50/70 text-blue-950 rounded-lg px-2 mt-1 gap-0.5">
+                                                        <span className="font-black text-[9px] text-blue-600 uppercase tracking-wider">IBAN:</span>
+                                                        <span className="font-extrabold font-mono tracking-tight text-[11px] select-all">{defaultBank.iban}</span>
+                                                    </div>
+                                                    <div className="flex justify-between text-[10px] pt-1">
+                                                        <span className="text-slate-400 font-semibold">Swift Bic / Currency:</span>
+                                                        <span className="font-bold text-slate-600">{defaultBank.swiftCode} / {defaultBank.currency}</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
 
+                                    </div>
                                 </div>
                             </div>
                         </div>
