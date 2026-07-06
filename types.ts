@@ -175,6 +175,14 @@ export interface DeductionRecord {
     googleDriveLink?: string;
 }
 
+export interface CompanyRecord {
+    id: string;
+    title: string;
+    link?: string;
+    name?: string; // username/email
+    text?: string; // password/notes
+}
+
 export interface Company {
     id: string;
     code: string;
@@ -189,6 +197,8 @@ export interface Company {
     trn?: string;
     establishmentId?: string; // 13-digit UAE MOHRE Establishment ID
     bankRoutingCode?: string; // 9-digit UAE Central Bank Routing Code
+    credentials?: string; // Text details for portals (ICP, Daman, FTA, etc.)
+    records?: CompanyRecord[];
 }
 
 export interface Supplier {
@@ -244,6 +254,7 @@ export interface Vendor {
     driveFolderId?: string;
     order?: number;
     trn?: string;
+    status?: 'Active' | 'Inactive';
 }
 
 export interface AccountsPayable {

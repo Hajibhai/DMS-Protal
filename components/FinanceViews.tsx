@@ -443,6 +443,7 @@ interface DataTableProps<T> {
     onBulkUpdatePaid?: (items: T[], paymentDate: string) => void | Promise<void>;
     companies?: any[];
     renderFooter?: (filteredData: T[]) => React.ReactNode;
+    statsSection?: React.ReactNode;
 }
 
 export function DataTable<T extends { id: string }>({
@@ -472,7 +473,8 @@ export function DataTable<T extends { id: string }>({
     onBulkUpdateCompanyId,
     onBulkUpdatePaid,
     companies,
-    renderFooter
+    renderFooter,
+    statsSection
 }: DataTableProps<T>) {
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
@@ -513,7 +515,14 @@ export function DataTable<T extends { id: string }>({
         // Filters
         Object.entries(activeFilters).forEach(([key, value]) => {
             if (value) {
-                result = result.filter(item => String((item as any)[key]) === value);
+                result = result.filter(item => {
+                    const itemValue = (item as any)[key];
+                    if (key === 'status') {
+                        const computedStatus = itemValue === 'Inactive' ? 'Inactive' : 'Active';
+                        return computedStatus === value;
+                    }
+                    return String(itemValue) === value;
+                });
             }
         });
 
@@ -848,6 +857,12 @@ export function DataTable<T extends { id: string }>({
                     )}
                 </div>
             </div>
+
+            {statsSection && (
+                <div className="mb-6">
+                    {statsSection}
+                </div>
+            )}
 
             <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
                 <div className="p-6 border-b border-slate-50 bg-slate-50/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1314,59 +1329,132 @@ export function DataTable<T extends { id: string }>({
 
 // --- Specific Views ---
 
-export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => (
-    <DataTable<Vendor>
-        title="Clients"
-        description="Manage your third-party service providers and material clients."
-        icon={Truck}
-        data={vendors}
-        columns={[
-            { key: 'code', label: 'Code', sortable: true },
-            { key: 'name', label: 'Client Name', sortable: true },
-            { key: 'contactPerson', label: 'Contact Person' },
-            { key: 'trn', label: 'TRN (VAT)', render: (item) => <span className="font-mono text-slate-600 font-extrabold">{item.trn || '-'}</span> },
-            { key: 'email', label: 'Email' },
-            { key: 'phone', label: 'Phone' },
-            { key: 'category', label: 'Category', sortable: true },
-            {
-                key: 'driveFiles',
-                label: 'Documents (LPO/Agreements)',
-                render: (item) => {
-                    const count = item.driveFiles?.length || 0;
-                    if (count === 0) return <span className="text-slate-400 font-normal">None</span>;
-                    return (
-                        <div className="flex flex-col gap-1 max-w-[220px]">
-                            <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider inline-block w-fit">
-                                📂 {count} Doc{count > 1 ? 's' : ''}
-                            </span>
-                            <div className="flex flex-col gap-1 mt-1">
-                                {item.driveFiles?.slice(0, 2).map((f: any) => (
-                                    <a
-                                        key={f.id}
-                                        href={f.webViewLink}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="text-xs text-brand-600 hover:text-brand-700 hover:underline truncate block font-bold flex items-center gap-1"
-                                        title={f.name}
-                                    >
-                                        📄 <span className="truncate max-w-[170px]">{f.name}</span>
-                                    </a>
-                                ))}
-                                {count > 2 && <span className="text-[10px] text-slate-400 font-bold">+{count - 2} more</span>}
-                            </div>
-                        </div>
-                    );
+export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => {
+    const activeCount = vendors.filter((v: any) => v.status !== 'Inactive').length;
+    const inactiveCount = vendors.filter((v: any) => v.status === 'Inactive').length;
+    const totalCount = vendors.length;
+
+    const statsSection = (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex items-center gap-5">
+                <div className="p-4 bg-brand-50 text-brand-600 rounded-2xl">
+                    <Truck className="w-6 h-6" />
+                </div>
+                <div>
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none block mb-1">Total Clients</span>
+                    <span className="text-3xl font-black text-slate-900 leading-none">{totalCount}</span>
+                </div>
+            </div>
+            <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex items-center gap-5">
+                <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500 animate-pulse flex items-center justify-center">
+                        <div className="w-2 h-2 rounded-full bg-white" />
+                    </div>
+                </div>
+                <div>
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none block mb-1">Active Clients</span>
+                    <span className="text-3xl font-black text-slate-900 leading-none">{activeCount}</span>
+                </div>
+            </div>
+            <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex items-center gap-5">
+                <div className="p-4 bg-slate-50 text-slate-500 rounded-2xl">
+                    <div className="w-6 h-6 rounded-full bg-slate-300 flex items-center justify-center">
+                        <div className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+                    </div>
+                </div>
+                <div>
+                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none block mb-1">Inactive Clients</span>
+                    <span className="text-3xl font-black text-slate-900 leading-none">{inactiveCount}</span>
+                </div>
+            </div>
+        </div>
+    );
+
+    return (
+        <DataTable<Vendor>
+            title="Clients"
+            description="Manage your third-party service providers and material clients."
+            icon={Truck}
+            data={vendors}
+            statsSection={statsSection}
+            filterOptions={[
+                {
+                    key: 'status',
+                    label: 'Status',
+                    options: [
+                        { label: 'All Statuses', value: '' },
+                        { label: 'Active', value: 'Active' },
+                        { label: 'Inactive', value: 'Inactive' }
+                    ]
                 }
-            }
-        ]}
-        onAdd={onAdd}
-        onEdit={onEdit}
-        onDelete={onDelete}
-        searchFields={['name', 'code', 'contactPerson', 'email', 'trn']}
-        exportFileName="Vendors_List"
-        user={user}
-    />
-);
+            ]}
+            columns={[
+                { key: 'code', label: 'Code', sortable: true },
+                { key: 'name', label: 'Client Name', sortable: true },
+                { key: 'contactPerson', label: 'Contact Person' },
+                { key: 'trn', label: 'TRN (VAT)', render: (item) => <span className="font-mono text-slate-600 font-extrabold">{item.trn || '-'}</span> },
+                { key: 'email', label: 'Email' },
+                { key: 'phone', label: 'Phone' },
+                { key: 'category', label: 'Category', sortable: true },
+                { 
+                    key: 'status', 
+                    label: 'Status', 
+                    sortable: true,
+                    render: (item) => {
+                        const isActive = item.status !== 'Inactive';
+                        return (
+                            <span className={cn(
+                                "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 border",
+                                isActive 
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                                    : "bg-slate-100 text-slate-600 border-slate-200"
+                            )}>
+                                <span className={cn("w-1.5 h-1.5 rounded-full", isActive ? "bg-emerald-500 animate-pulse" : "bg-slate-400")} />
+                                {isActive ? 'Active' : 'Inactive'}
+                            </span>
+                        );
+                    }
+                },
+                {
+                    key: 'driveFiles',
+                    label: 'Documents (LPO/Agreements)',
+                    render: (item) => {
+                        const count = item.driveFiles?.length || 0;
+                        if (count === 0) return <span className="text-slate-400 font-normal">None</span>;
+                        return (
+                            <div className="flex flex-col gap-1 max-w-[220px]">
+                                <span className="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider inline-block w-fit">
+                                    📂 {count} Doc{count > 1 ? 's' : ''}
+                                </span>
+                                <div className="flex flex-col gap-1 mt-1">
+                                    {item.driveFiles?.slice(0, 2).map((f: any) => (
+                                        <a
+                                            key={f.id}
+                                            href={f.webViewLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-brand-600 hover:text-brand-700 hover:underline truncate block font-bold flex items-center gap-1"
+                                            title={f.name}
+                                        >
+                                            📄 <span className="truncate max-w-[170px]">{f.name}</span>
+                                        </a>
+                                    ))}
+                                    {count > 2 && <span className="text-[10px] text-slate-400 font-bold">+{count - 2} more</span>}
+                                </div>
+                            </div>
+                        );
+                    }
+                }
+            ]}
+            onAdd={onAdd}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            searchFields={['name', 'code', 'contactPerson', 'email', 'trn']}
+            exportFileName="Vendors_List"
+            user={user}
+        />
+    );
+};
 
 export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, onBulkUpdateCompanyId, onBulkUpdatePaid, user, companies, onUploadExcel }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa' | 'duplicates'>('ledger');
@@ -9850,6 +9938,7 @@ export const VendorModal = ({ vendor, onSave, onCancel, openConfirm }: any) => {
             return {
                 ...vendor,
                 trn: vendor.trn || '',
+                status: vendor.status || 'Active',
                 driveFiles: vendor.driveFiles || []
             };
         }
@@ -9863,6 +9952,7 @@ export const VendorModal = ({ vendor, onSave, onCancel, openConfirm }: any) => {
             category: '', 
             notes: '', 
             trn: '',
+            status: 'Active',
             driveFiles: []
         };
     });
@@ -9953,15 +10043,28 @@ export const VendorModal = ({ vendor, onSave, onCancel, openConfirm }: any) => {
                             />
                         </div>
                     </div>
-                    <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Client Address</label>
-                        <input 
-                            type="text"
-                            placeholder="Dubai, UAE"
-                            value={formData.address || ''}
-                            onChange={e => setFormData({ ...formData, address: e.target.value })}
-                            className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
-                        />
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="space-y-1 col-span-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Client Address</label>
+                            <input 
+                                type="text"
+                                placeholder="Dubai, UAE"
+                                value={formData.address || ''}
+                                onChange={e => setFormData({ ...formData, address: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Status</label>
+                            <select 
+                                value={formData.status || 'Active'}
+                                onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                className="w-full px-4 py-3.5 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-700"
+                            >
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div className="space-y-2 pt-6 border-t border-slate-100">

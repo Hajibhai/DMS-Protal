@@ -161,6 +161,7 @@ import { NocView } from './components/NocView';
 import { PassportAcknowledgementView } from './components/PassportAcknowledgementView';
 import { VouchersView } from './components/VouchersView';
 import { VisaFeesView } from './components/VisaFeesView';
+import { CompanyRecordsManager } from './components/CompanyRecordsManager';
 
 // --- Image Compression Helper ---
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
@@ -3311,7 +3312,8 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
         logo: '',
         trn: '',
         establishmentId: '',
-        bankRoutingCode: ''
+        bankRoutingCode: '',
+        credentials: ''
     });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -3327,7 +3329,7 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
         setError(null);
         try {
             await onAdd(formData);
-            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '', establishmentId: '', bankRoutingCode: '' });
+            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '', establishmentId: '', bankRoutingCode: '', credentials: '' });
             setIsAdding(false);
         } catch (err) {
             setError("Failed to save company. Please check your permissions.");
@@ -3506,6 +3508,15 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
                                         />
                                     </div>
                                 </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Portal Credentials / Notes (ICP, Daman, FTA, etc.)</label>
+                                    <textarea 
+                                        className="w-full p-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-900 font-mono min-h-[80px]" 
+                                        placeholder="ICP, Daman, FTA logins..." 
+                                        value={formData.credentials} 
+                                        onChange={e => setFormData(prev => ({ ...prev, credentials: e.target.value }))} 
+                                    />
+                                </div>
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
                                         <div className="relative">
@@ -3633,6 +3644,18 @@ const ManageCompaniesModal = ({ onClose, companies, openConfirm, onLog, onAdd, o
                                                 onChange={e => handleUpdate({...c, bankRoutingCode: e.target.value.replace(/\D/g, '')})} 
                                                 placeholder="9 digits"
                                             />
+                                        </div>
+                                        <div className="space-y-1 col-span-2">
+                                            <label className="text-[9px] font-bold text-gray-400 uppercase">Portal Credentials / Notes (ICP, Daman, FTA, etc.)</label>
+                                            <textarea 
+                                                className="w-full p-2 border border-gray-100 rounded-lg text-xs outline-none focus:ring-1 focus:ring-indigo-500 bg-gray-50/30 text-gray-900 font-mono min-h-[80px]" 
+                                                value={c.credentials || ''} 
+                                                onChange={e => handleUpdate({...c, credentials: e.target.value})} 
+                                                placeholder="ICP, Daman, FTA logins..."
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
+                                            <CompanyRecordsManager company={c} onUpdate={handleUpdate} />
                                         </div>
                                     </div>
 
@@ -11800,7 +11823,7 @@ const CompanyDocumentsModal = ({ company, onClose, onUpdate, openConfirm }: { co
 };
 
 const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSearchTerm = '' }: { companies: Company[], openConfirm: any, onUpdate: (c: Company) => void, onAdd: (c: any) => Promise<void>, user: SystemUser, initialSearchTerm?: string }) => {
-    const [formData, setFormData] = useState({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '' });
+    const [formData, setFormData] = useState({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '', credentials: '' });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isReordering, setIsReordering] = useState(false);
@@ -11863,7 +11886,7 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSea
         setError(null);
         try {
             await onAdd(formData);
-            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '' });
+            setFormData({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '', credentials: '' });
             setIsAdding(false);
         } catch (err: any) {
             setError("Failed to save company. Please check your connection and permissions.");
@@ -12034,6 +12057,15 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSea
                                 onChange={e => setFormData(prev => ({ ...prev, trn: e.target.value }))} 
                             />
                         </div>
+                        <div className="space-y-2 md:col-span-2 lg:col-span-6">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-wider">Portal Credentials / Notes (ICP, Daman, FTA, etc.)</label>
+                            <textarea 
+                                className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-brand-500 outline-none transition-all font-mono min-h-[100px]" 
+                                placeholder="Enter usernames, passwords, or company reference login details here..." 
+                                value={formData.credentials || ''} 
+                                onChange={e => setFormData(prev => ({ ...prev, credentials: e.target.value }))} 
+                            />
+                        </div>
                     </div>
 
                     <div className="flex items-center justify-between pt-4 border-t border-slate-50">
@@ -12150,6 +12182,12 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSea
                                         value={company.trn || ''}
                                         onChange={e => updateCompany({ ...company, trn: e.target.value })}
                                     />
+                                    <textarea 
+                                        className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-brand-500 font-mono min-h-[80px]"
+                                        placeholder="Portal Credentials / Notes (ICP, Daman, FTA logins, etc.)"
+                                        value={company.credentials || ''}
+                                        onChange={e => updateCompany({ ...company, credentials: e.target.value })}
+                                    />
                                     <div className="flex gap-2 pt-2">
                                         <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">Cancel</button>
                                         <button onClick={() => handleUpdate(company)} className="flex-1 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold shadow-md shadow-brand-600/20">Save</button>
@@ -12196,6 +12234,15 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSea
                                             </div>
                                             <span className="text-xs font-bold line-clamp-1">{company.address || 'No address provided'}</span>
                                         </div>
+                                        {company.credentials && (
+                                            <div className="mt-2 p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none block mb-1.5">Portal Credentials / Notes</span>
+                                                <pre className="text-xs font-mono text-slate-700 whitespace-pre-wrap break-words leading-relaxed font-semibold bg-white p-2 border border-slate-100 rounded-xl max-h-32 overflow-y-auto">
+                                                    {company.credentials}
+                                                </pre>
+                                            </div>
+                                        )}
+                                        <CompanyRecordsManager company={company} onUpdate={onUpdate} />
                                     </div>
                                     <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
