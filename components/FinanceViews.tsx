@@ -12236,16 +12236,16 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             </button>
                         </div>
 
-                        <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-slate-50/20">
+                        <div className="border border-slate-200/80 rounded-2xl shadow-inner bg-slate-50/20">
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                        <th className="px-4 py-3">Item/Service Name</th>
-                                        <th className="px-4 py-3">Sub-Description (Scope)</th>
-                                        <th className="px-1.5 py-3 text-right w-44">Qty</th>
-                                        <th className="px-1.5 py-3 text-right w-48">Rate (AED)</th>
-                                        <th className="px-1.5 py-3 text-right w-52">Total (AED)</th>
-                                        <th className="p-3 text-center w-12"></th>
+                                        <th className="px-4 py-3 w-[28%] rounded-tl-2xl bg-slate-50">Item/Service Name</th>
+                                        <th className="px-4 py-3 w-[28%] bg-slate-50">Sub-Description (Scope)</th>
+                                        <th className="px-1.5 py-3 text-right w-[14%] bg-slate-50">Qty</th>
+                                        <th className="px-1.5 py-3 text-right w-[14%] bg-slate-50">Rate (AED)</th>
+                                        <th className="px-1.5 py-3 text-right w-[16%] bg-slate-50">Total (AED)</th>
+                                        <th className="p-3 text-center w-12 rounded-tr-2xl bg-slate-50"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-150">
@@ -12311,7 +12311,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     placeholder="1"
                                                     value={it.quantity}
                                                     onChange={e => updateItemValue(it.id, 'quantity', Number(e.target.value))}
-                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                     required
                                                 />
                                             </td>
@@ -12323,7 +12323,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     placeholder="0.00"
                                                     value={it.rate}
                                                     onChange={e => updateItemValue(it.id, 'rate', Number(e.target.value))}
-                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                     required
                                                 />
                                             </td>

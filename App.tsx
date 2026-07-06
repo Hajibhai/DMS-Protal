@@ -162,6 +162,7 @@ import { PassportAcknowledgementView } from './components/PassportAcknowledgemen
 import { VouchersView } from './components/VouchersView';
 import { VisaFeesView } from './components/VisaFeesView';
 import { CompanyRecordsManager } from './components/CompanyRecordsManager';
+import { CompanyDetailsModal } from './components/CompanyDetailsModal';
 
 // --- Image Compression Helper ---
 const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
@@ -6408,6 +6409,12 @@ export default function App() {
           onAdd={handleCreateCompany}
           user={systemUser!}
           initialSearchTerm={companySearchTerm}
+          accountsPayable={accountsPayable}
+          accountsReceivable={accountsReceivable}
+          vouchers={vouchers}
+          everydayExpenses={everydayExpenses}
+          camps={camps}
+          pettyCash={pettyCash}
         />
       )}
       {activeTab === 'suppliers' && (
@@ -11822,13 +11829,40 @@ const CompanyDocumentsModal = ({ company, onClose, onUpdate, openConfirm }: { co
     );
 };
 
-const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSearchTerm = '' }: { companies: Company[], openConfirm: any, onUpdate: (c: Company) => void, onAdd: (c: any) => Promise<void>, user: SystemUser, initialSearchTerm?: string }) => {
+const CompanyView = ({ 
+    companies, 
+    openConfirm, 
+    onUpdate, 
+    onAdd, 
+    user, 
+    initialSearchTerm = '',
+    accountsPayable = [],
+    accountsReceivable = [],
+    vouchers = [],
+    everydayExpenses = [],
+    camps = [],
+    pettyCash = []
+}: { 
+    companies: Company[], 
+    openConfirm: any, 
+    onUpdate: (c: Company) => void, 
+    onAdd: (c: any) => Promise<void>, 
+    user: SystemUser, 
+    initialSearchTerm?: string,
+    accountsPayable?: AccountsPayable[],
+    accountsReceivable?: AccountsReceivable[],
+    vouchers?: Voucher[],
+    everydayExpenses?: EverydayExpense[],
+    camps?: CampExpense[],
+    pettyCash?: PettyCash[]
+}) => {
     const [formData, setFormData] = useState({ code: '', name: '', address: '', email: '', phone: '', logo: '', trn: '', credentials: '' });
     const [isAdding, setIsAdding] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isReordering, setIsReordering] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [viewingDocsCompany, setViewingDocsCompany] = useState<Company | null>(null);
+    const [viewingDetailsCompany, setViewingDetailsCompany] = useState<Company | null>(null);
     const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
     const [error, setError] = useState<string | null>(null);
 
@@ -12126,18 +12160,27 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSea
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
+                                <div className="flex items-center gap-1.5 transition-all">
+                                    <button 
+                                        onClick={() => setViewingDetailsCompany(company)}
+                                        className="p-2.5 bg-slate-50 hover:bg-brand-50 border border-slate-100 hover:border-brand-100 text-slate-500 hover:text-brand-600 rounded-xl transition-all shadow-sm"
+                                        title="View Details"
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                    </button>
                                     {canManageSettings && (
                                         <>
                                             <button 
                                                 onClick={() => setEditingId(company.id)}
-                                                className="p-2 hover:bg-brand-50 text-brand-600 rounded-xl transition-colors"
+                                                className="p-2.5 bg-slate-50 hover:bg-brand-50 border border-slate-100 hover:border-brand-100 text-slate-500 hover:text-brand-600 rounded-xl transition-all shadow-sm"
+                                                title="Edit Company"
                                             >
                                                 <Edit className="w-4 h-4" />
                                             </button>
                                             <button 
                                                 onClick={() => handleDelete(company.id)}
-                                                className="p-2 hover:bg-red-50 text-red-600 rounded-xl transition-colors"
+                                                className="p-2.5 bg-slate-50 hover:bg-red-50 border border-slate-100 hover:border-red-100 text-slate-500 hover:text-red-600 rounded-xl transition-all shadow-sm"
+                                                title="Delete Company"
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
@@ -12306,6 +12349,19 @@ const CompanyView = ({ companies, openConfirm, onUpdate, onAdd, user, initialSea
                     onClose={() => setViewingDocsCompany(null)}
                     onUpdate={onUpdate}
                     openConfirm={openConfirm}
+                />
+            )}
+
+            {viewingDetailsCompany && (
+                <CompanyDetailsModal 
+                    company={viewingDetailsCompany}
+                    onClose={() => setViewingDetailsCompany(null)}
+                    accountsReceivable={accountsReceivable}
+                    accountsPayable={accountsPayable}
+                    vouchers={vouchers}
+                    everydayExpenses={everydayExpenses}
+                    camps={camps}
+                    pettyCash={pettyCash}
                 />
             )}
 
