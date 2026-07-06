@@ -306,6 +306,7 @@ export interface AccountsPayable {
 
 export interface AccountsReceivable {
     id: string;
+    invoiceType?: 'Tax Invoice' | 'Proforma Invoice';
     date: string;
     entityId: string; // Linked to Project, Supplier, or Vendor
     entityType: 'Project' | 'Supplier' | 'Vendor';

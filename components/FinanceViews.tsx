@@ -4717,7 +4717,7 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(18);
     doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
-    doc.text("TAX INVOICE", 195, 16, { align: 'right' });
+    doc.text(item.invoiceType === 'Proforma Invoice' ? "PROFORMA INVOICE" : "TAX INVOICE", 195, 16, { align: 'right' });
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(8.2);
@@ -5032,7 +5032,7 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(255, 255, 255);
-    doc.text("Official electronic tax invoice generated inside Pioneer Group DMS.", 105, 294, { align: "center" });
+    doc.text(`Official electronic ${item.invoiceType === 'Proforma Invoice' ? 'proforma' : 'tax'} invoice generated inside Pioneer Group DMS.`, 105, 294, { align: "center" });
 
     doc.save(`Invoice_${item.invoiceNumber || 'INV'}.pdf`);
 };
@@ -6948,7 +6948,28 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                         data={ledgerFilteredData}
                         columns={[
                         { key: 'date', label: 'Date', sortable: true },
-                        { key: 'invoiceNumber', label: 'Invoice #', sortable: true },
+                        { 
+                            key: 'invoiceNumber', 
+                            label: 'Invoice #', 
+                            sortable: true,
+                            render: (item: any) => (
+                                <div className="flex flex-col">
+                                    <span className="font-mono font-black text-slate-900 block whitespace-nowrap">
+                                        {item.invoiceNumber || '-'}
+                                    </span>
+                                    {item.invoiceType === 'Proforma Invoice' ? (
+                                        <span className="text-[9px] font-extrabold text-blue-600 uppercase tracking-widest mt-1 bg-blue-50/50 border border-blue-100/30 px-1.5 py-0.5 rounded w-max">
+                                            Proforma
+                                        </span>
+                                    ) : (
+                                        <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-widest mt-1 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded w-max">
+                                            Tax Invoice
+                                        </span>
+                                    )}
+                                </div>
+                            ),
+                            exportText: (item) => item.invoiceNumber || ''
+                        },
                         { 
                             key: 'invoiceCreationStatus', 
                             label: 'Generation',
@@ -7810,7 +7831,9 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
                                             {/* Right - General Metadata */}
                                             <div className="text-right">
-                                                <h2 className="text-3xl font-black text-blue-600 tracking-wider mb-2">TAX INVOICE</h2>
+                                                <h2 className="text-3xl font-black text-blue-600 tracking-wider mb-2">
+                                                    {item.invoiceType === 'Proforma Invoice' ? 'PROFORMA INVOICE' : 'TAX INVOICE'}
+                                                </h2>
                                                 <div className="inline-grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-left">
                                                     <span className="text-slate-400 font-semibold">Invoice No:</span>
                                                     <span className="font-bold text-slate-900 text-right">{item.invoiceNumber || 'INV-0000'}</span>
@@ -11825,6 +11848,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             const totalAmt = ar.totalAmount !== undefined ? ar.totalAmount : Number(Math.max(0, baseTotal + adjEffect).toFixed(2));
             return {
                 ...ar,
+                invoiceType: ar.invoiceType || 'Tax Invoice',
                 companyId: ar.companyId || '',
                 companyName: ar.companyName || '',
                 entityId: ar.entityId || ar.projectId || '',
@@ -11854,6 +11878,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
         })();
         return { 
             id: Math.random().toString(36).substr(2, 9),
+            invoiceType: 'Tax Invoice',
             date: initialDate,
             dueDate: initialDueDate, // Default 30 days credit based on invoice date
             entityId: '',
@@ -12013,7 +12038,12 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                 <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <div>
                         <span className="text-[10px] font-black uppercase text-blue-600 tracking-widest bg-blue-50 px-3 py-1.5 rounded-full">Zoho Books Invoice Editor</span>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight mt-1.5">{ar ? 'Edit Tax Invoice' : 'Create Tax Invoice'}</h2>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight mt-1.5">
+                            {ar 
+                                ? `Edit ${formData.invoiceType === 'Proforma Invoice' ? 'Proforma Invoice' : 'Tax Invoice'}` 
+                                : `Create ${formData.invoiceType === 'Proforma Invoice' ? 'Proforma Invoice' : 'Tax Invoice'}`
+                            }
+                        </h2>
                         <p className="text-slate-500 text-sm font-medium">Billed client invoicing matching UAE corporate compliance standards</p>
                     </div>
                     <button onClick={onCancel} className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-400 hover:text-slate-600 shadow-sm bg-white border border-slate-100"><X className="w-5 h-5" /></button>
@@ -12042,7 +12072,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                         <option key={c.id} value={c.id}>{c.name}</option>
                                     ))}
                                 </select>
-                                <p className="text-[10.5px] text-slate-400 font-medium">The selected company's official corporate logo, name, and address details will automatically render on the Zoho Books Tax Invoice layout and printed PDFs.</p>
+                                <p className="text-[10.5px] text-slate-400 font-medium">The selected company's official corporate logo, name, and address details will automatically render on the Zoho Books {formData.invoiceType === 'Proforma Invoice' ? 'Proforma' : 'Tax'} Invoice layout and printed PDFs.</p>
                                 {selectedCompany?.trn ? (
                                     <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-100/60 rounded-xl text-xs font-bold text-emerald-805 font-mono mt-1">
                                         <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
@@ -12077,7 +12107,18 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                     </div>
 
                     {/* Section 2: GENERAL METADATA GRID */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice Type</label>
+                            <select 
+                                value={formData.invoiceType || 'Tax Invoice'}
+                                onChange={e => setFormData({ ...formData, invoiceType: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer font-sans"
+                            >
+                                <option value="Tax Invoice">Tax Invoice</option>
+                                <option value="Proforma Invoice">Proforma Invoice</option>
+                            </select>
+                        </div>
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice Date</label>
                             <input 
@@ -12240,18 +12281,18 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                        <th className="px-4 py-3 w-[28%] rounded-tl-2xl bg-slate-50">Item/Service Name</th>
-                                        <th className="px-4 py-3 w-[28%] bg-slate-50">Sub-Description (Scope)</th>
-                                        <th className="px-1.5 py-3 text-right w-[14%] bg-slate-50">Qty</th>
-                                        <th className="px-1.5 py-3 text-right w-[14%] bg-slate-50">Rate (AED)</th>
-                                        <th className="px-1.5 py-3 text-right w-[16%] bg-slate-50">Total (AED)</th>
+                                        <th className="px-4 py-3 w-[25%] rounded-tl-2xl bg-slate-50">Item/Service Name</th>
+                                        <th className="px-4 py-3 w-[25%] bg-slate-50">Sub-Description (Scope)</th>
+                                        <th className="px-1.5 py-3 text-right w-[14%] min-w-[110px] bg-slate-50">Qty</th>
+                                        <th className="px-1.5 py-3 text-right w-[16%] min-w-[130px] bg-slate-50">Rate (AED)</th>
+                                        <th className="px-1.5 py-3 text-right w-[20%] min-w-[150px] bg-slate-50">Total (AED)</th>
                                         <th className="p-3 text-center w-12 rounded-tr-2xl bg-slate-50"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-150">
                                     {formData.items.map((it: any) => (
                                         <tr key={it.id} className="hover:bg-slate-50/50">
-                                            <td className="p-3 relative">
+                                            <td className={`p-3 relative w-[25%] ${focusedItemRowId === it.id ? 'z-[100]' : 'z-10'}`}>
                                                 <div className="relative">
                                                     <input 
                                                         type="text" 
@@ -12295,7 +12336,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     )}
                                                 </div>
                                             </td>
-                                            <td className="p-3">
+                                            <td className="p-3 w-[25%]">
                                                 <input 
                                                     type="text" 
                                                     placeholder="Scope notes or sub-details"
@@ -12304,18 +12345,18 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:ring-2 focus:ring-blue-500 outline-none"
                                                 />
                                             </td>
-                                            <td className="px-1.5 py-3">
+                                            <td className="px-1.5 py-3 w-[14%] min-w-[110px]">
                                                 <input 
                                                     type="number" 
                                                     min="1"
                                                     placeholder="1"
                                                     value={it.quantity}
                                                     onChange={e => updateItemValue(it.id, 'quantity', Number(e.target.value))}
-                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                     required
                                                 />
                                             </td>
-                                            <td className="px-1.5 py-3">
+                                            <td className="px-1.5 py-3 w-[16%] min-w-[130px]">
                                                 <input 
                                                     type="number" 
                                                     min="0.01" 
@@ -12323,14 +12364,14 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     placeholder="0.00"
                                                     value={it.rate}
                                                     onChange={e => updateItemValue(it.id, 'rate', Number(e.target.value))}
-                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                    className="w-full px-2 py-2 text-right bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold focus:ring-2 focus:ring-blue-500 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                     required
                                                 />
                                             </td>
-                                            <td className="px-1.5 py-3 text-right font-black text-slate-800 text-xs">
+                                            <td className="px-1.5 py-3 text-right w-[20%] min-w-[150px] font-mono font-black text-slate-800 text-xs">
                                                 AED {Number(it.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                             </td>
-                                            <td className="p-3 text-center">
+                                            <td className="p-3 text-center w-12">
                                                 <button 
                                                     type="button" 
                                                     onClick={() => removeInvoiceRow(it.id)}
