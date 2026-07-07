@@ -10293,7 +10293,7 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user, accountsP
     const [viewingDocsSupplier, setViewingDocsSupplier] = useState<Supplier | null>(null);
     const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive'>('All');
+    const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive' | 'WithTRN' | 'WithoutTRN'>('All');
     const [error, setError] = useState<string | null>(null);
     const canManageSuppliers = user?.permissions?.canManageSuppliers || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
@@ -10349,10 +10349,16 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user, accountsP
     const filteredSuppliers = useMemo(() => {
         let baseList = sortedSuppliers;
         if (statusFilter !== 'All') {
-            baseList = baseList.filter(supplier => {
-                const isActive = !supplier.status || supplier.status === 'Active';
-                return statusFilter === 'Active' ? isActive : !isActive;
-            });
+            if (statusFilter === 'WithTRN') {
+                baseList = baseList.filter(supplier => !!supplier.trn?.trim());
+            } else if (statusFilter === 'WithoutTRN') {
+                baseList = baseList.filter(supplier => !supplier.trn?.trim());
+            } else {
+                baseList = baseList.filter(supplier => {
+                    const isActive = !supplier.status || supplier.status === 'Active';
+                    return statusFilter === 'Active' ? isActive : !isActive;
+                });
+            }
         }
         if (!searchTerm.trim()) return baseList;
         const query = searchTerm.toLowerCase();
@@ -10686,6 +10692,30 @@ const SupplierView = ({ suppliers, openConfirm, onUpdate, onAdd, user, accountsP
                     >
                         <span className={cn("w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse", statusFilter === 'Inactive' ? "" : "opacity-60")} />
                         Inactive ({suppliers.filter(s => s.status === 'Inactive').length})
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter('WithTRN')}
+                        className={cn(
+                            "px-4.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5",
+                            statusFilter === 'WithTRN'
+                                ? "bg-white text-blue-700 shadow-xs"
+                                : "text-slate-400 hover:text-slate-600"
+                        )}
+                    >
+                        <ShieldCheck className={cn("w-3.5 h-3.5 text-blue-500", statusFilter === 'WithTRN' ? "" : "opacity-60")} />
+                        With TRN ({suppliers.filter(s => !!s.trn?.trim()).length})
+                    </button>
+                    <button
+                        onClick={() => setStatusFilter('WithoutTRN')}
+                        className={cn(
+                            "px-4.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5",
+                            statusFilter === 'WithoutTRN'
+                                ? "bg-white text-amber-700 shadow-xs"
+                                : "text-slate-400 hover:text-slate-600"
+                        )}
+                    >
+                        <ShieldAlert className={cn("w-3.5 h-3.5 text-amber-500", statusFilter === 'WithoutTRN' ? "" : "opacity-60")} />
+                        Without TRN ({suppliers.filter(s => !s.trn?.trim()).length})
                     </button>
                 </div>
                 
