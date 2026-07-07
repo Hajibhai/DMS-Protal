@@ -4717,50 +4717,24 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(18);
     doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
-    doc.text(item.invoiceType === 'Proforma Invoice' ? "PROFORMA INVOICE" : "TAX INVOICE", 195, 16, { align: 'right' });
-
-    doc.setFont("Helvetica", "normal");
-    doc.setFontSize(8.2);
-    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
-    
-    doc.text(`Invoice No:`, 140, 21);
-    doc.setFont("Helvetica", "bold");
-    doc.text(`${item.invoiceNumber || 'INV-NA'}`, 195, 21, { align: 'right' });
-
-    doc.setFont("Helvetica", "normal");
-    doc.text(`Date:`, 140, 25.2);
-    doc.text(`${item.date}`, 195, 25.2, { align: 'right' });
-
-    doc.setFont("Helvetica", "normal");
-    doc.text(`Due Date:`, 140, 29.4);
-    doc.text(`${item.dueDate || item.date}`, 195, 29.4, { align: 'right' });
-
-    doc.setFont("Helvetica", "normal");
-    doc.text(`Status:`, 140, 33.6);
-    doc.setFont("Helvetica", "bold");
-    if (item.status === 'Received') {
-        doc.setTextColor(16, 124, 65);
-    } else {
-        doc.setTextColor(220, 95, 0);
-    }
-    doc.text(`${item.status || 'Pending'}`.toUpperCase(), 195, 33.6, { align: 'right' });
+    doc.text(item.invoiceType === 'Proforma Invoice' ? "PROFORMA INVOICE" : "TAX INVOICE", 195, 24.8, { align: 'right' });
 
     doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
     doc.setLineWidth(0.4);
-    doc.line(15, 39, 195, 39);
+    doc.line(15, 36, 195, 36);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("BILLED TO", 15, 46);
+    doc.text("BILLED TO", 15, 44);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
-    doc.text(client?.name || item.contact || "Valued Client", 15, 52);
+    doc.text(client?.name || item.contact || "Valued Client", 15, 50);
 
     doc.setFont("Helvetica", "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(8);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
     const clientDetails = [
         client?.address || "Dubai, United Arab Emirates",
@@ -4772,9 +4746,86 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     } else {
         clientDetails.push(`Recipient TRN (VAT ID): 100389423100003`);
     }
-    doc.text(clientDetails.filter(Boolean), 15, 58);
+    let bY = 55;
+    clientDetails.filter(Boolean).forEach(line => {
+        doc.text(line, 15, bY);
+        bY += 4.0;
+    });
 
-    let yPos = 85;
+    // Right Column: Invoice Details Table Box (Moves Downside)
+    const activeRows: { label: string; value: string; isBold?: boolean; isStatus?: boolean }[] = [
+        { label: "Invoice No:", value: String(item.invoiceNumber || 'INV-0000'), isBold: true },
+        { label: "Invoice Ref No:", value: String(item.invoiceRef || '-') },
+        { label: "Invoice Date:", value: String(item.date) },
+        { label: "Month of:", value: String(item.monthOf || '-') },
+        { label: "Project:", value: String(item.entityType === 'Project' ? (client?.name || '-') : '-') },
+        { label: "Project LPO No:", value: String(item.projectLpoNo || '-') },
+    ];
+    if (item.startDate && String(item.startDate).trim() !== '') {
+        activeRows.push({ label: "Starting Date:", value: String(item.startDate) });
+    }
+    if (item.endDate && String(item.endDate).trim() !== '') {
+        activeRows.push({ label: "Ending Date:", value: String(item.endDate) });
+    }
+    activeRows.push({ label: "Due Date:", value: String(item.dueDate || item.date) });
+    activeRows.push({ label: "Status:", value: String(item.status || 'Pending').toUpperCase(), isStatus: true });
+
+    const startY = 41;
+    const rowHeight = 4.2;
+    const boxWidth = 80;
+    const boxLeft = 115;
+    const totalHeight = activeRows.length * rowHeight;
+
+    // Draw background
+    doc.setFillColor(255, 255, 255);
+    doc.rect(boxLeft, startY, boxWidth, totalHeight, 'F');
+
+    activeRows.forEach((row, idx) => {
+        const currentY = startY + (idx * rowHeight);
+        
+        // Fill label (left cell) column with soft gray background
+        doc.setFillColor(tableHeaderBg[0], tableHeaderBg[1], tableHeaderBg[2]);
+        doc.rect(boxLeft, currentY, 32, rowHeight, 'F');
+        
+        // Horizontal divider lines
+        if (idx > 0) {
+            doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+            doc.setLineWidth(0.15);
+            doc.line(boxLeft, currentY, boxLeft + boxWidth, currentY);
+        }
+        
+        // Print Label Text
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+        doc.text(row.label, boxLeft + 2.5, currentY + 3.0);
+        
+        // Print Value Text
+        doc.setFont("Helvetica", row.isBold ? "bold" : "normal");
+        doc.setFontSize(7.5);
+        if (row.isStatus) {
+            if (row.value === 'RECEIVED') {
+                doc.setTextColor(16, 124, 65);
+                doc.setFont("Helvetica", "bold");
+            } else {
+                doc.setTextColor(220, 95, 0);
+                doc.setFont("Helvetica", "bold");
+            }
+        } else {
+            doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+        }
+        doc.text(row.value, boxLeft + 34, currentY + 3.0);
+    });
+
+    // Draw vertical cell dividing line
+    doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+    doc.setLineWidth(0.2);
+    doc.line(boxLeft + 32, startY, boxLeft + 32, startY + totalHeight);
+
+    // Draw outer frame border around details table
+    doc.rect(boxLeft, startY, boxWidth, totalHeight, 'D');
+
+    let yPos = Math.max(85, startY + totalHeight + 4);
 
     doc.setFillColor(tableHeaderBg[0], tableHeaderBg[1], tableHeaderBg[2]);
     doc.rect(15, yPos, 180, 10, 'F');
@@ -7810,7 +7861,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                         <div className="absolute top-0 left-0 right-0 h-1.5 bg-blue-500 rounded-t-2xl"></div>
 
                                         {/* Invoice Header Section */}
-                                        <div className="flex flex-col md:flex-row justify-between items-start gap-6 md:gap-4 mb-8">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-4 mb-8 items-center">
                                             {/* Left - Seller details */}
                                             <div className="space-y-4">
                                                 {comp?.logo ? (
@@ -7825,46 +7876,94 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                                     <p className="text-[11px] text-slate-500 font-medium whitespace-pre-line leading-relaxed">
                                                         {comp?.address || 'United Arab Emirates'}<br />
                                                         {comp?.email ? `Email: ${comp.email}` : 'Email: accounts@pioneer.ae'}<br />
-                                                        {comp?.phone ? `Phone: ${comp.phone}` : ''}
+                                                        {comp?.phone ? `Phone: ${comp.phone}` : ''}<br />
+                                                        Supplier TRN (VAT ID): {comp?.trn || item.companyTrn || '100459382100003'}
                                                     </p>
                                                 </div>
                                             </div>
 
                                             {/* Right - General Metadata */}
                                             <div className="text-right">
-                                                <h2 className="text-3xl font-black text-blue-600 tracking-wider mb-2">
+                                                <h2 className="text-3xl font-black text-blue-600 tracking-wider">
                                                     {item.invoiceType === 'Proforma Invoice' ? 'PROFORMA INVOICE' : 'TAX INVOICE'}
                                                 </h2>
-                                                <div className="inline-grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-left">
-                                                    <span className="text-slate-400 font-semibold">Invoice No:</span>
-                                                    <span className="font-bold text-slate-900 text-right">{item.invoiceNumber || 'INV-0000'}</span>
-                                                    
-                                                    <span className="text-slate-400 font-semibold">Date:</span>
-                                                    <span className="font-bold text-slate-950 text-right">{item.date}</span>
-
-                                                    <span className="text-slate-400 font-semibold">Due Date:</span>
-                                                    <span className="font-bold text-slate-950 text-right">{item.dueDate || item.date}</span>
-
-                                                    <span className="text-slate-400 font-semibold">Status:</span>
-                                                    <span className={cn(
-                                                        "font-black text-right uppercase tracking-wide",
-                                                        item.status === 'Received' ? "text-emerald-600" : "text-orange-500"
-                                                    )}>{item.status || 'Pending'}</span>
-                                                </div>
                                             </div>
                                         </div>
 
                                         <hr className="border-slate-100 mb-6" />
 
-                                        {/* Bill From and Bill To split grid */}
-                                        <div className="mb-8">
-                                            <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block mb-2">Billed To / Clients</span>
-                                            <h5 className="font-black text-slate-950 text-sm whitespace-nowrap">{client?.name || item.contact || 'Valued Client'}</h5>
-                                            <p className="text-[11px] text-slate-500 whitespace-pre-line leading-relaxed mt-1">
-                                                {client?.address || 'Dubai, United Arab Emirates'}<br />
-                                                {client?.email && `Email: ${client.email}`}<br />
-                                                {client?.phone && `Phone: ${client.phone}`}
-                                            </p>
+                                        {/* Split Grid for Billed To & Invoice Details Table */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 items-start text-left">
+                                            {/* Left Column: Billed To */}
+                                            <div className="space-y-2">
+                                                <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block mb-1">Billed To</span>
+                                                <h5 className="font-black text-slate-950 text-sm">{client?.name || item.contact || 'Valued Client'}</h5>
+                                                <p className="text-[11px] text-slate-500 whitespace-pre-line leading-relaxed mt-1">
+                                                    {client?.address || 'Dubai, United Arab Emirates'}<br />
+                                                    {client?.email && `Email: ${client.email}`}<br />
+                                                    {client?.phone && `Phone: ${client.phone}`}<br />
+                                                    Recipient TRN (VAT ID): {client?.trn || item.clientTrn || '100389423100003'}
+                                                </p>
+                                            </div>
+
+                                            {/* Right Column: Invoice Details Table */}
+                                            <div className="border border-slate-200 rounded-xl overflow-hidden text-xs bg-slate-50/50">
+                                                <table className="w-full text-left border-collapse">
+                                                    <tbody>
+                                                        <tr className="border-b border-slate-200">
+                                                             <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase w-[40%] bg-slate-100/60">Invoice No:</td>
+                                                             <td className="px-3 py-1.5 font-black text-slate-900 w-[60%]">{item.invoiceNumber || 'INV-0000'}</td>
+                                                        </tr>
+                                                        <tr className="border-b border-slate-200">
+                                                             <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase bg-slate-100/60">Invoice Ref No:</td>
+                                                             <td className="px-3 py-1.5 font-bold text-slate-800">{item.invoiceRef || '-'}</td>
+                                                        </tr>
+                                                        <tr className="border-b border-slate-200">
+                                                             <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase bg-slate-100/60">Invoice Date:</td>
+                                                             <td className="px-3 py-1.5 font-bold text-slate-800">{item.date}</td>
+                                                        </tr>
+                                                        <tr className="border-b border-slate-200">
+                                                             <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase bg-slate-100/60">Month of:</td>
+                                                             <td className="px-3 py-1.5 font-bold text-slate-800">{item.monthOf || '-'}</td>
+                                                        </tr>
+                                                        <tr className="border-b border-slate-200">
+                                                             <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase bg-slate-100/60">Project:</td>
+                                                             <td className="px-3 py-1.5 font-bold text-slate-800">{item.entityType === 'Project' ? (client?.name || '-') : '-'}</td>
+                                                        </tr>
+                                                        <tr className="border-b border-slate-200">
+                                                             <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase bg-slate-100/60">Project LPO No:</td>
+                                                             <td className="px-3 py-1.5 font-bold text-slate-800">{item.projectLpoNo || '-'}</td>
+                                                        </tr>
+                                                        {item.startDate && String(item.startDate).trim() !== '' && (
+                                                             <tr className="border-b border-slate-200">
+                                                                 <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase bg-slate-100/60">Starting Date:</td>
+                                                                 <td className="px-3 py-1.5 font-bold text-slate-800">{item.startDate}</td>
+                                                             </tr>
+                                                        )}
+                                                        {item.endDate && String(item.endDate).trim() !== '' && (
+                                                             <tr className="border-b border-slate-200">
+                                                                 <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase bg-slate-100/60">Ending Date:</td>
+                                                                 <td className="px-3 py-1.5 font-bold text-slate-800">{item.endDate}</td>
+                                                             </tr>
+                                                        )}
+                                                        <tr className="border-b border-slate-200">
+                                                             <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase bg-slate-100/60">Due Date:</td>
+                                                             <td className="px-3 py-1.5 font-bold text-slate-800">{item.dueDate || item.date}</td>
+                                                        </tr>
+                                                        <tr className="border-b border-slate-200">
+                                                             <td className="px-3 py-1.5 font-black text-slate-400 text-[10px] uppercase bg-slate-100/60">Status:</td>
+                                                             <td className="px-3 py-1.5">
+                                                                 <span className={cn(
+                                                                     "font-black uppercase tracking-wider text-[11px]",
+                                                                     item.status === 'Received' ? "text-emerald-600" : "text-orange-500"
+                                                                 )}>
+                                                                     {item.status || 'Pending'}
+                                                                 </span>
+                                                             </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </div>
 
                                         {/* Line items list grid */}
@@ -11861,6 +11960,11 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                 vatAmount: vatAmt,
                 totalAmount: totalAmt,
                 dueDate: ar.dueDate || ar.date || new Date().toISOString().split('T')[0],
+                invoiceRef: ar.invoiceRef || '',
+                monthOf: ar.monthOf || '',
+                projectLpoNo: ar.projectLpoNo || '',
+                startDate: ar.startDate || '',
+                endDate: ar.endDate || '',
                 items: ar.items && ar.items.length > 0 ? ar.items : [
                     { id: Math.random().toString(36).substr(2, 9), name: ar.description || 'General Services', description: 'Technical works as agreed', quantity: 1, rate: ar.amount || 0, total: ar.amount || 0 }
                 ]
@@ -11885,6 +11989,11 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             entityId: '',
             entityType: 'Project',
             invoiceNumber: 'INV-' + Math.floor(100000 + Math.random() * 900000),
+            invoiceRef: '',
+            monthOf: '',
+            projectLpoNo: '',
+            startDate: '',
+            endDate: '',
             amount: 0,
             vatAmount: 0,
             totalAmount: 0,
@@ -12157,6 +12266,61 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                 onChange={e => setFormData({ ...formData, invoiceNumber: e.target.value })}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                             />
+                        </div>
+                    </div>
+
+                    {/* Section 2.5: ADDITIONAL INVOICE DETAILS */}
+                    <div className="bg-slate-50/40 p-6 rounded-[2rem] border border-slate-150/80 space-y-4">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-500">Additional Invoice Details</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Invoice Ref No</label>
+                                <input 
+                                    type="text"
+                                    value={formData.invoiceRef || ''}
+                                    onChange={e => setFormData({ ...formData, invoiceRef: e.target.value })}
+                                    placeholder="e.g. REF-102"
+                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Month of</label>
+                                <input 
+                                    type="text"
+                                    value={formData.monthOf || ''}
+                                    onChange={e => setFormData({ ...formData, monthOf: e.target.value })}
+                                    placeholder="e.g. June 2026"
+                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Project LPO No</label>
+                                <input 
+                                    type="text"
+                                    value={formData.projectLpoNo || ''}
+                                    onChange={e => setFormData({ ...formData, projectLpoNo: e.target.value })}
+                                    placeholder="e.g. LPO-992"
+                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Starting Date (Optional)</label>
+                                <input 
+                                    type="date"
+                                    value={formData.startDate || ''}
+                                    onChange={e => setFormData({ ...formData, startDate: e.target.value })}
+                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Ending Date (Optional)</label>
+                                <input 
+                                    type="date"
+                                    value={formData.endDate || ''}
+                                    onChange={e => setFormData({ ...formData, endDate: e.target.value })}
+                                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                />
+                            </div>
                         </div>
                     </div>
 

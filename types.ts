@@ -329,6 +329,11 @@ export interface AccountsReceivable {
     actualAmount?: number; // Work value after deduction
     adjustmentAmount?: number; // Adjustment Amount (+/-)
     adjustmentType?: '+' | '-'; // Adjustment Type (Addition/Deduction)
+    invoiceRef?: string;
+    monthOf?: string;
+    projectLpoNo?: string;
+    startDate?: string;
+    endDate?: string;
 }
 
 export interface PettyCash {
