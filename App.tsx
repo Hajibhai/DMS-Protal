@@ -9637,9 +9637,30 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
     const filteredEmployees = useMemo(() => {
         const filtered = employees.filter((e: Employee) => {
             const company = companyList.find(c => c.name === e.company);
+            const docEmiratesId = e.documents?.emiratesId || '';
+            const docPassportNumber = e.documents?.passportNumber || '';
+            const docLabourCardNumber = e.documents?.labourCardNumber || '';
+            
+            const qClean = searchTerm.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+            const empEIDClean = docEmiratesId.replace(/[^a-zA-Z0-9]/g, '');
+            const empPassportClean = docPassportNumber.replace(/[^a-zA-Z0-9]/g, '');
+            const empLabourClean = docLabourCardNumber.replace(/[^a-zA-Z0-9]/g, '');
+
+            const matchesDoc = (
+                docEmiratesId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                docPassportNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                docLabourCardNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (qClean.length >= 3 && (
+                    empEIDClean.includes(qClean) ||
+                    empPassportClean.includes(qClean) ||
+                    empLabourClean.includes(qClean)
+                ))
+            );
+
             const matchesSearch = (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                                 (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                                (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+                                (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                                matchesDoc;
             const matchesCompany = companyFilter === 'All' || e.company === companyFilter;
             const matchesDept = deptFilter === 'All' || e.department === deptFilter;
             return matchesSearch && matchesCompany && matchesDept;
@@ -13383,9 +13404,30 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
     const filteredEmployees = useMemo(() => {
         return employees.filter((e: Employee) => {
             const company = companies.find((c: Company) => c.name === e.company);
+            const docEmiratesId = e.documents?.emiratesId || '';
+            const docPassportNumber = e.documents?.passportNumber || '';
+            const docLabourCardNumber = e.documents?.labourCardNumber || '';
+            
+            const qClean = searchTerm.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+            const empEIDClean = docEmiratesId.replace(/[^a-zA-Z0-9]/g, '');
+            const empPassportClean = docPassportNumber.replace(/[^a-zA-Z0-9]/g, '');
+            const empLabourClean = docLabourCardNumber.replace(/[^a-zA-Z0-9]/g, '');
+
+            const matchesDoc = (
+                docEmiratesId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                docPassportNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                docLabourCardNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (qClean.length >= 3 && (
+                    empEIDClean.includes(qClean) ||
+                    empPassportClean.includes(qClean) ||
+                    empLabourClean.includes(qClean)
+                ))
+            );
+
             const matchesSearch = (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                    (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                   (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+                   (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                   matchesDoc;
             
             if (!matchesSearch) return false;
 
@@ -16240,9 +16282,30 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
      const filteredEmployees = useMemo(() => {
         return employees.filter((e: Employee) => {
             const company = companies.find((c: Company) => c.name === e.company);
+            const docEmiratesId = e.documents?.emiratesId || '';
+            const docPassportNumber = e.documents?.passportNumber || '';
+            const docLabourCardNumber = e.documents?.labourCardNumber || '';
+            
+            const qClean = searchTerm.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+            const empEIDClean = docEmiratesId.replace(/[^a-zA-Z0-9]/g, '');
+            const empPassportClean = docPassportNumber.replace(/[^a-zA-Z0-9]/g, '');
+            const empLabourClean = docLabourCardNumber.replace(/[^a-zA-Z0-9]/g, '');
+
+            const matchesDoc = (
+                docEmiratesId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                docPassportNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                docLabourCardNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (qClean.length >= 3 && (
+                    empEIDClean.includes(qClean) ||
+                    empPassportClean.includes(qClean) ||
+                    empLabourClean.includes(qClean)
+                ))
+            );
+
             return (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                    (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
-                   (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+                   (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                   matchesDoc;
         });
     }, [employees, searchTerm, companies]);     // Real export functionality
      const handleExportFiltered = () => {
@@ -19929,13 +19992,25 @@ const ReportsView = ({
     }, [initialSearchTerm]);
     const canManageEmployees = user?.permissions?.canManageEmployees || user?.role?.toLowerCase() === 'creator' || user?.role?.toLowerCase() === 'admin' || user?.email === 'abdulkaderp3010@gmail.com' || user?.email === CREATOR_USER.username;
 
-    const filtered = records.filter((r: any) => 
-        r.nameEnglish?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.nameArabic?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.emiratesId?.includes(searchTerm) ||
-        r.uidNumber?.includes(searchTerm) ||
-        r.projectName?.toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const filtered = records.filter((r: any) => {
+        const qClean = searchTerm.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
+        const recordEIDClean = (r.emiratesId || '').replace(/[^a-zA-Z0-9]/g, '');
+        const recordUIDClean = (r.uidNumber || '').replace(/[^a-zA-Z0-9]/g, '');
+
+        const matchesDoc = (
+            (r.emiratesId || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (r.uidNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (qClean.length >= 3 && (
+                recordEIDClean.includes(qClean) ||
+                recordUIDClean.includes(qClean)
+            ))
+        );
+
+        return r.nameEnglish?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+               r.nameArabic?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+               r.projectName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+               matchesDoc;
+    }).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const getDaysLeft = (date: string) => {
         if (!date) return null;

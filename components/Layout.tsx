@@ -364,14 +364,49 @@ export const Layout: React.FC<LayoutProps> = ({
     
     // Search Employees
     (employees || []).forEach(emp => {
+        const docEmiratesId = emp.documents?.emiratesId || '';
+        const docPassportNumber = emp.documents?.passportNumber || '';
+        const docLabourCardNumber = emp.documents?.labourCardNumber || '';
+        
+        const qClean = q.replace(/[^a-zA-Z0-9]/g, '');
+        const empEIDClean = docEmiratesId.replace(/[^a-zA-Z0-9]/g, '');
+        const empPassportClean = docPassportNumber.replace(/[^a-zA-Z0-9]/g, '');
+        const empLabourClean = docLabourCardNumber.replace(/[^a-zA-Z0-9]/g, '');
+
+        const matchesDoc = (
+            docEmiratesId.toLowerCase().includes(q) ||
+            docPassportNumber.toLowerCase().includes(q) ||
+            docLabourCardNumber.toLowerCase().includes(q) ||
+            (qClean.length >= 3 && (
+                empEIDClean.includes(qClean) ||
+                empPassportClean.includes(qClean) ||
+                empLabourClean.includes(qClean)
+            ))
+        );
+
         if (
             (emp.name?.toLowerCase() || '').includes(q) || 
             (emp.code?.toLowerCase() || '').includes(q) || 
             (emp.designation?.toLowerCase() || '').includes(q) ||
             (emp.department?.toLowerCase() || '').includes(q) ||
-            (emp.company?.toLowerCase() || '').includes(q)
+            (emp.company?.toLowerCase() || '').includes(q) ||
+            matchesDoc
         ) {
-            results.push({ type: 'Employee', title: emp.name, subtitle: `${emp.code} - ${emp.designation} (${emp.company})`, id: emp.id, tab: 'staff' });
+            let docMatchInfo = '';
+            if (docEmiratesId && (docEmiratesId.toLowerCase().includes(q) || (qClean.length >= 3 && empEIDClean.includes(qClean)))) {
+                docMatchInfo = ` | EID: ${docEmiratesId}`;
+            } else if (docPassportNumber && (docPassportNumber.toLowerCase().includes(q) || (qClean.length >= 3 && empPassportClean.includes(qClean)))) {
+                docMatchInfo = ` | Pass: ${docPassportNumber}`;
+            } else if (docLabourCardNumber && (docLabourCardNumber.toLowerCase().includes(q) || (qClean.length >= 3 && empLabourClean.includes(qClean)))) {
+                docMatchInfo = ` | Labour: ${docLabourCardNumber}`;
+            }
+            results.push({ 
+                type: 'Employee', 
+                title: emp.name, 
+                subtitle: `${emp.code} - ${emp.designation} (${emp.company})${docMatchInfo}`, 
+                id: emp.id, 
+                tab: 'staff' 
+            });
         }
     });
     
@@ -944,7 +979,7 @@ export const Layout: React.FC<LayoutProps> = ({
                                       </div>
                                       <p className="text-slate-900 font-black text-lg uppercase tracking-tight">Result Not Available</p>
                                       <p className="text-slate-500 font-medium mt-1">We couldn't find any matching records for "{searchQuery}" across the entire site.</p>
-                                      <p className="text-slate-400 text-xs mt-4 bg-slate-50 py-2 px-4 rounded-xl inline-block border border-slate-100">Try searching for Project Code, Staff Name, or Invoice Number</p>
+                                      <p className="text-slate-400 text-xs mt-4 bg-slate-50 py-2 px-4 rounded-xl inline-block border border-slate-100">Try searching for EID, Passport, Labour Card, Project Code, Staff Name, or Invoice Number</p>
                                   </div>
                               )}
                             </div>
