@@ -604,6 +604,20 @@ export interface PassportAcknowledgement {
   createdAt: string;
 }
 
+export interface EmiratesIdAcknowledgement {
+  id: string;
+  refNo: string;
+  date: string;
+  employeeId?: string; // Optional links to Employee.id or JobOffer.id
+  employeeName: string;
+  emiratesId: string;
+  nationality: string;
+  purpose: string;
+  signatoryName?: string;
+  signatoryTitle?: string;
+  createdAt: string;
+}
+
 export interface DocumentItem {
   id: string;
   name: string;

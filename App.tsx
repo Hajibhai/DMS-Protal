@@ -159,6 +159,7 @@ import TasksNotesView from './components/TasksNotesView';
 import { ExperienceLetterView, downloadExperienceLetterPDF } from './components/ExperienceLetterView';
 import { NocView } from './components/NocView';
 import { PassportAcknowledgementView } from './components/PassportAcknowledgementView';
+import { EmiratesIdAcknowledgementView } from './components/EmiratesIdAcknowledgementView';
 import { VouchersView } from './components/VouchersView';
 import { VisaFeesView } from './components/VisaFeesView';
 import { CompanyRecordsManager } from './components/CompanyRecordsManager';
@@ -1598,6 +1599,7 @@ const EditEmployeeModal = ({ employee, onSave, onCancel, companies, openConfirm,
                              </div>
 
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Mobile Number</label><input disabled={readOnly} type="text" value={data.mobileNumber || ''} onChange={e => setData({...data, mobileNumber: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" /></div>
+                            <div><label className="text-xs font-semibold text-gray-500 uppercase">Email ID (Optional)</label><input disabled={readOnly} type="email" value={data.email || ''} onChange={e => setData({...data, email: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. employee@company.com" /></div>
                              <div><label className="text-xs font-semibold text-gray-500 uppercase">Nick Name</label><input disabled={readOnly} type="text" value={data.nickName || ''} onChange={e => setData({...data, nickName: e.target.value})} className="w-full p-2 border rounded-lg mt-1 bg-white text-gray-900 font-bold disabled:bg-gray-50" placeholder="e.g. Nick" /></div>
 
                              <div>
@@ -1895,6 +1897,7 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
         leaveBalance: 30, 
         team: 'Internal Team', 
         type: StaffType.WORKER,
+        email: '',
         documents: {
             emiratesId: '',
             emiratesIdIssue: '',
@@ -2158,6 +2161,16 @@ const OnboardingWizard = ({ onComplete, onCancel, companies, openConfirm }: { on
                                         placeholder="e.g. +971 ..." 
                                         value={data.mobileNumber||''} 
                                         onChange={e=>setData({...data, mobileNumber:e.target.value})} 
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Email ID (Optional)</label>
+                                    <input 
+                                        type="email"
+                                        placeholder="employee@company.com" 
+                                        value={data.email||''} 
+                                        onChange={e=>setData({...data, email:e.target.value})} 
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all bg-white text-gray-900" 
                                     />
                                 </div>
@@ -5988,6 +6001,7 @@ export default function App() {
           { id: 'experience', label: 'Experience Letter', icon: FileText, permission: 'canManageEmployees' },
           { id: 'noc', label: 'No Objection Certificate (NOC)', icon: FileText, permission: 'canManageEmployees' },
           { id: 'passport-acknowledgement', label: 'Passport Collection Acknowledgement', icon: ShieldCheck, permission: 'canManageEmployees' },
+          { id: 'emirates-id-acknowledgement', label: 'Emirates ID Collection Acknowledgement', icon: CreditCard, permission: 'canManageEmployees' },
         ]
       },
       { 
@@ -6520,6 +6534,11 @@ export default function App() {
       )}
       {activeTab === 'passport-acknowledgement' && (
         <PassportAcknowledgementView 
+          employees={employees} 
+        />
+      )}
+      {activeTab === 'emirates-id-acknowledgement' && (
+        <EmiratesIdAcknowledgementView 
           employees={employees} 
         />
       )}
@@ -9660,6 +9679,7 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
             const matchesSearch = (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                                 (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                                 (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                                (e.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                                 matchesDoc;
             const matchesCompany = companyFilter === 'All' || e.company === companyFilter;
             const matchesDept = deptFilter === 'All' || e.department === deptFilter;
@@ -9861,11 +9881,18 @@ const StaffDirectoryView = ({ employees, companies: companyList, onAdd, onEdit, 
                                                 </div>
                                                 <div>
                                                     <div className="font-black text-slate-900 text-base">{e.name}</div>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{e.code}</div>
-                                                        {e.mobileNumber && (
-                                                            <div className="text-[10px] font-black text-brand-600 uppercase tracking-widest flex items-center gap-1">
-                                                                <Phone className="w-2.5 h-2.5" /> {e.mobileNumber}
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{e.code}</div>
+                                                            {e.mobileNumber && (
+                                                                <div className="text-[10px] font-black text-brand-600 uppercase tracking-widest flex items-center gap-1">
+                                                                    <Phone className="w-2.5 h-2.5" /> {e.mobileNumber}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        {e.email && (
+                                                            <div className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                                                                <Mail className="w-2.5 h-2.5 text-slate-400" /> {e.email}
                                                             </div>
                                                         )}
                                                     </div>
@@ -13427,6 +13454,7 @@ const TimesheetView = ({ employees, attendance, selectedMonth, onMonthChange, us
             const matchesSearch = (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                    (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                    (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                   (e.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                    matchesDoc;
             
             if (!matchesSearch) return false;
@@ -16305,6 +16333,7 @@ const PayrollRegisterView = ({ employees, attendance, deductions, selectedMonth,
             return (e.name?.toLowerCase() || '').includes(searchTerm.toLowerCase()) || 
                    (e.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                    (company?.code?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                   (e.email?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
                    matchesDoc;
         });
     }, [employees, searchTerm, companies]);     // Real export functionality
@@ -17888,6 +17917,7 @@ const ReportsView = ({
                     'Labour Card Expiry Date': e.documents?.labourCardExpiry || '-',
                     'Nationality': e.nationality || '-',
                     'Mobile No': e.mobileNumber || '-',
+                    'Email': e.email || '-',
                     'Basic Salary (AED)': e.salary.basic || 0,
                     'Other Allowance (AED)': (e.salary.housing || 0) + (e.salary.transport || 0) + (e.salary.other || 0),
                     'Total Salary (AED)': (e.salary.basic || 0) + (e.salary.housing || 0) + (e.salary.transport || 0) + (e.salary.other || 0),
@@ -19785,7 +19815,10 @@ const ReportsView = ({
                                         <div className="text-[10px] text-slate-400 font-bold">I: {e.documents?.labourCardIssue || 'N/A'} | E: {e.documents?.labourCardExpiry || 'N/A'}</div>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap align-top">{e.nationality || '-'}</td>
-                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap align-top">{e.mobileNumber || '-'}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium whitespace-nowrap align-top">
+                                        <div>{e.mobileNumber || '-'}</div>
+                                        {e.email && <div className="text-[10px] text-slate-400 font-bold">{e.email}</div>}
+                                    </td>
                                     <td className="px-6 py-4 text-sm text-slate-500 whitespace-nowrap align-top">
                                         <div className="font-bold text-slate-700 text-xs">AED {e.salary.basic?.toLocaleString()} / AED {((e.salary.housing || 0) + (e.salary.transport || 0) + (e.salary.other || 0))?.toLocaleString()}</div>
                                         <div className="text-xs font-black text-slate-900">Total: AED {((e.salary.basic || 0) + (e.salary.housing || 0) + (e.salary.transport || 0) + (e.salary.other || 0))?.toLocaleString()}</div>

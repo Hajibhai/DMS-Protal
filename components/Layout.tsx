@@ -390,10 +390,13 @@ export const Layout: React.FC<LayoutProps> = ({
             (emp.designation?.toLowerCase() || '').includes(q) ||
             (emp.department?.toLowerCase() || '').includes(q) ||
             (emp.company?.toLowerCase() || '').includes(q) ||
+            (emp.email?.toLowerCase() || '').includes(q) ||
             matchesDoc
         ) {
             let docMatchInfo = '';
-            if (docEmiratesId && (docEmiratesId.toLowerCase().includes(q) || (qClean.length >= 3 && empEIDClean.includes(qClean)))) {
+            if (emp.email && emp.email.toLowerCase().includes(q)) {
+                docMatchInfo = ` | Email: ${emp.email}`;
+            } else if (docEmiratesId && (docEmiratesId.toLowerCase().includes(q) || (qClean.length >= 3 && empEIDClean.includes(qClean)))) {
                 docMatchInfo = ` | EID: ${docEmiratesId}`;
             } else if (docPassportNumber && (docPassportNumber.toLowerCase().includes(q) || (qClean.length >= 3 && empPassportClean.includes(qClean)))) {
                 docMatchInfo = ` | Pass: ${docPassportNumber}`;

@@ -544,6 +544,25 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "refNo", "date", "employeeName", "passportNumber", "nationality"]
+    },
+    "EmiratesIdAcknowledgement": {
+      "title": "Emirates ID Acknowledgement",
+      "description": "Document confirming employee handover receipt of physical Emirates ID after processing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "refNo": { "type": "string" },
+        "date": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "employeeName": { "type": "string" },
+        "emiratesId": { "type": "string" },
+        "nationality": { "type": "string" },
+        "purpose": { "type": "string" },
+        "signatoryName": { "type": "string" },
+        "signatoryTitle": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "refNo", "date", "employeeName", "emiratesId", "nationality"]
     }
   },
   "firestore": {
@@ -658,6 +677,10 @@
     "/passport_acknowledgements/{ackId}": {
       "schema": "PassportAcknowledgement",
       "description": "Ledger of all passport custody collection acknowledgements"
+    },
+    "/emirates_id_acknowledgements/{ackId}": {
+      "schema": "EmiratesIdAcknowledgement",
+      "description": "Ledger of all Emirates ID custody collection acknowledgements"
     }
   }
 }
