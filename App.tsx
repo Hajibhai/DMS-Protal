@@ -6031,8 +6031,7 @@ export default function App() {
     if (systemUser.role === UserRole.EMPLOYEE || systemUser.role?.toLowerCase() === 'employee') {
         return [
             { id: 'everyday-expenses', label: 'Everyday Expenses', icon: Wallet },
-            { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote },
-            { id: 'visa-fees', label: 'My Visa Fees', icon: CreditCard }
+            { id: 'tasks-notes', label: 'Tasks & Notes', icon: StickyNote }
         ];
     }
     
@@ -6087,7 +6086,7 @@ export default function App() {
 
   useEffect(() => {
     const isEmployee = systemUser?.role === UserRole.EMPLOYEE || systemUser?.role?.toLowerCase() === 'employee';
-    if (isEmployee && activeTab !== 'everyday-expenses' && activeTab !== 'tasks-notes' && activeTab !== 'visa-fees') {
+    if (isEmployee && activeTab !== 'everyday-expenses' && activeTab !== 'tasks-notes') {
       setActiveTab('everyday-expenses');
     }
   }, [systemUser, activeTab]);
