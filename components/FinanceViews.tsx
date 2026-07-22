@@ -10272,30 +10272,61 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             supplierName: base.supplierName || '',
             supplierCode: base.supplierCode || '',
             attachment: base.attachment || '',
+            attachments: base.attachments && base.attachments.length > 0 
+                ? base.attachments 
+                : (base.attachment ? [base.attachment] : []),
             hoursFormula: base.hoursFormula || '',
             amountFormula: base.amountFormula || '',
             siteInvoices: base.siteInvoices || []
         };
     });
     const [payeeSearch, setPayeeSearch] = useState('');
+    const [activeDocIndex, setActiveDocIndex] = useState(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
 
-        // Limit size to 5MB as requested (5 * 1024 * 1024)
-        if (file.size > 5 * 1024 * 1024) {
-            alert('File size exceeds the 5MB limit.');
+        const currentDocs: string[] = formData.attachments && formData.attachments.length > 0 
+            ? formData.attachments 
+            : (formData.attachment ? [formData.attachment] : []);
+
+        if (currentDocs.length + files.length > 4) {
+            alert(`Maximum 4 documents allowed in total. You currently have ${currentDocs.length} document(s).`);
             return;
         }
 
-        const reader = new FileReader();
-        reader.onload = () => {
-            const base64 = reader.result as string;
-            handleRecalculate({ attachment: base64, invoiceReceivedStatus: 'Received' });
-        };
-        reader.readAsDataURL(file);
+        const readPromises = files.map(file => {
+            return new Promise<string>((resolve, reject) => {
+                if (file.size > 5 * 1024 * 1024) {
+                    alert(`File "${file.name}" exceeds the 5MB limit.`);
+                    reject(new Error('File size limit exceeded'));
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(file);
+            });
+        });
+
+        Promise.allSettled(readPromises).then(results => {
+            const loaded = results
+                .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+                .map(r => r.value);
+            
+            if (loaded.length > 0) {
+                const updatedList = [...currentDocs, ...loaded].slice(0, 4);
+                handleRecalculate({ 
+                    attachments: updatedList, 
+                    attachment: updatedList[0] || '',
+                    invoiceReceivedStatus: 'Received' 
+                });
+            }
+        });
+
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const handleRecalculate = (updates: any) => {
@@ -11016,89 +11047,136 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                         />
                     </div>
 
-                    {/* Custom base64 file upload dropzone (max 5MB) */}
+                    {/* Custom base64 file upload dropzone (max 4 docs, max 5MB each) */}
                     <div className="space-y-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block ml-1">Attach Invoice / Billing Document</span>
+                        <div className="flex items-center justify-between ml-1">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Attach Invoice / Billing Documents (Max 4 Documents)</span>
+                            <span className="text-[10px] font-bold text-slate-400">
+                                {((formData.attachments && formData.attachments.length) || (formData.attachment ? 1 : 0))}/4 Uploaded
+                            </span>
+                        </div>
                         <div className="flex flex-col gap-3">
-                            <div className="flex flex-wrap items-center gap-4">
-                                <button 
-                                    type="button"
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="px-4 py-2.5 bg-slate-50 border border-dashed border-slate-300 hover:border-slate-450 rounded-xl text-slate-600 text-xs font-bold transition-all hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-sm"
-                                >
-                                    <FileText className="w-4.5 h-4.5 text-slate-400" />
-                                    <span>Upload Supplier Invoice Document (max 5MB)</span>
-                                </button>
+                            <div className="flex flex-wrap items-center gap-3">
+                                {(((formData.attachments && formData.attachments.length < 4) || (!formData.attachments && !formData.attachment))) && (
+                                    <button 
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="px-4 py-2.5 bg-slate-50 border border-dashed border-slate-300 hover:border-slate-450 rounded-xl text-slate-600 text-xs font-bold transition-all hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-sm"
+                                    >
+                                        <Plus className="w-4.5 h-4.5 text-indigo-600" />
+                                        <span>
+                                            {(formData.attachments?.length || (formData.attachment ? 1 : 0)) > 0
+                                                ? `Add More Document (+${4 - ((formData.attachments?.length) || (formData.attachment ? 1 : 0))})`
+                                                : "Upload Supplier Invoice Documents (Select Multiple - Max 4)"
+                                            }
+                                        </span>
+                                    </button>
+                                )}
                                 <input 
                                     type="file"
+                                    multiple
                                     accept="image/*,application/pdf"
                                     ref={fileInputRef}
                                     onChange={handleFileChange}
                                     className="hidden"
                                 />
-                                {formData.attachment && (
-                                    <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-100 p-2 rounded-xl text-[11px] font-black shadow-xs">
-                                        <CheckCircle className="w-4 h-4 text-emerald-600" />
-                                        <span>Invoice Mounted Successfully</span>
-                                        <button 
-                                            type="button"
-                                            onClick={() => handleRecalculate({ attachment: '' })}
-                                            className="p-1 hover:bg-emerald-100 text-emerald-700 rounded-lg ml-1 font-bold cursor-pointer"
-                                        >
-                                            Clear
-                                        </button>
-                                    </div>
-                                )}
                             </div>
 
-                            {formData.attachment && (
-                                <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-2xl space-y-2.5 relative">
-                                    <div className="flex items-center justify-between border-b border-slate-200/50 pb-2">
-                                        <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-indigo-600">
-                                            <Eye className="w-3.5 h-3.5" />
-                                            <span>Uploaded Invoice Live Preview</span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const w = window.open();
-                                                if (w) {
-                                                    w.document.write(`<iframe src="${formData.attachment}" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%; margin:0; padding:0; overflow:hidden;" allowfullscreen></iframe>`);
-                                                } else {
-                                                    alert("Please allow popups to open full-screen attachments.");
-                                                }
-                                            }}
-                                            className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors cursor-pointer"
-                                            title="Open in a dedicated new browser tab"
-                                        >
-                                            <ExternalLink className="w-3.5 h-3.5" />
-                                            <span>Open full-screen</span>
-                                        </button>
-                                    </div>
-                                    <div className="bg-white p-2 rounded-xl border border-slate-100 flex items-center justify-center overflow-auto max-h-[300px] shadow-inner">
-                                        {formData.attachment.startsWith('data:application/pdf') ? (
-                                            <object 
-                                                data={formData.attachment} 
-                                                type="application/pdf" 
-                                                className="w-full h-[250px] rounded-lg"
+                            {/* Multi-document Pills & Preview */}
+                            {(() => {
+                                const docsList: string[] = formData.attachments && formData.attachments.length > 0 
+                                    ? formData.attachments 
+                                    : (formData.attachment ? [formData.attachment] : []);
+                                
+                                if (docsList.length === 0) return null;
+
+                                const currentActiveDoc = docsList[activeDocIndex] || docsList[0] || '';
+
+                                return (
+                                    <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-2xl space-y-3 relative">
+                                        {/* Document Tabs Header */}
+                                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/50 pb-2.5">
+                                            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-full">
+                                                {docsList.map((_, idx) => (
+                                                    <div 
+                                                        key={idx}
+                                                        onClick={() => setActiveDocIndex(idx)}
+                                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black cursor-pointer transition-all border ${
+                                                            (activeDocIndex === idx || (activeDocIndex >= docsList.length && idx === 0))
+                                                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                                        }`}
+                                                    >
+                                                        <FileText className="w-3.5 h-3.5 shrink-0" />
+                                                        <span>Doc {idx + 1} {idx === 0 ? '(Main)' : ''}</span>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const updated = docsList.filter((_, i) => i !== idx);
+                                                                handleRecalculate({
+                                                                    attachments: updated,
+                                                                    attachment: updated[0] || ''
+                                                                });
+                                                                if (activeDocIndex >= updated.length) {
+                                                                    setActiveDocIndex(Math.max(0, updated.length - 1));
+                                                                }
+                                                            }}
+                                                            className={`p-0.5 rounded-md hover:bg-black/20 transition-colors ml-0.5 ${
+                                                                activeDocIndex === idx ? 'text-white' : 'text-slate-400 hover:text-rose-600'
+                                                            }`}
+                                                            title="Remove document"
+                                                        >
+                                                            <X className="w-3 h-3" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const w = window.open();
+                                                    if (w && currentActiveDoc) {
+                                                        w.document.write(`<iframe src="${currentActiveDoc}" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%; margin:0; padding:0; overflow:hidden;" allowfullscreen></iframe>`);
+                                                    } else {
+                                                        alert("Please allow popups to open full-screen attachments.");
+                                                    }
+                                                }}
+                                                className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors cursor-pointer shrink-0 ml-auto"
+                                                title="Open active document in full screen"
                                             >
-                                                <iframe
-                                                    src={formData.attachment}
-                                                    className="w-full h-[250px] border-none rounded-lg"
-                                                    title="PDF Preview"
+                                                <ExternalLink className="w-3.5 h-3.5" />
+                                                <span>Open Doc {Math.min(activeDocIndex + 1, docsList.length)} Fullscreen</span>
+                                            </button>
+                                        </div>
+
+                                        {/* Active Document Live Preview */}
+                                        <div className="bg-white p-2 rounded-xl border border-slate-100 flex items-center justify-center overflow-auto max-h-[300px] shadow-inner">
+                                            {currentActiveDoc.startsWith('data:application/pdf') ? (
+                                                <object 
+                                                    data={currentActiveDoc} 
+                                                    type="application/pdf" 
+                                                    className="w-full h-[250px] rounded-lg"
+                                                >
+                                                    <iframe
+                                                        src={currentActiveDoc}
+                                                        className="w-full h-[250px] border-none rounded-lg"
+                                                        title="PDF Preview"
+                                                    />
+                                                </object>
+                                            ) : (
+                                                <img
+                                                    src={currentActiveDoc}
+                                                    alt={`Document ${activeDocIndex + 1} preview`}
+                                                    className="max-h-[250px] object-contain rounded-lg"
+                                                    referrerPolicy="no-referrer"
                                                 />
-                                            </object>
-                                        ) : (
-                                            <img
-                                                src={formData.attachment}
-                                                alt="Attachment preview"
-                                                className="max-h-[250px] object-contain rounded-lg"
-                                                referrerPolicy="no-referrer"
-                                            />
-                                        )}
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                );
+                            })()}
                         </div>
                     </div>
                     
@@ -15950,56 +16028,87 @@ export const EverydayExpenseView: React.FC<{
                             )}
 
                             {/* Attached Bill/Voucher Preview */}
-                            {(selectedLedgerEntry.attachment || selectedLedgerEntry.billImage) && (
+                            {((selectedLedgerEntry.attachments && selectedLedgerEntry.attachments.length > 0) || selectedLedgerEntry.attachment || selectedLedgerEntry.billImage) && (
                                 <div className="space-y-2">
-                                    <h5 className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Attached Receipt / Document</h5>
-                                    <div className="mt-1 bg-slate-50 p-3 rounded-2xl border border-slate-150 flex items-center justify-center max-h-[190px] overflow-hidden group relative">
-                                        {(() => {
-                                            const fileUrl = selectedLedgerEntry.attachment || selectedLedgerEntry.billImage;
-                                            if (fileUrl.startsWith('data:image') || fileUrl.startsWith('http')) {
-                                                return (
-                                                    <div className="relative w-full flex flex-col items-center">
-                                                        <div 
-                                                            className="relative cursor-pointer group rounded-lg overflow-hidden border border-slate-200 shadow-xs max-h-[145px] flex items-center justify-center bg-white"
-                                                            onClick={() => setViewingBill(fileUrl)}
-                                                        >
-                                                            <img 
-                                                                src={fileUrl} 
-                                                                alt="Receipt Attachment" 
-                                                                className="max-h-[145px] object-contain transition-transform duration-300 group-hover:scale-[1.02]" 
-                                                                referrerPolicy="no-referrer"
-                                                            />
-                                                            <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center duration-200">
-                                                                <span className="bg-slate-900/85 text-white text-[10px] font-black px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md">
-                                                                    <Eye className="w-3.5 h-3.5" />
-                                                                    <span>Click to Expand</span>
-                                                                </span>
-                                                            </div>
-                                                            {/* Touch / non-hover fallback info badge */}
-                                                            <div className="absolute bottom-1 right-1 bg-slate-900/75 backdrop-blur-xs text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded-md pointer-events-none group-hover:hidden transition-all uppercase tracking-wider">
-                                                                Tap to Zoom
-                                                            </div>
-                                                        </div>
+                                    {(() => {
+                                        const docList: string[] = selectedLedgerEntry.attachments && selectedLedgerEntry.attachments.length > 0
+                                            ? selectedLedgerEntry.attachments
+                                            : ((selectedLedgerEntry.attachment || selectedLedgerEntry.billImage) ? [selectedLedgerEntry.attachment || selectedLedgerEntry.billImage!] : []);
+
+                                        return (
+                                            <>
+                                                <div className="flex items-center justify-between">
+                                                    <h5 className="text-[10px] uppercase font-black text-slate-400 tracking-wider">
+                                                        Attached Receipts / Documents ({docList.length})
+                                                    </h5>
+                                                </div>
+
+                                                {/* Tabs if > 1 doc */}
+                                                {docList.length > 1 && (
+                                                    <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+                                                        {docList.map((_, idx) => (
+                                                            <button
+                                                                key={idx}
+                                                                type="button"
+                                                                onClick={() => setViewingBill(docList[idx])}
+                                                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black transition-all flex items-center gap-1 cursor-pointer"
+                                                            >
+                                                                <FileText className="w-3 h-3 text-indigo-600" />
+                                                                <span>Doc {idx + 1}</span>
+                                                            </button>
+                                                        ))}
                                                     </div>
-                                                );
-                                            } else {
-                                                return (
-                                                    <div className="py-4 text-center w-full">
-                                                        <FileText className="w-8 h-8 text-slate-400 mx-auto mb-1" />
-                                                        <span className="font-bold text-slate-700 block">External Document File</span>
-                                                        <a 
-                                                            href={fileUrl} 
-                                                            target="_blank" 
-                                                            rel="noopener noreferrer" 
-                                                            className="text-indigo-600 hover:underline font-extrabold mt-1 inline-block"
-                                                        >
-                                                            Open in New Tab
-                                                        </a>
-                                                    </div>
-                                                );
-                                            }
-                                        })()}
-                                    </div>
+                                                )}
+
+                                                <div className="mt-1 bg-slate-50 p-3 rounded-2xl border border-slate-150 flex items-center justify-center max-h-[190px] overflow-hidden group relative">
+                                                    {(() => {
+                                                        const fileUrl = docList[0];
+                                                        if (fileUrl.startsWith('data:image') || fileUrl.startsWith('http')) {
+                                                            return (
+                                                                <div className="relative w-full flex flex-col items-center">
+                                                                    <div 
+                                                                        className="relative cursor-pointer group rounded-lg overflow-hidden border border-slate-200 shadow-xs max-h-[145px] flex items-center justify-center bg-white"
+                                                                        onClick={() => setViewingBill(fileUrl)}
+                                                                    >
+                                                                        <img 
+                                                                            src={fileUrl} 
+                                                                            alt="Receipt Attachment" 
+                                                                            className="max-h-[145px] object-contain transition-transform duration-300 group-hover:scale-[1.02]" 
+                                                                            referrerPolicy="no-referrer"
+                                                                        />
+                                                                        <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center duration-200">
+                                                                            <span className="bg-slate-900/85 text-white text-[10px] font-black px-2.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-md">
+                                                                                <Eye className="w-3.5 h-3.5" />
+                                                                                <span>Click to Expand</span>
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="absolute bottom-1 right-1 bg-slate-900/75 backdrop-blur-xs text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded-md pointer-events-none group-hover:hidden transition-all uppercase tracking-wider">
+                                                                            Tap to Zoom
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        } else {
+                                                            return (
+                                                                <div className="py-4 text-center w-full">
+                                                                    <FileText className="w-8 h-8 text-slate-400 mx-auto mb-1" />
+                                                                    <span className="font-bold text-slate-700 block">External Document File</span>
+                                                                    <a 
+                                                                        href={fileUrl} 
+                                                                        target="_blank" 
+                                                                        rel="noopener noreferrer" 
+                                                                        className="text-indigo-600 hover:underline font-extrabold mt-1 inline-block"
+                                                                    >
+                                                                        Open in New Tab
+                                                                    </a>
+                                                                </div>
+                                                            );
+                                                        }
+                                                    })()}
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             )}
                         </div>

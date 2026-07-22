@@ -13,6 +13,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { compressAllImagesInDoc } from '../utils';
 import { 
   Employee, 
   AttendanceRecord, 
@@ -122,6 +123,29 @@ const cleanData = (obj: any): any => {
     }, {});
   }
   return obj;
+};
+
+// Helper to prepare document for Firestore, compressing images and verifying 1MB limit constraint
+export const prepareDocForFirestore = async (data: any): Promise<any> => {
+  let cleaned = cleanData(data);
+  try {
+    cleaned = await compressAllImagesInDoc(cleaned);
+  } catch (err) {
+    console.warn('Image auto-compression warning:', err);
+  }
+
+  // Safety check against Firestore 1MB (1,048,576 bytes) document limit
+  const jsonStr = JSON.stringify(cleaned);
+  if (jsonStr.length > 950000) {
+    console.warn(`Doc size (${jsonStr.length} bytes) exceeds 950KB safe limit. Trimming attachments if necessary.`);
+    if (Array.isArray(cleaned.attachments) && cleaned.attachments.length > 1) {
+      while (cleaned.attachments.length > 1 && JSON.stringify(cleaned).length > 950000) {
+        cleaned.attachments.pop();
+      }
+      cleaned.attachment = cleaned.attachments[0] || '';
+    }
+  }
+  return cleaned;
 };
 
 // --- Employees ---
@@ -503,7 +527,8 @@ export const deleteVendor = async (id: string) => {
 // --- Accounts Payable ---
 export const saveAccountsPayable = async (data: AccountsPayable) => {
   try {
-    await setDoc(doc(db, 'accounts_payable', data.id), cleanData(data));
+    const docData = await prepareDocForFirestore(data);
+    await setDoc(doc(db, 'accounts_payable', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `accounts_payable/${data.id}`);
   }
@@ -520,7 +545,8 @@ export const deleteAccountsPayable = async (id: string) => {
 // --- Accounts Receivable ---
 export const saveAccountsReceivable = async (data: AccountsReceivable) => {
   try {
-    await setDoc(doc(db, 'accounts_receivable', data.id), cleanData(data));
+    const docData = await prepareDocForFirestore(data);
+    await setDoc(doc(db, 'accounts_receivable', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `accounts_receivable/${data.id}`);
   }
@@ -537,7 +563,8 @@ export const deleteAccountsReceivable = async (id: string) => {
 // --- Petty Cash ---
 export const savePettyCash = async (data: PettyCash) => {
   try {
-    await setDoc(doc(db, 'petty_cash', data.id), cleanData(data));
+    const docData = await prepareDocForFirestore(data);
+    await setDoc(doc(db, 'petty_cash', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `petty_cash/${data.id}`);
   }
@@ -554,7 +581,8 @@ export const deletePettyCash = async (id: string) => {
 // --- Projected Expenses ---
 export const saveProjectedExpense = async (data: ProjectedExpense) => {
   try {
-    await setDoc(doc(db, 'projected_expenses', data.id), cleanData(data));
+    const docData = await prepareDocForFirestore(data);
+    await setDoc(doc(db, 'projected_expenses', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `projected_expenses/${data.id}`);
   }
@@ -571,7 +599,8 @@ export const deleteProjectedExpense = async (id: string) => {
 // --- Everyday Expenses ---
 export const saveEverydayExpense = async (data: EverydayExpense) => {
   try {
-    await setDoc(doc(db, 'everyday_expenses', data.id), cleanData(data));
+    const docData = await prepareDocForFirestore(data);
+    await setDoc(doc(db, 'everyday_expenses', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `everyday_expenses/${data.id}`);
   }
@@ -723,7 +752,8 @@ export const deleteEngineerDocument = async (id: string) => {
 // --- Camp Accommodation Expenses ---
 export const saveCamp = async (data: CampExpense) => {
   try {
-    await setDoc(doc(db, 'camps', data.id), cleanData(data));
+    const docData = await prepareDocForFirestore(data);
+    await setDoc(doc(db, 'camps', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `camps/${data.id}`);
   }
@@ -740,7 +770,8 @@ export const deleteCamp = async (id: string) => {
 // --- Vouchers (Payment & Receipt Vouchers) ---
 export const saveVoucher = async (data: Voucher) => {
   try {
-    await setDoc(doc(db, 'vouchers', data.id), cleanData(data));
+    const docData = await prepareDocForFirestore(data);
+    await setDoc(doc(db, 'vouchers', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `vouchers/${data.id}`);
   }
@@ -757,7 +788,8 @@ export const deleteVoucher = async (id: string) => {
 // --- Vehicles ---
 export const saveVehicle = async (data: Vehicle) => {
   try {
-    await setDoc(doc(db, 'vehicles', data.id), cleanData(data));
+    const docData = await prepareDocForFirestore(data);
+    await setDoc(doc(db, 'vehicles', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `vehicles/${data.id}`);
   }

@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { CampExpense } from '../types';
 import { jsPDF } from 'jspdf';
+import { compressImageBase64 } from '../utils';
 
 interface CampViewProps {
   data: CampExpense[];
@@ -26,7 +27,7 @@ export const CampView: React.FC<CampViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<keyof CampExpense>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [viewingAttachment, setViewingAttachment] = useState<{ doc: string; name: string } | null>(null);
+  const [viewingAttachment, setViewingAttachment] = useState<{ docs: string[]; activeIdx: number; name: string } | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<string>('all');
 
@@ -411,13 +412,23 @@ export const CampView: React.FC<CampViewProps> = ({
                     </td>
                     <td className="py-4.5 px-6 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {item.attachment && (
+                        {((item.attachments && item.attachments.length > 0) || item.attachment) && (
                           <button
-                            onClick={() => setViewingAttachment({ doc: item.attachment!, name: item.campName })}
-                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all active:scale-95 cursor-pointer"
-                            title="View Active Invoice"
+                            onClick={() => {
+                              const docs = item.attachments && item.attachments.length > 0
+                                ? item.attachments
+                                : (item.attachment ? [item.attachment] : []);
+                              setViewingAttachment({ docs, activeIdx: 0, name: item.campName });
+                            }}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all active:scale-95 cursor-pointer relative flex items-center gap-1"
+                            title="View Attached Documents"
                           >
                             <Eye className="w-4 h-4" />
+                            {((item.attachments?.length || (item.attachment ? 1 : 0)) > 1) && (
+                              <span className="text-[9px] font-black bg-emerald-600 text-white px-1.5 py-0.2 rounded-full">
+                                {item.attachments?.length || 1}
+                              </span>
+                            )}
                           </button>
                         )}
                         <button
@@ -446,23 +457,25 @@ export const CampView: React.FC<CampViewProps> = ({
 
       {/* Dynamic Attachment Lightbox Viewer */}
       <AnimatePresence>
-        {viewingAttachment && (
+        {viewingAttachment && viewingAttachment.docs.length > 0 && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
             <div className="bg-white rounded-[2.5rem] w-full max-w-4xl h-[85vh] overflow-hidden border border-slate-200/50 shadow-2xl flex flex-col relative">
               {/* Head Section */}
               <div className="bg-slate-900 text-white px-6.5 py-5 flex items-center justify-between">
                 <div>
                   <h4 className="font-extrabold text-sm tracking-tight">{viewingAttachment.name}</h4>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Camp Document Preview</p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                    Camp Document {viewingAttachment.activeIdx + 1} of {viewingAttachment.docs.length}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <a 
-                    href={viewingAttachment.doc} 
-                    download={`CAMP_${viewingAttachment.name.replace(/\s+/g, '_')}_document`}
-                    className="p-2 bg-slate-800 hover:bg-slate-705 text-slate-200 hover:text-white rounded-xl transition-all active:scale-95 flex items-center gap-1.5 text-xs font-black px-4"
+                    href={viewingAttachment.docs[viewingAttachment.activeIdx]} 
+                    download={`CAMP_${viewingAttachment.name.replace(/\s+/g, '_')}_doc_${viewingAttachment.activeIdx + 1}`}
+                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl transition-all active:scale-95 flex items-center gap-1.5 text-xs font-black px-4"
                   >
                     <Download className="w-4 h-4" />
-                    <span>Download</span>
+                    <span>Download Doc</span>
                   </a>
                   <button 
                     onClick={() => setViewingAttachment(null)}
@@ -473,17 +486,37 @@ export const CampView: React.FC<CampViewProps> = ({
                 </div>
               </div>
 
+              {/* Multi-doc tabs bar if > 1 doc */}
+              {viewingAttachment.docs.length > 1 && (
+                <div className="bg-slate-800 px-6 py-2 flex items-center gap-2 border-t border-slate-700 overflow-x-auto">
+                  {viewingAttachment.docs.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setViewingAttachment(prev => prev ? { ...prev, activeIdx: idx } : null)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        viewingAttachment.activeIdx === idx
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-650'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Doc {idx + 1} {idx === 0 ? '(Main)' : ''}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Viewer Container */}
               <div className="flex-1 bg-slate-100 flex items-center justify-center p-6 overflow-auto">
-                {viewingAttachment.doc.startsWith('data:application/pdf') || viewingAttachment.doc.includes('pdf') ? (
+                {viewingAttachment.docs[viewingAttachment.activeIdx]?.startsWith('data:application/pdf') || viewingAttachment.docs[viewingAttachment.activeIdx]?.includes('pdf') ? (
                   <iframe 
-                    src={viewingAttachment.doc} 
+                    src={viewingAttachment.docs[viewingAttachment.activeIdx]} 
                     className="w-full h-full rounded-2xl border-0 bg-white shadow"
                     title="PDF Document"
                   />
                 ) : (
                   <img 
-                    src={viewingAttachment.doc} 
+                    src={viewingAttachment.docs[viewingAttachment.activeIdx]} 
                     alt="Camp Document" 
                     className="max-w-full max-h-full rounded-2xl object-contain shadow-lg bg-white"
                   />
@@ -517,9 +550,13 @@ export const CampModal: React.FC<CampModalProps> = ({
     startDate: camp?.startDate || '',
     endDate: camp?.endDate || '',
     description: camp?.description || '',
-    attachment: camp?.attachment || ''
+    attachment: camp?.attachment || '',
+    attachments: camp?.attachments && camp.attachments.length > 0 
+      ? camp.attachments 
+      : (camp?.attachment ? [camp.attachment] : [])
   });
 
+  const [activeDocIndex, setActiveDocIndex] = useState(0);
   const [validationError, setValidationError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -532,20 +569,53 @@ export const CampModal: React.FC<CampModalProps> = ({
   const yearOptions = [currentYearVal - 1, currentYearVal, currentYearVal + 1, currentYearVal + 2];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert("File size exceeds 5MB limit.");
+    const currentDocs = formData.attachments || [];
+    if (currentDocs.length + files.length > 4) {
+      alert(`Maximum 4 documents allowed in total. You currently have ${currentDocs.length} document(s).`);
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const b64 = reader.result as string;
-      setFormData(prev => ({ ...prev, attachment: b64 }));
-    };
-    reader.readAsDataURL(file);
+    const readPromises = files.map(file => {
+      return new Promise<string>((resolve, reject) => {
+        if (file.size > 5 * 1024 * 1024) {
+          alert(`File "${file.name}" exceeds the 5MB limit.`);
+          reject(new Error('File size limit exceeded'));
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const raw = reader.result as string;
+            const compressed = await compressImageBase64(raw, 900, 0.65);
+            resolve(compressed);
+          } catch {
+            resolve(reader.result as string);
+          }
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.allSettled(readPromises).then(results => {
+      const loaded = results
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+        .map(r => r.value);
+
+      if (loaded.length > 0) {
+        const updatedList = [...currentDocs, ...loaded].slice(0, 4);
+        setFormData(prev => ({
+          ...prev,
+          attachments: updatedList,
+          attachment: updatedList[0] || ''
+        }));
+      }
+    });
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -563,6 +633,10 @@ export const CampModal: React.FC<CampModalProps> = ({
       return;
     }
 
+    const finalAttachments = formData.attachments && formData.attachments.length > 0
+      ? formData.attachments
+      : (formData.attachment ? [formData.attachment] : []);
+
     onSave({
       id: camp?.id || `camp_${Date.now()}`,
       campName: formData.campName.trim(),
@@ -573,7 +647,8 @@ export const CampModal: React.FC<CampModalProps> = ({
       startDate: formData.startDate || new Date().toISOString().split('T')[0],
       endDate: formData.endDate || new Date(Date.now() + 31536000000).toISOString().split('T')[0],
       description: formData.description.trim(),
-      attachment: formData.attachment
+      attachment: finalAttachments[0] || '',
+      attachments: finalAttachments
     });
   };
 
@@ -732,59 +807,130 @@ export const CampModal: React.FC<CampModalProps> = ({
             </div>
           </div>
 
-          {/* Attachment Upload Field */}
+          {/* Attachment Upload Field (Max 4 documents) */}
           <div className="space-y-1.5 pt-1">
-            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
-              Contract or Rent Payment Receipt (PDF / Image - Max 5MB)
-            </label>
-            <div 
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-2xl p-4.5 bg-slate-50/50 hover:bg-slate-50 text-center cursor-pointer transition-all space-y-1.5 focus:outline-none"
-            >
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleFileChange} 
-                accept="application/pdf,image/*" 
-                className="hidden" 
-              />
-              
-              {formData.attachment ? (
-                <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-indigo-100 shadow-sm">
-                  <div className="flex items-center gap-2 text-left min-w-0">
-                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-700 truncate max-w-[180px]">
-                        Invoice Document Uploaded
-                      </p>
-                      <p className="text-[10px] text-emerald-600 font-extrabold flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" /> Ready
-                      </p>
-                    </div>
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFormData(prev => ({ ...prev, attachment: '' }));
-                    }}
-                    className="p-1 px-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-bold transition-all"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                Contract or Rent Payment Receipts (PDF / Image - Max 4 Docs, 5MB each)
+              </label>
+              <span className="text-[10px] font-bold text-slate-400">
+                {(formData.attachments?.length || 0)}/4 Uploaded
+              </span>
+            </div>
+
+            <input 
+              type="file" 
+              multiple
+              ref={fileInputRef} 
+              onChange={handleFileChange} 
+              accept="application/pdf,image/*" 
+              className="hidden" 
+            />
+
+            {(formData.attachments?.length || 0) < 4 && (
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-2xl p-3.5 bg-slate-50/50 hover:bg-slate-50 text-center cursor-pointer transition-all space-y-1 focus:outline-none"
+              >
                 <div className="flex flex-col items-center justify-center py-1">
-                  <div className="p-2.5 bg-slate-100 text-slate-500 rounded-xl mb-1.5">
+                  <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl mb-1">
                     <FileText className="w-5 h-5" />
                   </div>
-                  <p className="text-xs font-black text-slate-700">Upload or Drag Invoice document</p>
+                  <p className="text-xs font-black text-slate-700">
+                    {(formData.attachments?.length || 0) > 0 
+                      ? `Add More Document (+${4 - (formData.attachments?.length || 0)})`
+                      : "Upload or Drag Invoice / Rent documents (Select Multiple - Max 4)"
+                    }
+                  </p>
                   <p className="text-[10px] text-slate-400 font-semibold">Supports PDFs, PNGs, JPGs up to 5MB</p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* Document List & Preview */}
+            {formData.attachments && formData.attachments.length > 0 && (
+              <div className="space-y-2.5 pt-1">
+                {/* Tabs */}
+                <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
+                  {formData.attachments.map((_, idx) => (
+                    <div 
+                      key={idx}
+                      onClick={() => setActiveDocIndex(idx)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black cursor-pointer transition-all border ${
+                        activeDocIndex === idx
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5 shrink-0" />
+                      <span>Doc {idx + 1} {idx === 0 ? '(Main)' : ''}</span>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const updated = (formData.attachments || []).filter((_, i) => i !== idx);
+                          setFormData(prev => ({
+                            ...prev,
+                            attachments: updated,
+                            attachment: updated[0] || ''
+                          }));
+                          if (activeDocIndex >= updated.length) {
+                            setActiveDocIndex(Math.max(0, updated.length - 1));
+                          }
+                        }}
+                        className={`p-0.5 rounded-md hover:bg-black/20 transition-colors ml-0.5 ${
+                          activeDocIndex === idx ? 'text-white' : 'text-slate-400 hover:text-rose-600'
+                        }`}
+                        title="Remove document"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Live Preview Container */}
+                {formData.attachments[activeDocIndex] && (
+                  <div className="p-3 bg-white border border-slate-200/80 rounded-2xl relative">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                      <span className="text-[10px] font-black text-indigo-600 uppercase tracking-wider flex items-center gap-1">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                        Previewing Document {activeDocIndex + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const w = window.open();
+                          const docUrl = formData.attachments?.[activeDocIndex];
+                          if (w && docUrl) {
+                            w.document.write(`<iframe src="${docUrl}" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%; margin:0; padding:0; overflow:hidden;" allowfullscreen></iframe>`);
+                          }
+                        }}
+                        className="text-[10px] font-black text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Fullscreen</span>
+                      </button>
+                    </div>
+                    <div className="flex justify-center items-center max-h-[200px] overflow-auto">
+                      {formData.attachments[activeDocIndex].startsWith('data:application/pdf') || formData.attachments[activeDocIndex].includes('pdf') ? (
+                        <iframe 
+                          src={formData.attachments[activeDocIndex]} 
+                          className="w-full h-[180px] rounded-lg border-0"
+                          title="PDF Preview"
+                        />
+                      ) : (
+                        <img 
+                          src={formData.attachments[activeDocIndex]} 
+                          alt="Doc Preview" 
+                          className="max-h-[180px] object-contain rounded-lg"
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Modal Footer Buttons */}

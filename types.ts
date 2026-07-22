@@ -273,6 +273,7 @@ export interface AccountsPayable {
     dueDate?: string;
     paymentDate?: string;
     attachment?: string;
+    attachments?: string[];
     hours?: number;
     hoursFormula?: string;
     actualAmount?: number;
@@ -397,6 +398,7 @@ export interface EverydayExpense {
     updatedByUid?: string;
     uploadedDate?: string;
     attachment?: string;
+    attachments?: string[];
     employeeId?: string; // Associated employee for petty cash tallying
     isVehicleFuel?: boolean;
     vehicleNumber?: string;
@@ -776,6 +778,7 @@ export interface CampExpense {
   endDate: string;
   description?: string;
   attachment?: string;
+  attachments?: string[];
 }
 
 export interface Voucher {
@@ -799,6 +802,7 @@ export interface Voucher {
     projectId?: string; // associated project
     companyId?: string; // buyer/seller company ID matching corporate accounts
     attachment?: string; // Base64 document attachment
+    attachments?: string[];
     uploadedDate?: string;
 }
 
