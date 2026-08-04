@@ -17757,6 +17757,9 @@ export const FinancialDashboardView: React.FC<{
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+    const [ledgerStartDate, setLedgerStartDate] = useState<string>('');
+    const [ledgerEndDate, setLedgerEndDate] = useState<string>('');
+    const [ledgerSearchQuery, setLedgerSearchQuery] = useState<string>('');
     const [viewingBill, setViewingBill] = useState<string | null>(null);
     const [selectedMonth, setSelectedMonth] = useState<string>('all');
     const [selectedYear, setSelectedYear] = useState<string>('all');
@@ -17966,6 +17969,37 @@ export const FinancialDashboardView: React.FC<{
         });
     }, [selectedAccount, filteredPettyCash, filteredEverydayExpenses]);
 
+    // Filtered chronological ledger according to search query and date range
+    const filteredAccountLedger = useMemo(() => {
+        if (!selectedAccountLedger || selectedAccountLedger.length === 0) return [];
+
+        return selectedAccountLedger.filter(tx => {
+            // Date range filter
+            if (ledgerStartDate && tx.date && tx.date < ledgerStartDate) return false;
+            if (ledgerEndDate && tx.date && tx.date > ledgerEndDate) return false;
+
+            // Search query filter
+            if (ledgerSearchQuery.trim()) {
+                const q = ledgerSearchQuery.toLowerCase().trim();
+                const proj = projects?.find((p: any) => p.id === tx.originalItem?.projectId);
+                const projName = proj ? `${proj.name} ${proj.clientName || ''}`.toLowerCase() : '';
+
+                const matchDesc = (tx.description || '').toLowerCase().includes(q);
+                const matchRef = (tx.reference || '').toLowerCase().includes(q);
+                const matchSource = (tx.sourceType || '').toLowerCase().includes(q);
+                const matchDate = (tx.date || '').toLowerCase().includes(q);
+                const matchAmt = tx.amount ? tx.amount.toString().includes(q) : false;
+                const matchProj = projName.includes(q);
+
+                if (!matchDesc && !matchRef && !matchSource && !matchDate && !matchAmt && !matchProj) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }, [selectedAccountLedger, ledgerStartDate, ledgerEndDate, ledgerSearchQuery, projects]);
+
     // Handle overall reconciliation directory Excel Excel export
     const handleExportReconciliationExcel = () => {
         const wsData = filteredReconciliations.map((recon) => ({
@@ -18121,7 +18155,7 @@ export const FinancialDashboardView: React.FC<{
     // Excel export of the selected account statements ledger list details
     const handleExportLedgerExcel = () => {
         if (!selectedAccount) return;
-        const wsData = selectedAccountLedger.map((tx) => ({
+        const wsData = filteredAccountLedger.map((tx) => ({
             'Date': tx.date,
             'Description Details': tx.description,
             'Reference & Bill Info': tx.reference,
@@ -18146,7 +18180,11 @@ export const FinancialDashboardView: React.FC<{
             { wch: 24 },
             { wch: 32 }
         ];
-        XLSX.writeFile(wb, `${selectedAccount.toUpperCase().replace(/\s+/g, '_')}_Statement_Ledger.xlsx`);
+        let dateRangeTag = '';
+        if (ledgerStartDate || ledgerEndDate) {
+            dateRangeTag = `_${ledgerStartDate || 'Start'}_to_${ledgerEndDate || 'End'}`;
+        }
+        XLSX.writeFile(wb, `${selectedAccount.toUpperCase().replace(/\s+/g, '_')}_Statement_Ledger${dateRangeTag}.xlsx`);
     };
 
     // Beautiful corporate standard PDF statement ledger report export
@@ -18175,7 +18213,14 @@ export const FinancialDashboardView: React.FC<{
         doc.setFont("Helvetica", "normal");
         doc.setFontSize(8.5);
         doc.setTextColor(100, 116, 139);
-        doc.text(`Account / Holder: ${selectedAccount.toUpperCase()} | Generated: ${new Date().toLocaleDateString()}`, 15, 23);
+        let subtitleText = `Account / Holder: ${selectedAccount.toUpperCase()} | Generated: ${new Date().toLocaleDateString()}`;
+        if (ledgerStartDate || ledgerEndDate) {
+            subtitleText += ` | Period: ${ledgerStartDate || 'Start'} to ${ledgerEndDate || 'End'}`;
+        }
+        if (ledgerSearchQuery.trim()) {
+            subtitleText += ` | Search: "${ledgerSearchQuery.trim()}"`;
+        }
+        doc.text(subtitleText, 15, 23);
 
         doc.setDrawColor(226, 232, 240);
         doc.setLineWidth(0.35);
@@ -18189,9 +18234,9 @@ export const FinancialDashboardView: React.FC<{
         doc.setLineWidth(0.3);
         doc.rect(15, cardY, 180, 18, 'D');
 
-        const totalAdvances = selectedAccountLedger.filter(tx => tx.changeType === 'in').reduce((sum, tx) => sum + tx.amount, 0);
-        const totalSpendings = selectedAccountLedger.filter(tx => tx.changeType === 'out').reduce((sum, tx) => sum + tx.amount, 0);
-        const finalBalance = selectedAccountLedger[selectedAccountLedger.length - 1]?.balanceAfter ?? 0;
+        const totalAdvances = filteredAccountLedger.filter(tx => tx.changeType === 'in').reduce((sum, tx) => sum + tx.amount, 0);
+        const totalSpendings = filteredAccountLedger.filter(tx => tx.changeType === 'out').reduce((sum, tx) => sum + tx.amount, 0);
+        const finalBalance = filteredAccountLedger[filteredAccountLedger.length - 1]?.balanceAfter ?? 0;
 
         doc.setFont("Helvetica", "bold");
         doc.setFontSize(7.5);
@@ -18244,7 +18289,7 @@ export const FinancialDashboardView: React.FC<{
         };
 
         let currentY = tableHeaderY + 8.5;
-        selectedAccountLedger.forEach((tx, idx) => {
+        filteredAccountLedger.forEach((tx, idx) => {
             const sanitizedDesc = sanitizePdfText(tx.description || '');
             const sanitizedRef = sanitizePdfText(tx.reference || '');
             const descLines: string[] = doc.splitTextToSize(sanitizedDesc, 52);
@@ -18981,9 +19026,11 @@ export const FinancialDashboardView: React.FC<{
                             <div className="px-6 sm:px-8 py-5 bg-slate-150/10 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
-                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider">Total Cash Advances</span>
+                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider">
+                                            Total Cash Advances {ledgerStartDate || ledgerEndDate || ledgerSearchQuery ? '(Filtered)' : ''}
+                                        </span>
                                         <span className="text-lg font-black text-emerald-700 block mt-0.5">
-                                            AED {(selectedAccountLedger.filter(tx => tx.changeType === 'in').reduce((sum, tx) => sum + tx.amount, 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            AED {(filteredAccountLedger.filter(tx => tx.changeType === 'in').reduce((sum, tx) => sum + tx.amount, 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
                                     <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -18993,9 +19040,11 @@ export const FinancialDashboardView: React.FC<{
 
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
-                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider">Total Spendings Tally</span>
+                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider">
+                                            Total Spendings Tally {ledgerStartDate || ledgerEndDate || ledgerSearchQuery ? '(Filtered)' : ''}
+                                        </span>
                                         <span className="text-lg font-black text-rose-600 block mt-0.5">
-                                            AED {(selectedAccountLedger.filter(tx => tx.changeType === 'out').reduce((sum, tx) => sum + tx.amount, 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            AED {(filteredAccountLedger.filter(tx => tx.changeType === 'out').reduce((sum, tx) => sum + tx.amount, 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
                                     <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
@@ -19005,13 +19054,15 @@ export const FinancialDashboardView: React.FC<{
 
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
-                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider font-extrabold text-brand-600">Reconciled Safe Cash Balance</span>
+                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider font-extrabold text-brand-600">
+                                            Reconciled Safe Cash Balance
+                                        </span>
                                         <span className={`text-lg font-black block mt-0.5 ${
-                                            (selectedAccountLedger[selectedAccountLedger.length - 1]?.balanceAfter ?? 0) >= 0 
+                                            (filteredAccountLedger[filteredAccountLedger.length - 1]?.balanceAfter ?? 0) >= 0 
                                                 ? 'text-brand-600' 
                                                 : 'text-rose-600'
                                         }`}>
-                                            AED {(selectedAccountLedger[selectedAccountLedger.length - 1]?.balanceAfter ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            AED {(filteredAccountLedger[filteredAccountLedger.length - 1]?.balanceAfter ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
                                     <div className="p-2 bg-brand-50 text-brand-600 rounded-xl">
@@ -19020,30 +19071,120 @@ export const FinancialDashboardView: React.FC<{
                                 </div>
                             </div>
 
-                            {/* Chronological Table List */}
+                            {/* Filter Bar: Search Box & Date Range Filter */}
+                            <div className="px-6 sm:px-8 py-3.5 bg-slate-100/60 border-b border-slate-200/70 flex flex-wrap items-center justify-between gap-3 text-xs">
+                                <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+                                    {/* Search Input */}
+                                    <div className="relative flex-1 min-w-[200px] max-w-sm">
+                                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search details, ref, bill no..."
+                                            value={ledgerSearchQuery}
+                                            onChange={(e) => setLedgerSearchQuery(e.target.value)}
+                                            className="w-full pl-9 pr-7 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 shadow-2xs font-medium"
+                                        />
+                                        {ledgerSearchQuery && (
+                                            <button
+                                                onClick={() => setLedgerSearchQuery('')}
+                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                                            >
+                                                <X className="w-3 h-3" />
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Date Range Start */}
+                                    <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">From:</span>
+                                        <input
+                                            type="date"
+                                            value={ledgerStartDate}
+                                            onChange={(e) => setLedgerStartDate(e.target.value)}
+                                            className="text-xs text-slate-700 bg-transparent focus:outline-none font-semibold cursor-pointer"
+                                        />
+                                    </div>
+
+                                    {/* Date Range End */}
+                                    <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">To:</span>
+                                        <input
+                                            type="date"
+                                            value={ledgerEndDate}
+                                            onChange={(e) => setLedgerEndDate(e.target.value)}
+                                            className="text-xs text-slate-700 bg-transparent focus:outline-none font-semibold cursor-pointer"
+                                        />
+                                    </div>
+
+                                    {/* Clear Filters Button */}
+                                    {(ledgerStartDate || ledgerEndDate || ledgerSearchQuery) && (
+                                        <button
+                                            onClick={() => {
+                                                setLedgerStartDate('');
+                                                setLedgerEndDate('');
+                                                setLedgerSearchQuery('');
+                                            }}
+                                            className="px-2.5 py-1.5 bg-slate-200/80 hover:bg-slate-300/80 text-slate-700 rounded-xl text-[11px] font-bold inline-flex items-center gap-1 transition-all cursor-pointer shrink-0"
+                                            title="Reset all filters"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                            <span>Clear Filters</span>
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Results count badge */}
+                                <div className="text-[11px] font-bold text-slate-500 shrink-0">
+                                    Showing <span className="text-brand-600 font-extrabold">{filteredAccountLedger.length}</span> of <span className="text-slate-700">{selectedAccountLedger.length}</span> entries
+                                    {(ledgerStartDate || ledgerEndDate || ledgerSearchQuery) && (
+                                        <span className="ml-1.5 px-2 py-0.5 bg-brand-50 text-brand-700 rounded-md text-[10px] font-black uppercase tracking-wider border border-brand-100">
+                                            Filtered Active
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Chronological Table List with Scroll View */}
                             <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-slate-50/20 max-h-[50vh]">
-                                <div className="overflow-x-auto rounded-2xl border border-slate-200/65 bg-white">
+                                <div className="overflow-x-auto rounded-2xl border border-slate-200/65 bg-white max-h-[42vh] overflow-y-auto relative">
                                     <table className="min-w-full divide-y divide-slate-100">
-                                        <thead className="bg-slate-50">
+                                        <thead className="bg-slate-50 sticky top-0 z-10 shadow-2xs">
                                             <tr>
-                                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-[110px]">Date</th>
-                                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Transaction Details</th>
-                                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-[160px]">Source Ledger</th>
-                                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Opening Balance</th>
-                                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Bill/Tx Amount</th>
-                                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Closing Balance</th>
-                                                <th scope="col" className="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest w-[80px]">Bill Doc</th>
+                                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-[110px] bg-slate-50">Date</th>
+                                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Transaction Details</th>
+                                                <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-[160px] bg-slate-50">Source Ledger</th>
+                                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Opening Balance</th>
+                                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Bill/Tx Amount</th>
+                                                <th scope="col" className="px-5 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Closing Balance</th>
+                                                <th scope="col" className="px-5 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest w-[80px] bg-slate-50">Bill Doc</th>
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-slate-100 text-xs">
-                                            {selectedAccountLedger.length === 0 ? (
+                                            {filteredAccountLedger.length === 0 ? (
                                                 <tr>
                                                     <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-bold">
-                                                        No transactions recorded for this account.
+                                                        {selectedAccountLedger.length === 0 
+                                                            ? "No transactions recorded for this account." 
+                                                            : "No transactions match your date range or search filter."
+                                                        }
+                                                        {(ledgerStartDate || ledgerEndDate || ledgerSearchQuery) && (
+                                                            <div className="mt-2">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setLedgerStartDate('');
+                                                                        setLedgerEndDate('');
+                                                                        setLedgerSearchQuery('');
+                                                                    }}
+                                                                    className="px-3 py-1 bg-brand-50 text-brand-600 rounded-lg text-xs font-bold hover:bg-brand-100 transition-colors cursor-pointer"
+                                                                >
+                                                                    Reset Filters
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                selectedAccountLedger.map((tx, idx) => {
+                                                filteredAccountLedger.map((tx, idx) => {
                                                     const isIncome = tx.changeType === 'in';
                                                     return (
                                                         <tr key={tx.id || idx} className="hover:bg-slate-50/50 transition-all">
