@@ -53,6 +53,12 @@ if (typeof window !== 'undefined' && jsPDF.prototype && !(jsPDF.prototype as any
   (jsPDF.prototype as any).__isIntercepted = true;
 }
 import { cn, getPioneerPDFAssets } from '../utils';
+import { 
+  collection, 
+  query, 
+  where 
+} from 'firebase/firestore';
+import { db } from '../firebase';
 import { Vendor, AccountsPayable, AccountsReceivable, PettyCash, 
   Supplier, Project, SystemUser, UserRole, ProjectedExpense, EverydayExpense 
 } from '../types';
@@ -487,7 +493,7 @@ export function DataTable<T extends { id: string }>({
     const [bulkTargetPaymentDate, setBulkTargetPaymentDate] = useState('');
 
     const userRoleLower = (user?.role || '').toLowerCase();
-    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
+    const isAdmin = userRoleLower.includes('admin') || userRoleLower.includes('creator') || userRoleLower.includes('super') || userRoleLower.includes('accountant') || userRoleLower.includes('finance') || user?.email === 'abdulkaderp3010@gmail.com' || !!user?.permissions?.canManageFinance;
 
     useEffect(() => {
         if (selectedIds.length > 0) {
@@ -539,6 +545,24 @@ export function DataTable<T extends { id: string }>({
 
         return result;
     }, [data, searchTerm, searchFields, activeFilters, sortConfig]);
+
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState<number>(50);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, activeFilters, sortConfig, data.length]);
+
+    const totalPages = useMemo(() => {
+        if (pageSize === 0) return 1;
+        return Math.max(1, Math.ceil(filteredData.length / pageSize));
+    }, [filteredData.length, pageSize]);
+
+    const paginatedData = useMemo(() => {
+        if (pageSize === 0) return filteredData;
+        const start = (currentPage - 1) * pageSize;
+        return filteredData.slice(start, start + pageSize);
+    }, [filteredData, currentPage, pageSize]);
 
     const isAllSelected = useMemo(() => {
         return filteredData.length > 0 && filteredData.every(item => selectedIds.includes(item.id));
@@ -1220,80 +1244,83 @@ export function DataTable<T extends { id: string }>({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                            {filteredData.map((item, index) => (
-                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                                    {enableMultiSelect && isAdmin && (
-                                        <td className="px-6 py-5 text-left w-12 text-sm font-bold text-slate-600">
-                                            <input 
-                                                type="checkbox"
-                                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
-                                                checked={selectedIds.includes(item.id)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setSelectedIds(prev => [...prev, item.id]);
-                                                    } else {
-                                                        setSelectedIds(prev => prev.filter(id => id !== item.id));
-                                                    }
-                                                }}
-                                            />
-                                        </td>
-                                    )}
-                                    {columns.map((col) => (
-                                        <td key={String(col.key)} className="px-6 py-5 text-sm font-bold text-slate-600">
-                                            {col.render ? col.render(item, index) : String((item as any)[col.key] || '-')}
-                                        </td>
-                                    ))}
-                                    {(onEdit || onDelete || onViewBill || onDownloadStatement || onViewDetails) && (
-                                        <td className="px-6 py-5 text-right font-mono text-sm leading-none shrink-0">
-                                            <div className="flex items-center justify-end gap-1.5 transition-opacity">
-                                                {onViewDetails && (
-                                                    <button 
-                                                        onClick={() => onViewDetails(item)}
-                                                        className="p-1.5 hover:bg-white rounded-lg text-slate-450 hover:text-indigo-600 transition-all shadow-2xs border border-transparent hover:border-slate-100 cursor-pointer"
-                                                        title="View All Details"
-                                                    >
-                                                        <Eye className="w-4.5 h-4.5" />
-                                                    </button>
-                                                )}
-                                                {onDownloadStatement && (
-                                                    <button 
-                                                        onClick={() => onDownloadStatement(item)}
-                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100 cursor-pointer"
-                                                        title="Download Statement"
-                                                    >
-                                                        <Download className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                                {onViewBill && (item as any).attachment && (
-                                                    <button 
-                                                        onClick={() => onViewBill(item)}
-                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
-                                                        title="View Attached Invoice Document"
-                                                    >
-                                                        <Paperclip className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                                {onEdit && (
-                                                    <button 
-                                                        onClick={() => onEdit(item)}
-                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
-                                                    >
-                                                        <Edit className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                                {onDelete && (
-                                                    <button 
-                                                        onClick={() => onDelete(item)}
-                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-red-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    )}
-                                </tr>
-                            ))}
+                            {paginatedData.map((item, index) => {
+                                const rowIndex = pageSize === 0 ? index : (currentPage - 1) * pageSize + index;
+                                return (
+                                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                                        {enableMultiSelect && isAdmin && (
+                                            <td className="px-6 py-5 text-left w-12 text-sm font-bold text-slate-600">
+                                                <input 
+                                                    type="checkbox"
+                                                    className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                                                    checked={selectedIds.includes(item.id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedIds(prev => [...prev, item.id]);
+                                                        } else {
+                                                            setSelectedIds(prev => prev.filter(id => id !== item.id));
+                                                        }
+                                                    }}
+                                                />
+                                            </td>
+                                        )}
+                                        {columns.map((col) => (
+                                            <td key={String(col.key)} className="px-6 py-5 text-sm font-bold text-slate-600">
+                                                {col.render ? col.render(item, rowIndex) : String((item as any)[col.key] || '-')}
+                                            </td>
+                                        ))}
+                                        {(onEdit || onDelete || onViewBill || onDownloadStatement || onViewDetails) && (
+                                            <td className="px-6 py-5 text-right font-mono text-sm leading-none shrink-0">
+                                                <div className="flex items-center justify-end gap-1.5 transition-opacity">
+                                                    {onViewDetails && (
+                                                        <button 
+                                                            onClick={() => onViewDetails(item)}
+                                                            className="p-1.5 hover:bg-white rounded-lg text-slate-450 hover:text-indigo-600 transition-all shadow-2xs border border-transparent hover:border-slate-100 cursor-pointer"
+                                                            title="View All Details"
+                                                        >
+                                                            <Eye className="w-4.5 h-4.5" />
+                                                        </button>
+                                                    )}
+                                                    {onDownloadStatement && (
+                                                        <button 
+                                                            onClick={() => onDownloadStatement(item)}
+                                                            className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100 cursor-pointer"
+                                                            title="Download Statement"
+                                                        >
+                                                            <Download className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {onViewBill && (item as any).attachment && (
+                                                        <button 
+                                                            onClick={() => onViewBill(item)}
+                                                            className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                            title="View Attached Invoice Document"
+                                                        >
+                                                            <Paperclip className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {onEdit && (
+                                                        <button 
+                                                            onClick={() => onEdit(item)}
+                                                            className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                        >
+                                                            <Edit className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {onDelete && (
+                                                        <button 
+                                                            onClick={() => onDelete(item)}
+                                                            className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-red-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        )}
+                                    </tr>
+                                );
+                            })}
                             {filteredData.length === 0 && (
                                 <tr>
                                     <td colSpan={columns.length + (onEdit || onDelete || onViewBill || onDownloadStatement || onViewDetails ? 1 : 0) + (enableMultiSelect && isAdmin ? 1 : 0)} className="px-6 py-20 text-center">
@@ -1314,6 +1341,55 @@ export function DataTable<T extends { id: string }>({
                         )}
                     </table>
                 </div>
+
+                {filteredData.length > 0 && (
+                    <div className="px-6 py-4 bg-slate-50/80 border-t border-slate-200/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-semibold text-slate-600">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <span>
+                                Showing <strong className="text-slate-900 font-extrabold">{pageSize === 0 ? 1 : Math.min((currentPage - 1) * pageSize + 1, filteredData.length)}</strong> to <strong className="text-slate-900 font-extrabold">{pageSize === 0 ? filteredData.length : Math.min(currentPage * pageSize, filteredData.length)}</strong> of <strong className="text-slate-900 font-black">{filteredData.length}</strong> records
+                            </span>
+                            <div className="flex items-center gap-1.5 ml-2">
+                                <span className="text-[10px] uppercase font-bold text-slate-400">Rows per page:</span>
+                                <select
+                                    value={pageSize}
+                                    onChange={(e) => {
+                                        setPageSize(Number(e.target.value));
+                                        setCurrentPage(1);
+                                    }}
+                                    className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none cursor-pointer hover:border-slate-300"
+                                >
+                                    <option value={25}>25</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                    <option value={250}>250</option>
+                                    <option value={0}>All</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {pageSize !== 0 && totalPages > 1 && (
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Previous
+                                </button>
+                                <span className="px-3 py-1 text-slate-600 font-mono font-extrabold">
+                                    Page {currentPage} of {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             <PrintModal 
@@ -1490,6 +1566,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [soaEndDate, setSoaEndDate] = useState('');
     const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending'>('All');
     const [soaCompanyId, setSoaCompanyId] = useState('All');
+    const [soaIncludeDetails, setSoaIncludeDetails] = useState(false);
     const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
     const [expandedMonthDetails, setExpandedMonthDetails] = useState<string | null>(null);
 
@@ -2229,7 +2306,11 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             companyLogo: selectedCompanyObj?.logo,
             companyAddress: selectedCompanyObj?.address,
             companyEmail: selectedCompanyObj?.email,
-            companyPhone: selectedCompanyObj?.phone
+            companyPhone: selectedCompanyObj?.phone,
+            includeDetails: soaIncludeDetails,
+            vendors,
+            suppliers,
+            projects
         });
     };
 
@@ -2245,7 +2326,6 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                 pName = foundSup?.name || foundVen?.name || soaVendorId.replace('BY_NAME:', '');
                 pType = foundSup ? 'Supplier' : 'Client';
             } else {
-                const foundSup = suppliers.find((s: any) => s.id === Math.random); // wait, foundSup is suppliers.find(s => s.id === soaVendorId)
                 const foundVen = vendors.find((v: any) => v.id === soaVendorId);
                 const foundSupReal = suppliers.find((s: any) => s.id === soaVendorId);
                 pName = foundSupReal?.name || foundVen?.name || 'Selected Supplier';
@@ -2253,7 +2333,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             }
         }
 
-        downloadSOAExcel(soaVendorId, pName, pType, soaFilteredItems, false);
+        downloadSOAExcel(soaVendorId, pName, pType, soaFilteredItems, false, soaIncludeDetails, vendors, suppliers, projects);
     };
 
     const { duplicateGroups, duplicateGroupsCount } = useMemo(() => {
@@ -3841,6 +3921,22 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 </div>
                             </div>
 
+                            {/* Optional Detail Inclusions Toggle */}
+                            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+                                <label className="flex items-center gap-2.5 cursor-pointer text-slate-800 font-extrabold text-xs select-none">
+                                    <input 
+                                        type="checkbox"
+                                        checked={soaIncludeDetails}
+                                        onChange={e => setSoaIncludeDetails(e.target.checked)}
+                                        className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                    />
+                                    <span>Include Supplier Name & Project Code</span>
+                                </label>
+                                <p className="text-[10px] text-slate-500 font-medium pl-6 leading-normal">
+                                    Optional: Show individual supplier name and project code/name details for each invoice line in PDF and Excel downloads.
+                                </p>
+                            </div>
+
                             {/* Output Preview Card */}
                             <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-3xl space-y-2 mt-4">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 font-mono">Matched Record Summary</p>
@@ -5089,6 +5185,96 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.save(`Invoice_${item.invoiceNumber || 'INV'}.pdf`);
 };
 
+export const resolveItemDetails = (
+    itm: any, 
+    isReceivable: boolean, 
+    vendors: any[] = [], 
+    suppliers: any[] = [], 
+    projects: any[] = []
+) => {
+    let clientSupplierName = 'N/A';
+    let projectCodeName = 'General / Unassigned';
+
+    if (isReceivable) {
+        // Accounts Receivable record
+        if (itm.entityType === 'Vendor') {
+            const v = vendors.find((x: any) => x.id === itm.entityId);
+            if (v) {
+                clientSupplierName = v.code ? `${v.name} (${v.code})` : v.name;
+            } else {
+                clientSupplierName = itm.clientName || 'Client';
+            }
+        } else if (itm.entityType === 'Supplier') {
+            const s = suppliers.find((x: any) => x.id === itm.entityId);
+            if (s) {
+                clientSupplierName = s.code ? `${s.name} (${s.code})` : s.name;
+            } else {
+                clientSupplierName = itm.supplierName || 'Supplier';
+            }
+        } else if (itm.entityType === 'Project') {
+            const p = projects.find((x: any) => x.id === itm.entityId || x.id === itm.projectId);
+            if (p) {
+                clientSupplierName = p.clientName || 'Client';
+                projectCodeName = p.code ? `[${p.code}] ${p.name}` : p.name;
+            }
+        }
+
+        // Project fallback
+        if (projectCodeName === 'General / Unassigned') {
+            const targetProjId = itm.projectId || (itm.entityType === 'Project' ? itm.entityId : null);
+            const p = projects.find((x: any) => x.id === targetProjId || x.name === itm.projectName);
+            if (p) {
+                projectCodeName = p.code ? `[${p.code}] ${p.name}` : p.name;
+                if (clientSupplierName === 'N/A' && p.clientName) {
+                    clientSupplierName = p.clientName;
+                }
+            } else if (itm.projectName || itm.projectCode) {
+                projectCodeName = itm.projectCode ? `[${itm.projectCode}] ${itm.projectName || ''}` : (itm.projectName || 'General / Unassigned');
+            }
+        }
+
+        if (clientSupplierName === 'N/A') {
+            clientSupplierName = itm.clientName || itm.supplierName || 'General Client';
+        }
+    } else {
+        // Accounts Payable record
+        if (itm.vendorType === 'Supplier' || !itm.vendorType) {
+            const s = suppliers.find((x: any) => x.id === itm.vendorId);
+            if (s) {
+                clientSupplierName = s.code ? `${s.name} (${s.code})` : s.name;
+            } else {
+                clientSupplierName = itm.supplierName || 'Supplier';
+            }
+        }
+        
+        if (clientSupplierName === 'Supplier' || clientSupplierName === 'N/A') {
+            const v = vendors.find((x: any) => x.id === itm.vendorId);
+            if (v) {
+                clientSupplierName = v.code ? `${v.name} (${v.code})` : v.name;
+            }
+        }
+
+        if (clientSupplierName === 'N/A' || clientSupplierName === 'Supplier') {
+            clientSupplierName = itm.supplierName || itm.vendorName || 'General Supplier';
+        }
+
+        // Project
+        const p = projects.find((x: any) => x.id === itm.projectId || x.name === itm.projectName);
+        if (p) {
+            projectCodeName = p.code ? `[${p.code}] ${p.name}` : p.name;
+        } else if (itm.projectName || itm.projectCode) {
+            projectCodeName = itm.projectCode ? `[${itm.projectCode}] ${itm.projectName || ''}` : (itm.projectName || 'General / Operations');
+        } else {
+            projectCodeName = 'General / Operations';
+        }
+    }
+
+    return {
+        clientSupplierName: (clientSupplierName || 'N/A').trim(),
+        projectCodeName: (projectCodeName || 'General / Unassigned').trim()
+    };
+};
+
 interface PdfSOAParams {
     title: string;
     partnerName: string;
@@ -5106,6 +5292,10 @@ interface PdfSOAParams {
     companyAddress?: string;
     companyEmail?: string;
     companyPhone?: string;
+    includeDetails?: boolean;
+    vendors?: any[];
+    suppliers?: any[];
+    projects?: any[];
 }
 
 export const generatePdfSOA = ({
@@ -5124,7 +5314,11 @@ export const generatePdfSOA = ({
     companyLogo,
     companyAddress,
     companyEmail,
-    companyPhone
+    companyPhone,
+    includeDetails = false,
+    vendors = [],
+    suppliers = [],
+    projects = []
 }: PdfSOAParams) => {
     const doc = new jsPDF({
         orientation: 'landscape',
@@ -5261,8 +5455,10 @@ export const generatePdfSOA = ({
     doc.text("CHEQUE SETTLEMENT DETAILS (IF APPLICABLE)", 216, tableHeaderY + 5.5);
 
     let currentY = tableHeaderY + 8;
+    const rowHeight = includeDetails ? 13 : 8;
+
     items.forEach((itm: any, idx: number) => {
-        if (currentY > 185) {
+        if (currentY + rowHeight > 185) {
             doc.addPage();
             doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
             doc.rect(0, 0, 297, 6, 'F');
@@ -5271,7 +5467,7 @@ export const generatePdfSOA = ({
 
         if (idx % 2 === 1) {
             doc.setFillColor(248, 250, 252);
-            doc.rect(15, currentY, 267, 8, 'F');
+            doc.rect(15, currentY, 267, rowHeight, 'F');
         }
 
         doc.setFont("Helvetica", "normal");
@@ -5345,7 +5541,29 @@ export const generatePdfSOA = ({
         doc.text(chqStr.length > 40 ? chqStr.substring(0, 38) + '..' : chqStr, 216, currentY + 5.5);
         doc.setFontSize(7.5);
 
-        currentY += 8;
+        // Optional detail row
+        if (includeDetails) {
+            const { clientSupplierName, projectCodeName } = resolveItemDetails(itm, isReceivable, vendors, suppliers, projects);
+            doc.setFontSize(6.8);
+            doc.setFont("Helvetica", "bold");
+            doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
+            const partnerLabelStr = isReceivable ? 'Client:' : 'Supplier:';
+            doc.text(partnerLabelStr, 26, currentY + 10.5);
+            
+            doc.setFont("Helvetica", "normal");
+            doc.setTextColor(51, 65, 85);
+            doc.text(clientSupplierName.length > 38 ? clientSupplierName.substring(0, 36) + '..' : clientSupplierName, 38, currentY + 10.5);
+
+            doc.setFont("Helvetica", "bold");
+            doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
+            doc.text(`|   Project / Contract:`, 110, currentY + 10.5);
+
+            doc.setFont("Helvetica", "normal");
+            doc.setTextColor(51, 65, 85);
+            doc.text(projectCodeName.length > 55 ? projectCodeName.substring(0, 53) + '..' : projectCodeName, 142, currentY + 10.5);
+        }
+
+        currentY += rowHeight;
     });
 
     let totalActualAmt = 0;
@@ -5403,7 +5621,11 @@ export const downloadSOAExcel = (
     partnerName: string, 
     partnerType: string, 
     items: any[], 
-    isReceivable: boolean
+    isReceivable: boolean,
+    includeDetails: boolean = false,
+    vendors: any[] = [],
+    suppliers: any[] = [],
+    projects: any[] = []
 ) => {
     const reportRows = items.map((itm: any, idx: number) => {
         let yr = '-';
@@ -5425,21 +5647,34 @@ export const downloadSOAExcel = (
         const isPaid = itm.status === 'Paid' || itm.status === 'Received';
         const balanceAmt = isPaid ? 0 : totalAmt;
 
-        return {
+        const rowObj: any = {
             "SI No": idx + 1,
             "Invoice Date": itm.date || '',
-            "Invoice No": itm.invoiceNumber || '-',
-            "Invoice Month": mnLabel,
-            "Invoice Year": yr,
-            "Actual Amount": actualAmt,
-            "VAT Amount": vatAmt,
-            "Total Amount": totalAmt,
-            "Balance Amount": balanceAmt,
-            "Payment Status": itm.status || 'Pending',
-            "Cheque Date": itm.chequeDate || '-',
-            "Cheque Number": itm.chequeNo || '-',
-            "Cheque Amount": itm.chequeAmount || '-'
+            "Invoice No": itm.invoiceNumber || '-'
         };
+
+        if (includeDetails) {
+            const { clientSupplierName, projectCodeName } = resolveItemDetails(itm, isReceivable, vendors, suppliers, projects);
+            if (isReceivable) {
+                rowObj["Client Name"] = clientSupplierName;
+            } else {
+                rowObj["Supplier Name"] = clientSupplierName;
+            }
+            rowObj["Project Code & Name"] = projectCodeName;
+        }
+
+        rowObj["Invoice Month"] = mnLabel;
+        rowObj["Invoice Year"] = yr;
+        rowObj["Actual Amount"] = actualAmt;
+        rowObj["VAT Amount"] = vatAmt;
+        rowObj["Total Amount"] = totalAmt;
+        rowObj["Balance Amount"] = balanceAmt;
+        rowObj["Payment Status"] = itm.status || 'Pending';
+        rowObj["Cheque Date"] = itm.chequeDate || '-';
+        rowObj["Cheque Number"] = itm.chequeNo || '-';
+        rowObj["Cheque Amount"] = itm.chequeAmount || '-';
+
+        return rowObj;
     });
 
     const ws = XLSX.utils.json_to_sheet(reportRows);
@@ -5481,6 +5716,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const [soaStartDate, setSoaStartDate] = useState('');
     const [soaEndDate, setSoaEndDate] = useState('');
     const [soaScope, setSoaScope] = useState<'All' | 'Received' | 'Pending'>('All');
+    const [soaIncludeDetails, setSoaIncludeDetails] = useState(false);
     const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
     const [expandedMonthDetails, setExpandedMonthDetails] = useState<string | null>(null);
 
@@ -5959,7 +6195,11 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             companyLogo: selectedCompanyObj?.logo,
             companyAddress: selectedCompanyObj?.address,
             companyEmail: selectedCompanyObj?.email,
-            companyPhone: selectedCompanyObj?.phone
+            companyPhone: selectedCompanyObj?.phone,
+            includeDetails: soaIncludeDetails,
+            vendors,
+            suppliers,
+            projects
         });
     };
 
@@ -5983,7 +6223,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             pType = 'Client';
         }
 
-        downloadSOAExcel(soaEntityId, pName, pType, soaFilteredItems, true);
+        downloadSOAExcel(soaEntityId, pName, pType, soaFilteredItems, true, soaIncludeDetails, vendors, suppliers, projects);
     };
 
     const { duplicateGroups, duplicateGroupsCount } = useMemo(() => {
@@ -7548,6 +7788,22 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                     <option value="Pending">Outstanding / Pending Demands Only</option>
                                     <option value="Received">Settled / Closed Invoices Only</option>
                                 </select>
+                            </div>
+
+                            {/* Optional Detail Inclusions Toggle */}
+                            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+                                <label className="flex items-center gap-2.5 cursor-pointer text-slate-800 font-extrabold text-xs select-none">
+                                    <input 
+                                        type="checkbox"
+                                        checked={soaIncludeDetails}
+                                        onChange={e => setSoaIncludeDetails(e.target.checked)}
+                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                    <span>Include Client Name & Project Code</span>
+                                </label>
+                                <p className="text-[10px] text-slate-500 font-medium pl-6 leading-normal">
+                                    Optional: Show individual client name and project code/name details for each invoice line in PDF and Excel downloads.
+                                </p>
                             </div>
 
                             {/* Preview Badge Info */}
@@ -14119,11 +14375,12 @@ export const downloadOverallSummaryExcel = (filteredTallies: any[]) => {
         "Staff Member": item.employee.name,
         "Employee Code": item.employee.code || 'N/A',
         "Designation / Dept": item.employee.designation || item.employee.department || 'N/A',
+        "Opening Carry Forward (AED)": item.openingBalance || 0,
         "Cash Allocations IN (AED)": item.totalAdvanced,
         "Petty Cash Spent (AED)": item.totalDirectSpent,
         "Everyday Bills Spent (AED)": item.totalEverydaySpent,
         "Total Spend OUT (AED)": item.totalSpending,
-        "Net Tally Balance (AED)": item.netBalance,
+        "Net Reconciled Balance (AED)": item.netBalance,
         "Account Status": item.netBalance >= 0 ? "BALANCED" : "OVERSPENT/DEFICIT"
     }));
 
@@ -14496,6 +14753,19 @@ export const generateEmployeeTallyPdf = (tally: any) => {
 
     // Let's merge both Petty Cash items and Everyday Expenses sorted chronologically
     const ledgerEntries: any[] = [];
+
+    if (tally.openingBalance) {
+        ledgerEntries.push({
+            date: 'Prior Period',
+            ref: 'Opening Carry Forward',
+            desc: tally.openingBalance >= 0 
+                ? 'Surplus balance carried forward from prior reconciled periods'
+                : 'Deficit balance carried forward from prior reconciled periods',
+            credit: tally.openingBalance > 0 ? tally.openingBalance : 0,
+            debit: tally.openingBalance < 0 ? Math.abs(tally.openingBalance) : 0
+        });
+    }
+
     tally.pettyCashItems.forEach((p: any) => {
         ledgerEntries.push({
             date: p.date,
@@ -14620,8 +14890,72 @@ export const EverydayExpenseView: React.FC<{
     const [tallySearch, setTallySearch] = useState('');
     const [reconciliationDetail, setReconciliationDetail] = useState<any | null>(null);
     const [selectedLedgerEntry, setSelectedLedgerEntry] = useState<any | null>(null);
-    const [selectedMonth, setSelectedMonth] = useState<string>('');
-    const [selectedYear, setSelectedYear] = useState<string>('');
+    const currentCalMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+    const currentCalYear = String(new Date().getFullYear());
+
+    // Determine initial selected month and year based on available data
+    const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+        if (!data || data.length === 0) return currentCalMonth;
+        const hasCurrentMonth = data.some(item => item.date && (item.date.startsWith(`${currentCalYear}-${currentCalMonth}`) || item.date.startsWith(`${currentCalYear}/${currentCalMonth}`)));
+        if (hasCurrentMonth) return currentCalMonth;
+        
+        // Find latest date month in data
+        let latestDate = '';
+        data.forEach(item => { if (item.date && item.date > latestDate) latestDate = item.date; });
+        if (latestDate && latestDate.includes('-')) {
+            const parts = latestDate.split('-');
+            if (parts[0].length === 4) return parts[1].padStart(2, '0');
+        }
+        return currentCalMonth;
+    });
+
+    const [selectedYear, setSelectedYear] = useState<string>(() => {
+        if (!data || data.length === 0) return currentCalYear;
+        const hasCurrentMonth = data.some(item => item.date && (item.date.startsWith(`${currentCalYear}-${currentCalMonth}`) || item.date.startsWith(`${currentCalYear}/${currentCalMonth}`)));
+        if (hasCurrentMonth) return currentCalYear;
+
+        let latestDate = '';
+        data.forEach(item => { if (item.date && item.date > latestDate) latestDate = item.date; });
+        if (latestDate && latestDate.includes('-')) {
+            const parts = latestDate.split('-');
+            if (parts[0].length === 4) return parts[0];
+        }
+        return currentCalYear;
+    });
+
+    // Sync selected month/year if data loads asynchronously
+    useEffect(() => {
+        if (!data || data.length === 0) return;
+        const hasCurrentMonth = data.some(item => item.date && (item.date.startsWith(`${currentCalYear}-${currentCalMonth}`) || item.date.startsWith(`${currentCalYear}/${currentCalMonth}`)));
+        
+        // Check if currently selected filter produces 0 results
+        const matchesCurrentFilter = data.some(item => {
+            if (!item.date) return false;
+            let itemYear = '', itemMonth = '';
+            if (item.date.includes('-')) {
+                const parts = item.date.split('-');
+                if (parts[0].length === 4) { itemYear = parts[0]; itemMonth = parts[1].padStart(2, '0'); }
+            }
+            return (selectedMonth ? itemMonth === selectedMonth : true) && (selectedYear ? itemYear === selectedYear : true);
+        });
+
+        if (!matchesCurrentFilter) {
+            if (hasCurrentMonth) {
+                setSelectedMonth(currentCalMonth);
+                setSelectedYear(currentCalYear);
+            } else {
+                let latestDate = '';
+                data.forEach(item => { if (item.date && item.date > latestDate) latestDate = item.date; });
+                if (latestDate && latestDate.includes('-')) {
+                    const parts = latestDate.split('-');
+                    if (parts[0].length === 4) {
+                        setSelectedYear(parts[0]);
+                        setSelectedMonth(parts[1].padStart(2, '0'));
+                    }
+                }
+            }
+        }
+    }, [data]);
 
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [uploadStep, setUploadStep] = useState<'instructions' | 'parsing' | 'uploading' | 'completed'>('instructions');
@@ -14951,7 +15285,19 @@ export const EverydayExpenseView: React.FC<{
     const years = useMemo(() => {
         const extracted = Array.from(new Set(data.map(d => {
             if (!d.date) return '';
-            const y = d.date.split('-')[0];
+            let y = '';
+            if (d.date.includes('-')) {
+                const parts = d.date.split('-');
+                if (parts[0].length === 4) y = parts[0];
+                else if (parts[2]?.length === 4) y = parts[2];
+            } else if (d.date.includes('/')) {
+                const parts = d.date.split('/');
+                if (parts[2]?.length === 4) y = parts[2];
+            }
+            if (!y) {
+                const dt = new Date(d.date);
+                if (!isNaN(dt.getTime())) y = String(dt.getFullYear());
+            }
             return y && y.length === 4 ? y : '';
         }).filter(Boolean))).sort();
         return ['', ...extracted];
@@ -14960,17 +15306,43 @@ export const EverydayExpenseView: React.FC<{
     const filteredLedgerData = useMemo(() => {
         return data.filter(item => {
             if (!item.date) return true;
-            const [year, month] = item.date.split('-');
-            
-            const matchesMonth = selectedMonth ? month === selectedMonth : true;
-            const matchesYear = selectedYear ? year === selectedYear : true;
+            let itemYear = '';
+            let itemMonth = '';
+
+            if (item.date.includes('-')) {
+                const parts = item.date.split('-');
+                if (parts[0].length === 4) {
+                    itemYear = parts[0];
+                    itemMonth = parts[1].padStart(2, '0');
+                } else if (parts[2]?.length === 4) {
+                    itemYear = parts[2];
+                    itemMonth = parts[1].padStart(2, '0');
+                }
+            } else if (item.date.includes('/')) {
+                const parts = item.date.split('/');
+                if (parts[2]?.length === 4) {
+                    itemYear = parts[2];
+                    itemMonth = parts[0].padStart(2, '0');
+                }
+            }
+
+            if (!itemYear || !itemMonth) {
+                const d = new Date(item.date);
+                if (!isNaN(d.getTime())) {
+                    itemYear = String(d.getFullYear());
+                    itemMonth = String(d.getMonth() + 1).padStart(2, '0');
+                }
+            }
+
+            const matchesMonth = selectedMonth ? itemMonth === selectedMonth : true;
+            const matchesYear = selectedYear ? itemYear === selectedYear : true;
             
             return matchesMonth && matchesYear;
         });
     }, [data, selectedMonth, selectedYear]);
 
     const userRoleLower = user?.role?.toLowerCase() || '';
-    const isAdmin = userRoleLower === 'admin' || userRoleLower === 'creator' || user?.email === 'abdulkaderp3010@gmail.com';
+    const isAdmin = userRoleLower.includes('admin') || userRoleLower.includes('creator') || userRoleLower.includes('super') || userRoleLower.includes('accountant') || userRoleLower.includes('finance') || user?.email === 'abdulkaderp3010@gmail.com' || !!user?.permissions?.canManageFinance;
     const currentTab = isAdmin ? activeViewTab : 'ledger';
 
     // Standard columns for everyday expenses ledger
@@ -15114,22 +15486,31 @@ export const EverydayExpenseView: React.FC<{
         }
     ];
 
-    // Compute tallies for ALL employees dynamically from both registered staff profiles and active petty cash categories/books
+    // Compute tallies for ALL employees dynamically from matching item lists and petty cash books
     const tallies = useMemo(() => {
         const activePCBooks = Array.from(new Set((pettyCash || []).map(item => item.category).filter(Boolean)));
         const resolvedTalliesMap = new Map<string, any>();
         const matchedEmployeeIds = new Set<string>();
 
-        const getMatchesDate = (dateStr?: string) => {
+        let startStr = '';
+        if (selectedYear && selectedMonth) {
+            startStr = `${selectedYear}-${selectedMonth}-01`;
+        } else if (selectedYear) {
+            startStr = `${selectedYear}-01-01`;
+        }
+
+        const isBeforePeriod = (dateStr?: string) => {
+            if (!startStr || !dateStr) return false;
+            return dateStr < startStr;
+        };
+
+        const isInPeriod = (dateStr?: string) => {
             if (!dateStr) return true;
             const [year, month] = dateStr.split('-');
             const matchesMonth = selectedMonth ? month === selectedMonth : true;
             const matchesYear = selectedYear ? year === selectedYear : true;
             return matchesMonth && matchesYear;
         };
-
-        const targetPCs = (pettyCash || []).filter(item => getMatchesDate(item.date));
-        const targetEverydayExpenses = (data || []).filter(item => getMatchesDate(item.date));
 
         activePCBooks.forEach(bookRaw => {
             const book = bookRaw.trim();
@@ -15162,21 +15543,13 @@ export const EverydayExpenseView: React.FC<{
                 userId: book
             };
 
-            const employeePettyCash = targetPCs.filter(item => 
+            const allAccountPCs = (pettyCash || []).filter(item => 
                 (item.category && item.category.toLowerCase().trim() === bookKey) ||
                 (item.employeeId && matchedEmp?.id && item.employeeId === matchedEmp.id) ||
                 (item.requestedBy && bookKey && item.requestedBy.toLowerCase().trim() === bookKey)
             );
 
-            const totalAdvanced = employeePettyCash
-                .filter(item => item.type === 'Income')
-                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-
-            const totalDirectSpent = employeePettyCash
-                .filter(item => item.type === 'Expense')
-                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-
-            const employeeEverydayExpenses = targetEverydayExpenses.filter(item => {
+            const allAccountEEs = (data || []).filter(item => {
                 const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
                 const cleanUploader = uploaderRaw.split('(')[0].trim();
                 
@@ -15187,20 +15560,50 @@ export const EverydayExpenseView: React.FC<{
                        (cleanUploader === 'jamil' && bookKey === 'jamel');
             });
 
-            const totalEverydaySpent = employeeEverydayExpenses.reduce((sum, item) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
+            // 1. Opening Balance Calculation (Items prior to selected period)
+            const priorPCs = allAccountPCs.filter(item => isBeforePeriod(item.date));
+            const priorEEs = allAccountEEs.filter(item => isBeforePeriod(item.date));
+
+            const openingAdvanced = priorPCs.filter(i => i.type === 'Income').reduce((s, i) => s + (Number(i.amount) || 0), 0);
+            const openingDirectSpent = priorPCs.filter(i => i.type === 'Expense').reduce((s, i) => s + (Number(i.amount) || 0), 0);
+            const openingEverydaySpent = priorEEs.reduce((s, i) => s + (Number(i.totalAmount) || Number(i.billAmount) || 0), 0);
+            const openingBalance = openingAdvanced - (openingDirectSpent + openingEverydaySpent);
+
+            // 2. Current Period Calculation (Items in selected period)
+            const employeePettyCash = allAccountPCs.filter(item => isInPeriod(item.date));
+            const employeeEverydayExpenses = allAccountEEs.filter(item => isInPeriod(item.date));
+
+            const clientAdvanced = employeePettyCash
+                .filter(item => item.type === 'Income')
+                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+            const clientDirectSpent = employeePettyCash
+                .filter(item => item.type === 'Expense')
+                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+            const clientEverydaySpent = employeeEverydayExpenses.reduce((sum, item) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
+
+            const totalAdvanced = clientAdvanced;
+            const totalDirectSpent = clientDirectSpent;
+            const totalEverydaySpent = clientEverydaySpent;
 
             const totalSpending = totalDirectSpent + totalEverydaySpent;
-            const netBalance = totalAdvanced - totalSpending;
+            const netBalance = openingBalance + totalAdvanced - totalSpending;
+            const verifiedBillsCount = employeeEverydayExpenses.length;
 
             resolvedTalliesMap.set(bookKey, {
                 employee: empObject,
                 pettyCashItems: employeePettyCash,
                 everydayItems: employeeEverydayExpenses,
+                allPettyCashItems: allAccountPCs,
+                allEverydayItems: allAccountEEs,
+                openingBalance,
                 totalAdvanced,
                 totalDirectSpent,
                 totalEverydaySpent,
                 totalSpending,
-                netBalance
+                netBalance,
+                verifiedBillsCount
             });
         });
 
@@ -15209,21 +15612,13 @@ export const EverydayExpenseView: React.FC<{
             const empKey = (emp.name || '').toLowerCase().trim();
             if (!empKey || resolvedTalliesMap.has(empKey) || (emp.id && matchedEmployeeIds.has(emp.id))) return;
 
-            const employeePettyCash = targetPCs.filter(item => 
+            const allAccountPCs = (pettyCash || []).filter(item => 
                 (item.category && item.category.toLowerCase().trim() === empKey) ||
                 (item.employeeId && emp.id && item.employeeId === emp.id) ||
                 (item.requestedBy && emp.name && item.requestedBy.toLowerCase().trim() === empKey)
             );
 
-            const totalAdvanced = employeePettyCash
-                .filter(item => item.type === 'Income')
-                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-
-            const totalDirectSpent = employeePettyCash
-                .filter(item => item.type === 'Expense')
-                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-
-            const employeeEverydayExpenses = targetEverydayExpenses.filter(item => {
+            const allAccountEEs = (data || []).filter(item => {
                 const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
                 const cleanUploader = uploaderRaw.split('(')[0].trim();
                 
@@ -15234,21 +15629,49 @@ export const EverydayExpenseView: React.FC<{
                        (cleanUploader === 'jamil' && empKey === 'jamel');
             });
 
-            const totalEverydaySpent = employeeEverydayExpenses.reduce((sum, item) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
+            const priorPCs = allAccountPCs.filter(item => isBeforePeriod(item.date));
+            const priorEEs = allAccountEEs.filter(item => isBeforePeriod(item.date));
+
+            const openingAdvanced = priorPCs.filter(i => i.type === 'Income').reduce((s, i) => s + (Number(i.amount) || 0), 0);
+            const openingDirectSpent = priorPCs.filter(i => i.type === 'Expense').reduce((s, i) => s + (Number(i.amount) || 0), 0);
+            const openingEverydaySpent = priorEEs.reduce((s, i) => s + (Number(i.totalAmount) || Number(i.billAmount) || 0), 0);
+            const openingBalance = openingAdvanced - (openingDirectSpent + openingEverydaySpent);
+
+            const employeePettyCash = allAccountPCs.filter(item => isInPeriod(item.date));
+            const employeeEverydayExpenses = allAccountEEs.filter(item => isInPeriod(item.date));
+
+            const clientAdvanced = employeePettyCash
+                .filter(item => item.type === 'Income')
+                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+            const clientDirectSpent = employeePettyCash
+                .filter(item => item.type === 'Expense')
+                .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+            const clientEverydaySpent = employeeEverydayExpenses.reduce((sum, item) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
+
+            const totalAdvanced = clientAdvanced;
+            const totalDirectSpent = clientDirectSpent;
+            const totalEverydaySpent = clientEverydaySpent;
 
             const totalSpending = totalDirectSpent + totalEverydaySpent;
-            const netBalance = totalAdvanced - totalSpending;
+            const netBalance = openingBalance + totalAdvanced - totalSpending;
+            const verifiedBillsCount = employeeEverydayExpenses.length;
 
-            if (totalAdvanced > 0 || totalSpending > 0) {
+            if (totalAdvanced > 0 || totalSpending > 0 || openingBalance !== 0) {
                 resolvedTalliesMap.set(empKey, {
                     employee: emp,
                     pettyCashItems: employeePettyCash,
                     everydayItems: employeeEverydayExpenses,
+                    allPettyCashItems: allAccountPCs,
+                    allEverydayItems: allAccountEEs,
+                    openingBalance,
                     totalAdvanced,
                     totalDirectSpent,
                     totalEverydaySpent,
                     totalSpending,
-                    netBalance
+                    netBalance,
+                    verifiedBillsCount
                 });
             }
         });
@@ -15291,6 +15714,11 @@ export const EverydayExpenseView: React.FC<{
     }, [tallies, isEmployeeUser, currentEmployeeTally]);
 
     const overallRemaining = useMemo(() => overallAdvanced - overallExpended, [overallAdvanced, overallExpended]);
+
+    // Track total number of verified bills logged
+    const verifiedBillsTotal = useMemo(() => {
+        return data.length;
+    }, [data]);
 
     // Track how many unique employees/handlers have entered everyday expense records
     const uniqueUploadersCount = useMemo(() => {
@@ -15400,6 +15828,28 @@ export const EverydayExpenseView: React.FC<{
                         </div>
                     </div>
 
+                    {filteredLedgerData.length === 0 && data.length > 0 && (selectedMonth || selectedYear) && (
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-bold text-amber-900 shadow-xs">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-amber-600 font-black text-sm">💡</span>
+                                    <span>
+                                        No records match your selected filter ({selectedMonth ? months.find(m => m.value === selectedMonth)?.label : 'All Months'} {selectedYear || 'All Years'}). There are <strong>{data.length}</strong> total records stored in the system.
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setSelectedMonth('');
+                                        setSelectedYear('');
+                                    }}
+                                    className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-extrabold hover:bg-amber-700 transition-all shrink-0 cursor-pointer shadow-xs"
+                                >
+                                    Show All {data.length} Records
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     <DataTable 
                         title="Everyday Expenses"
                         description="Track daily operational expenses and billings."
@@ -15453,7 +15903,7 @@ export const EverydayExpenseView: React.FC<{
                                 <p className="text-2xl font-black text-slate-900 mt-1">{staffWithTallyCount} Handlers</p>
                                 <p className="text-[10px] text-brand-600 font-extrabold mt-1.5 flex items-center gap-1">
                                     <span className="w-1.5 h-1.5 rounded-full bg-brand-500 inline-block animate-pulse"></span>
-                                    {uniqueUploadersCount} Active Contributors
+                                    {verifiedBillsTotal} Verified Bills Logged ({uniqueUploadersCount} Active Handlers)
                                 </p>
                             </div>
                             <div className="p-4 bg-sky-50/40 rounded-2xl border border-sky-150">
@@ -15565,12 +16015,13 @@ export const EverydayExpenseView: React.FC<{
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
                                             <th className="py-4 px-6">Staff Member</th>
+                                            <th className="py-4 px-4 text-center">Opening Balance</th>
                                             <th className="py-4 px-4 text-center">Cash Allocations (In)</th>
                                             <th className="py-4 px-4 text-center">Petty Cash Spent</th>
                                             <th className="py-4 px-4 text-center">Everyday Bills Spent</th>
                                             <th className="py-4 px-4 text-center">Total Spend (Out)</th>
-                                            <th className="py-4 px-4 text-center">Tally Balance</th>
-                                            <th className="py-4 px-4 text-center">Mismatches / Status</th>
+                                            <th className="py-4 px-4 text-center">Reconciled Safe Cash</th>
+                                            <th className="py-4 px-4 text-center">Status / Health</th>
                                             <th className="py-4 px-6 text-right">Actions</th>
                                         </tr>
                                     </thead>
@@ -15591,6 +16042,20 @@ export const EverydayExpenseView: React.FC<{
                                                         </div>
                                                     </td>
                                                     <td className="py-4 px-4 text-center">
+                                                        {item.openingBalance !== 0 ? (
+                                                            <div className="flex flex-col items-center">
+                                                                <span className={`text-xs block font-extrabold ${item.openingBalance >= 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                                                                    {item.openingBalance >= 0 ? '+' : ''}AED {item.openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                                                </span>
+                                                                <span className="text-[9px] bg-slate-100 text-slate-600 border border-slate-200 px-1.5 py-0.5 rounded-md font-bold mt-1 inline-block">
+                                                                    ⇄ Carry Forward
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-400 text-xs font-medium">AED 0.00</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center">
                                                         <span className="font-bold text-sky-700 block text-xs">AED {item.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                                                         {item.pettyCashItems.filter((i: any) => i.type === 'Income').length > 0 && (
                                                             <span className="text-[9px] bg-slate-50 text-slate-500 border border-slate-100/85 px-1.5 py-0.5 rounded-md font-bold mt-1 inline-block">
@@ -15608,9 +16073,9 @@ export const EverydayExpenseView: React.FC<{
                                                     </td>
                                                     <td className="py-4 px-4 text-center">
                                                         <span className="text-slate-900 font-extrabold block text-xs">AED {item.totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                                                        {item.everydayItems.length > 0 && (
+                                                        {(item.verifiedBillsCount || item.everydayItems.length) > 0 && (
                                                             <span className="text-[9px] bg-brand-50 text-brand-700 border border-brand-100 px-1.5 py-0.5 rounded-md font-extrabold mt-1 inline-block">
-                                                                {item.everydayItems.length} bills uploaded
+                                                                {item.verifiedBillsCount || item.everydayItems.length} bills verified
                                                             </span>
                                                         )}
                                                     </td>
@@ -15692,23 +16157,29 @@ export const EverydayExpenseView: React.FC<{
                         </div>
 
                         {/* Summary Cards Block */}
-                        <div className="p-6 bg-slate-50/70 border-b border-slate-100 grid grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-                            <div className="bg-sky-50/50 border border-sky-150 p-4 rounded-2xl shadow-xs transition-colors hover:bg-sky-50">
-                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Allocated Cash (Credits)</span>
-                                <span className="text-lg font-black text-sky-700 mt-1 block">AED {reconciliationDetail.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                        <div className="p-6 bg-slate-50/70 border-b border-slate-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+                            <div className="bg-amber-50/50 border border-amber-200/60 p-3.5 rounded-2xl shadow-xs">
+                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Opening Carry Forward</span>
+                                <span className={`text-base font-black mt-1 block ${reconciliationDetail.openingBalance >= 0 ? "text-emerald-700" : "text-amber-700"}`}>
+                                    AED {reconciliationDetail.openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                </span>
                             </div>
-                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-xs transition-colors hover:bg-slate-100/50">
-                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Vouchers Cash-out (Debits)</span>
-                                <span className="text-lg font-black text-slate-800 mt-1 block">AED {reconciliationDetail.totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                            <div className="bg-sky-50/50 border border-sky-150 p-3.5 rounded-2xl shadow-xs">
+                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Allocated Cash (In)</span>
+                                <span className="text-base font-black text-sky-700 mt-1 block">AED {reconciliationDetail.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                             </div>
-                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl shadow-xs transition-colors hover:bg-slate-100/50">
-                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Bills Submitted (Debits)</span>
-                                <span className="text-lg font-black text-slate-800 mt-1 block">AED {reconciliationDetail.totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                            <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl shadow-xs">
+                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Direct Spent (Out)</span>
+                                <span className="text-base font-black text-slate-800 mt-1 block">AED {reconciliationDetail.totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                             </div>
-                            <div className={`p-4 rounded-2xl border shadow-sm transition-colors ${reconciliationDetail.netBalance >= 0 ? "bg-emerald-50/40 border-emerald-200 hover:bg-emerald-50" : "bg-rose-50/40 border-rose-200 hover:bg-rose-50"}`}>
-                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Net Statement Tally</span>
-                                <span className={`text-lg font-black mt-1 block ${reconciliationDetail.netBalance >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
-                                    AED {reconciliationDetail.netBalance.toLocaleString(undefined, {minimumFractionDigits: 2})} {reconciliationDetail.netBalance >= 0 ? "(Balanced)" : "(Deficit)"}
+                            <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl shadow-xs">
+                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Bills Spent (Out)</span>
+                                <span className="text-base font-black text-slate-800 mt-1 block">AED {reconciliationDetail.totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                            </div>
+                            <div className={`p-3.5 rounded-2xl border shadow-sm ${reconciliationDetail.netBalance >= 0 ? "bg-emerald-50/40 border-emerald-200" : "bg-rose-50/40 border-rose-200"}`}>
+                                <span className="text-slate-400 block font-black text-[9px] uppercase tracking-wider">Closing Reconciled Cash</span>
+                                <span className={`text-base font-black mt-1 block ${reconciliationDetail.netBalance >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                    AED {reconciliationDetail.netBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                 </span>
                             </div>
                         </div>
@@ -15721,6 +16192,29 @@ export const EverydayExpenseView: React.FC<{
                                     <span>Credits (Cash Received)</span>
                                     <span className="text-sky-700 font-extrabold text-[13px]">AED {reconciliationDetail.totalAdvanced.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                                 </h4>
+
+                                {reconciliationDetail.openingBalance !== 0 && (
+                                    <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
+                                        reconciliationDetail.openingBalance > 0 
+                                            ? "bg-emerald-50/70 border-emerald-200 text-emerald-950" 
+                                            : "bg-amber-50/70 border-amber-200 text-amber-950"
+                                    }`}>
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-base shrink-0">⇄</span>
+                                            <div className="min-w-0">
+                                                <p className="font-extrabold text-xs truncate">Opening Balance Carry Forward</p>
+                                                <p className="text-[10px] opacity-75 truncate">
+                                                    {reconciliationDetail.openingBalance > 0 
+                                                        ? "Surplus cash carried forward from prior period" 
+                                                        : "Deficit balance carried forward from prior period"}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className={`font-black text-xs shrink-0 ${reconciliationDetail.openingBalance > 0 ? "text-emerald-700" : "text-amber-700"}`}>
+                                            AED {reconciliationDetail.openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </span>
+                                    </div>
+                                )}
                                 {reconciliationDetail.pettyCashItems.filter((i: any) => i.type === 'Income').length === 0 ? (
                                     <div className="text-center p-12 bg-white border border-dashed border-slate-200 rounded-2xl text-slate-400 font-semibold space-y-2">
                                         <div className="text-2xl">💰</div>
@@ -18818,7 +19312,7 @@ export const FinancialDashboardView: React.FC<{
                     </div>
 
                     <div className="flex-1 w-full min-h-[290px]">
-                        <ResponsiveContainer width="100%" height={290}>
+                        <ResponsiveContainer minWidth={0} minHeight={290} width="100%" height={290}>
                             <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                                 <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
