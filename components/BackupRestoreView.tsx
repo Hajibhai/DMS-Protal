@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Database, Download, Upload, CheckSquare, Square, RefreshCw, 
   FileJson, CheckCircle2, AlertTriangle, Info, ShieldCheck, 
   Trash2, Layers, Search, FileText, Check, X, HardDrive, 
-  Clock, UserCheck, Sparkles, ArrowRight, Save, History, FileSpreadsheet
+  Clock, UserCheck, Sparkles, ArrowRight, Save, History, FileSpreadsheet,
+  Image, Receipt, Eye
 } from 'lucide-react';
 import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch, query, orderBy, startAfter, limit } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -79,6 +80,8 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
   const [restoreProgress, setRestoreProgress] = useState<{ current: number; total: number; label: string }>({ current: 0, total: 0, label: '' });
   const [restoreLogs, setRestoreLogs] = useState<string[]>([]);
   const [restoreSuccessModal, setRestoreSuccessModal] = useState<boolean>(false);
+  const [showConfirmRestoreModal, setShowConfirmRestoreModal] = useState<boolean>(false);
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
 
   // Local History
   const [backupHistory, setBackupHistory] = useState<any[]>(() => {
@@ -89,6 +92,110 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
       return [];
     }
   });
+
+  // Compute Restore File Preview Statistics (Entries, Bills, Photos)
+  const restorePreviewStats = useMemo(() => {
+    if (!uploadedBackupData || !uploadedBackupData.data) {
+      return { totalEntries: 0, totalBills: 0, totalPhotos: 0, moduleBreakdown: [] };
+    }
+
+    let totalEntries = 0;
+    let totalBills = 0;
+    let totalPhotos = 0;
+
+    const moduleBreakdown: {
+      id: string;
+      name: string;
+      collectionName: string;
+      entries: number;
+      bills: number;
+      photos: number;
+    }[] = [];
+
+    BACKUP_MODULES.forEach(mod => {
+      const items = uploadedBackupData.data[mod.collectionName];
+      if (Array.isArray(items) && items.length > 0) {
+        const entries = items.length;
+        let bills = 0;
+        let photos = 0;
+
+        items.forEach((item: any) => {
+          // Check for bill / invoice indicators
+          const isBillCollection = [
+            'everyday_expenses', 'accounts_payable', 'accounts_receivable', 'vouchers', 'petty_cash', 'purchase_orders'
+          ].includes(mod.collectionName);
+
+          const hasBillField = Boolean(
+            item.invoiceNo || 
+            item.invoiceNumber || 
+            item.billNo || 
+            item.billNumber || 
+            item.billAmount || 
+            item.totalAmount || 
+            item.voucherNo ||
+            item.poNo
+          );
+
+          if (isBillCollection || hasBillField) {
+            bills++;
+          }
+
+          // Check for photos / attachment indicators
+          let hasPhoto = Boolean(
+            item.billPhoto || 
+            item.receiptImage || 
+            item.photo || 
+            item.profileImage || 
+            item.attachment || 
+            item.documentUrl || 
+            item.image || 
+            item.fileUrl ||
+            item.pasportCopy ||
+            item.eidCopy ||
+            item.licenseCopy ||
+            item.mulkiyaPhoto
+          );
+
+          if (!hasPhoto && Array.isArray(item.attachments) && item.attachments.length > 0) {
+            hasPhoto = true;
+          }
+          if (!hasPhoto && Array.isArray(item.photos) && item.photos.length > 0) {
+            hasPhoto = true;
+          }
+
+          if (hasPhoto) {
+            photos++;
+          }
+        });
+
+        totalEntries += entries;
+        totalBills += bills;
+        totalPhotos += photos;
+
+        moduleBreakdown.push({
+          id: mod.id,
+          name: mod.name,
+          collectionName: mod.collectionName,
+          entries,
+          bills,
+          photos
+        });
+      }
+    });
+
+    return { totalEntries, totalBills, totalPhotos, moduleBreakdown };
+  }, [uploadedBackupData]);
+
+  const selectedRestoreStats = useMemo(() => {
+    if (!restorePreviewStats.moduleBreakdown) return { entries: 0, bills: 0, photos: 0 };
+    return restorePreviewStats.moduleBreakdown
+      .filter(m => selectedRestoreModules.includes(m.id))
+      .reduce((acc, curr) => ({
+        entries: acc.entries + curr.entries,
+        bills: acc.bills + curr.bills,
+        photos: acc.photos + curr.photos
+      }), { entries: 0, bills: 0, photos: 0 });
+  }, [restorePreviewStats, selectedRestoreModules]);
 
   // Helper to fetch collection docs in safe chunks
   const fetchCollectionItems = async (collectionName: string): Promise<any[]> => {
@@ -280,7 +387,7 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
       try {
         const json = JSON.parse(event.target?.result as string);
         if (!json || (!json.data && typeof json !== 'object')) {
-          alert('Invalid backup file format. Expected JSON backup object containing data.');
+          setNotificationMessage('Invalid backup file format. Expected JSON backup object containing data.');
           return;
         }
 
@@ -296,11 +403,35 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
 
         setSelectedRestoreModules(availableInFile);
         setRestoreLogs([`File loaded: ${file.name} (${(file.size / 1024).toFixed(1)} KB). Found ${availableInFile.length} valid data modules.`]);
+        setNotificationMessage(`Successfully loaded backup file: ${file.name}`);
       } catch (err) {
-        alert('Failed to parse JSON file. Please verify file integrity.');
+        setNotificationMessage('Failed to parse JSON file. Please verify file integrity.');
       }
     };
     reader.readAsText(file);
+    e.target.value = ''; // Reset input element so re-uploading the same file works
+  };
+
+  // Remove entire loaded backup file preview
+  const handleRemoveBackupPreview = () => {
+    setUploadedBackupData(null);
+    setSelectedRestoreModules([]);
+    setRestoreLogs([]);
+    setShowConfirmRestoreModal(false);
+    setNotificationMessage('Backup file preview has been cleared.');
+  };
+
+  // Remove single module from restore preview
+  const handleRemoveModuleFromPreview = (collectionName: string, modId: string) => {
+    if (!uploadedBackupData || !uploadedBackupData.data) return;
+    const updatedData = { ...uploadedBackupData.data };
+    delete updatedData[collectionName];
+    setUploadedBackupData({
+      ...uploadedBackupData,
+      data: updatedData
+    });
+    setSelectedRestoreModules(prev => prev.filter(x => x !== modId));
+    setNotificationMessage('Module removed from restore preview.');
   };
 
   const toggleRestoreModule = (id: string) => {
@@ -309,24 +440,24 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
     );
   };
 
-  // Execute Restore Operation
-  const handleStartRestore = async () => {
+  // Prompt Restore Confirmation Modal
+  const handleStartRestore = () => {
     if (!uploadedBackupData || !uploadedBackupData.data) {
-      alert('Please upload a valid backup JSON file first.');
+      setNotificationMessage('Please upload a valid backup JSON file first.');
       return;
     }
 
     if (selectedRestoreModules.length === 0) {
-      alert('Please select at least one module to restore.');
+      setNotificationMessage('Please select at least one module to restore.');
       return;
     }
 
-    const confirmMsg = restoreMode === 'overwrite'
-      ? `⚠️ WARNING: OVERWRITE MODE IS ACTIVE!\n\nThis will ERASE existing Firestore documents in the selected ${selectedRestoreModules.length} collections and replace them with records from the backup file.\n\nAre you sure you want to proceed?`
-      : `Are you sure you want to restore data for ${selectedRestoreModules.length} selected modules?\n\nExisting records will be updated/merged safely.`;
+    setShowConfirmRestoreModal(true);
+  };
 
-    if (!window.confirm(confirmMsg)) return;
-
+  // Execute Restore Operation after confirmation
+  const handleExecuteRestore = async () => {
+    setShowConfirmRestoreModal(false);
     setIsRestoring(true);
     const newLogs: string[] = [`Starting restore process in [${restoreMode.toUpperCase()}] mode...`];
     setRestoreLogs(newLogs);
@@ -424,6 +555,28 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12">
+      {/* Toast Notification Banner */}
+      <AnimatePresence>
+        {notificationMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="bg-slate-900 text-white p-4 rounded-2xl flex items-center justify-between shadow-lg text-xs font-bold border border-slate-700/80"
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-brand-400 shrink-0" />
+              <span>{notificationMessage}</span>
+            </div>
+            <button 
+              onClick={() => setNotificationMessage(null)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Header Banner */}
       <div className="bg-slate-900 rounded-[2.5rem] p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden border border-slate-800">
         <div className="absolute top-0 right-0 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
@@ -652,64 +805,145 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
           {/* If file is loaded */}
           {uploadedBackupData && (
             <div className="space-y-6">
-              {/* File Summary Banner */}
-              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                    <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full font-black text-[10px] uppercase">
-                      Valid Backup Verified
-                    </span>
-                    <span>System Version: {uploadedBackupData.metadata?.version || '1.0'}</span>
-                    <span>• Exported: {uploadedBackupData.metadata?.exportedAt ? new Date(uploadedBackupData.metadata.exportedAt).toLocaleString() : 'Unknown'}</span>
+              {/* File Summary & Metadata Banner */}
+              <div className="bg-white p-6 sm:p-8 rounded-[2rem] border border-slate-200/80 shadow-xs space-y-6">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                      <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full font-black text-[10px] uppercase flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Valid Backup Verified
+                      </span>
+                      <span>System Version: {uploadedBackupData.metadata?.version || '1.0'}</span>
+                      <span>• Exported: {uploadedBackupData.metadata?.exportedAt ? new Date(uploadedBackupData.metadata.exportedAt).toLocaleString() : 'Unknown'}</span>
+                    </div>
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                      <Eye className="w-5 h-5 text-brand-600" /> Restore Content Preview
+                    </h3>
+                    <p className="text-slate-500 text-xs font-medium">
+                      File exported by: <strong className="text-slate-700">{uploadedBackupData.metadata?.exportedBy || 'System Admin'}</strong>
+                    </p>
                   </div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                    Backup File Contains {uploadedBackupData.metadata?.totalRecords || Object.values(uploadedBackupData.data || {}).reduce((sum: number, arr: any) => sum + (Array.isArray(arr) ? arr.length : 0), 0)} Total Documents
-                  </h3>
-                  <p className="text-slate-500 text-xs font-medium">
-                    Exported by: <strong className="text-slate-700">{uploadedBackupData.metadata?.exportedBy || 'System Admin'}</strong>
-                  </p>
+
+                  {/* Restore Mode Selector & Unload File Button */}
+                  <div className="flex flex-wrap items-center gap-3 shrink-0">
+                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row items-center gap-3">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 ml-1">Restore Mode:</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setRestoreMode('merge')}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            restoreMode === 'merge' ? 'bg-white text-brand-600 shadow-xs font-black border border-slate-200' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          🔄 Merge & Update
+                        </button>
+                        <button
+                          onClick={() => setRestoreMode('overwrite')}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            restoreMode === 'overwrite' ? 'bg-rose-600 text-white shadow-xs font-black' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                        >
+                          ⚠️ Overwrite Collection
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleRemoveBackupPreview}
+                      className="px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 shadow-xs"
+                      title="Clear loaded JSON file preview"
+                    >
+                      <Trash2 className="w-4 h-4" /> Clear Preview
+                    </button>
+                  </div>
                 </div>
 
-                {/* Restore Mode Selector */}
-                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row items-center gap-3 shrink-0">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 ml-1">Restore Mode:</span>
+                {/* KPI Cards: Entries, Bills, Photos */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Total Entries KPI */}
+                  <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-5 rounded-2xl text-white flex items-center gap-4 border border-slate-700/60 shadow-sm">
+                    <div className="p-3 bg-brand-500/20 text-brand-400 rounded-xl">
+                      <Database className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Total File Entries</span>
+                      <span className="text-2xl font-black text-white block mt-0.5">
+                        {restorePreviewStats.totalEntries.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">Database documents</span>
+                    </div>
+                  </div>
+
+                  {/* Total Bills KPI */}
+                  <div className="bg-gradient-to-br from-blue-900 to-slate-900 p-5 rounded-2xl text-white flex items-center gap-4 border border-blue-800/60 shadow-sm">
+                    <div className="p-3 bg-blue-500/20 text-blue-400 rounded-xl">
+                      <Receipt className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-blue-300 block">Bills & Invoices</span>
+                      <span className="text-2xl font-black text-white block mt-0.5">
+                        {restorePreviewStats.totalBills.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-blue-300/80 font-medium">Expense receipts & vouchers</span>
+                    </div>
+                  </div>
+
+                  {/* Total Photos KPI */}
+                  <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-5 rounded-2xl text-white flex items-center gap-4 border border-indigo-800/60 shadow-sm">
+                    <div className="p-3 bg-indigo-500/20 text-indigo-400 rounded-xl">
+                      <Image className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300 block">Photos & Attachments</span>
+                      <span className="text-2xl font-black text-white block mt-0.5">
+                        {restorePreviewStats.totalPhotos.toLocaleString()}
+                      </span>
+                      <span className="text-[10px] text-indigo-300/80 font-medium">Receipt photos & doc copies</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selected Restore Scope Summary Banner */}
+                <div className="bg-brand-50/80 border border-brand-200/80 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-bold text-brand-900">
                   <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-brand-600 shrink-0" />
+                    <span>
+                      Selected Scope to Restore: <strong className="text-brand-700">{selectedRestoreStats.entries.toLocaleString()} Entries</strong>, <strong className="text-brand-700">{selectedRestoreStats.bills.toLocaleString()} Bills</strong> & <strong className="text-brand-700">{selectedRestoreStats.photos.toLocaleString()} Photos/Files</strong> across {selectedRestoreModules.length} modules.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => setRestoreMode('merge')}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        restoreMode === 'merge' ? 'bg-white text-brand-600 shadow-xs font-black border border-slate-200' : 'text-slate-500 hover:text-slate-800'
-                      }`}
+                      onClick={() => setSelectedRestoreModules(restorePreviewStats.moduleBreakdown.map(m => m.id))}
+                      className="px-2.5 py-1 bg-white hover:bg-brand-100 border border-brand-300 rounded-lg text-[11px] font-bold text-brand-700 transition-all cursor-pointer"
                     >
-                      🔄 Merge & Update
+                      Select All ({restorePreviewStats.moduleBreakdown.length})
                     </button>
                     <button
-                      onClick={() => setRestoreMode('overwrite')}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        restoreMode === 'overwrite' ? 'bg-rose-600 text-white shadow-xs font-black' : 'text-slate-500 hover:text-slate-800'
-                      }`}
+                      onClick={() => setSelectedRestoreModules([])}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg text-[11px] font-bold text-slate-600 transition-all cursor-pointer"
                     >
-                      ⚠️ Overwrite Collection
+                      Clear Selection
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* Module Selector for Restore */}
+              {/* Module Breakdown Grid */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
-                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">
-                    Select Data Modules to Restore
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-brand-600" /> Module Contents Breakdown
                   </h3>
                   <div className="flex items-center gap-3 text-xs font-bold text-slate-600">
-                    <span>{selectedRestoreModules.length} selected for restore</span>
+                    <span>{selectedRestoreModules.length} of {restorePreviewStats.moduleBreakdown.length} modules active for restore</span>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {BACKUP_MODULES.map((mod) => {
-                    const itemsInBackup = uploadedBackupData.data?.[mod.collectionName];
-                    const itemCount = Array.isArray(itemsInBackup) ? itemsInBackup.length : 0;
-                    if (itemCount === 0) return null; // Only show modules that exist in uploaded file
+                    const breakdownItem = restorePreviewStats.moduleBreakdown.find(m => m.id === mod.id);
+                    if (!breakdownItem || breakdownItem.entries === 0) return null;
 
                     const isSelected = selectedRestoreModules.includes(mod.id);
 
@@ -717,28 +951,65 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
                       <div
                         key={mod.id}
                         onClick={() => toggleRestoreModule(mod.id)}
-                        className={`p-5 rounded-3xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                        className={`p-5 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between gap-4 ${
                           isSelected 
                             ? 'bg-white border-brand-500 shadow-sm ring-2 ring-brand-500/10' 
                             : 'bg-white/60 border-slate-200/70 opacity-60'
                         }`}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2.5 rounded-2xl ${isSelected ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'}`}>
-                            <Layers className="w-5 h-5" />
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2.5 rounded-2xl ${isSelected ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'}`}>
+                              <Layers className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-black text-slate-900">{mod.name}</h4>
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                                {mod.collectionName}
+                              </span>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="text-sm font-black text-slate-900">{mod.name}</h4>
-                            <span className="text-[11px] text-emerald-600 font-bold block mt-0.5">
-                              {itemCount} records in backup
-                            </span>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveModuleFromPreview(mod.collectionName, mod.id);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Delete/Remove this module from restore preview"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                            <div className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                              isSelected ? 'bg-brand-600 border-brand-600 text-white' : 'border-slate-300 bg-white'
+                            }`}>
+                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </div>
                           </div>
                         </div>
 
-                        <div className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
-                          isSelected ? 'bg-brand-600 border-brand-600 text-white' : 'border-slate-300 bg-white'
-                        }`}>
-                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        {/* Content Stats Badges */}
+                        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                          <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-black flex items-center gap-1.5">
+                            <Database className="w-3 h-3 text-slate-500" />
+                            {breakdownItem.entries.toLocaleString()} entries
+                          </span>
+
+                          {breakdownItem.bills > 0 && (
+                            <span className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 rounded-lg text-[11px] font-black flex items-center gap-1.5">
+                              <Receipt className="w-3 h-3 text-blue-600" />
+                              {breakdownItem.bills.toLocaleString()} bills
+                            </span>
+                          )}
+
+                          {breakdownItem.photos > 0 && (
+                            <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg text-[11px] font-black flex items-center gap-1.5">
+                              <Image className="w-3 h-3 text-indigo-600" />
+                              {breakdownItem.photos.toLocaleString()} photos
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -800,15 +1071,15 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
 
             {backupHistory.length > 0 && (
               <button
+                type="button"
                 onClick={() => {
-                  if (window.confirm('Clear activity logs history?')) {
-                    setBackupHistory([]);
-                    localStorage.removeItem('pioneer_backup_history');
-                  }
+                  setBackupHistory([]);
+                  localStorage.removeItem('pioneer_backup_history');
+                  setNotificationMessage('Activity logs cleared successfully.');
                 }}
-                className="text-xs text-rose-600 hover:text-rose-700 font-bold cursor-pointer"
+                className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5"
               >
-                Clear History
+                <Trash2 className="w-3.5 h-3.5" /> Clear History
               </button>
             )}
           </div>
@@ -854,6 +1125,79 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
           )}
         </div>
       )}
+
+      {/* CONFIRM RESTORE MODAL */}
+      <AnimatePresence>
+        {showConfirmRestoreModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2.5rem] p-8 max-w-lg w-full space-y-6 shadow-2xl border border-slate-100"
+            >
+              <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-3xl flex items-center justify-center mx-auto shadow-xs">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+
+              <div className="text-center space-y-2">
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">Confirm Data Restoration</h3>
+                <p className="text-slate-500 text-xs font-medium leading-relaxed">
+                  {restoreMode === 'overwrite' ? (
+                    <span className="text-rose-600 font-bold block">
+                      ⚠️ OVERWRITE MODE IS ACTIVE: Existing records in {selectedRestoreModules.length} selected database collections will be PERMANENTLY ERASED and replaced with backup data.
+                    </span>
+                  ) : (
+                    <span>
+                      Merge Mode is active. Data for {selectedRestoreModules.length} selected modules will be safely updated and merged into Firestore.
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs text-slate-700 space-y-2">
+                <div className="flex justify-between font-bold">
+                  <span>Selected Modules:</span>
+                  <span className="text-brand-600 font-black">{selectedRestoreModules.length} Categories</span>
+                </div>
+                <div className="flex justify-between font-bold">
+                  <span>Total Records to Restore:</span>
+                  <span className="text-brand-600 font-black">{selectedRestoreStats.entries.toLocaleString()} Entries</span>
+                </div>
+                {selectedRestoreStats.bills > 0 && (
+                  <div className="flex justify-between font-bold">
+                    <span>Expense Bills:</span>
+                    <span className="text-blue-600 font-black">{selectedRestoreStats.bills.toLocaleString()} Bills</span>
+                  </div>
+                )}
+                {selectedRestoreStats.photos > 0 && (
+                  <div className="flex justify-between font-bold">
+                    <span>Photos & Documents:</span>
+                    <span className="text-indigo-600 font-black">{selectedRestoreStats.photos.toLocaleString()} Attachments</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmRestoreModal(false)}
+                  className="w-1/2 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-black transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteRestore}
+                  className="w-1/2 py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl text-xs font-black tracking-wider transition-all shadow-md shadow-brand-600/30 cursor-pointer"
+                >
+                  Proceed & Restore
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* SUCCESS RESTORE MODAL */}
       <AnimatePresence>
