@@ -4948,11 +4948,26 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'projected_expenses');
     });
 
-    const unsubEverydayExpenses = onSnapshot(query(collection(db, 'everyday_expenses'), limit(1000)), (snap) => {
-      setEverydayExpenses(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
-    });
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const startOfMonth = `${curYear}-${curMonth}-01`;
+    const endOfMonth = `${curYear}-${curMonth}-31T23:59:59`;
+
+    const unsubEverydayExpenses = onSnapshot(
+      query(
+        collection(db, 'everyday_expenses'),
+        where('date', '>=', startOfMonth),
+        where('date', '<=', endOfMonth),
+        limit(50)
+      ),
+      (snap) => {
+        setEverydayExpenses(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense));
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
+      }
+    );
 
     const unsubCamps = onSnapshot(collection(db, 'camps'), (snap) => {
       setCamps(snap.docs.map(d => ({ ...d.data(), id: d.id }) as CampExpense));
@@ -8178,9 +8193,24 @@ const SettingsView = ({
             setAllNotes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Note));
         }, (err) => console.error("Error loading notes for stats:", err));
 
-        const unsubExpenses = onSnapshot(query(collection(db, 'everyday_expenses'), limit(500)), (snap) => {
+        const now = new Date();
+        const curYear = now.getFullYear();
+        const curMonth = String(now.getMonth() + 1).padStart(2, '0');
+        const startOfMonth = `${curYear}-${curMonth}-01`;
+        const endOfMonth = `${curYear}-${curMonth}-31T23:59:59`;
+
+        const unsubExpenses = onSnapshot(
+          query(
+            collection(db, 'everyday_expenses'),
+            where('date', '>=', startOfMonth),
+            where('date', '<=', endOfMonth),
+            limit(50)
+          ),
+          (snap) => {
             setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as EverydayExpense));
-        }, (err) => console.error("Error loading expenses for stats:", err));
+          },
+          (err) => console.error("Error loading expenses for stats:", err)
+        );
 
         const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
             setAllUsers(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as unknown as SystemUser)));

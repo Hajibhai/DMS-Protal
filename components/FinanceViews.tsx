@@ -540,6 +540,24 @@ export function DataTable<T extends { id: string }>({
         return result;
     }, [data, searchTerm, searchFields, activeFilters, sortConfig]);
 
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState<number>(50);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, activeFilters, sortConfig, data.length]);
+
+    const totalPages = useMemo(() => {
+        if (pageSize === 0) return 1;
+        return Math.max(1, Math.ceil(filteredData.length / pageSize));
+    }, [filteredData.length, pageSize]);
+
+    const paginatedData = useMemo(() => {
+        if (pageSize === 0) return filteredData;
+        const start = (currentPage - 1) * pageSize;
+        return filteredData.slice(start, start + pageSize);
+    }, [filteredData, currentPage, pageSize]);
+
     const isAllSelected = useMemo(() => {
         return filteredData.length > 0 && filteredData.every(item => selectedIds.includes(item.id));
     }, [filteredData, selectedIds]);
@@ -1220,80 +1238,83 @@ export function DataTable<T extends { id: string }>({
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                            {filteredData.map((item, index) => (
-                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                                    {enableMultiSelect && isAdmin && (
-                                        <td className="px-6 py-5 text-left w-12 text-sm font-bold text-slate-600">
-                                            <input 
-                                                type="checkbox"
-                                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
-                                                checked={selectedIds.includes(item.id)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setSelectedIds(prev => [...prev, item.id]);
-                                                    } else {
-                                                        setSelectedIds(prev => prev.filter(id => id !== item.id));
-                                                    }
-                                                }}
-                                            />
-                                        </td>
-                                    )}
-                                    {columns.map((col) => (
-                                        <td key={String(col.key)} className="px-6 py-5 text-sm font-bold text-slate-600">
-                                            {col.render ? col.render(item, index) : String((item as any)[col.key] || '-')}
-                                        </td>
-                                    ))}
-                                    {(onEdit || onDelete || onViewBill || onDownloadStatement || onViewDetails) && (
-                                        <td className="px-6 py-5 text-right font-mono text-sm leading-none shrink-0">
-                                            <div className="flex items-center justify-end gap-1.5 transition-opacity">
-                                                {onViewDetails && (
-                                                    <button 
-                                                        onClick={() => onViewDetails(item)}
-                                                        className="p-1.5 hover:bg-white rounded-lg text-slate-450 hover:text-indigo-600 transition-all shadow-2xs border border-transparent hover:border-slate-100 cursor-pointer"
-                                                        title="View All Details"
-                                                    >
-                                                        <Eye className="w-4.5 h-4.5" />
-                                                    </button>
-                                                )}
-                                                {onDownloadStatement && (
-                                                    <button 
-                                                        onClick={() => onDownloadStatement(item)}
-                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100 cursor-pointer"
-                                                        title="Download Statement"
-                                                    >
-                                                        <Download className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                                {onViewBill && (item as any).attachment && (
-                                                    <button 
-                                                        onClick={() => onViewBill(item)}
-                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
-                                                        title="View Attached Invoice Document"
-                                                    >
-                                                        <Paperclip className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                                {onEdit && (
-                                                    <button 
-                                                        onClick={() => onEdit(item)}
-                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
-                                                    >
-                                                        <Edit className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                                {onDelete && (
-                                                    <button 
-                                                        onClick={() => onDelete(item)}
-                                                        className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-red-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    )}
-                                </tr>
-                            ))}
+                            {paginatedData.map((item, index) => {
+                                const rowIndex = pageSize === 0 ? index : (currentPage - 1) * pageSize + index;
+                                return (
+                                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                                        {enableMultiSelect && isAdmin && (
+                                            <td className="px-6 py-5 text-left w-12 text-sm font-bold text-slate-600">
+                                                <input 
+                                                    type="checkbox"
+                                                    className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
+                                                    checked={selectedIds.includes(item.id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedIds(prev => [...prev, item.id]);
+                                                        } else {
+                                                            setSelectedIds(prev => prev.filter(id => id !== item.id));
+                                                        }
+                                                    }}
+                                                />
+                                            </td>
+                                        )}
+                                        {columns.map((col) => (
+                                            <td key={String(col.key)} className="px-6 py-5 text-sm font-bold text-slate-600">
+                                                {col.render ? col.render(item, rowIndex) : String((item as any)[col.key] || '-')}
+                                            </td>
+                                        ))}
+                                        {(onEdit || onDelete || onViewBill || onDownloadStatement || onViewDetails) && (
+                                            <td className="px-6 py-5 text-right font-mono text-sm leading-none shrink-0">
+                                                <div className="flex items-center justify-end gap-1.5 transition-opacity">
+                                                    {onViewDetails && (
+                                                        <button 
+                                                            onClick={() => onViewDetails(item)}
+                                                            className="p-1.5 hover:bg-white rounded-lg text-slate-450 hover:text-indigo-600 transition-all shadow-2xs border border-transparent hover:border-slate-100 cursor-pointer"
+                                                            title="View All Details"
+                                                        >
+                                                            <Eye className="w-4.5 h-4.5" />
+                                                        </button>
+                                                    )}
+                                                    {onDownloadStatement && (
+                                                        <button 
+                                                            onClick={() => onDownloadStatement(item)}
+                                                            className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100 cursor-pointer"
+                                                            title="Download Statement"
+                                                        >
+                                                            <Download className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {onViewBill && (item as any).attachment && (
+                                                        <button 
+                                                            onClick={() => onViewBill(item)}
+                                                            className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                            title="View Attached Invoice Document"
+                                                        >
+                                                            <Paperclip className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {onEdit && (
+                                                        <button 
+                                                            onClick={() => onEdit(item)}
+                                                            className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-brand-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                        >
+                                                            <Edit className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {onDelete && (
+                                                        <button 
+                                                            onClick={() => onDelete(item)}
+                                                            className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-red-600 transition-all shadow-sm border border-transparent hover:border-slate-100"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        )}
+                                    </tr>
+                                );
+                            })}
                             {filteredData.length === 0 && (
                                 <tr>
                                     <td colSpan={columns.length + (onEdit || onDelete || onViewBill || onDownloadStatement || onViewDetails ? 1 : 0) + (enableMultiSelect && isAdmin ? 1 : 0)} className="px-6 py-20 text-center">
@@ -1314,6 +1335,55 @@ export function DataTable<T extends { id: string }>({
                         )}
                     </table>
                 </div>
+
+                {filteredData.length > 0 && (
+                    <div className="px-6 py-4 bg-slate-50/80 border-t border-slate-200/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-semibold text-slate-600">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <span>
+                                Showing <strong className="text-slate-900 font-extrabold">{pageSize === 0 ? 1 : Math.min((currentPage - 1) * pageSize + 1, filteredData.length)}</strong> to <strong className="text-slate-900 font-extrabold">{pageSize === 0 ? filteredData.length : Math.min(currentPage * pageSize, filteredData.length)}</strong> of <strong className="text-slate-900 font-black">{filteredData.length}</strong> records
+                            </span>
+                            <div className="flex items-center gap-1.5 ml-2">
+                                <span className="text-[10px] uppercase font-bold text-slate-400">Rows per page:</span>
+                                <select
+                                    value={pageSize}
+                                    onChange={(e) => {
+                                        setPageSize(Number(e.target.value));
+                                        setCurrentPage(1);
+                                    }}
+                                    className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none cursor-pointer hover:border-slate-300"
+                                >
+                                    <option value={25}>25</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                    <option value={250}>250</option>
+                                    <option value={0}>All</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {pageSize !== 0 && totalPages > 1 && (
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Previous
+                                </button>
+                                <span className="px-3 py-1 text-slate-600 font-mono font-extrabold">
+                                    Page {currentPage} of {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             <PrintModal 
@@ -15617,6 +15687,28 @@ export const EverydayExpenseView: React.FC<{
                             </div>
                         </div>
                     </div>
+
+                    {filteredLedgerData.length === 0 && data.length > 0 && (selectedMonth || selectedYear) && (
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-bold text-amber-900 shadow-xs">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-amber-600 font-black text-sm">💡</span>
+                                    <span>
+                                        No records match your selected filter ({selectedMonth ? months.find(m => m.value === selectedMonth)?.label : 'All Months'} {selectedYear || 'All Years'}). There are <strong>{data.length}</strong> total records stored in the system.
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setSelectedMonth('');
+                                        setSelectedYear('');
+                                    }}
+                                    className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-extrabold hover:bg-amber-700 transition-all shrink-0 cursor-pointer shadow-xs"
+                                >
+                                    Show All {data.length} Records
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     <DataTable 
                         title="Everyday Expenses"
