@@ -4948,8 +4948,8 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'projected_expenses');
     });
 
-    const unsubEverydayExpenses = onSnapshot(collection(db, 'everyday_expenses'), (snap) => {
-      setEverydayExpenses(snap.docs.map(d => d.data() as EverydayExpense));
+    const unsubEverydayExpenses = onSnapshot(query(collection(db, 'everyday_expenses'), limit(1000)), (snap) => {
+      setEverydayExpenses(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
     });
@@ -5634,8 +5634,8 @@ export default function App() {
 
   const handleUploadExcelEveryday = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const roleLower = systemUser?.role?.toLowerCase() || '';
-    const isCreatorUser = roleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
-    const isAppAdmin = roleLower === 'admin' || isCreatorUser;
+    const isCreatorUser = roleLower.includes('creator') || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
+    const isAppAdmin = roleLower.includes('admin') || roleLower.includes('creator') || roleLower.includes('super') || roleLower.includes('accountant') || roleLower.includes('finance') || isCreatorUser || !!systemUser?.permissions?.canManageFinance;
     
     if (!isAppAdmin) {
       alert("Error: Only full site access users (like super admin or development team) can upload excel data.");
@@ -6681,8 +6681,8 @@ export default function App() {
       )}
       {activeTab === 'everyday-expenses' && (() => {
         const roleLower = systemUser?.role?.toLowerCase() || '';
-        const isCreatorUser = roleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
-        const isAppAdmin = roleLower === 'admin' || isCreatorUser;
+        const isCreatorUser = roleLower.includes('creator') || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
+        const isAppAdmin = roleLower.includes('admin') || roleLower.includes('creator') || roleLower.includes('super') || roleLower.includes('accountant') || roleLower.includes('finance') || isCreatorUser || !!systemUser?.permissions?.canManageFinance;
         return (
           <EverydayExpenseView 
             data={
@@ -7610,7 +7610,7 @@ const DashboardView = ({
                         {deptStats.length > 0 ? (
                             <>
                                 <div className="w-full h-[180px]">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                    <ResponsiveContainer minWidth={0} minHeight={180} width="100%" height="100%">
                                         <PieChart>
                                             <Pie
                                                 data={deptStats}
@@ -7669,7 +7669,7 @@ const DashboardView = ({
                     </div>
 
                     <div className="flex-1 min-h-[220px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer minWidth={0} minHeight={220} width="100%" height="100%">
                             <BarChart data={attendanceTrendData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                                 <XAxis 
@@ -8178,7 +8178,7 @@ const SettingsView = ({
             setAllNotes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Note));
         }, (err) => console.error("Error loading notes for stats:", err));
 
-        const unsubExpenses = onSnapshot(collection(db, 'everyday_expenses'), (snap) => {
+        const unsubExpenses = onSnapshot(query(collection(db, 'everyday_expenses'), limit(500)), (snap) => {
             setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as EverydayExpense));
         }, (err) => console.error("Error loading expenses for stats:", err));
 
