@@ -5,7 +5,7 @@ import {
   LogOut, Settings, User, Bell, Search,
   Building2, Globe, HelpCircle, FileText, LayoutGrid,
   Briefcase, Truck, Wallet, Check, Video, ExternalLink, Sparkles, Calendar,
-  Mail, Phone, ZoomIn, ZoomOut, Move, Crop
+  Mail, Phone, ZoomIn, ZoomOut, Move, Crop, Database
 } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -877,6 +877,15 @@ export const Layout: React.FC<LayoutProps> = ({
                             className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-all"
                           >
                             <HelpCircle className="w-4 h-4" /> Help Center
+                          </button>
+                          <button 
+                            onClick={() => {
+                                setActiveTab('backup');
+                                setIsUserDropdownOpen(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-brand-600 transition-all"
+                          >
+                            <Database className="w-4 h-4 text-brand-600" /> Backup / Restore
                           </button>
                         </div>
                         <div className="mt-2 pt-2 border-t border-slate-50">

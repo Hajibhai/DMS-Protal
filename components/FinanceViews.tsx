@@ -114,6 +114,51 @@ export const extractDateMonthYear = (dateStr: string | undefined | null): { year
 };
 
 /**
+ * Standardize any date string format (e.g. MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD, ISO timestamp)
+ * into standard YYYY-MM-DD for reliable chronological sorting and date-range comparison.
+ */
+export const normalizeToYYYYMMDD = (dateStr: string | undefined | null): string => {
+    if (!dateStr) return '';
+    const clean = String(dateStr).trim().split('T')[0];
+    const str = clean.replace(/\//g, '-').replace(/\./g, '-');
+    const parts = str.split('-').map(p => p.trim()).filter(Boolean);
+
+    if (parts.length >= 3) {
+        if (parts[0].length === 4) {
+            const y = parts[0];
+            const m = parts[1].padStart(2, '0');
+            const d = parts[2].padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+        if (parts[2].length === 4 || parts[2].length === 2) {
+            let y = parts[2];
+            if (y.length === 2) y = '20' + y;
+            let p0 = parseInt(parts[0], 10);
+            let p1 = parseInt(parts[1], 10);
+            let m = p0;
+            let d = p1;
+            if (p0 > 12) {
+                d = p0;
+                m = p1;
+            }
+            if (isNaN(m) || m < 1 || m > 12) m = 1;
+            if (isNaN(d) || d < 1 || d > 31) d = 1;
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+    }
+
+    const parsed = new Date(dateStr);
+    if (!isNaN(parsed.getTime())) {
+        const y = parsed.getFullYear();
+        const m = String(parsed.getMonth() + 1).padStart(2, '0');
+        const d = String(parsed.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    return clean;
+};
+
+/**
  * Downscale and compress an image file to prevent "Request Entity Too Large" errors
  * on mobile phone uploads or camera pictures while preserving high legibility for AI OCR.
  */
@@ -18466,16 +18511,16 @@ export const FinancialDashboardView: React.FC<{
         { name: 'Petty Cash In Hand', amount: totalPCReconciledBalance >= 0 ? totalPCReconciledBalance : 0, color: '#2563eb' },
     ], [totalAR, totalAP, totalEE, totalCampExpenses, totalPCReconciledBalance]);
 
-    // Chronological detail ledger for the selected account card click
+    // Chronological detail ledger for the selected account click (computed from raw data to maintain true opening balances across time)
     const selectedAccountLedger = useMemo(() => {
         if (!selectedAccount) return [];
 
         const book = selectedAccount;
-        const bookPcs = (filteredPettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
+        const bookPcs = (pettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
 
         const pcsMapped = bookPcs.map(item => ({
             id: item.id,
-            date: item.date || '',
+            date: normalizeToYYYYMMDD(item.date),
             description: item.description || 'Petty cash transaction',
             amount: Number(item.amount) || 0,
             changeType: item.type === 'Income' ? 'in' : 'out', // 'Income' is cash-in (Advance Receipt), 'Expense' is cash-out
@@ -18485,7 +18530,7 @@ export const FinancialDashboardView: React.FC<{
             originalItem: item
         }));
 
-        const matchingEE = (filteredEverydayExpenses || []).filter((item: any) => {
+        const matchingEE = (everydayExpenses || []).filter((item: any) => {
             const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
             const cleanUploader = uploaderRaw.split('(')[0].trim();
             const targetBook = book.toLowerCase().trim();
@@ -18499,7 +18544,7 @@ export const FinancialDashboardView: React.FC<{
 
         const eeMapped = matchingEE.map(item => ({
             id: item.id,
-            date: item.date || '',
+            date: normalizeToYYYYMMDD(item.date),
             description: item.description || `Everyday Bill: ${item.supplierName || item.shopName || 'Receipt'}`,
             amount: Number(item.totalAmount) || Number(item.billAmount) || 0,
             changeType: 'out', // Everyday Expense is always cash spent (outflow)
@@ -18531,16 +18576,54 @@ export const FinancialDashboardView: React.FC<{
                 balanceAfter: currentBal
             };
         });
-    }, [selectedAccount, filteredPettyCash, filteredEverydayExpenses]);
+    }, [selectedAccount, pettyCash, everydayExpenses]);
 
-    // Filtered chronological ledger according to search query and date range
-    const filteredAccountLedger = useMemo(() => {
-        if (!selectedAccountLedger || selectedAccountLedger.length === 0) return [];
+    // Calculate opening balance before the filtered date window, filtered ledger items, and total metrics
+    const { openingBalance, filteredAccountLedger, ledgerTotalAdvances, ledgerTotalSpendings, ledgerClosingBalance } = useMemo(() => {
+        if (!selectedAccountLedger || selectedAccountLedger.length === 0) {
+            return { openingBalance: 0, filteredAccountLedger: [], ledgerTotalAdvances: 0, ledgerTotalSpendings: 0, ledgerClosingBalance: 0 };
+        }
 
-        return selectedAccountLedger.filter(tx => {
-            // Date range filter
-            if (ledgerStartDate && tx.date && tx.date < ledgerStartDate) return false;
-            if (ledgerEndDate && tx.date && tx.date > ledgerEndDate) return false;
+        const normStartDate = normalizeToYYYYMMDD(ledgerStartDate);
+        const normEndDate = normalizeToYYYYMMDD(ledgerEndDate);
+
+        // Determine effective cutoff date for opening balance calculation
+        let startDateCutoff = normStartDate;
+        if (!startDateCutoff && selectedYear !== 'all') {
+            const y = selectedYear;
+            if (selectedMonth !== 'all') {
+                const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+                const mIdx = monthNames.indexOf(selectedMonth.toLowerCase());
+                if (mIdx >= 0) {
+                    const mStr = String(mIdx + 1).padStart(2, '0');
+                    startDateCutoff = `${y}-${mStr}-01`;
+                }
+            } else {
+                startDateCutoff = `${y}-01-01`;
+            }
+        }
+
+        // Opening balance is the balance after the last transaction strictly before the period start date
+        let openingBal = 0;
+        if (startDateCutoff) {
+            const previousTxs = selectedAccountLedger.filter(tx => tx.date && tx.date < startDateCutoff);
+            if (previousTxs.length > 0) {
+                openingBal = previousTxs[previousTxs.length - 1].balanceAfter;
+            }
+        }
+
+        // Filter transactions falling within the selected date window / filters
+        const filtered = selectedAccountLedger.filter(tx => {
+            // Explicit Date Range filter
+            if (normStartDate && tx.date && tx.date < normStartDate) return false;
+            if (normEndDate && tx.date && tx.date > normEndDate) return false;
+
+            // Month & Year dropdown filter (if explicit date range is not specified)
+            if (!normStartDate && !normEndDate) {
+                if (!matchDashboardMonthYear(tx.date, undefined, selectedMonth, selectedYear)) {
+                    return false;
+                }
+            }
 
             // Search query filter
             if (ledgerSearchQuery.trim()) {
@@ -18562,7 +18645,19 @@ export const FinancialDashboardView: React.FC<{
 
             return true;
         });
-    }, [selectedAccountLedger, ledgerStartDate, ledgerEndDate, ledgerSearchQuery, projects]);
+
+        const ledgerTotalAdvances = filtered.filter(tx => tx.changeType === 'in').reduce((sum, tx) => sum + tx.amount, 0);
+        const ledgerTotalSpendings = filtered.filter(tx => tx.changeType === 'out').reduce((sum, tx) => sum + tx.amount, 0);
+        const ledgerClosingBalance = openingBal + ledgerTotalAdvances - ledgerTotalSpendings;
+
+        return {
+            openingBalance: openingBal,
+            filteredAccountLedger: filtered,
+            ledgerTotalAdvances,
+            ledgerTotalSpendings,
+            ledgerClosingBalance
+        };
+    }, [selectedAccountLedger, ledgerStartDate, ledgerEndDate, ledgerSearchQuery, selectedMonth, selectedYear, projects]);
 
     // Handle overall reconciliation directory Excel Excel export
     const handleExportReconciliationExcel = () => {
@@ -18798,31 +18893,35 @@ export const FinancialDashboardView: React.FC<{
         doc.setLineWidth(0.3);
         doc.rect(15, cardY, 180, 18, 'D');
 
-        const totalAdvances = filteredAccountLedger.filter(tx => tx.changeType === 'in').reduce((sum, tx) => sum + tx.amount, 0);
-        const totalSpendings = filteredAccountLedger.filter(tx => tx.changeType === 'out').reduce((sum, tx) => sum + tx.amount, 0);
-        const finalBalance = filteredAccountLedger[filteredAccountLedger.length - 1]?.balanceAfter ?? 0;
-
         doc.setFont("Helvetica", "bold");
-        doc.setFontSize(7.5);
+        doc.setFontSize(6.8);
         doc.setTextColor(100, 116, 139);
-        doc.text("TOTAL CASH ADVANCES (IN)", 20, cardY + 5.5);
-        doc.text("TOTAL SPENDINGS TALLY (OUT)", 82, cardY + 5.5);
-        doc.text("NET RECONCILED SAFE CASH", 144, cardY + 5.5);
+        doc.text("OPENING BALANCE (PREV)", 18, cardY + 5.5);
+        doc.text("TOTAL CASH ADVANCES (IN)", 62, cardY + 5.5);
+        doc.text("TOTAL SPENDINGS TALLY (OUT)", 108, cardY + 5.5);
+        doc.text("NET RECONCILED SAFE CASH", 154, cardY + 5.5);
 
         doc.setFont("Helvetica", "bold");
-        doc.setFontSize(10.5);
+        doc.setFontSize(9.5);
+        if (openingBalance >= 0) {
+            doc.setTextColor(37, 99, 235);
+        } else {
+            doc.setTextColor(190, 24, 74);
+        }
+        doc.text(`AED ${openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 18, cardY + 12.5);
+
         doc.setTextColor(16, 124, 65); // Green for cash assets incoming
-        doc.text(`AED ${totalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 20, cardY + 12.5);
+        doc.text(`AED ${ledgerTotalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 62, cardY + 12.5);
 
         doc.setTextColor(190, 24, 74); // Red/Crimson for expenses/outflows
-        doc.text(`AED ${totalSpendings.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 82, cardY + 12.5);
+        doc.text(`AED ${ledgerTotalSpendings.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 108, cardY + 12.5);
 
-        if (finalBalance >= 0) {
+        if (ledgerClosingBalance >= 0) {
             doc.setTextColor(37, 99, 235); // Blue
         } else {
             doc.setTextColor(190, 24, 74); // Red deficit
         }
-        doc.text(`AED ${finalBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 144, cardY + 12.5);
+        doc.text(`AED ${ledgerClosingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}`, 154, cardY + 12.5);
 
         // Table headers starting point
         const tableHeaderY = 56;
@@ -19587,14 +19686,28 @@ export const FinancialDashboardView: React.FC<{
                             </div>
 
                             {/* Ledger Summary Cards banner */}
-                            <div className="px-6 sm:px-8 py-5 bg-slate-150/10 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="px-6 sm:px-8 py-5 bg-slate-150/10 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
-                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider">
-                                            Total Cash Advances {ledgerStartDate || ledgerEndDate || ledgerSearchQuery ? '(Filtered)' : ''}
+                                        <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
+                                            Opening Balance (Prev)
+                                        </span>
+                                        <span className={`text-lg font-black block mt-0.5 ${openingBalance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                                            AED {openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </span>
+                                    </div>
+                                    <div className="p-2 bg-slate-100 text-slate-600 rounded-xl">
+                                        <Scale className="w-4 h-4" />
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
+                                            Total Cash Advances (IN)
                                         </span>
                                         <span className="text-lg font-black text-emerald-700 block mt-0.5">
-                                            AED {(filteredAccountLedger.filter(tx => tx.changeType === 'in').reduce((sum, tx) => sum + tx.amount, 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            AED {ledgerTotalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
                                     <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -19604,11 +19717,11 @@ export const FinancialDashboardView: React.FC<{
 
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
-                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider">
-                                            Total Spendings Tally {ledgerStartDate || ledgerEndDate || ledgerSearchQuery ? '(Filtered)' : ''}
+                                        <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
+                                            Total Spendings Tally (OUT)
                                         </span>
                                         <span className="text-lg font-black text-rose-600 block mt-0.5">
-                                            AED {(filteredAccountLedger.filter(tx => tx.changeType === 'out').reduce((sum, tx) => sum + tx.amount, 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            AED {ledgerTotalSpendings.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
                                     <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
@@ -19618,15 +19731,11 @@ export const FinancialDashboardView: React.FC<{
 
                                 <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
-                                        <span className="text-[10px] font-black uppercase text-slate-405 block tracking-wider font-extrabold text-brand-600">
-                                            Reconciled Safe Cash Balance
+                                        <span className="text-[10px] font-black uppercase text-brand-600 block tracking-wider font-extrabold">
+                                            Reconciled Safe Cash
                                         </span>
-                                        <span className={`text-lg font-black block mt-0.5 ${
-                                            (filteredAccountLedger[filteredAccountLedger.length - 1]?.balanceAfter ?? 0) >= 0 
-                                                ? 'text-brand-600' 
-                                                : 'text-rose-600'
-                                        }`}>
-                                            AED {(filteredAccountLedger[filteredAccountLedger.length - 1]?.balanceAfter ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        <span className={`text-lg font-black block mt-0.5 ${ledgerClosingBalance >= 0 ? 'text-brand-600' : 'text-rose-600'}`}>
+                                            AED {ledgerClosingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
                                     <div className="p-2 bg-brand-50 text-brand-600 rounded-xl">

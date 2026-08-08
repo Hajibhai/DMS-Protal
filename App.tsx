@@ -49,6 +49,7 @@ if (typeof window !== 'undefined' && jsPDF.prototype && !(jsPDF.prototype as any
 import { cn, getPioneerPDFAssets } from './utils';
 import { PrintModal, PrintOptions } from './components/PrintModal';
 import { TimesheetPrintPreviewModal } from './components/TimesheetPrintPreviewModal';
+import { BackupRestoreView } from './components/BackupRestoreView';
 
 const DirhamIcon = ({ className }: { className?: string }) => (
   <div className={cn("flex items-center justify-center font-black text-[10px] leading-none tracking-tighter", className)}>
@@ -6946,6 +6947,9 @@ export default function App() {
       )}
       {activeTab === 'help' && (
         <HelpCenterView />
+      )}
+      {activeTab === 'backup' && (
+        <BackupRestoreView user={systemUser} everydayExpenses={everydayExpenses} onLogAction={handleLogAction} />
       )}
 
       {/* Modals */}

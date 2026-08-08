@@ -1,0 +1,894 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Database, Download, Upload, CheckSquare, Square, RefreshCw, 
+  FileJson, CheckCircle2, AlertTriangle, Info, ShieldCheck, 
+  Trash2, Layers, Search, FileText, Check, X, HardDrive, 
+  Clock, UserCheck, Sparkles, ArrowRight, Save, History, FileSpreadsheet
+} from 'lucide-react';
+import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch, query, orderBy, startAfter, limit } from 'firebase/firestore';
+import { db } from '../firebase';
+
+interface BackupModuleConfig {
+  id: string;
+  name: string;
+  collectionName: string;
+  category: 'HR & Staff' | 'Finance & Accounts' | 'Expenses & Cash' | 'Company & Assets' | 'Operations';
+  icon: string;
+  description: string;
+}
+
+const BACKUP_MODULES: BackupModuleConfig[] = [
+  // HR & Staff
+  { id: 'employees', name: 'Employees & Staff Profiles', collectionName: 'employees', category: 'HR & Staff', icon: 'UserCheck', description: 'Complete employee profiles, passports, codes, roles & images' },
+  { id: 'engineer_documents', name: 'Engineer Documents & CVs', collectionName: 'engineer_documents', category: 'HR & Staff', icon: 'FileText', description: 'Engineering credentials, certificates & expiration dates' },
+  { id: 'cicpa_records', name: 'CICPA Security Passes', collectionName: 'cicpa_records', category: 'HR & Staff', icon: 'ShieldCheck', description: 'CICPA pass numbers, project permissions & dates' },
+  { id: 'safety_records', name: 'Safety Officer Passes', collectionName: 'safety_records', category: 'HR & Staff', icon: 'ShieldCheck', description: 'Site safety certifications & training records' },
+  { id: 'job_offers', name: 'Job Offer Letters', collectionName: 'job_offers', category: 'HR & Staff', icon: 'FileText', description: 'Signed job offers, allowances & salary breakdowns' },
+  { id: 'attendance', name: 'Attendance & Timesheets', collectionName: 'attendance', category: 'HR & Staff', icon: 'Clock', description: 'Daily attendance, check-ins, overtime & site logs' },
+  { id: 'leaves', name: 'Leave Requests', collectionName: 'leaves', category: 'HR & Staff', icon: 'Clock', description: 'Approved, pending & rejected employee leave records' },
+  { id: 'deductions', name: 'Salary Deductions & Advances', collectionName: 'deductions', category: 'HR & Staff', icon: 'FileText', description: 'Monthly payroll deductions, loan repayments & fines' },
+  { id: 'holidays', name: 'Public Holidays Calendar', collectionName: 'holidays', category: 'HR & Staff', icon: 'Clock', description: 'Official corporate holidays & statutory non-working days' },
+
+  // Finance & Accounts
+  { id: 'accounts_payable', name: 'Accounts Payable (Invoices & Bills)', collectionName: 'accounts_payable', category: 'Finance & Accounts', icon: 'FileText', description: 'Supplier invoices, bill amounts, TRN numbers & payment status' },
+  { id: 'accounts_receivable', name: 'Accounts Receivable (Invoices & Receipts)', collectionName: 'accounts_receivable', category: 'Finance & Accounts', icon: 'FileText', description: 'Client billing invoices, progress claims & receipts' },
+  { id: 'projected_expenses', name: 'Projected Expenses & Budgets', collectionName: 'projected_expenses', category: 'Finance & Accounts', icon: 'FileText', description: 'Forecasted project expenditures & budget allocations' },
+  { id: 'vouchers', name: 'Financial Vouchers', collectionName: 'vouchers', category: 'Finance & Accounts', icon: 'FileText', description: 'Payment vouchers, receipt vouchers & petty cash slips' },
+
+  // Expenses & Cash
+  { id: 'everyday_expenses', name: 'Everyday Expenses (Bills & Photos)', collectionName: 'everyday_expenses', category: 'Expenses & Cash', icon: 'FileText', description: 'Operational expense bills, full receipt photos & line items' },
+  { id: 'petty_cash', name: 'Petty Cash Ledger & Books', collectionName: 'petty_cash', category: 'Expenses & Cash', icon: 'Database', description: 'Account-wise petty cash entries, cash advances & balances' },
+
+  // Company & Assets
+  { id: 'companies', name: 'Registered Companies', collectionName: 'companies', category: 'Company & Assets', icon: 'Layers', description: 'Trade licenses, establishments, TRN & corporate profiles' },
+  { id: 'bank_accounts', name: 'Bank Accounts & Routing', collectionName: 'bank_accounts', category: 'Company & Assets', icon: 'Layers', description: 'Corporate bank details, IBANs, routing codes & WPS config' },
+  { id: 'vehicles', name: 'Vehicles Fleet & Registration', collectionName: 'vehicles', category: 'Company & Assets', icon: 'Layers', description: 'Vehicle fleet details, Mulkiya registrations & insurance' },
+  { id: 'camps', name: 'Camp Accommodations', collectionName: 'camps', category: 'Company & Assets', icon: 'Layers', description: 'Labor camp contracts, rental schedules & deposits' },
+
+  // Operations
+  { id: 'projects', name: 'Projects Directory', collectionName: 'projects', category: 'Operations', icon: 'Layers', description: 'Client project master records, locations & managers' },
+  { id: 'vendors', name: 'Vendors Directory', collectionName: 'vendors', category: 'Operations', icon: 'Layers', description: 'Subcontractors, vendors, TRN & trade registration' },
+  { id: 'suppliers', name: 'Suppliers Directory', collectionName: 'suppliers', category: 'Operations', icon: 'Layers', description: 'Material suppliers, contact persons & account terms' },
+  { id: 'tasks', name: 'Tasks & Reminders', collectionName: 'tasks', category: 'Operations', icon: 'CheckSquare', description: 'System tasks, assignees, priorities & due dates' },
+  { id: 'notes', name: 'System Notes & Memos', collectionName: 'notes', category: 'Operations', icon: 'FileText', description: 'Corporate notes, meeting minutes & operational memos' },
+  { id: 'users', name: 'System Users & Roles', collectionName: 'users', category: 'Operations', icon: 'UserCheck', description: 'Portal access permissions, roles & system credentials' }
+];
+
+interface BackupRestoreViewProps {
+  user?: any;
+  everydayExpenses?: any[];
+  onLogAction?: (action: string, details: string, type?: string) => void;
+}
+
+export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, everydayExpenses, onLogAction }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'export' | 'import' | 'history'>('export');
+  
+  // Export State
+  const [selectedExportModules, setSelectedExportModules] = useState<string[]>(BACKUP_MODULES.map(m => m.id));
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number; label: string }>({ current: 0, total: 0, label: '' });
+  const [liveCounts, setLiveCounts] = useState<{ [key: string]: number }>({});
+  const [isLoadingCounts, setIsLoadingCounts] = useState<boolean>(true);
+
+  // Import / Restore State
+  const [uploadedBackupData, setUploadedBackupData] = useState<any | null>(null);
+  const [selectedRestoreModules, setSelectedRestoreModules] = useState<string[]>([]);
+  const [restoreMode, setRestoreMode] = useState<'merge' | 'overwrite'>('merge');
+  const [isRestoring, setIsRestoring] = useState<boolean>(false);
+  const [restoreProgress, setRestoreProgress] = useState<{ current: number; total: number; label: string }>({ current: 0, total: 0, label: '' });
+  const [restoreLogs, setRestoreLogs] = useState<string[]>([]);
+  const [restoreSuccessModal, setRestoreSuccessModal] = useState<boolean>(false);
+
+  // Local History
+  const [backupHistory, setBackupHistory] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('pioneer_backup_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Helper to fetch collection docs in safe chunks
+  const fetchCollectionItems = async (collectionName: string): Promise<any[]> => {
+    if (collectionName === 'everyday_expenses' && everydayExpenses && everydayExpenses.length > 0) {
+      return everydayExpenses;
+    }
+
+    const colRef = collection(db, collectionName);
+    let allDocs: any[] = [];
+    let lastDoc: any = null;
+    let hasMore = true;
+    let pageCount = 0;
+
+    while (hasMore && pageCount < 50) {
+      pageCount++;
+      try {
+        const q = lastDoc
+          ? query(colRef, orderBy('__name__'), startAfter(lastDoc), limit(30))
+          : query(colRef, orderBy('__name__'), limit(30));
+
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          hasMore = false;
+          break;
+        }
+
+        const chunk = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        allDocs = [...allDocs, ...chunk];
+
+        if (snap.docs.length < 30) {
+          hasMore = false;
+        } else {
+          lastDoc = snap.docs[snap.docs.length - 1];
+        }
+      } catch (err) {
+        console.warn(`Chunked query fallback for ${collectionName}:`, err);
+        try {
+          const directSnap = await getDocs(colRef);
+          return directSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (e) {
+          console.error(`Failed to fetch collection ${collectionName}:`, e);
+          return allDocs;
+        }
+      }
+    }
+
+    return allDocs;
+  };
+
+  // Fetch real-time document counts for each collection on load
+  useEffect(() => {
+    let isMounted = true;
+    const fetchCounts = async () => {
+      setIsLoadingCounts(true);
+      const counts: { [key: string]: number } = {};
+
+      for (const mod of BACKUP_MODULES) {
+        if (mod.collectionName === 'everyday_expenses' && everydayExpenses && everydayExpenses.length > 0) {
+          counts[mod.id] = everydayExpenses.length;
+          continue;
+        }
+
+        try {
+          const items = await fetchCollectionItems(mod.collectionName);
+          counts[mod.id] = items.length;
+        } catch {
+          counts[mod.id] = 0;
+        }
+      }
+
+      if (isMounted) {
+        setLiveCounts(counts);
+        setIsLoadingCounts(false);
+      }
+    };
+
+    fetchCounts();
+    return () => { isMounted = false; };
+  }, [everydayExpenses]);
+
+  const totalLiveRecords = Object.values(liveCounts).reduce((a, b) => a + b, 0);
+
+  // Toggle selection for export
+  const toggleExportModule = (id: string) => {
+    setSelectedExportModules(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const selectAllExport = () => setSelectedExportModules(BACKUP_MODULES.map(m => m.id));
+  const deselectAllExport = () => setSelectedExportModules([]);
+
+  // Execute Backup Export
+  const handleStartExport = async () => {
+    if (selectedExportModules.length === 0) {
+      alert('Please select at least one module/record category to backup.');
+      return;
+    }
+
+    setIsExporting(true);
+    setExportProgress({ current: 0, total: selectedExportModules.length, label: 'Initializing backup...' });
+
+    const exportBundle: any = {
+      metadata: {
+        version: '2.0',
+        system: 'Pioneer DMS Corporate Portal',
+        exportedAt: new Date().toISOString(),
+        exportedBy: user?.email || user?.name || 'Administrator',
+        totalModules: selectedExportModules.length,
+        recordCounts: {}
+      },
+      data: {}
+    };
+
+    let processedCount = 0;
+    let totalItemsDumped = 0;
+
+    for (const modId of selectedExportModules) {
+      const modConfig = BACKUP_MODULES.find(m => m.id === modId);
+      if (!modConfig) continue;
+
+      setExportProgress({ 
+        current: processedCount + 1, 
+        total: selectedExportModules.length, 
+        label: `Extracting ${modConfig.name}...` 
+      });
+
+      try {
+        const items = await fetchCollectionItems(modConfig.collectionName);
+
+        exportBundle.data[modConfig.collectionName] = items;
+        exportBundle.metadata.recordCounts[modConfig.id] = items.length;
+        totalItemsDumped += items.length;
+      } catch (err) {
+        console.error(`Failed to export collection ${modConfig.collectionName}:`, err);
+        exportBundle.data[modConfig.collectionName] = [];
+        exportBundle.metadata.recordCounts[modConfig.id] = 0;
+      }
+
+      processedCount++;
+    }
+
+    exportBundle.metadata.totalRecords = totalItemsDumped;
+
+    // Trigger download
+    const blob = new Blob([JSON.stringify(exportBundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const dateStr = new Date().toISOString().split('T')[0];
+    const timeStr = new Date().toTimeString().split(' ')[0].replace(/:/g, '');
+    const fileName = `pioneer_dms_full_backup_${dateStr}_${timeStr}.json`;
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // Record in local history
+    const historyEntry = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: 'EXPORT',
+      fileName,
+      timestamp: new Date().toISOString(),
+      by: user?.email || 'Admin',
+      totalRecords: totalItemsDumped,
+      modulesCount: selectedExportModules.length
+    };
+
+    const newHist = [historyEntry, ...backupHistory].slice(0, 20);
+    setBackupHistory(newHist);
+    localStorage.setItem('pioneer_backup_history', JSON.stringify(newHist));
+
+    if (onLogAction) {
+      onLogAction('System Data Backup Exported', `Backed up ${totalItemsDumped} records across ${selectedExportModules.length} categories to file ${fileName}.`, 'create');
+    }
+
+    setIsExporting(false);
+  };
+
+  // Handle File Upload for Restore
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (!json || (!json.data && typeof json !== 'object')) {
+          alert('Invalid backup file format. Expected JSON backup object containing data.');
+          return;
+        }
+
+        setUploadedBackupData(json);
+        
+        // Auto-select modules that exist in the backup file
+        const availableInFile: string[] = [];
+        BACKUP_MODULES.forEach(mod => {
+          if (json.data?.[mod.collectionName] && Array.isArray(json.data[mod.collectionName])) {
+            availableInFile.push(mod.id);
+          }
+        });
+
+        setSelectedRestoreModules(availableInFile);
+        setRestoreLogs([`File loaded: ${file.name} (${(file.size / 1024).toFixed(1)} KB). Found ${availableInFile.length} valid data modules.`]);
+      } catch (err) {
+        alert('Failed to parse JSON file. Please verify file integrity.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const toggleRestoreModule = (id: string) => {
+    setSelectedRestoreModules(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  // Execute Restore Operation
+  const handleStartRestore = async () => {
+    if (!uploadedBackupData || !uploadedBackupData.data) {
+      alert('Please upload a valid backup JSON file first.');
+      return;
+    }
+
+    if (selectedRestoreModules.length === 0) {
+      alert('Please select at least one module to restore.');
+      return;
+    }
+
+    const confirmMsg = restoreMode === 'overwrite'
+      ? `⚠️ WARNING: OVERWRITE MODE IS ACTIVE!\n\nThis will ERASE existing Firestore documents in the selected ${selectedRestoreModules.length} collections and replace them with records from the backup file.\n\nAre you sure you want to proceed?`
+      : `Are you sure you want to restore data for ${selectedRestoreModules.length} selected modules?\n\nExisting records will be updated/merged safely.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsRestoring(true);
+    const newLogs: string[] = [`Starting restore process in [${restoreMode.toUpperCase()}] mode...`];
+    setRestoreLogs(newLogs);
+
+    let totalSuccessDocs = 0;
+    let currentStep = 0;
+
+    for (const modId of selectedRestoreModules) {
+      const modConfig = BACKUP_MODULES.find(m => m.id === modId);
+      if (!modConfig) continue;
+
+      const items = uploadedBackupData.data[modConfig.collectionName];
+      if (!Array.isArray(items) || items.length === 0) {
+        newLogs.push(`Skipping ${modConfig.name}: No records in backup file.`);
+        setRestoreLogs([...newLogs]);
+        currentStep++;
+        continue;
+      }
+
+      setRestoreProgress({
+        current: currentStep + 1,
+        total: selectedRestoreModules.length,
+        label: `Restoring ${modConfig.name} (${items.length} entries)...`
+      });
+
+      try {
+        // If overwrite mode, purge existing collection records first
+        if (restoreMode === 'overwrite') {
+          newLogs.push(`Purging existing records in ${modConfig.collectionName}...`);
+          setRestoreLogs([...newLogs]);
+          const existingSnap = await getDocs(collection(db, modConfig.collectionName));
+          const deletePromises = existingSnap.docs.map(docSnap => deleteDoc(doc(db, modConfig.collectionName, docSnap.id)));
+          await Promise.all(deletePromises);
+        }
+
+        // Write batch insertion
+        newLogs.push(`Importing ${items.length} records into ${modConfig.collectionName}...`);
+        setRestoreLogs([...newLogs]);
+
+        // Process in chunks of 100 for Firestore batch safety
+        const chunkSize = 100;
+        for (let i = 0; i < items.length; i += chunkSize) {
+          const chunk = items.slice(i, i + chunkSize);
+          const batch = writeBatch(db);
+
+          chunk.forEach(item => {
+            const docId = item.id || Math.random().toString(36).substring(2, 11);
+            const cleanItem = { ...item };
+            delete cleanItem.id; // remove id property from doc body before setting
+            const docRef = doc(db, modConfig.collectionName, docId);
+            batch.set(docRef, cleanItem, { merge: restoreMode === 'merge' });
+          });
+
+          await batch.commit();
+        }
+
+        totalSuccessDocs += items.length;
+        newLogs.push(`✅ Successfully restored ${items.length} records to ${modConfig.name}.`);
+        setRestoreLogs([...newLogs]);
+      } catch (err: any) {
+        console.error(`Error restoring module ${modConfig.name}:`, err);
+        newLogs.push(`❌ Failed to restore ${modConfig.name}: ${err.message || String(err)}`);
+        setRestoreLogs([...newLogs]);
+      }
+
+      currentStep++;
+    }
+
+    newLogs.push(`🎉 Restore operation completed! Total restored documents: ${totalSuccessDocs}.`);
+    setRestoreLogs([...newLogs]);
+
+    // Record in local history
+    const historyEntry = {
+      id: Math.random().toString(36).substring(2, 9),
+      type: 'RESTORE',
+      fileName: 'Imported Backup File',
+      timestamp: new Date().toISOString(),
+      by: user?.email || 'Admin',
+      totalRecords: totalSuccessDocs,
+      modulesCount: selectedRestoreModules.length,
+      mode: restoreMode
+    };
+
+    const newHist = [historyEntry, ...backupHistory].slice(0, 20);
+    setBackupHistory(newHist);
+    localStorage.setItem('pioneer_backup_history', JSON.stringify(newHist));
+
+    if (onLogAction) {
+      onLogAction('System Data Restored from Backup', `Restored ${totalSuccessDocs} documents across ${selectedRestoreModules.length} modules using [${restoreMode}] mode.`, 'update');
+    }
+
+    setIsRestoring(false);
+    setRestoreSuccessModal(true);
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto space-y-8 pb-12">
+      {/* Header Banner */}
+      <div className="bg-slate-900 rounded-[2.5rem] p-8 sm:p-10 text-white shadow-2xl relative overflow-hidden border border-slate-800">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-3 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-500/20 text-brand-300 border border-brand-500/30 rounded-full text-[11px] font-black uppercase tracking-wider">
+              <Database className="w-3.5 h-3.5" /> Corporate Data Management
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+              Database Backup & Restore Center
+            </h1>
+            <p className="text-slate-400 text-sm font-medium leading-relaxed">
+              Export high-fidelity JSON backups containing complete corporate records, bill receipts, attachments, employee profiles, and financial entries, or restore snapshot data securely into Firestore.
+            </p>
+          </div>
+
+          <div className="bg-white/5 border border-white/10 rounded-3xl p-5 flex items-center gap-5 shrink-0 backdrop-blur-md">
+            <div className="p-3 bg-brand-500/20 rounded-2xl text-brand-400">
+              <HardDrive className="w-7 h-7" />
+            </div>
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Total Live Records</span>
+              <span className="text-2xl font-black text-white block mt-0.5">
+                {isLoadingCounts ? (
+                  <RefreshCw className="w-5 h-5 animate-spin text-brand-400 inline-block" />
+                ) : (
+                  totalLiveRecords.toLocaleString()
+                )}
+              </span>
+              <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1 mt-0.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Synchronized with Firestore
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Sub-Tabs Navigation */}
+        <div className="flex items-center gap-2 mt-8 border-t border-slate-800/80 pt-6">
+          <button
+            onClick={() => setActiveSubTab('export')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-2.5 ${
+              activeSubTab === 'export'
+                ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/30'
+                : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Download className="w-4 h-4" /> Backup Export
+          </button>
+          <button
+            onClick={() => setActiveSubTab('import')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-2.5 ${
+              activeSubTab === 'import'
+                ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/30'
+                : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Upload className="w-4 h-4" /> Restore Data
+          </button>
+          <button
+            onClick={() => setActiveSubTab('history')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-2.5 ${
+              activeSubTab === 'history'
+                ? 'bg-brand-600 text-white shadow-lg shadow-brand-600/30'
+                : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <History className="w-4 h-4" /> Activity History ({backupHistory.length})
+          </button>
+        </div>
+      </div>
+
+      {/* SUB-TAB 1: BACKUP EXPORT */}
+      {activeSubTab === 'export' && (
+        <div className="space-y-6">
+          {/* Controls bar */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <Download className="w-5 h-5 text-brand-600" /> Select Records to Backup
+              </h2>
+              <p className="text-slate-500 text-xs font-medium mt-0.5">
+                Choose specific collections or perform a full system export.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={selectAllExport}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <CheckSquare className="w-4 h-4 text-brand-600" /> Select All ({BACKUP_MODULES.length})
+              </button>
+              <button
+                onClick={deselectAllExport}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Square className="w-4 h-4 text-slate-400" /> Deselect All
+              </button>
+              <button
+                onClick={handleStartExport}
+                disabled={isExporting || selectedExportModules.length === 0}
+                className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-black tracking-wider transition-all shadow-md shadow-brand-600/20 flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isExporting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" /> Download Backup (.json)
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Progress bar during export */}
+          {isExporting && (
+            <div className="bg-brand-50 border border-brand-200 p-6 rounded-3xl space-y-3 animate-pulse">
+              <div className="flex items-center justify-between text-xs font-bold text-brand-900">
+                <span>{exportProgress.label}</span>
+                <span>{exportProgress.current} / {exportProgress.total} Modules</span>
+              </div>
+              <div className="w-full bg-brand-200 rounded-full h-2.5 overflow-hidden">
+                <div 
+                  className="bg-brand-600 h-2.5 rounded-full transition-all duration-300" 
+                  style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Grid of Backup Modules Grouped by Category */}
+          {['HR & Staff', 'Finance & Accounts', 'Expenses & Cash', 'Company & Assets', 'Operations'].map((cat) => {
+            const modulesInCat = BACKUP_MODULES.filter(m => m.category === cat);
+            if (modulesInCat.length === 0) return null;
+
+            return (
+              <div key={cat} className="space-y-3">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest px-2">
+                  {cat} ({modulesInCat.length} Modules)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {modulesInCat.map((mod) => {
+                    const isSelected = selectedExportModules.includes(mod.id);
+                    const count = liveCounts[mod.id] ?? 0;
+
+                    return (
+                      <div
+                        key={mod.id}
+                        onClick={() => toggleExportModule(mod.id)}
+                        className={`p-5 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between space-y-4 ${
+                          isSelected 
+                            ? 'bg-white border-brand-500 shadow-md ring-2 ring-brand-500/10' 
+                            : 'bg-white/60 border-slate-200/70 hover:border-slate-300 opacity-75'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2.5 rounded-2xl ${isSelected ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'}`}>
+                              <Layers className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-black text-slate-900 leading-snug">{mod.name}</h4>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                Collection: {mod.collectionName}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                            isSelected ? 'bg-brand-600 border-brand-600 text-white' : 'border-slate-300 bg-white'
+                          }`}>
+                            {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                          {mod.description}
+                        </p>
+
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                          <span className="text-slate-400 font-bold">Records In Database</span>
+                          <span className={`font-black px-2.5 py-0.5 rounded-full text-[11px] ${
+                            count > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {count.toLocaleString()} {count === 1 ? 'entry' : 'entries'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* SUB-TAB 2: RESTORE DATA */}
+      {activeSubTab === 'import' && (
+        <div className="space-y-6">
+          {/* Upload File Dropzone */}
+          <div className="bg-white p-8 sm:p-10 rounded-[2.5rem] border-2 border-dashed border-slate-300 hover:border-brand-500 transition-all text-center space-y-4">
+            <div className="w-16 h-16 bg-brand-50 text-brand-600 rounded-3xl flex items-center justify-center mx-auto shadow-sm">
+              <FileJson className="w-8 h-8" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-slate-900">Upload Pioneer Backup File (.json)</h3>
+              <p className="text-slate-500 text-xs font-medium max-w-md mx-auto">
+                Select a previously downloaded system backup file to inspect entries and restore corporate records.
+              </p>
+            </div>
+
+            <label className="inline-flex items-center gap-2 px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl text-xs font-black tracking-wider transition-all shadow-md shadow-brand-600/20 cursor-pointer">
+              <Upload className="w-4 h-4" /> Browse & Select JSON File
+              <input 
+                type="file" 
+                accept=".json,application/json" 
+                onChange={handleFileUpload} 
+                className="hidden" 
+              />
+            </label>
+          </div>
+
+          {/* If file is loaded */}
+          {uploadedBackupData && (
+            <div className="space-y-6">
+              {/* File Summary Banner */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                    <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full font-black text-[10px] uppercase">
+                      Valid Backup Verified
+                    </span>
+                    <span>System Version: {uploadedBackupData.metadata?.version || '1.0'}</span>
+                    <span>• Exported: {uploadedBackupData.metadata?.exportedAt ? new Date(uploadedBackupData.metadata.exportedAt).toLocaleString() : 'Unknown'}</span>
+                  </div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                    Backup File Contains {uploadedBackupData.metadata?.totalRecords || Object.values(uploadedBackupData.data || {}).reduce((sum: number, arr: any) => sum + (Array.isArray(arr) ? arr.length : 0), 0)} Total Documents
+                  </h3>
+                  <p className="text-slate-500 text-xs font-medium">
+                    Exported by: <strong className="text-slate-700">{uploadedBackupData.metadata?.exportedBy || 'System Admin'}</strong>
+                  </p>
+                </div>
+
+                {/* Restore Mode Selector */}
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 ml-1">Restore Mode:</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setRestoreMode('merge')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        restoreMode === 'merge' ? 'bg-white text-brand-600 shadow-xs font-black border border-slate-200' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      🔄 Merge & Update
+                    </button>
+                    <button
+                      onClick={() => setRestoreMode('overwrite')}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        restoreMode === 'overwrite' ? 'bg-rose-600 text-white shadow-xs font-black' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      ⚠️ Overwrite Collection
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Module Selector for Restore */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                    Select Data Modules to Restore
+                  </h3>
+                  <div className="flex items-center gap-3 text-xs font-bold text-slate-600">
+                    <span>{selectedRestoreModules.length} selected for restore</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {BACKUP_MODULES.map((mod) => {
+                    const itemsInBackup = uploadedBackupData.data?.[mod.collectionName];
+                    const itemCount = Array.isArray(itemsInBackup) ? itemsInBackup.length : 0;
+                    if (itemCount === 0) return null; // Only show modules that exist in uploaded file
+
+                    const isSelected = selectedRestoreModules.includes(mod.id);
+
+                    return (
+                      <div
+                        key={mod.id}
+                        onClick={() => toggleRestoreModule(mod.id)}
+                        className={`p-5 rounded-3xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                          isSelected 
+                            ? 'bg-white border-brand-500 shadow-sm ring-2 ring-brand-500/10' 
+                            : 'bg-white/60 border-slate-200/70 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2.5 rounded-2xl ${isSelected ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'}`}>
+                            <Layers className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-slate-900">{mod.name}</h4>
+                            <span className="text-[11px] text-emerald-600 font-bold block mt-0.5">
+                              {itemCount} records in backup
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className={`w-5 h-5 rounded-lg border flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected ? 'bg-brand-600 border-brand-600 text-white' : 'border-slate-300 bg-white'
+                        }`}>
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Restore Action Button */}
+              <div className="pt-4 flex justify-end">
+                <button
+                  onClick={handleStartRestore}
+                  disabled={isRestoring || selectedRestoreModules.length === 0}
+                  className="px-8 py-3.5 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white rounded-2xl text-xs font-black tracking-wider transition-all shadow-lg shadow-brand-600/30 flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  {isRestoring ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Restoring Records...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" /> Start Restore Process
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Progress & Live Console Output */}
+              {restoreLogs.length > 0 && (
+                <div className="bg-slate-900 rounded-3xl p-6 text-slate-300 space-y-3 font-mono text-xs border border-slate-800">
+                  <div className="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800">
+                    <span className="font-bold flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-brand-400" /> Live Restore Log Console
+                    </span>
+                    {isRestoring && <span className="text-amber-400 animate-pulse font-bold">Processing...</span>}
+                  </div>
+                  <div className="max-h-60 overflow-y-auto space-y-1 pr-2 text-[11px] leading-relaxed">
+                    {restoreLogs.map((log, idx) => (
+                      <div key={idx} className="flex items-start gap-2">
+                        <span className="text-slate-600 select-none">&gt;</span>
+                        <span>{log}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SUB-TAB 3: ACTIVITY HISTORY */}
+      {activeSubTab === 'history' && (
+        <div className="bg-white rounded-3xl border border-slate-200/80 p-8 shadow-xs space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">Backup & Restore Activity Logs</h2>
+              <p className="text-slate-500 text-xs font-medium mt-0.5">Recent system backup downloads and data restoration history.</p>
+            </div>
+
+            {backupHistory.length > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Clear activity logs history?')) {
+                    setBackupHistory([]);
+                    localStorage.removeItem('pioneer_backup_history');
+                  }
+                }}
+                className="text-xs text-rose-600 hover:text-rose-700 font-bold cursor-pointer"
+              >
+                Clear History
+              </button>
+            )}
+          </div>
+
+          {backupHistory.length === 0 ? (
+            <div className="py-12 text-center space-y-3">
+              <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+                <History className="w-6 h-6" />
+              </div>
+              <p className="text-slate-500 text-xs font-medium">No recent backup or restore actions recorded.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {backupHistory.map((item) => (
+                <div key={item.id} className="py-4 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className={`p-2.5 rounded-2xl ${
+                      item.type === 'EXPORT' ? 'bg-brand-50 text-brand-600' : 'bg-emerald-50 text-emerald-600'
+                    }`}>
+                      {item.type === 'EXPORT' ? <Download className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-black text-slate-900">
+                          {item.type === 'EXPORT' ? 'Backup Exported' : 'Data Restored'}
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
+                          {item.fileName}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {item.totalRecords} records across {item.modulesCount} modules • Executed by {item.by}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="text-xs font-bold text-slate-400">
+                    {new Date(item.timestamp).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SUCCESS RESTORE MODAL */}
+      <AnimatePresence>
+        {restoreSuccessModal && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2.5rem] p-8 max-w-md w-full text-center space-y-6 shadow-2xl border border-slate-100"
+            >
+              <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-xs">
+                <CheckCircle2 className="w-10 h-10" />
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight">Restore Completed!</h3>
+                <p className="text-slate-500 text-xs font-medium leading-relaxed">
+                  Selected data modules have been successfully synchronized with the Firestore database.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setRestoreSuccessModal(false);
+                  window.location.reload(); // Refresh app state to display restored data everywhere
+                }}
+                className="w-full py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl text-xs font-black tracking-wider shadow-md shadow-brand-600/20 cursor-pointer"
+              >
+                Reload Application View
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
