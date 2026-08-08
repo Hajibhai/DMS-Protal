@@ -68,6 +68,52 @@ import { saveEverydayExpense } from '../services/storageService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 
 /**
+ * Universal robust Date-Month-Year extractor that seamlessly handles:
+ * - YYYY-MM-DD / YYYY/MM/DD
+ * - DD-MM-YYYY / DD/MM/YYYY / DD.MM.YYYY
+ * - MM-DD-YYYY / MM/DD/YYYY
+ * - YYYY-MM
+ * - ISO string / JS Date fallback
+ */
+export const extractDateMonthYear = (dateStr: string | undefined | null): { year: string; month: string } => {
+    if (!dateStr) return { year: '', month: '' };
+    const str = String(dateStr).trim().replace(/\//g, '-').replace(/\./g, '-');
+    const parts = str.split('-').map(p => p.trim()).filter(Boolean);
+
+    if (parts.length >= 3) {
+        if (parts[0].length === 4) {
+            const y = parts[0];
+            const m = parts[1].padStart(2, '0');
+            return { year: y, month: m };
+        }
+        if (parts[2].length === 4 || parts[2].length === 2) {
+            let y = parts[2];
+            if (y.length === 2) y = '20' + y;
+            let m = parts[1].padStart(2, '0');
+            const mNum = parseInt(m, 10);
+            if (isNaN(mNum) || mNum < 1 || mNum > 12) {
+                m = parts[0].padStart(2, '0');
+            }
+            return { year: y, month: m };
+        }
+    } else if (parts.length === 2) {
+        if (parts[0].length === 4) {
+            return { year: parts[0], month: parts[1].padStart(2, '0') };
+        }
+    }
+
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+        return {
+            year: String(d.getFullYear()),
+            month: String(d.getMonth() + 1).padStart(2, '0')
+        };
+    }
+
+    return { year: '', month: '' };
+};
+
+/**
  * Downscale and compress an image file to prevent "Request Entity Too Large" errors
  * on mobile phone uploads or camera pictures while preserving high legibility for AI OCR.
  */
@@ -14896,46 +14942,43 @@ export const EverydayExpenseView: React.FC<{
     // Determine initial selected month and year based on available data
     const [selectedMonth, setSelectedMonth] = useState<string>(() => {
         if (!data || data.length === 0) return currentCalMonth;
-        const hasCurrentMonth = data.some(item => item.date && (item.date.startsWith(`${currentCalYear}-${currentCalMonth}`) || item.date.startsWith(`${currentCalYear}/${currentCalMonth}`)));
+        const hasCurrentMonth = data.some(item => {
+            const { year, month } = extractDateMonthYear(item.date);
+            return year === currentCalYear && month === currentCalMonth;
+        });
         if (hasCurrentMonth) return currentCalMonth;
         
-        // Find latest date month in data
         let latestDate = '';
         data.forEach(item => { if (item.date && item.date > latestDate) latestDate = item.date; });
-        if (latestDate && latestDate.includes('-')) {
-            const parts = latestDate.split('-');
-            if (parts[0].length === 4) return parts[1].padStart(2, '0');
-        }
-        return currentCalMonth;
+        const { month } = extractDateMonthYear(latestDate);
+        return month || currentCalMonth;
     });
 
     const [selectedYear, setSelectedYear] = useState<string>(() => {
         if (!data || data.length === 0) return currentCalYear;
-        const hasCurrentMonth = data.some(item => item.date && (item.date.startsWith(`${currentCalYear}-${currentCalMonth}`) || item.date.startsWith(`${currentCalYear}/${currentCalMonth}`)));
+        const hasCurrentMonth = data.some(item => {
+            const { year, month } = extractDateMonthYear(item.date);
+            return year === currentCalYear && month === currentCalMonth;
+        });
         if (hasCurrentMonth) return currentCalYear;
 
         let latestDate = '';
         data.forEach(item => { if (item.date && item.date > latestDate) latestDate = item.date; });
-        if (latestDate && latestDate.includes('-')) {
-            const parts = latestDate.split('-');
-            if (parts[0].length === 4) return parts[0];
-        }
-        return currentCalYear;
+        const { year } = extractDateMonthYear(latestDate);
+        return year || currentCalYear;
     });
 
-    // Sync selected month/year if data loads asynchronously
+    // Sync selected month/year if data loads asynchronously (only if current filter matches 0 items on load)
     useEffect(() => {
         if (!data || data.length === 0) return;
-        const hasCurrentMonth = data.some(item => item.date && (item.date.startsWith(`${currentCalYear}-${currentCalMonth}`) || item.date.startsWith(`${currentCalYear}/${currentCalMonth}`)));
+        const hasCurrentMonth = data.some(item => {
+            const { year, month } = extractDateMonthYear(item.date);
+            return year === currentCalYear && month === currentCalMonth;
+        });
         
-        // Check if currently selected filter produces 0 results
         const matchesCurrentFilter = data.some(item => {
             if (!item.date) return false;
-            let itemYear = '', itemMonth = '';
-            if (item.date.includes('-')) {
-                const parts = item.date.split('-');
-                if (parts[0].length === 4) { itemYear = parts[0]; itemMonth = parts[1].padStart(2, '0'); }
-            }
+            const { year: itemYear, month: itemMonth } = extractDateMonthYear(item.date);
             return (selectedMonth ? itemMonth === selectedMonth : true) && (selectedYear ? itemYear === selectedYear : true);
         });
 
@@ -14946,13 +14989,9 @@ export const EverydayExpenseView: React.FC<{
             } else {
                 let latestDate = '';
                 data.forEach(item => { if (item.date && item.date > latestDate) latestDate = item.date; });
-                if (latestDate && latestDate.includes('-')) {
-                    const parts = latestDate.split('-');
-                    if (parts[0].length === 4) {
-                        setSelectedYear(parts[0]);
-                        setSelectedMonth(parts[1].padStart(2, '0'));
-                    }
-                }
+                const { year, month } = extractDateMonthYear(latestDate);
+                if (year) setSelectedYear(year);
+                if (month) setSelectedMonth(month);
             }
         }
     }, [data]);
@@ -15284,21 +15323,8 @@ export const EverydayExpenseView: React.FC<{
 
     const years = useMemo(() => {
         const extracted = Array.from(new Set(data.map(d => {
-            if (!d.date) return '';
-            let y = '';
-            if (d.date.includes('-')) {
-                const parts = d.date.split('-');
-                if (parts[0].length === 4) y = parts[0];
-                else if (parts[2]?.length === 4) y = parts[2];
-            } else if (d.date.includes('/')) {
-                const parts = d.date.split('/');
-                if (parts[2]?.length === 4) y = parts[2];
-            }
-            if (!y) {
-                const dt = new Date(d.date);
-                if (!isNaN(dt.getTime())) y = String(dt.getFullYear());
-            }
-            return y && y.length === 4 ? y : '';
+            const { year } = extractDateMonthYear(d.date);
+            return year;
         }).filter(Boolean))).sort();
         return ['', ...extracted];
     }, [data]);
@@ -15306,33 +15332,7 @@ export const EverydayExpenseView: React.FC<{
     const filteredLedgerData = useMemo(() => {
         return data.filter(item => {
             if (!item.date) return true;
-            let itemYear = '';
-            let itemMonth = '';
-
-            if (item.date.includes('-')) {
-                const parts = item.date.split('-');
-                if (parts[0].length === 4) {
-                    itemYear = parts[0];
-                    itemMonth = parts[1].padStart(2, '0');
-                } else if (parts[2]?.length === 4) {
-                    itemYear = parts[2];
-                    itemMonth = parts[1].padStart(2, '0');
-                }
-            } else if (item.date.includes('/')) {
-                const parts = item.date.split('/');
-                if (parts[2]?.length === 4) {
-                    itemYear = parts[2];
-                    itemMonth = parts[0].padStart(2, '0');
-                }
-            }
-
-            if (!itemYear || !itemMonth) {
-                const d = new Date(item.date);
-                if (!isNaN(d.getTime())) {
-                    itemYear = String(d.getFullYear());
-                    itemMonth = String(d.getMonth() + 1).padStart(2, '0');
-                }
-            }
+            const { year: itemYear, month: itemMonth } = extractDateMonthYear(item.date);
 
             const matchesMonth = selectedMonth ? itemMonth === selectedMonth : true;
             const matchesYear = selectedYear ? itemYear === selectedYear : true;
@@ -15494,22 +15494,71 @@ export const EverydayExpenseView: React.FC<{
 
         let startStr = '';
         if (selectedYear && selectedMonth) {
-            startStr = `${selectedYear}-${selectedMonth}-01`;
+            startStr = `${selectedYear}-${selectedMonth.padStart(2, '0')}-01`;
         } else if (selectedYear) {
             startStr = `${selectedYear}-01-01`;
         }
 
+        const parseDateParts = (dateStr?: string) => {
+            if (!dateStr) return { year: '', month: '', formatted: '' };
+            const clean = dateStr.trim().replace(/\//g, '-');
+            const parts = clean.split('-');
+            if (parts.length >= 3) {
+                let y = parts[0];
+                let m = parts[1].padStart(2, '0');
+                let d = parts[2].split('T')[0].padStart(2, '0');
+                if (y.length === 2) {
+                    y = '20' + y;
+                }
+                return { year: y, month: m, formatted: `${y}-${m}-${d}` };
+            }
+            return { year: '', month: '', formatted: clean };
+        };
+
         const isBeforePeriod = (dateStr?: string) => {
             if (!startStr || !dateStr) return false;
-            return dateStr < startStr;
+            const parsed = parseDateParts(dateStr);
+            if (!parsed.formatted) return false;
+            return parsed.formatted < startStr;
         };
 
         const isInPeriod = (dateStr?: string) => {
             if (!dateStr) return true;
-            const [year, month] = dateStr.split('-');
-            const matchesMonth = selectedMonth ? month === selectedMonth : true;
-            const matchesYear = selectedYear ? year === selectedYear : true;
+            const parsed = parseDateParts(dateStr);
+            const matchesMonth = selectedMonth ? parsed.month === selectedMonth.padStart(2, '0') : true;
+            const matchesYear = selectedYear ? parsed.year === selectedYear : true;
             return matchesMonth && matchesYear;
+        };
+
+        const matchEEToAccount = (item: any, searchKey: string, empObj?: any) => {
+            if (!item || !searchKey) return false;
+            const key = searchKey.toLowerCase().trim();
+
+            if (empObj && empObj.id && item.employeeId && item.employeeId === empObj.id) {
+                return true;
+            }
+
+            const checkStr = (val?: string) => {
+                if (!val) return false;
+                const raw = String(val).toLowerCase().trim();
+                const clean = raw.split('(')[0].trim();
+                if (!clean) return false;
+
+                return clean === key ||
+                       raw === key ||
+                       raw.includes(key) ||
+                       key.includes(clean) ||
+                       (clean === 'jamel' && key === 'jamil') ||
+                       (clean === 'jamil' && key === 'jamel') ||
+                       (clean === 'alam' && key.includes('alam')) ||
+                       (clean === 'alam-g' && key.includes('alam'));
+            };
+
+            return checkStr(item.uploadedBy) ||
+                   checkStr(item.requestedBy) ||
+                   checkStr(item.staffMember) ||
+                   checkStr(item.employeeName) ||
+                   checkStr(item.category);
         };
 
         activePCBooks.forEach(bookRaw => {
@@ -15549,16 +15598,7 @@ export const EverydayExpenseView: React.FC<{
                 (item.requestedBy && bookKey && item.requestedBy.toLowerCase().trim() === bookKey)
             );
 
-            const allAccountEEs = (data || []).filter(item => {
-                const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
-                const cleanUploader = uploaderRaw.split('(')[0].trim();
-                
-                return cleanUploader === bookKey || 
-                       uploaderRaw.includes(bookKey) || 
-                       bookKey.includes(cleanUploader) ||
-                       (cleanUploader === 'jamel' && bookKey === 'jamil') ||
-                       (cleanUploader === 'jamil' && bookKey === 'jamel');
-            });
+            const allAccountEEs = (data || []).filter(item => matchEEToAccount(item, bookKey, matchedEmp));
 
             // 1. Opening Balance Calculation (Items prior to selected period)
             const priorPCs = allAccountPCs.filter(item => isBeforePeriod(item.date));
@@ -15618,16 +15658,7 @@ export const EverydayExpenseView: React.FC<{
                 (item.requestedBy && emp.name && item.requestedBy.toLowerCase().trim() === empKey)
             );
 
-            const allAccountEEs = (data || []).filter(item => {
-                const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
-                const cleanUploader = uploaderRaw.split('(')[0].trim();
-                
-                return cleanUploader === empKey || 
-                       uploaderRaw.includes(empKey) || 
-                       empKey.includes(cleanUploader) ||
-                       (cleanUploader === 'jamel' && empKey === 'jamil') ||
-                       (cleanUploader === 'jamil' && empKey === 'jamel');
-            });
+            const allAccountEEs = (data || []).filter(item => matchEEToAccount(item, empKey, emp));
 
             const priorPCs = allAccountPCs.filter(item => isBeforePeriod(item.date));
             const priorEEs = allAccountEEs.filter(item => isBeforePeriod(item.date));
@@ -15675,6 +15706,46 @@ export const EverydayExpenseView: React.FC<{
                 });
             }
         });
+
+        // Catch any remaining unassigned Everyday Expense bills so 100% of bills are accounted for
+        const matchedEEIds = new Set<string>();
+        resolvedTalliesMap.forEach(tally => {
+            (tally.allEverydayItems || []).forEach((item: any) => {
+                if (item.id) matchedEEIds.add(item.id);
+            });
+        });
+
+        const unassignedEEs = (data || []).filter(item => item.id && !matchedEEIds.has(item.id));
+        if (unassignedEEs.length > 0) {
+            const priorUnassignedEEs = unassignedEEs.filter(item => isBeforePeriod(item.date));
+            const openingEverydaySpent = priorUnassignedEEs.reduce((s, i) => s + (Number(i.totalAmount) || Number(i.billAmount) || 0), 0);
+            const openingBalance = -openingEverydaySpent;
+
+            const periodUnassignedEEs = unassignedEEs.filter(item => isInPeriod(item.date));
+            const totalEverydaySpent = periodUnassignedEEs.reduce((s, i) => s + (Number(i.totalAmount) || Number(i.billAmount) || 0), 0);
+            const totalSpending = totalEverydaySpent;
+            const netBalance = openingBalance - totalSpending;
+
+            resolvedTalliesMap.set('unassigned_general', {
+                employee: {
+                    id: 'unassigned_general',
+                    name: 'General / Unassigned Bills',
+                    designation: 'Unmapped Handler Bills',
+                    code: 'GEN-EXP'
+                },
+                pettyCashItems: [],
+                everydayItems: periodUnassignedEEs,
+                allPettyCashItems: [],
+                allEverydayItems: unassignedEEs,
+                openingBalance,
+                totalAdvanced: 0,
+                totalDirectSpent: 0,
+                totalEverydaySpent,
+                totalSpending,
+                netBalance,
+                verifiedBillsCount: periodUnassignedEEs.length
+            });
+        }
 
         return Array.from(resolvedTalliesMap.values());
     }, [employees, pettyCash, data, selectedMonth, selectedYear]);
@@ -18265,17 +18336,16 @@ export const FinancialDashboardView: React.FC<{
         let itemYear = '';
         
         if (dateStr) {
-            const parts = dateStr.split('-');
-            if (parts.length >= 2) {
-                const y = parts[0];
-                const m = parseInt(parts[1], 10);
+            const { year, month } = extractDateMonthYear(dateStr);
+            if (year && month) {
+                const m = parseInt(month, 10);
                 if (!isNaN(m) && m >= 1 && m <= 12) {
                     const monthNames = [
                         "January", "February", "March", "April", "May", "June",
                         "July", "August", "September", "October", "November", "December"
                     ];
                     itemMonth = monthNames[m - 1];
-                    itemYear = y;
+                    itemYear = year;
                 }
             }
         }

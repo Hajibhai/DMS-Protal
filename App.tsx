@@ -5890,51 +5890,90 @@ export default function App() {
   };
 
   const handleDeleteAR = async (ar: AccountsReceivable) => {
-    openConfirm("Delete Entry", `Are you sure you want to delete invoice ${ar.invoiceNumber}?`, async () => {
-      await deleteAccountsReceivable(ar.id);
-      handleLogAction('Receivable Deleted', `Accounts receivable entry ${ar.invoiceNumber} was deleted.`, 'delete');
+    openConfirm("Delete Entry", `Are you sure you want to delete invoice ${ar.invoiceNumber || ar.id}?`, async () => {
+      try {
+        await deleteAccountsReceivable(ar.id);
+        setAccountsReceivable(prev => prev.filter(x => x.id !== ar.id));
+        handleLogAction('Receivable Deleted', `Accounts receivable entry ${ar.invoiceNumber || ar.id} was deleted.`, 'delete');
+      } catch (err: any) {
+        console.error("Failed to delete AR:", err);
+        alert(`Failed to delete record: ${err.message || err}`);
+      }
     });
   };
 
   const handleSavePettyCash = async (data: PettyCash) => {
     await savePettyCash(data);
+    setPettyCash(prev => {
+      const idx = prev.findIndex(x => x.id === data.id);
+      if (idx >= 0) { const c = [...prev]; c[idx] = data; return c; }
+      return [data, ...prev];
+    });
     const isUpdate = pettyCash.some(pc => pc.id === data.id);
     handleLogAction(isUpdate ? 'Petty Cash Updated' : 'Petty Cash Added', `Petty cash entry ${data.description} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
     setShowPettyCashModal(false);
   };
 
   const handleDeletePettyCash = async (pc: PettyCash) => {
-    openConfirm("Delete Entry", `Are you sure you want to delete petty cash entry: ${pc.description}?`, async () => {
-      await deletePettyCash(pc.id);
-      handleLogAction('Petty Cash Deleted', `Petty cash entry ${pc.description} was deleted.`, 'delete');
+    openConfirm("Delete Entry", `Are you sure you want to delete petty cash entry: ${pc.description || pc.id}?`, async () => {
+      try {
+        await deletePettyCash(pc.id);
+        setPettyCash(prev => prev.filter(x => x.id !== pc.id));
+        handleLogAction('Petty Cash Deleted', `Petty cash entry ${pc.description || pc.id} was deleted.`, 'delete');
+      } catch (err: any) {
+        console.error("Failed to delete Petty Cash:", err);
+        alert(`Failed to delete record: ${err.message || err}`);
+      }
     });
   };
 
   const handleSaveProjectedExpense = async (data: ProjectedExpense) => {
     await saveProjectedExpense(data);
+    setProjectedExpenses(prev => {
+      const idx = prev.findIndex(x => x.id === data.id);
+      if (idx >= 0) { const c = [...prev]; c[idx] = data; return c; }
+      return [data, ...prev];
+    });
     const isUpdate = projectedExpenses.some(pe => pe.id === data.id);
     handleLogAction(isUpdate ? 'Projected Expense Updated' : 'Projected Expense Added', `Projected expense ${data.invoiceNumber} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
     setShowProjectedExpenseModal(false);
   };
 
   const handleDeleteProjectedExpense = async (pe: ProjectedExpense) => {
-    openConfirm("Delete Entry", `Are you sure you want to delete projected expense: ${pe.invoiceNumber}?`, async () => {
-      await deleteProjectedExpense(pe.id);
-      handleLogAction('Projected Expense Deleted', `Projected expense ${pe.invoiceNumber} was deleted.`, 'delete');
+    openConfirm("Delete Entry", `Are you sure you want to delete projected expense: ${pe.invoiceNumber || pe.id}?`, async () => {
+      try {
+        await deleteProjectedExpense(pe.id);
+        setProjectedExpenses(prev => prev.filter(x => x.id !== pe.id));
+        handleLogAction('Projected Expense Deleted', `Projected expense ${pe.invoiceNumber || pe.id} was deleted.`, 'delete');
+      } catch (err: any) {
+        console.error("Failed to delete projected expense:", err);
+        alert(`Failed to delete record: ${err.message || err}`);
+      }
     });
   };
 
   const handleSaveCamp = async (data: CampExpense) => {
     await saveCamp(data);
+    setCamps(prev => {
+      const idx = prev.findIndex(x => x.id === data.id);
+      if (idx >= 0) { const c = [...prev]; c[idx] = data; return c; }
+      return [data, ...prev];
+    });
     const isUpdate = camps.some(c => c.id === data.id);
     handleLogAction(isUpdate ? 'Camp Updated' : 'Camp Added', `Camp expense ${data.campName} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
     setShowCampModal(false);
   };
 
   const handleDeleteCamp = async (c: CampExpense) => {
-    openConfirm("Delete Entry", `Are you sure you want to delete camp expense: ${c.campName}?`, async () => {
-      await deleteCamp(c.id);
-      handleLogAction('Camp Deleted', `Camp expense ${c.campName} was deleted.`, 'delete');
+    openConfirm("Delete Entry", `Are you sure you want to delete camp expense: ${c.campName || c.id}?`, async () => {
+      try {
+        await deleteCamp(c.id);
+        setCamps(prev => prev.filter(x => x.id !== c.id));
+        handleLogAction('Camp Deleted', `Camp expense ${c.campName || c.id} was deleted.`, 'delete');
+      } catch (err: any) {
+        console.error("Failed to delete camp:", err);
+        alert(`Failed to delete record: ${err.message || err}`);
+      }
     });
   };
 
@@ -5948,24 +5987,42 @@ export default function App() {
       updatedByUid: systemUser?.uid || ''
     };
     await saveEverydayExpense(enrichedData);
+    setEverydayExpenses(prev => {
+      const idx = prev.findIndex(x => x.id === enrichedData.id);
+      if (idx >= 0) { const c = [...prev]; c[idx] = enrichedData; return c; }
+      return [enrichedData, ...prev];
+    });
     const isUpdate = everydayExpenses.some(ee => ee.id === enrichedData.id);
     handleLogAction(isUpdate ? 'Everyday Expense Updated' : 'Everyday Expense Added', `Everyday expense ${enrichedData.invoiceNo} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
     setShowEverydayExpenseModal(false);
   };
 
   const handleDeleteEverydayExpense = async (ee: EverydayExpense) => {
-    if (systemUser?.role?.toLowerCase() === 'employee') {
-      alert("Error: Employees are not authorized to delete expense records.");
+    const roleLower = systemUser?.role?.toLowerCase() || '';
+    const isEmployeeOnly = roleLower === 'employee' && !systemUser?.permissions?.canManageFinance && !systemUser?.permissions?.canManagePayroll;
+    if (isEmployeeOnly && ee.uploadedByUid && ee.uploadedByUid !== systemUser?.uid) {
+      alert("Error: Employees are only authorized to delete their own uploaded expense records.");
       return;
     }
-    openConfirm("Delete Entry", `Are you sure you want to delete everyday expense: ${ee.invoiceNo}?`, async () => {
-      await deleteEverydayExpense(ee.id);
-      handleLogAction('Everyday Expense Deleted', `Everyday expense ${ee.invoiceNo} was deleted.`, 'delete');
+    openConfirm("Delete Entry", `Are you sure you want to delete everyday expense: ${ee.invoiceNo || ee.id}?`, async () => {
+      try {
+        await deleteEverydayExpense(ee.id);
+        setEverydayExpenses(prev => prev.filter(x => x.id !== ee.id));
+        handleLogAction('Everyday Expense Deleted', `Everyday expense ${ee.invoiceNo || ee.id} was deleted.`, 'delete');
+      } catch (err: any) {
+        console.error("Failed to delete everyday expense:", err);
+        alert(`Failed to delete everyday expense: ${err.message || err}`);
+      }
     });
   };
 
   const handleSaveVoucher = async (data: Voucher) => {
     await saveVoucher(data);
+    setVouchers(prev => {
+      const idx = prev.findIndex(x => x.id === data.id);
+      if (idx >= 0) { const c = [...prev]; c[idx] = data; return c; }
+      return [data, ...prev];
+    });
     const isUpdate = vouchers.some(v => v.id === data.id);
     handleLogAction(
       isUpdate ? 'Voucher Updated' : 'Voucher Added',
@@ -5977,12 +6034,18 @@ export default function App() {
   const handleDeleteVoucher = async (id: string) => {
     const voucher = vouchers.find(v => v.id === id);
     if (voucher) {
-      await deleteVoucher(id);
-      handleLogAction(
-        'Voucher Deleted',
-        `${voucher.voucherType === 'payment' ? 'Payment' : 'Receipt'} voucher ${voucher.voucherNo} was deleted.`,
-        'delete'
-      );
+      try {
+        await deleteVoucher(id);
+        setVouchers(prev => prev.filter(x => x.id !== id));
+        handleLogAction(
+          'Voucher Deleted',
+          `${voucher.voucherType === 'payment' ? 'Payment' : 'Receipt'} voucher ${voucher.voucherNo} was deleted.`,
+          'delete'
+        );
+      } catch (err: any) {
+        console.error("Failed to delete voucher:", err);
+        alert(`Failed to delete voucher: ${err.message || err}`);
+      }
     }
   };
 

@@ -51,27 +51,27 @@ service cloud.firestore {
 
     match /accounts_payable/{apId} {
       allow read: if isAuthenticated();
-      allow write: if hasPermission('canManagePayroll');
+      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance') || isAdmin();
     }
 
     match /accounts_receivable/{arId} {
       allow read: if isAuthenticated();
-      allow write: if hasPermission('canManagePayroll');
+      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance') || isAdmin();
     }
 
     match /petty_cash/{pcId} {
       allow read: if isAuthenticated();
-      allow write: if hasPermission('canManagePayroll');
+      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance') || isAdmin();
     }
 
     match /projected_expenses/{peId} {
       allow read: if isAuthenticated();
-      allow write: if hasPermission('canManagePayroll');
+      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance') || isAdmin();
     }
 
     match /camps/{campId} {
       allow read: if isAuthenticated();
-      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance');
+      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance') || isAdmin();
     }
 
     match /vehicles/{vehicleId} {
@@ -80,13 +80,16 @@ service cloud.firestore {
 
     match /vouchers/{voucherId} {
       allow read: if isAuthenticated();
-      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance');
+      allow write: if hasPermission('canManagePayroll') || hasPermission('canManageFinance') || isAdmin();
     }
 
     match /everyday_expenses/{eeId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update, delete: if hasPermission('canManagePayroll') || 
+                            hasPermission('canManageFinance') ||
+                            isAdmin() ||
+                            isCreator() ||
                             (isAuthenticated() && (
                               resource.data.uploadedByUid == request.auth.uid || 
                               resource.data.uploadedByUid == null || 
