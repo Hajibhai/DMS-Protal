@@ -4948,26 +4948,11 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'projected_expenses');
     });
 
-    const now = new Date();
-    const curYear = now.getFullYear();
-    const curMonth = String(now.getMonth() + 1).padStart(2, '0');
-    const startOfMonth = `${curYear}-${curMonth}-01`;
-    const endOfMonth = `${curYear}-${curMonth}-31T23:59:59`;
-
-    const unsubEverydayExpenses = onSnapshot(
-      query(
-        collection(db, 'everyday_expenses'),
-        where('date', '>=', startOfMonth),
-        where('date', '<=', endOfMonth),
-        limit(50)
-      ),
-      (snap) => {
-        setEverydayExpenses(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense));
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
-      }
-    );
+    const unsubEverydayExpenses = onSnapshot(collection(db, 'everyday_expenses'), (snap) => {
+      setEverydayExpenses(snap.docs.map(d => d.data() as EverydayExpense));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
+    });
 
     const unsubCamps = onSnapshot(collection(db, 'camps'), (snap) => {
       setCamps(snap.docs.map(d => ({ ...d.data(), id: d.id }) as CampExpense));
@@ -5649,8 +5634,8 @@ export default function App() {
 
   const handleUploadExcelEveryday = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const roleLower = systemUser?.role?.toLowerCase() || '';
-    const isCreatorUser = roleLower.includes('creator') || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
-    const isAppAdmin = roleLower.includes('admin') || roleLower.includes('creator') || roleLower.includes('super') || roleLower.includes('accountant') || roleLower.includes('finance') || isCreatorUser || !!systemUser?.permissions?.canManageFinance;
+    const isCreatorUser = roleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
+    const isAppAdmin = roleLower === 'admin' || isCreatorUser;
     
     if (!isAppAdmin) {
       alert("Error: Only full site access users (like super admin or development team) can upload excel data.");
@@ -6696,8 +6681,8 @@ export default function App() {
       )}
       {activeTab === 'everyday-expenses' && (() => {
         const roleLower = systemUser?.role?.toLowerCase() || '';
-        const isCreatorUser = roleLower.includes('creator') || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
-        const isAppAdmin = roleLower.includes('admin') || roleLower.includes('creator') || roleLower.includes('super') || roleLower.includes('accountant') || roleLower.includes('finance') || isCreatorUser || !!systemUser?.permissions?.canManageFinance;
+        const isCreatorUser = roleLower === 'creator' || systemUser?.email === 'abdulkaderp3010@gmail.com' || systemUser?.email === CREATOR_USER.username;
+        const isAppAdmin = roleLower === 'admin' || isCreatorUser;
         return (
           <EverydayExpenseView 
             data={
@@ -7625,7 +7610,7 @@ const DashboardView = ({
                         {deptStats.length > 0 ? (
                             <>
                                 <div className="w-full h-[180px]">
-                                    <ResponsiveContainer minWidth={0} minHeight={180} width="100%" height="100%">
+                                    <ResponsiveContainer width="100%" height="100%">
                                         <PieChart>
                                             <Pie
                                                 data={deptStats}
@@ -7684,7 +7669,7 @@ const DashboardView = ({
                     </div>
 
                     <div className="flex-1 min-h-[220px] w-full">
-                        <ResponsiveContainer minWidth={0} minHeight={220} width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={attendanceTrendData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                                 <XAxis 
@@ -8193,24 +8178,9 @@ const SettingsView = ({
             setAllNotes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Note));
         }, (err) => console.error("Error loading notes for stats:", err));
 
-        const now = new Date();
-        const curYear = now.getFullYear();
-        const curMonth = String(now.getMonth() + 1).padStart(2, '0');
-        const startOfMonth = `${curYear}-${curMonth}-01`;
-        const endOfMonth = `${curYear}-${curMonth}-31T23:59:59`;
-
-        const unsubExpenses = onSnapshot(
-          query(
-            collection(db, 'everyday_expenses'),
-            where('date', '>=', startOfMonth),
-            where('date', '<=', endOfMonth),
-            limit(50)
-          ),
-          (snap) => {
+        const unsubExpenses = onSnapshot(collection(db, 'everyday_expenses'), (snap) => {
             setAllExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as EverydayExpense));
-          },
-          (err) => console.error("Error loading expenses for stats:", err)
-        );
+        }, (err) => console.error("Error loading expenses for stats:", err));
 
         const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
             setAllUsers(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as unknown as SystemUser)));
