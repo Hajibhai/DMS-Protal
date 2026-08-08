@@ -6,11 +6,12 @@ import {
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
   FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle,
-  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent, Scale, Home, Building
+  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent, Scale, Home, Building, FileArchive
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
+import { downloadExpenseBillsZip } from '../utils/zipExport';
 
 // --- CUSTOM GLOBAL INTERCEPT FOR ALL PDF DOWNLOADS / SAVES Across Entire Codebase ---
 if (typeof window !== 'undefined' && jsPDF.prototype && !(jsPDF.prototype as any).__isIntercepted) {
@@ -531,6 +532,10 @@ interface DataTableProps<T> {
     }[];
     onUploadExcel?: (event: React.ChangeEvent<HTMLInputElement>) => void;
     onUploadClick?: () => void;
+    onDownloadZip?: () => void;
+    onBulkDownloadZip?: (items: T[]) => void;
+    isZipDownloading?: boolean;
+    zipProgressText?: string;
     customSearch?: (item: T, query: string) => boolean;
     enableMultiSelect?: boolean;
     onBulkDelete?: (items: T[]) => void | Promise<void>;
@@ -562,6 +567,10 @@ export function DataTable<T extends { id: string }>({
     filterOptions = [],
     onUploadExcel,
     onUploadClick,
+    onDownloadZip,
+    onBulkDownloadZip,
+    isZipDownloading,
+    zipProgressText,
     customSearch,
     enableMultiSelect,
     onBulkDelete,
@@ -941,6 +950,17 @@ export function DataTable<T extends { id: string }>({
                         <Printer className="w-4 h-4" />
                         Print A4
                     </button>
+                    {onDownloadZip && (
+                        <button 
+                            onClick={onDownloadZip}
+                            disabled={isZipDownloading}
+                            className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-sm font-bold transition-all active:scale-95 shadow-lg shadow-blue-600/20 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+                            title="Download ZIP package containing all receipt photos, PDF bills & summary CSV"
+                        >
+                            <FileArchive className="w-4 h-4 animate-bounce" />
+                            <span>{isZipDownloading ? (zipProgressText || 'Packaging ZIP...') : 'Download Bills ZIP'}</span>
+                        </button>
+                    )}
                     {onUploadClick ? (
                         <button 
                             onClick={onUploadClick}
@@ -1081,6 +1101,19 @@ export function DataTable<T extends { id: string }>({
                                     >
                                         Cancel Selection
                                     </button>
+                                    {onBulkDownloadZip && (
+                                        <button
+                                            onClick={() => {
+                                                const selectedItems = data.filter(item => selectedIds.includes(item.id));
+                                                onBulkDownloadZip(selectedItems);
+                                            }}
+                                            disabled={isZipDownloading}
+                                            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                                        >
+                                            <FileArchive className="w-4 h-4" />
+                                            <span>Download Selected Bills (ZIP)</span>
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => {
                                             if (onBulkDelete) {
@@ -14981,6 +15014,8 @@ export const EverydayExpenseView: React.FC<{
     const [tallySearch, setTallySearch] = useState('');
     const [reconciliationDetail, setReconciliationDetail] = useState<any | null>(null);
     const [selectedLedgerEntry, setSelectedLedgerEntry] = useState<any | null>(null);
+    const [isZipDownloading, setIsZipDownloading] = useState(false);
+    const [zipProgressText, setZipProgressText] = useState('');
     const currentCalMonth = String(new Date().getMonth() + 1).padStart(2, '0');
     const currentCalYear = String(new Date().getFullYear());
 
@@ -15987,6 +16022,48 @@ export const EverydayExpenseView: React.FC<{
                             setUploadProgress(0);
                             setUploadLogs([]);
                         } : undefined}
+                        enableMultiSelect={true}
+                        onDownloadZip={async () => {
+                            if (!filteredLedgerData || filteredLedgerData.length === 0) {
+                                alert('No expense entries available to download.');
+                                return;
+                            }
+                            setIsZipDownloading(true);
+                            setZipProgressText('Starting ZIP package...');
+                            const monthName = selectedMonth ? (months.find(m => m.value === selectedMonth)?.label || selectedMonth) : 'All_Months';
+                            const yearName = selectedYear || 'All_Years';
+                            const zipFileName = `Everyday_Expense_Bills_${monthName}_${yearName}.zip`.replace(/\s+/g, '_');
+                            
+                            const res = await downloadExpenseBillsZip(
+                                filteredLedgerData, 
+                                zipFileName, 
+                                (percent, text) => setZipProgressText(`${percent}% - ${text}`)
+                            );
+                            setIsZipDownloading(false);
+                            setZipProgressText('');
+                            if (!res.success) {
+                                alert(res.error || 'Failed to download ZIP file.');
+                            }
+                        }}
+                        onBulkDownloadZip={async (selectedItems) => {
+                            if (!selectedItems || selectedItems.length === 0) return;
+                            setIsZipDownloading(true);
+                            setZipProgressText('Packaging selected ZIP...');
+                            const zipFileName = `Selected_Expense_Bills_${selectedItems.length}_records.zip`;
+                            
+                            const res = await downloadExpenseBillsZip(
+                                selectedItems, 
+                                zipFileName, 
+                                (percent, text) => setZipProgressText(`${percent}% - ${text}`)
+                            );
+                            setIsZipDownloading(false);
+                            setZipProgressText('');
+                            if (!res.success) {
+                                alert(res.error || 'Failed to download ZIP file.');
+                            }
+                        }}
+                        isZipDownloading={isZipDownloading}
+                        zipProgressText={zipProgressText}
                     />
                 </div>
             ) : (

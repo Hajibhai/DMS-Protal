@@ -5,10 +5,11 @@ import {
   FileJson, CheckCircle2, AlertTriangle, Info, ShieldCheck, 
   Trash2, Layers, Search, FileText, Check, X, HardDrive, 
   Clock, UserCheck, Sparkles, ArrowRight, Save, History, FileSpreadsheet,
-  Image, Receipt, Eye
+  Image, Receipt, Eye, FileArchive
 } from 'lucide-react';
 import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch, query, orderBy, startAfter, limit } from 'firebase/firestore';
 import { db } from '../firebase';
+import { downloadExpenseBillsZip } from '../utils/zipExport';
 
 interface BackupModuleConfig {
   id: string;
@@ -82,6 +83,44 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
   const [restoreSuccessModal, setRestoreSuccessModal] = useState<boolean>(false);
   const [showConfirmRestoreModal, setShowConfirmRestoreModal] = useState<boolean>(false);
   const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
+  const [isBackupZipDownloading, setIsBackupZipDownloading] = useState<boolean>(false);
+  const [backupZipProgressText, setBackupZipProgressText] = useState<string>('');
+
+  const handleDownloadBackupBillsZip = async () => {
+    if (!uploadedBackupData || !uploadedBackupData.data) {
+      alert('No backup data loaded.');
+      return;
+    }
+
+    const everydayExpenses = uploadedBackupData.data.everyday_expenses || [];
+    const accountsPayable = uploadedBackupData.data.accounts_payable || [];
+    const pettyCash = uploadedBackupData.data.petty_cash || [];
+
+    const allExpensesToZip = [...everydayExpenses, ...accountsPayable, ...pettyCash];
+
+    if (allExpensesToZip.length === 0) {
+      alert('No expense bill entries found in this backup file.');
+      return;
+    }
+
+    setIsBackupZipDownloading(true);
+    setBackupZipProgressText('Packaging backup bill attachments...');
+
+    const res = await downloadExpenseBillsZip(
+      allExpensesToZip,
+      `Backup_Expense_Bills_${new Date().toISOString().split('T')[0]}.zip`,
+      (percent, text) => setBackupZipProgressText(`${percent}% - ${text}`)
+    );
+
+    setIsBackupZipDownloading(false);
+    setBackupZipProgressText('');
+
+    if (res.success) {
+      setNotificationMessage(`Successfully downloaded ZIP with ${res.count} bill attachment files.`);
+    } else {
+      alert(res.error || 'Failed to generate ZIP archive.');
+    }
+  };
 
   // Local History
   const [backupHistory, setBackupHistory] = useState<any[]>(() => {
@@ -847,6 +886,17 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
                         </button>
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={handleDownloadBackupBillsZip}
+                      disabled={isBackupZipDownloading}
+                      className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white border border-blue-500 rounded-2xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 shadow-xs disabled:opacity-50"
+                      title="Download ZIP archive containing all bill receipts & attachment photos in this backup file"
+                    >
+                      <FileArchive className="w-4 h-4 animate-bounce" />
+                      <span>{isBackupZipDownloading ? (backupZipProgressText || 'Packaging ZIP...') : 'Download Bills ZIP'}</span>
+                    </button>
 
                     <button
                       type="button"
