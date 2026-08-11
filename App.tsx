@@ -6676,6 +6676,7 @@ export default function App() {
           onUploadExcel={handleUploadExcelPayable}
           user={systemUser}
           companies={companies}
+          bankAccounts={bankAccounts}
         />
       )}
       {activeTab === 'accounts-receivable' && (

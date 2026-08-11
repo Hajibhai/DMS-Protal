@@ -11,6 +11,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 import { downloadExpenseBillsZip } from '../utils/zipExport';
 
 // --- CUSTOM GLOBAL INTERCEPT FOR ALL PDF DOWNLOADS / SAVES Across Entire Codebase ---
@@ -1656,7 +1657,7 @@ export const VendorView = ({ vendors, onAdd, onEdit, onDelete, user }: any) => {
     );
 };
 
-export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, onBulkUpdateCompanyId, onBulkUpdatePaid, user, companies, onUploadExcel }: any) => {
+export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd, onEdit, onDelete, onDeleteMultiple, onDeleteBatch, onBulkUpdateDate, onBulkUpdateNotes, onBulkUpdateCompanyId, onBulkUpdatePaid, user, companies, onUploadExcel, bankAccounts = [] }: any) => {
     const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa' | 'duplicates'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
     const [viewingBill, setViewingBill] = useState<string | null>(null);
@@ -1693,6 +1694,8 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [soaIncludeDetails, setSoaIncludeDetails] = useState(false);
     const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
     const [expandedMonthDetails, setExpandedMonthDetails] = useState<string | null>(null);
+    const [soaPdfModalOpen, setSoaPdfModalOpen] = useState(false);
+    const [soaPdfOrientation, setSoaPdfOrientation] = useState<'landscape' | 'portrait'>('portrait');
 
     const handleGoToInvoice = (vendorId: string, monthKey: string) => {
         setActiveTabMode('ledger');
@@ -2360,7 +2363,12 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     };
 
     // SOA Generation Handlers
-    const handleGenerateSOAPDF = () => {
+    const handleGenerateSOAPDF = (targetOrientation?: 'landscape' | 'portrait') => {
+        if (!targetOrientation) {
+            setSoaPdfModalOpen(true);
+            return;
+        }
+
         let pName = 'All Combined Suppliers';
         let pTrn = 'Multiple / N/A';
         let pType = 'Supplier Network';
@@ -2405,14 +2413,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         });
         const balance = totalBilled - totalPaid;
 
-        let selectedCompanyObj = (companies || []).find((c: any) => c.id === soaCompanyId);
-        if (!selectedCompanyObj && soaFilteredItems.length > 0) {
-            const firstItem = soaFilteredItems[0];
-            selectedCompanyObj = (companies || []).find((c: any) => c.id === firstItem.companyId || c.name === firstItem.companyName);
-        }
-        if (!selectedCompanyObj && companies && companies.length > 0) {
-            selectedCompanyObj = companies[0];
-        }
+        let selectedCompanyObj = soaCompanyId !== 'All' ? (companies || []).find((c: any) => c.id === soaCompanyId) : null;
 
         generatePdfSOA({
             title: "SUPPLIER STATEMENT OF ACCOUNT (SOA)",
@@ -2426,15 +2427,19 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             totalPaid,
             balance,
             isReceivable: false,
-            companyName: selectedCompanyObj?.name,
+            companyName: selectedCompanyObj ? selectedCompanyObj.name : "PIONEER GROUP (CONSOLIDATED)",
             companyLogo: selectedCompanyObj?.logo,
-            companyAddress: selectedCompanyObj?.address,
-            companyEmail: selectedCompanyObj?.email,
-            companyPhone: selectedCompanyObj?.phone,
+            companyAddress: selectedCompanyObj?.address || "United Arab Emirates",
+            companyEmail: selectedCompanyObj?.email || "accounts@pioneer.ae",
+            companyPhone: selectedCompanyObj?.phone || "+971 4 000 0000",
             includeDetails: soaIncludeDetails,
             vendors,
             suppliers,
-            projects
+            projects,
+            orientation: targetOrientation,
+            soaCompanyId,
+            selectedCompanyObj,
+            bankAccounts
         });
     };
 
@@ -4081,7 +4086,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                             {/* CTAs */}
                             <div className="grid grid-cols-2 gap-3 pt-2">
                                 <button
-                                    onClick={handleGenerateSOAPDF}
+                                    onClick={() => handleGenerateSOAPDF()}
                                     disabled={soaFilteredItems.length === 0}
                                     className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold p-3 rounded-2xl transition-all shadow-xs cursor-pointer text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -4097,6 +4102,118 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                     <span>Download Excel SOA</span>
                                 </button>
                             </div>
+
+                            {/* SOA PDF ORIENTATION SELECTION MODAL */}
+                            <AnimatePresence>
+                                {soaPdfModalOpen && (
+                                    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                                            className="bg-white rounded-[2.5rem] p-6 md:p-8 max-w-lg w-full space-y-6 shadow-2xl border border-slate-100"
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center shrink-0">
+                                                        <FileText className="w-6 h-6" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-lg font-black text-slate-900 tracking-tight">PDF SOA Page Format</h3>
+                                                        <p className="text-slate-500 text-xs font-medium">Select preferred layout orientation before downloading</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSoaPdfModalOpen(false)}
+                                                    className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                                                >
+                                                    <X className="w-5 h-5" />
+                                                </button>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {/* Portrait Option */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSoaPdfOrientation('portrait')}
+                                                    className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer space-y-3 relative ${
+                                                        soaPdfOrientation === 'portrait'
+                                                            ? 'border-rose-600 bg-rose-50/40 shadow-md ring-2 ring-rose-500/20'
+                                                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="w-8 h-11 border-2 border-slate-400 rounded-md bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600 shadow-2xs">
+                                                            A4
+                                                        </div>
+                                                        {soaPdfOrientation === 'portrait' && (
+                                                            <div className="w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center shadow-xs">
+                                                                <Check className="w-4 h-4 stroke-[3]" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-sm font-black text-slate-900">Portrait</h4>
+                                                        <p className="text-[11px] text-slate-500 font-medium leading-relaxed mt-0.5">
+                                                            Standard vertical format (210 × 297 mm). Compact & clean.
+                                                        </p>
+                                                    </div>
+                                                </button>
+
+                                                {/* Landscape Option */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSoaPdfOrientation('landscape')}
+                                                    className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer space-y-3 relative ${
+                                                        soaPdfOrientation === 'landscape'
+                                                            ? 'border-rose-600 bg-rose-50/40 shadow-md ring-2 ring-rose-500/20'
+                                                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="w-11 h-8 border-2 border-slate-400 rounded-md bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600 shadow-2xs">
+                                                            A4
+                                                        </div>
+                                                        {soaPdfOrientation === 'landscape' && (
+                                                            <div className="w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center shadow-xs">
+                                                                <Check className="w-4 h-4 stroke-[3]" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-sm font-black text-slate-900">Landscape</h4>
+                                                        <p className="text-[11px] text-slate-500 font-medium leading-relaxed mt-0.5">
+                                                            Wide horizontal view (297 × 210 mm). Expanded table width.
+                                                        </p>
+                                                    </div>
+                                                </button>
+                                            </div>
+
+                                            <div className="flex items-center justify-end gap-3 pt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSoaPdfModalOpen(false)}
+                                                    className="px-5 py-2.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-2xl text-xs font-bold transition-all cursor-pointer"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSoaPdfModalOpen(false);
+                                                        handleGenerateSOAPDF(soaPdfOrientation);
+                                                    }}
+                                                    className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs font-black transition-all shadow-md shadow-rose-600/30 cursor-pointer flex items-center gap-2"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    <span>Generate & Download PDF</span>
+                                                </button>
+                                            </div>
+                                        </motion.div>
+                                    </div>
+                                )}
+                            </AnimatePresence>
                         </div>
                     </div>
 
@@ -5399,6 +5516,31 @@ export const resolveItemDetails = (
     };
 };
 
+export const formatToDDMMYYYY = (dateVal: any) => {
+    if (!dateVal) return '-';
+    const str = String(dateVal).trim();
+    if (!str) return '-';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        const [y, m, d] = str.split('-');
+        return `${d}-${m}-${y}`;
+    }
+    if (/^\d{4}\/\d{2}\/\d{2}$/.test(str)) {
+        const [y, m, d] = str.split('/');
+        return `${d}-${m}-${y}`;
+    }
+    if (/^\d{2}-\d{2}-\d{4}$/.test(str)) {
+        return str;
+    }
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+        const day = String(parsed.getDate()).padStart(2, '0');
+        const month = String(parsed.getMonth() + 1).padStart(2, '0');
+        const year = parsed.getFullYear();
+        return `${day}-${month}-${year}`;
+    }
+    return str;
+};
+
 interface PdfSOAParams {
     title: string;
     partnerName: string;
@@ -5420,6 +5562,10 @@ interface PdfSOAParams {
     vendors?: any[];
     suppliers?: any[];
     projects?: any[];
+    orientation?: 'landscape' | 'portrait';
+    soaCompanyId?: string;
+    selectedCompanyObj?: any;
+    bankAccounts?: any[];
 }
 
 export const generatePdfSOA = ({
@@ -5442,260 +5588,202 @@ export const generatePdfSOA = ({
     includeDetails = false,
     vendors = [],
     suppliers = [],
-    projects = []
+    projects = [],
+    orientation = 'landscape',
+    soaCompanyId,
+    selectedCompanyObj,
+    bankAccounts = []
 }: PdfSOAParams) => {
+    const isPortrait = orientation === 'portrait';
     const doc = new jsPDF({
-        orientation: 'landscape',
+        orientation: orientation,
         unit: 'mm',
         format: 'a4'
     });
 
-    // Add Watermark Logo (Landscape)
-    const assets = getPioneerPDFAssets();
-    if (assets.watermark) {
-        doc.addImage(assets.watermark, 'PNG', (297 - 145) / 2, (210 - 145) / 2, 145, 145, undefined, 'FAST');
-    }
+    const pageWidth = isPortrait ? 210 : 297;
+    const pageHeight = isPortrait ? 297 : 210;
+    const margin = 12;
+    const printableWidth = pageWidth - (margin * 2);
 
-    const themeColor = isReceivable ? [37, 99, 235] : [190, 24, 74];
-    const primaryColor = [15, 23, 42];
-    const lightText = [100, 116, 139]; 
-    const borderSlate = [226, 232, 240];
+    const assets = getPioneerPDFAssets();
+
+    const themeColor: [number, number, number] = isReceivable ? [37, 99, 235] : [190, 24, 74];
+    const primaryColor: [number, number, number] = [15, 23, 42];
+    const lightText: [number, number, number] = [100, 116, 139]; 
+    const borderSlate: [number, number, number] = [226, 232, 240];
 
     const cName = companyName || "PIONEER DMS GROUP LTD";
     const cAddress = companyAddress || "United Arab Emirates";
     const cEmail = companyEmail || "accounts@pioneer.ae";
     const cPhone = companyPhone || "+971 4 000 0000";
 
-    doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
-    doc.rect(0, 0, 297, 6, 'F');
+    const drawPageDecorations = (pdfDoc: any, currentPage: number, totalPages: number) => {
+        // Watermark Logo
+        if (assets.watermark) {
+            const wmSize = isPortrait ? 130 : 145;
+            const wmX = (pageWidth - wmSize) / 2;
+            const wmY = (pageHeight - wmSize) / 2;
+            try {
+                pdfDoc.addImage(assets.watermark, 'PNG', wmX, wmY, wmSize, wmSize, undefined, 'FAST');
+            } catch (e) {
+                // ignore
+            }
+        }
 
-    let headerOffset = 18;
-    let textX = 15;
+        // Top Header Accent Bar
+        pdfDoc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+        pdfDoc.rect(0, 0, pageWidth, 6, 'F');
+
+        // Bottom Footer Bar
+        const footerY = pageHeight - 8;
+        pdfDoc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        pdfDoc.rect(0, footerY, pageWidth, 8, 'F');
+
+        pdfDoc.setFont("Helvetica", "normal");
+        pdfDoc.setFontSize(7);
+        pdfDoc.setTextColor(255, 255, 255);
+        pdfDoc.text("Official electronic statement generated from corporate workspace ledger environment.", margin, footerY + 5);
+        pdfDoc.text(`Page ${currentPage} of ${totalPages}`, pageWidth - margin, footerY + 5, { align: 'right' });
+    };
+
+    let headerOffset = 17;
+    let textX = margin;
     if (companyLogo && companyLogo.startsWith('data:image')) {
         try {
-            doc.addImage(companyLogo, 'PNG', 15, 10, 20, 20);
-            textX = 40;
-            headerOffset = 16;
+            doc.addImage(companyLogo, 'PNG', margin, 10, 18, 18);
+            textX = margin + 22;
+            headerOffset = 15;
         } catch (e) {
             console.error("Error drawing logo on pdf:", e);
         }
     }
 
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(14);
+    doc.setFontSize(isPortrait ? 12 : 14);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.text(cName, textX, headerOffset);
 
     doc.setFont("Helvetica", "normal");
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
     doc.text([
         `Address: ${cAddress}`,
         `Email: ${cEmail} | Phone: ${cPhone}`,
-        "Official Statement of Account Generated electronically on " + new Date().toLocaleDateString()
-    ], textX, headerOffset + 5);
+        "Official Statement generated electronically on " + formatToDDMMYYYY(new Date())
+    ], textX, headerOffset + 4.5);
 
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(15);
+    doc.setFontSize(isPortrait ? 13 : 15);
     doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
-    doc.text(title.toUpperCase(), 15, 42);
+    doc.text(title.toUpperCase(), margin, 38);
 
     doc.setFont("Helvetica", "normal");
-    doc.setFontSize(8.5);
+    doc.setFontSize(8);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-    doc.text("Statement Period: " + periodStr, 15, 47);
+    doc.text("Statement Period: " + periodStr, margin, 43);
 
     doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
     doc.setLineWidth(0.3);
-    doc.line(15, 52, 282, 52);
+    doc.line(margin, 47, pageWidth - margin, 47);
 
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("COUNTERPARTY INFORMATION", 15, 58);
+    doc.text("COUNTERPARTY INFORMATION", margin, 53);
     
     doc.setFont("Helvetica", "normal");
-    doc.text(`Partner name: ${partnerName}`, 15, 63);
-    doc.text(`Type / Category: ${partnerType}`, 15, 68);
-    doc.text(`TRN number: ${partnerTrn}`, 15, 73);
+    doc.setFontSize(8);
+    doc.text(`Partner name: ${partnerName}`, margin, 58);
+    doc.text(`Type / Category: ${partnerType}`, margin, 63);
+    doc.text(`TRN number: ${partnerTrn}`, margin, 68);
 
+    const rightColX = isPortrait ? 110 : 150;
     doc.setFont("Helvetica", "bold");
-    doc.text("OPERATIONAL BOUNDS", 150, 58);
+    doc.setFontSize(8.5);
+    doc.text("OPERATIONAL BOUNDS", rightColX, 53);
     
     doc.setFont("Helvetica", "normal");
-    doc.text(`Contracted projects: ${projectName}`, 150, 63);
-    doc.text(`Matched entries: ${items.length} records`, 150, 68);
-    doc.text(`System source: Ledger Sync`, 150, 73);
+    doc.setFontSize(8);
+    doc.text(`Contracted projects: ${projectName}`, rightColX, 58);
+    doc.text(`Matched entries: ${items.length} records`, rightColX, 63);
+    doc.text(`System source: Ledger Sync`, rightColX, 68);
 
-    doc.line(15, 78, 282, 78);
+    doc.line(margin, 73, pageWidth - margin, 73);
 
-    const cardY = 84;
+    const cardY = 78;
+    const cardHeight = 16;
     doc.setFillColor(248, 250, 252);
-    doc.rect(15, cardY, 267, 18, 'F');
-    doc.rect(15, cardY, 267, 18, 'D');
+    doc.rect(margin, cardY, printableWidth, cardHeight, 'F');
+    doc.rect(margin, cardY, printableWidth, cardHeight, 'D');
 
-    doc.line(104, cardY, 104, cardY + 18);
-    doc.line(193, cardY, 193, cardY + 18);
-
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(isReceivable ? "TOTAL BILLED" : "TOTAL INVOICES", 20, cardY + 5);
-    doc.setFontSize(11);
-    doc.setTextColor(15, 23, 42);
-    doc.text(`AED ${totalBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 20, cardY + 12);
-
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(isReceivable ? "COLLECTED FUNDS" : "SETTLED AMOUNT", 109, cardY + 5);
-    doc.setFontSize(11);
-    doc.setTextColor(16, 124, 65);
-    doc.text(`AED ${totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 109, cardY + 12);
-
-    doc.setFontSize(8);
-    doc.setTextColor(100, 116, 139);
-    doc.text(isReceivable ? "DEBT BAL. DUE" : "PENDING LIABILITY", 198, cardY + 5);
-    doc.setFontSize(11);
-    doc.setTextColor(220, 38, 38);
-    doc.text(`AED ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 198, cardY + 12);
-
-    const tableHeaderY = 110;
-    doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
-    doc.rect(15, tableHeaderY, 267, 8, 'F');
+    const colWidth = printableWidth / 3;
+    doc.line(margin + colWidth, cardY, margin + colWidth, cardY + cardHeight);
+    doc.line(margin + (colWidth * 2), cardY, margin + (colWidth * 2), cardY + cardHeight);
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(7.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text("SI NO", 16, tableHeaderY + 5.5);
-    doc.text("INV. DATE", 26, tableHeaderY + 5.5);
-    doc.text("INVOICE #", 45, tableHeaderY + 5.5);
-    doc.text("MON", 71, tableHeaderY + 5.5);
-    doc.text("YR", 85, tableHeaderY + 5.5);
-    doc.text("ACT. AMT (AED)", 121, tableHeaderY + 5.5, { align: 'right' });
-    doc.text("VAT AMT (AED)", 141, tableHeaderY + 5.5, { align: 'right' });
-    doc.text("TOTAL (AED)", 166, tableHeaderY + 5.5, { align: 'right' });
-    doc.text("BALANCE (AED)", 191, tableHeaderY + 5.5, { align: 'right' });
-    doc.text("STATUS", 195, tableHeaderY + 5.5);
-    doc.text("CHEQUE SETTLEMENT DETAILS (IF APPLICABLE)", 216, tableHeaderY + 5.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(isReceivable ? "TOTAL BILLED" : "TOTAL INVOICES", margin + 5, cardY + 5);
+    doc.setFontSize(isPortrait ? 9.5 : 11);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`AED ${totalBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + 5, cardY + 11.5);
 
-    let currentY = tableHeaderY + 8;
-    const rowHeight = includeDetails ? 13 : 8;
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(isReceivable ? "COLLECTED FUNDS" : "SETTLED AMOUNT", margin + colWidth + 5, cardY + 5);
+    doc.setFontSize(isPortrait ? 9.5 : 11);
+    doc.setTextColor(16, 124, 65);
+    doc.text(`AED ${totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + colWidth + 5, cardY + 11.5);
 
-    items.forEach((itm: any, idx: number) => {
-        if (currentY + rowHeight > 185) {
-            doc.addPage();
-            doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
-            doc.rect(0, 0, 297, 6, 'F');
-            currentY = 15;
-        }
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(isReceivable ? "DEBT BAL. DUE" : "PENDING LIABILITY", margin + (colWidth * 2) + 5, cardY + 5);
+    doc.setFontSize(isPortrait ? 9.5 : 11);
+    doc.setTextColor(220, 38, 38);
+    doc.text(`AED ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + (colWidth * 2) + 5, cardY + 11.5);
 
-        if (idx % 2 === 1) {
-            doc.setFillColor(248, 250, 252);
-            doc.rect(15, currentY, 267, rowHeight, 'F');
-        }
-
-        doc.setFont("Helvetica", "normal");
-        doc.setFontSize(7.5);
-        doc.setTextColor(30, 41, 59);
-
-        // SI No
-        doc.text(String(idx + 1), 16, currentY + 5.5);
-
-        // Date
-        doc.text(itm.date || '-', 26, currentY + 5.5);
-
-        // Invoice No
-        doc.setFont("Helvetica", "bold");
-        doc.text(itm.invoiceNumber || '-', 45, currentY + 5.5);
-        doc.setFont("Helvetica", "normal");
-
-        // Parse month and year
-        let yrStr = '-';
-        let mnStr = '-';
-        if (itm.date) {
-            const parts = itm.date.split('-');
-            if (parts.length >= 2) {
-                yrStr = parts[0];
-                const mnVal = parseInt(parts[1]);
-                if (!isNaN(mnVal) && mnVal >= 1 && mnVal <= 12) {
-                    mnStr = new Date(parseInt(parts[0]), mnVal - 1, 1).toLocaleDateString('default', { month: 'short' });
-                }
-            }
-        }
-        doc.text(mnStr, 71, currentY + 5.5);
-        doc.text(yrStr, 85, currentY + 5.5);
-
-        // Amounts
-        const actualAmt = itm.amount || 0;
-        const vatAmt = itm.vatAmount || 0;
-        const totalAmt = itm.totalAmount || itm.amount || 0;
-        
-        const isPaid = itm.status === 'Paid' || itm.status === 'Received';
-        const balanceAmt = isPaid ? 0 : totalAmt;
-
-        doc.text(actualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 121, currentY + 5.5, { align: 'right' });
-        doc.text(vatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 141, currentY + 5.5, { align: 'right' });
-        doc.text(totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 166, currentY + 5.5, { align: 'right' });
-        
-        doc.setFont("Helvetica", "bold");
-        doc.text(balanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 191, currentY + 5.5, { align: 'right' });
-        doc.setFont("Helvetica", "normal");
-
-        // Status
-        if (isPaid) {
-            doc.setTextColor(16, 124, 65);
-        } else {
-            doc.setTextColor(220, 95, 0);
-        }
-        doc.setFont("Helvetica", "bold");
-        doc.text(itm.status || 'Pending', 195, currentY + 5.5);
-        doc.setFont("Helvetica", "normal");
-        doc.setTextColor(30, 41, 59);
-
-        // Cheque details
-        let chqStr = "-";
-        if (itm.chequeNo || itm.chequeDate || itm.chequeAmount) {
-            const chqParts = [];
-            if (itm.chequeNo) chqParts.push(`Chq: #${itm.chequeNo}`);
-            if (itm.chequeDate) chqParts.push(`Date: ${itm.chequeDate}`);
-            if (itm.chequeAmount) chqParts.push(`Amt: ${Number(itm.chequeAmount).toLocaleString()}`);
-            chqStr = chqParts.join(" | ");
-        }
-        doc.setFontSize(7);
-        doc.text(chqStr.length > 40 ? chqStr.substring(0, 38) + '..' : chqStr, 216, currentY + 5.5);
-        doc.setFontSize(7.5);
-
-        // Optional detail row
-        if (includeDetails) {
-            const { clientSupplierName, projectCodeName } = resolveItemDetails(itm, isReceivable, vendors, suppliers, projects);
-            doc.setFontSize(6.8);
-            doc.setFont("Helvetica", "bold");
-            doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
-            const partnerLabelStr = isReceivable ? 'Client:' : 'Supplier:';
-            doc.text(partnerLabelStr, 26, currentY + 10.5);
-            
-            doc.setFont("Helvetica", "normal");
-            doc.setTextColor(51, 65, 85);
-            doc.text(clientSupplierName.length > 38 ? clientSupplierName.substring(0, 36) + '..' : clientSupplierName, 38, currentY + 10.5);
-
-            doc.setFont("Helvetica", "bold");
-            doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
-            doc.text(`|   Project / Contract:`, 110, currentY + 10.5);
-
-            doc.setFont("Helvetica", "normal");
-            doc.setTextColor(51, 65, 85);
-            doc.text(projectCodeName.length > 55 ? projectCodeName.substring(0, 53) + '..' : projectCodeName, 142, currentY + 10.5);
-        }
-
-        currentY += rowHeight;
-    });
+    const tableHead = [[
+        'SI NO',
+        'INV. DATE',
+        'INVOICE DETAILS',
+        'MON',
+        'YR',
+        'ACT. AMT (AED)',
+        'VAT AMT (AED)',
+        'TOTAL (AED)',
+        'BALANCE (AED)',
+        'STATUS',
+        'CHEQUE / PAYMENT DETAILS'
+    ]];
 
     let totalActualAmt = 0;
     let totalVatAmt = 0;
     let totalTotalAmt = 0;
     let totalBalanceAmt = 0;
 
-    items.forEach((itm: any) => {
+    const tableBody = items.map((itm: any, idx: number) => {
+        let yrStr = '-';
+        let mnStr = '-';
+        if (itm.date) {
+            const parts = String(itm.date).split(/[-/]/);
+            if (parts.length === 3) {
+                if (parts[0].length === 4) {
+                    yrStr = parts[0];
+                    const mnVal = parseInt(parts[1]);
+                    if (!isNaN(mnVal) && mnVal >= 1 && mnVal <= 12) {
+                        mnStr = new Date(2020, mnVal - 1, 1).toLocaleDateString('default', { month: 'short' });
+                    }
+                } else if (parts[2].length === 4) {
+                    yrStr = parts[2];
+                    const mnVal = parseInt(parts[1]);
+                    if (!isNaN(mnVal) && mnVal >= 1 && mnVal <= 12) {
+                        mnStr = new Date(2020, mnVal - 1, 1).toLocaleDateString('default', { month: 'short' });
+                    }
+                }
+            }
+        }
+
         const actualAmt = itm.amount || 0;
         const vatAmt = itm.vatAmount || 0;
         const totalAmt = itm.totalAmount || itm.amount || 0;
@@ -5706,38 +5794,184 @@ export const generatePdfSOA = ({
         totalVatAmt += vatAmt;
         totalTotalAmt += totalAmt;
         totalBalanceAmt += balanceAmt;
+
+        let invCellText = itm.invoiceNumber || '-';
+        if (includeDetails) {
+            const { clientSupplierName, projectCodeName } = resolveItemDetails(itm, isReceivable, vendors, suppliers, projects);
+            if (clientSupplierName && clientSupplierName !== '-') {
+                invCellText += `\n${isReceivable ? 'Client' : 'Supplier'}: ${clientSupplierName}`;
+            }
+            if (projectCodeName && projectCodeName !== '-') {
+                invCellText += `\nProject: ${projectCodeName}`;
+            }
+        }
+
+        let chqStr = "-";
+        if (itm.chequeNo || itm.chequeDate || itm.chequeAmount) {
+            const chqParts = [];
+            if (itm.chequeNo) chqParts.push(`Chq #${itm.chequeNo}`);
+            if (itm.chequeDate) chqParts.push(`Date: ${formatToDDMMYYYY(itm.chequeDate)}`);
+            if (itm.chequeAmount) chqParts.push(`Amt: ${Number(itm.chequeAmount).toLocaleString()}`);
+            chqStr = chqParts.join(" | ");
+        }
+
+        return [
+            String(idx + 1),
+            formatToDDMMYYYY(itm.date),
+            invCellText,
+            mnStr,
+            yrStr,
+            actualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            vatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            balanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            itm.status || 'Pending',
+            chqStr
+        ];
     });
 
-    if (currentY + 11 > 190) {
-        doc.addPage();
+    const tableFoot = [[
+        { content: 'STATEMENT OUTSTANDING BALANCE', colSpan: 5, styles: { halign: 'left', fontStyle: 'bold' } },
+        { content: totalActualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+        { content: totalVatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+        { content: totalTotalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+        { content: totalBalanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+        '',
+        ''
+    ]];
+
+    (doc as any).autoTable({
+        startY: cardY + cardHeight + 6,
+        head: tableHead,
+        body: tableBody,
+        foot: tableFoot,
+        margin: { left: margin, right: margin, bottom: 14, top: 12 },
+        styles: {
+            font: 'Helvetica',
+            fontSize: isPortrait ? 6.2 : 7.5,
+            cellPadding: isPortrait ? { top: 1.5, bottom: 1.5, left: 0.8, right: 0.8 } : 2,
+            overflow: 'linebreak',
+            valign: 'middle',
+            textColor: [30, 41, 59]
+        },
+        headStyles: {
+            fillColor: themeColor,
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: isPortrait ? 6.5 : 7.5,
+            halign: 'left'
+        },
+        footStyles: {
+            fillColor: [241, 245, 249],
+            textColor: [15, 23, 42],
+            fontStyle: 'bold',
+            fontSize: isPortrait ? 6.2 : 7.5,
+            cellPadding: isPortrait ? { top: 2, bottom: 2, left: 0.5, right: 0.5 } : 2,
+            halign: 'right'
+        },
+        columnStyles: {
+            0: { halign: 'center', cellWidth: isPortrait ? 7 : 9 },
+            1: { halign: 'center', cellWidth: isPortrait ? 15 : 18 },
+            2: { cellWidth: isPortrait ? 28 : 38, fontStyle: 'bold' },
+            3: { halign: 'center', cellWidth: isPortrait ? 7 : 10 },
+            4: { halign: 'center', cellWidth: isPortrait ? 8 : 10 },
+            5: { halign: 'right', cellWidth: isPortrait ? 21 : 25, overflow: 'ellipsize' },
+            6: { halign: 'right', cellWidth: isPortrait ? 18 : 22, overflow: 'ellipsize' },
+            7: { halign: 'right', cellWidth: isPortrait ? 21 : 25, overflow: 'ellipsize' },
+            8: { halign: 'right', cellWidth: isPortrait ? 21 : 25, fontStyle: 'bold', overflow: 'ellipsize' },
+            9: { halign: 'center', cellWidth: isPortrait ? 14 : 18, fontStyle: 'bold' },
+            10: { cellWidth: 'auto' }
+        },
+        didParseCell: (data: any) => {
+            if (data.section === 'body' && data.column.index === 9) {
+                const statusVal = String(data.cell.raw || '');
+                if (statusVal === 'Paid' || statusVal === 'Received') {
+                    data.cell.styles.textColor = [16, 124, 65];
+                } else {
+                    data.cell.styles.textColor = [220, 95, 0];
+                }
+            }
+            if (data.section === 'body' && data.column.index === 8) {
+                const balRaw = data.cell.raw;
+                if (balRaw && balRaw !== '0.00') {
+                    data.cell.styles.textColor = [220, 38, 38];
+                }
+            }
+        }
+    });
+
+    // Draw Bank Payment Details ONLY if a specific issuer company is selected (not 'All' / All Combined)
+    if (soaCompanyId && soaCompanyId !== 'All' && selectedCompanyObj) {
+        let targetBank: any = null;
+        if (bankAccounts && bankAccounts.length > 0) {
+            targetBank = bankAccounts.find((b: any) => 
+                (selectedCompanyObj && b.companyId === selectedCompanyObj.id) ||
+                (selectedCompanyObj?.name && b.accountName && (
+                    b.accountName.toLowerCase().includes(selectedCompanyObj.name.toLowerCase()) ||
+                    selectedCompanyObj.name.toLowerCase().includes(b.accountName.toLowerCase())
+                ))
+            );
+            if (!targetBank) {
+                targetBank = bankAccounts.find((b: any) => b.isDefault) || bankAccounts[0];
+            }
+        }
+        if (!targetBank) {
+            targetBank = {
+                accountName: selectedCompanyObj.name || "Pioneer General Contracting LLC",
+                bankName: "Abu Dhabi Commercial Bank",
+                accountNumber: "11249315820001",
+                iban: "AE190030011249315820001",
+                swiftCode: "ADCBAEAA",
+                currency: "AED"
+            };
+        }
+
+        let bankY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 6 : 180;
+        const boxHeight = 22;
+        if (bankY + boxHeight > pageHeight - 14) {
+            doc.addPage();
+            bankY = 14;
+        }
+
+        const boxWidth = printableWidth;
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(margin, bankY, boxWidth, boxHeight, 'FD');
+
+        // Theme accent vertical strip
         doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
-        doc.rect(0, 0, 297, 6, 'F');
-        currentY = 15;
+        doc.rect(margin, bankY, 2.5, boxHeight, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
+        doc.text("BANK BENEFICIARY DETAILS FOR REMITTANCE", margin + 5, bankY + 5);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(51, 65, 85);
+
+        const col1X = margin + 5;
+        const col2X = margin + (boxWidth / 2) + 5;
+
+        doc.text(`Beneficiary Name: ${targetBank.accountName || selectedCompanyObj?.name || 'N/A'}`, col1X, bankY + 10.5);
+        doc.text(`Bank Name: ${targetBank.bankName || 'N/A'}`, col1X, bankY + 15);
+        doc.text(`Account Number: ${targetBank.accountNumber || 'N/A'}`, col1X, bankY + 19.5);
+
+        doc.text(`IBAN: ${targetBank.iban || 'N/A'}`, col2X, bankY + 10.5);
+        doc.text(`SWIFT / BIC: ${targetBank.swiftCode || 'N/A'}`, col2X, bankY + 15);
+        doc.text(`Currency: ${targetBank.currency || 'AED'}`, col2X, bankY + 19.5);
     }
 
-    doc.setFillColor(241, 245, 249);
-    doc.rect(15, currentY + 2, 267, 9, 'F');
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text("STATEMENT OUTSTANDING BALANCE", 18, currentY + 8);
+    // Draw page decorations (watermark, top/bottom bars, page X of Y) post-table generation across ALL pages
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let page = 1; page <= totalPages; page++) {
+        doc.setPage(page);
+        drawPageDecorations(doc, page, totalPages);
+    }
 
-    doc.text(totalActualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 121, currentY + 8, { align: 'right' });
-    doc.text(totalVatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 141, currentY + 8, { align: 'right' });
-    doc.text(totalTotalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 166, currentY + 8, { align: 'right' });
-    
-    doc.setTextColor(220, 38, 38);
-    doc.text(totalBalanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), 191, currentY + 8, { align: 'right' });
-
-    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.rect(0, 201, 297, 9, 'F');
-
-    doc.setFont("Helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(255, 255, 255);
-    doc.text("Official electronic statement from corporate workspace ledger environment.", 148, 206, { align: "center" });
-
-    doc.save(`${isReceivable ? 'Receivable' : 'Payable'}_SOA_${partnerName.replace(/\s+/g, '_')}.pdf`);
+    const partnerFileSafe = partnerName.replace(/[/\\?%*:|"<>]/g, '_').replace(/\s+/g, '_');
+    doc.save(`${isReceivable ? 'Receivable' : 'Payable'}_SOA_${partnerFileSafe}_${orientation}.pdf`);
 };
 
 export const downloadSOAExcel = (
@@ -5773,7 +6007,7 @@ export const downloadSOAExcel = (
 
         const rowObj: any = {
             "SI No": idx + 1,
-            "Invoice Date": itm.date || '',
+            "Invoice Date": formatToDDMMYYYY(itm.date),
             "Invoice No": itm.invoiceNumber || '-'
         };
 
@@ -5794,7 +6028,7 @@ export const downloadSOAExcel = (
         rowObj["Total Amount"] = totalAmt;
         rowObj["Balance Amount"] = balanceAmt;
         rowObj["Payment Status"] = itm.status || 'Pending';
-        rowObj["Cheque Date"] = itm.chequeDate || '-';
+        rowObj["Cheque Date"] = formatToDDMMYYYY(itm.chequeDate);
         rowObj["Cheque Number"] = itm.chequeNo || '-';
         rowObj["Cheque Amount"] = itm.chequeAmount || '-';
 
@@ -5843,6 +6077,8 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const [soaIncludeDetails, setSoaIncludeDetails] = useState(false);
     const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
     const [expandedMonthDetails, setExpandedMonthDetails] = useState<string | null>(null);
+    const [soaPdfModalOpen, setSoaPdfModalOpen] = useState(false);
+    const [soaPdfOrientation, setSoaPdfOrientation] = useState<'landscape' | 'portrait'>('portrait');
 
     const handleGoToInvoice = (clientId: string, monthKey: string) => {
         setActiveTabMode('ledger');
@@ -6251,7 +6487,12 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         XLSX.writeFile(wb, "Accounts_Receivable_Consolidated_Monthly_Workbook.xlsx");
     };
 
-    const handleGenerateSOAPDF = () => {
+    const handleGenerateSOAPDF = (targetOrientation?: 'landscape' | 'portrait') => {
+        if (!targetOrientation) {
+            setSoaPdfModalOpen(true);
+            return;
+        }
+
         let pName = 'All Combined Clients';
         let pTrn = 'Multiple / N/A';
         let pType = 'Corporate Debtors';
@@ -6294,14 +6535,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         });
         const balance = totalBilled - totalPaid;
 
-        let selectedCompanyObj = (companies || []).find((c: any) => c.id === soaCompanyId);
-        if (!selectedCompanyObj && soaFilteredItems.length > 0) {
-            const firstItem = soaFilteredItems[0];
-            selectedCompanyObj = (companies || []).find((c: any) => c.id === firstItem.companyId || c.name === firstItem.companyName);
-        }
-        if (!selectedCompanyObj && companies && companies.length > 0) {
-            selectedCompanyObj = companies[0];
-        }
+        let selectedCompanyObj = soaCompanyId !== 'All' ? (companies || []).find((c: any) => c.id === soaCompanyId) : null;
 
         generatePdfSOA({
             title: "CLIENT STATEMENT OF ACCOUNT (SOA)",
@@ -6315,15 +6549,19 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             totalPaid,
             balance,
             isReceivable: true,
-            companyName: selectedCompanyObj?.name,
+            companyName: selectedCompanyObj ? selectedCompanyObj.name : "PIONEER GROUP (CONSOLIDATED)",
             companyLogo: selectedCompanyObj?.logo,
-            companyAddress: selectedCompanyObj?.address,
-            companyEmail: selectedCompanyObj?.email,
-            companyPhone: selectedCompanyObj?.phone,
+            companyAddress: selectedCompanyObj?.address || "United Arab Emirates",
+            companyEmail: selectedCompanyObj?.email || "accounts@pioneer.ae",
+            companyPhone: selectedCompanyObj?.phone || "+971 4 000 0000",
             includeDetails: soaIncludeDetails,
             vendors,
             suppliers,
-            projects
+            projects,
+            orientation: targetOrientation,
+            soaCompanyId,
+            selectedCompanyObj,
+            bankAccounts
         });
     };
 
@@ -7946,7 +8184,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                             {/* Generating Actions */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
                                 <button
-                                    onClick={handleGenerateSOAPDF}
+                                    onClick={() => handleGenerateSOAPDF()}
                                     disabled={soaFilteredItems.length === 0}
                                     className="flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold p-3 rounded-2xl transition-all shadow-xs cursor-pointer text-xs disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -7962,6 +8200,118 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                     <span>Download Excel SOA</span>
                                 </button>
                             </div>
+
+                            {/* SOA PDF ORIENTATION SELECTION MODAL */}
+                            <AnimatePresence>
+                                {soaPdfModalOpen && (
+                                    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                                            className="bg-white rounded-[2.5rem] p-6 md:p-8 max-w-lg w-full space-y-6 shadow-2xl border border-slate-100"
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center shrink-0">
+                                                        <FileText className="w-6 h-6" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-lg font-black text-slate-900 tracking-tight">PDF SOA Page Format</h3>
+                                                        <p className="text-slate-500 text-xs font-medium">Select preferred layout orientation before downloading</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSoaPdfModalOpen(false)}
+                                                    className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                                                >
+                                                    <X className="w-5 h-5" />
+                                                </button>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {/* Portrait Option */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSoaPdfOrientation('portrait')}
+                                                    className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer space-y-3 relative ${
+                                                        soaPdfOrientation === 'portrait'
+                                                            ? 'border-rose-600 bg-rose-50/40 shadow-md ring-2 ring-rose-500/20'
+                                                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="w-8 h-11 border-2 border-slate-400 rounded-md bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600 shadow-2xs">
+                                                            A4
+                                                        </div>
+                                                        {soaPdfOrientation === 'portrait' && (
+                                                            <div className="w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center shadow-xs">
+                                                                <Check className="w-4 h-4 stroke-[3]" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-sm font-black text-slate-900">Portrait</h4>
+                                                        <p className="text-[11px] text-slate-500 font-medium leading-relaxed mt-0.5">
+                                                            Standard vertical format (210 × 297 mm). Compact & clean.
+                                                        </p>
+                                                    </div>
+                                                </button>
+
+                                                {/* Landscape Option */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSoaPdfOrientation('landscape')}
+                                                    className={`p-5 rounded-2xl border-2 text-left transition-all cursor-pointer space-y-3 relative ${
+                                                        soaPdfOrientation === 'landscape'
+                                                            ? 'border-rose-600 bg-rose-50/40 shadow-md ring-2 ring-rose-500/20'
+                                                            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="w-11 h-8 border-2 border-slate-400 rounded-md bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-600 shadow-2xs">
+                                                            A4
+                                                        </div>
+                                                        {soaPdfOrientation === 'landscape' && (
+                                                            <div className="w-6 h-6 bg-rose-600 text-white rounded-full flex items-center justify-center shadow-xs">
+                                                                <Check className="w-4 h-4 stroke-[3]" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-sm font-black text-slate-900">Landscape</h4>
+                                                        <p className="text-[11px] text-slate-500 font-medium leading-relaxed mt-0.5">
+                                                            Wide horizontal view (297 × 210 mm). Expanded table width.
+                                                        </p>
+                                                    </div>
+                                                </button>
+                                            </div>
+
+                                            <div className="flex items-center justify-end gap-3 pt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSoaPdfModalOpen(false)}
+                                                    className="px-5 py-2.5 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-2xl text-xs font-bold transition-all cursor-pointer"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSoaPdfModalOpen(false);
+                                                        handleGenerateSOAPDF(soaPdfOrientation);
+                                                    }}
+                                                    className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs font-black transition-all shadow-md shadow-rose-600/30 cursor-pointer flex items-center gap-2"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    <span>Generate & Download PDF</span>
+                                                </button>
+                                            </div>
+                                        </motion.div>
+                                    </div>
+                                )}
+                            </AnimatePresence>
                         </div>
                     </div>
 
