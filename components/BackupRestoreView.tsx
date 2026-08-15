@@ -7,9 +7,11 @@ import {
   Clock, UserCheck, Sparkles, ArrowRight, Save, History, FileSpreadsheet,
   Image, Receipt, Eye, FileArchive
 } from 'lucide-react';
-import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch, query, orderBy, startAfter, limit } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch, query, orderBy, startAfter, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { downloadExpenseBillsZip } from '../utils/zipExport';
+import { RecycleBinItem } from '../types';
+import { restoreFromRecycleBin, permanentlyDeleteFromRecycleBin, emptyRecycleBin } from '../services/storageService';
 
 interface BackupModuleConfig {
   id: string;
@@ -64,7 +66,138 @@ interface BackupRestoreViewProps {
 }
 
 export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, everydayExpenses, onLogAction }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'export' | 'import' | 'history'>('export');
+  const [activeSubTab, setActiveSubTab] = useState<'export' | 'import' | 'recycle' | 'history'>('export');
+  
+  // Recycle Bin State
+  const [recycleBinItems, setRecycleBinItems] = useState<RecycleBinItem[]>([]);
+  const [recycleSearch, setRecycleSearch] = useState<string>('');
+  const [selectedRecycleSection, setSelectedRecycleSection] = useState<string>('All');
+  const [isRestoringRecycleId, setIsRestoringRecycleId] = useState<string | null>(null);
+  const [isDeletingRecycleId, setIsDeletingRecycleId] = useState<string | null>(null);
+
+  // Real-time listener for Recycle Bin collection
+  useEffect(() => {
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(
+        collection(db, 'recycle_bin'),
+        (snap) => {
+          const items: RecycleBinItem[] = [];
+          snap.forEach(docSnap => {
+            items.push({ id: docSnap.id, ...docSnap.data() } as RecycleBinItem);
+          });
+          items.sort((a, b) => new Date(b.deletedAt || 0).getTime() - new Date(a.deletedAt || 0).getTime());
+          setRecycleBinItems(items);
+        },
+        (err) => {
+          console.warn("Recycle bin listener note:", err?.message || err);
+        }
+      );
+    } catch (err) {
+      console.warn("Could not subscribe to recycle_bin:", err);
+    }
+    return () => {
+      try {
+        unsub();
+      } catch (_) {}
+    };
+  }, []);
+
+  const handleRestoreRecycleItem = async (item: RecycleBinItem) => {
+    setIsRestoringRecycleId(item.id);
+    try {
+      await restoreFromRecycleBin(item);
+      if (onLogAction) {
+        onLogAction('Recycle Bin Record Restored', `Restored "${item.description || 'Record'}" (${item.section}) back to active database.`, 'update');
+      }
+      setNotificationMessage(`Successfully restored "${item.description || 'Record'}" back to ${item.section}!`);
+      setTimeout(() => setNotificationMessage(null), 3000);
+    } catch (err) {
+      console.error("Restore error:", err);
+    } finally {
+      setIsRestoringRecycleId(null);
+    }
+  };
+
+  const handleDeleteRecycleItem = async (item: RecycleBinItem) => {
+    if (!window.confirm(`Are you sure you want to PERMANENTLY delete "${item.description || 'this record'}" from the Recycle Bin? This action cannot be undone.`)) {
+      return;
+    }
+    setIsDeletingRecycleId(item.id);
+    try {
+      await permanentlyDeleteFromRecycleBin(item.id);
+      if (onLogAction) {
+        onLogAction('Recycle Bin Item Permanently Deleted', `Permanently purged record "${item.description}" from Recycle Bin.`, 'delete');
+      }
+      setNotificationMessage(`Permanently deleted record from Recycle Bin.`);
+      setTimeout(() => setNotificationMessage(null), 3000);
+    } catch (err) {
+      console.error("Permanent delete error:", err);
+    } finally {
+      setIsDeletingRecycleId(null);
+    }
+  };
+
+  const handleEmptyRecycleBin = async () => {
+    if (recycleBinItems.length === 0) return;
+    if (!window.confirm(`Are you sure you want to PERMANENTLY EMPTY the entire Recycle Bin (${recycleBinItems.length} records)? All deleted records will be purged forever.`)) {
+      return;
+    }
+    try {
+      await emptyRecycleBin();
+      if (onLogAction) {
+        onLogAction('Recycle Bin Emptied', `Purged all ${recycleBinItems.length} items from Recycle Bin.`, 'delete');
+      }
+      setNotificationMessage(`Recycle Bin completely emptied.`);
+      setTimeout(() => setNotificationMessage(null), 3000);
+    } catch (err) {
+      console.error("Empty recycle bin error:", err);
+    }
+  };
+
+  const filteredRecycleItems = useMemo(() => {
+    return recycleBinItems.filter(item => {
+      // Section filter
+      if (selectedRecycleSection !== 'All') {
+        const itemSec = item.section || 'General';
+        if (selectedRecycleSection === 'Expenses' && itemSec !== 'Expenses') return false;
+        if (selectedRecycleSection === 'Petty Cash' && itemSec !== 'Petty Cash') return false;
+        if (selectedRecycleSection === 'Accounts Payable' && itemSec !== 'Accounts Payable') return false;
+        if (selectedRecycleSection === 'Accounts Receivable' && itemSec !== 'Accounts Receivable') return false;
+        if (selectedRecycleSection === 'General' && itemSec !== 'General') return false;
+      }
+      // Search filter
+      if (recycleSearch && recycleSearch.trim()) {
+        const q = recycleSearch.toLowerCase().trim();
+        const matchDesc = (item.description || '').toLowerCase().includes(q);
+        const matchPerson = (item.personName || '').toLowerCase().includes(q);
+        const matchRef = (item.reference || '').toLowerCase().includes(q);
+        const matchBy = (item.deletedBy || '').toLowerCase().includes(q);
+        return matchDesc || matchPerson || matchRef || matchBy;
+      }
+      return true;
+    });
+  }, [recycleBinItems, selectedRecycleSection, recycleSearch]);
+
+  const recycleSectionCounts = useMemo(() => {
+    const counts: { [key: string]: number } = {
+      All: recycleBinItems.length,
+      Expenses: 0,
+      'Petty Cash': 0,
+      'Accounts Payable': 0,
+      'Accounts Receivable': 0,
+      General: 0
+    };
+    recycleBinItems.forEach(item => {
+      const sec = item.section || 'General';
+      if (counts[sec] !== undefined) {
+        counts[sec]++;
+      } else {
+        counts.General++;
+      }
+    });
+    return counts;
+  }, [recycleBinItems]);
   
   // Export State
   const [selectedExportModules, setSelectedExportModules] = useState<string[]>(BACKUP_MODULES.map(m => m.id));
@@ -675,6 +808,21 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
             <Upload className="w-4 h-4" /> Restore Data
           </button>
           <button
+            onClick={() => setActiveSubTab('recycle')}
+            className={`px-5 py-2.5 rounded-2xl text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-2.5 ${
+              activeSubTab === 'recycle'
+                ? 'bg-red-600 text-white shadow-lg shadow-red-600/30'
+                : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Trash2 className="w-4 h-4 text-red-400" /> Recycle Bin
+            {recycleBinItems.length > 0 && (
+              <span className="bg-red-500/30 text-red-200 text-[10px] px-2 py-0.5 rounded-full font-black border border-red-400/30">
+                {recycleBinItems.length}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setActiveSubTab('history')}
             className={`px-5 py-2.5 rounded-2xl text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-2.5 ${
               activeSubTab === 'history'
@@ -1169,6 +1317,185 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
                   <span className="text-xs font-bold text-slate-400">
                     {new Date(item.timestamp).toLocaleString()}
                   </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SUB-TAB: RECYCLE BIN */}
+      {activeSubTab === 'recycle' && (
+        <div className="space-y-6">
+          {/* Controls & Filter Header */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <Trash2 className="w-5 h-5 text-red-600" /> Transaction Recycle Bin
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  View deleted transactions categorized section-wise. Restore records back to original accounts or purge permanently.
+                </p>
+              </div>
+
+              {recycleBinItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleEmptyRecycleBin}
+                  className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 shadow-2xs shrink-0 self-start sm:self-auto"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" /> Empty Recycle Bin ({recycleBinItems.length})
+                </button>
+              )}
+            </div>
+
+            {/* Section Selector Tabs & Search Box */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pt-2 border-t border-slate-100">
+              {/* Section Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {[
+                  { id: 'All', label: 'All Records', count: recycleSectionCounts.All },
+                  { id: 'Expenses', label: 'Expenses', count: recycleSectionCounts.Expenses },
+                  { id: 'Petty Cash', label: 'Petty Cash', count: recycleSectionCounts['Petty Cash'] },
+                  { id: 'Accounts Payable', label: 'Accounts Payable', count: recycleSectionCounts['Accounts Payable'] },
+                  { id: 'Accounts Receivable', label: 'Accounts Receivable', count: recycleSectionCounts['Accounts Receivable'] },
+                  { id: 'General', label: 'General / Other', count: recycleSectionCounts.General },
+                ].map(sec => (
+                  <button
+                    key={sec.id}
+                    onClick={() => setSelectedRecycleSection(sec.id)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold tracking-wider transition-all whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                      selectedRecycleSection === sec.id
+                        ? 'bg-red-600 text-white shadow-sm'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>{sec.label}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-black ${
+                      selectedRecycleSection === sec.id
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {sec.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Input */}
+              <div className="relative w-full lg:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={recycleSearch}
+                  onChange={(e) => setRecycleSearch(e.target.value)}
+                  placeholder="Search deleted records, person, ref..."
+                  className="w-full bg-slate-50 font-medium text-slate-800 text-xs pl-9 pr-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:bg-white transition-all"
+                />
+                {recycleSearch && (
+                  <button
+                    onClick={() => setRecycleSearch('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Items List / Grid */}
+          {filteredRecycleItems.length === 0 ? (
+            <div className="bg-white rounded-3xl border border-slate-200/80 p-12 text-center space-y-3 shadow-xs">
+              <div className="w-14 h-14 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto">
+                <Trash2 className="w-7 h-7" />
+              </div>
+              <h3 className="text-base font-black text-slate-800">No Deleted Records Found</h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                {recycleSearch
+                  ? `No records in "${selectedRecycleSection}" match your search query "${recycleSearch}".`
+                  : `The Recycle Bin for section "${selectedRecycleSection}" is currently empty.`}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredRecycleItems.map(item => (
+                <div
+                  key={item.id}
+                  className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${
+                          item.section === 'Expenses'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200/80'
+                            : item.section === 'Petty Cash'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+                            : item.section === 'Accounts Payable'
+                            ? 'bg-blue-50 text-blue-700 border-blue-200/80'
+                            : item.section === 'Accounts Receivable'
+                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200/80'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {item.section || 'General'}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-400">
+                          Collection: {item.originalCollection}
+                        </span>
+                      </div>
+                      {item.amount !== undefined && item.amount !== null && (
+                        <span className="text-sm font-black text-slate-900 bg-slate-100 px-3 py-1 rounded-xl">
+                          AED {Number(item.amount).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <h4 className="font-extrabold text-slate-900 text-sm line-clamp-2">
+                        {item.description || 'Deleted Record'}
+                      </h4>
+                      {item.personName && (
+                        <p className="text-xs font-bold text-brand-600 mt-0.5 flex items-center gap-1">
+                          <span>Person / Account:</span> {item.personName}
+                        </p>
+                      )}
+                      {item.reference && (
+                        <p className="text-[11px] font-medium text-slate-500 mt-0.5">
+                          Ref / Voucher: <span className="font-mono text-slate-700">{item.reference}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="text-[10px] text-slate-400 font-medium pt-2 border-t border-slate-100 flex items-center justify-between">
+                      <span>Deleted by: <strong className="text-slate-600">{item.deletedBy || 'System User'}</strong></span>
+                      <span>{item.deletedAt ? new Date(item.deletedAt).toLocaleString() : 'N/A'}</span>
+                    </div>
+                  </div>
+
+                  {/* Actions: Restore & Permanent Delete */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      disabled={isRestoringRecycleId === item.id || isDeletingRecycleId === item.id}
+                      onClick={() => handleRestoreRecycleItem(item)}
+                      className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRestoringRecycleId === item.id ? 'animate-spin' : ''}`} />
+                      <span>{isRestoringRecycleId === item.id ? 'Restoring...' : 'Restore Record'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isRestoringRecycleId === item.id || isDeletingRecycleId === item.id}
+                      onClick={() => handleDeleteRecycleItem(item)}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 border border-slate-200 hover:border-rose-200"
+                      title="Permanently Delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

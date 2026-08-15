@@ -330,6 +330,13 @@ export interface AccountsReceivable {
     actualAmount?: number; // Work value after deduction
     adjustmentAmount?: number; // Adjustment Amount (+/-)
     adjustmentType?: '+' | '-'; // Adjustment Type (Addition/Deduction)
+    receivedAmount?: number; // Partial or full amount received from client
+    paidAmount?: number; // Alias for compatibility with payment calculations
+    balanceAmount?: number; // Pending balance due from client
+    partialPaymentNotes?: string;
+    chequeNo?: string;
+    chequeDate?: string;
+    chequeAmount?: number;
     invoiceRef?: string;
     monthOf?: string;
     projectLpoNo?: string;
@@ -399,6 +406,7 @@ export interface EverydayExpense {
     uploadedDate?: string;
     attachment?: string;
     attachments?: string[];
+    receiptUrl?: string;
     employeeId?: string; // Associated employee for petty cash tallying
     isVehicleFuel?: boolean;
     vehicleNumber?: string;
@@ -837,6 +845,20 @@ export interface Vehicle {
     documents?: VehicleDocument[];
     createdAt?: string;
     updatedAt?: string;
+}
+
+export interface RecycleBinItem {
+    id: string;
+    originalCollection: string;
+    section: 'Expenses' | 'Petty Cash' | 'Accounts Payable' | 'Accounts Receivable' | 'General';
+    docId: string;
+    data: any;
+    deletedAt: string;
+    deletedBy?: string;
+    description?: string;
+    amount?: number;
+    personName?: string;
+    reference?: string;
 }
 
 

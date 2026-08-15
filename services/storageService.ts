@@ -8,11 +8,17 @@ import {
   deleteDoc, 
   query, 
   where, 
+  orderBy,
+  startAfter,
+  limit,
+  QueryDocumentSnapshot,
+  DocumentData,
   getDocFromServer,
   addDoc,
   writeBatch
 } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { ref, uploadString, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, auth, storage } from '../firebase';
 import { compressAllImagesInDoc } from '../utils';
 import { 
   Employee, 
@@ -40,7 +46,8 @@ import {
   EngineerDocument,
   CampExpense,
   Voucher,
-  Vehicle
+  Vehicle,
+  RecycleBinItem
 } from "../types";
 
 // Helper for error handling as per spec
@@ -101,13 +108,8 @@ export const handleFirestoreError = (error: unknown, operationType: OperationTyp
 
 // Test connection on boot
 export const testConnection = async () => {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. The client is offline.");
-    }
-  }
+  // Firestore auto-connects when active listeners or queries are mounted.
+  // Avoid aggressive cold-start getDocFromServer to prevent WebChannel target acknowledgement race conditions.
 };
 
 // Helper to remove undefined values before saving to Firestore
@@ -597,17 +599,170 @@ export const deleteProjectedExpense = async (id: string) => {
 };
 
 // --- Everyday Expenses ---
+export const uploadBase64ToStorage = async (base64Data: string, storagePath: string): Promise<string> => {
+  if (!base64Data || !base64Data.startsWith('data:')) {
+    return base64Data;
+  }
+  try {
+    const storageRef = ref(storage, storagePath);
+    await uploadString(storageRef, base64Data, 'data_url');
+    const downloadUrl = await getDownloadURL(storageRef);
+    return downloadUrl;
+  } catch (err) {
+    console.warn(`Firebase Storage upload error for ${storagePath}:`, err);
+    return base64Data;
+  }
+};
+
+export const uploadReceiptsForDoc = async (docData: any, collectionName: string = 'everyday_expenses'): Promise<any> => {
+  if (!docData) return docData;
+  const clone = { ...docData };
+
+  if (clone.attachment && typeof clone.attachment === 'string' && clone.attachment.startsWith('data:')) {
+    const path = `${collectionName}/${clone.id || Date.now()}_receipt_${Date.now()}`;
+    const url = await uploadBase64ToStorage(clone.attachment, path);
+    if (url && url !== clone.attachment) {
+      clone.attachment = url;
+      clone.receiptUrl = url;
+    }
+  }
+
+  if (Array.isArray(clone.attachments) && clone.attachments.length > 0) {
+    const updatedAttachments: string[] = [];
+    for (let i = 0; i < clone.attachments.length; i++) {
+      const att = clone.attachments[i];
+      if (typeof att === 'string' && att.startsWith('data:')) {
+        const path = `${collectionName}/${clone.id || Date.now()}_att_${i}_${Date.now()}`;
+        const url = await uploadBase64ToStorage(att, path);
+        updatedAttachments.push(url);
+      } else {
+        updatedAttachments.push(att);
+      }
+    }
+    clone.attachments = updatedAttachments;
+    if (updatedAttachments[0]) {
+      clone.attachment = updatedAttachments[0];
+      clone.receiptUrl = updatedAttachments[0];
+    }
+  }
+
+  return clone;
+};
+
+export const fetchAllEverydayExpensesInBatches = async (): Promise<EverydayExpense[]> => {
+  try {
+    const expensesRef = collection(db, 'everyday_expenses');
+    let allDocs: EverydayExpense[] = [];
+    let lastDoc: QueryDocumentSnapshot<DocumentData> | null = null;
+    let hasMore = true;
+    let pageCount = 0;
+
+    while (hasMore && pageCount < 100) {
+      pageCount++;
+      const q = lastDoc
+        ? query(expensesRef, orderBy('__name__'), startAfter(lastDoc), limit(15))
+        : query(expensesRef, orderBy('__name__'), limit(15));
+
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        hasMore = false;
+        break;
+      }
+
+      const chunk = snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense);
+      allDocs = [...allDocs, ...chunk];
+
+      if (snap.docs.length < 15) {
+        hasMore = false;
+      } else {
+        lastDoc = snap.docs[snap.docs.length - 1];
+      }
+    }
+
+    allDocs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return allDocs;
+  } catch (err) {
+    console.error('Error fetching everyday expenses in batches:', err);
+    return [];
+  }
+};
+
+export const migrateBase64ReceiptsToStorage = async (): Promise<{ migrated: number; errors: number }> => {
+  console.log('Starting migration of Base64 receipts to Firebase Storage in paginated chunks...');
+  let migrated = 0;
+  let errors = 0;
+
+  try {
+    const expensesRef = collection(db, 'everyday_expenses');
+    let lastDoc: QueryDocumentSnapshot<DocumentData> | null = null;
+    let hasMore = true;
+    let pageCount = 0;
+
+    while (hasMore && pageCount < 100) {
+      pageCount++;
+      const q = lastDoc
+        ? query(expensesRef, orderBy('__name__'), startAfter(lastDoc), limit(10))
+        : query(expensesRef, orderBy('__name__'), limit(10));
+
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) {
+        hasMore = false;
+        break;
+      }
+
+      for (const documentDoc of snapshot.docs) {
+        const data = documentDoc.data();
+        const hasBase64Attachment = typeof data.attachment === 'string' && data.attachment.startsWith('data:');
+        const hasBase64AttachmentsArray = Array.isArray(data.attachments) && data.attachments.some((att: any) => typeof att === 'string' && att.startsWith('data:'));
+
+        if (hasBase64Attachment || hasBase64AttachmentsArray) {
+          try {
+            const updatedDoc = await uploadReceiptsForDoc({ ...data, id: documentDoc.id }, 'everyday_expenses');
+            const cleaned = await prepareDocForFirestore(updatedDoc);
+            await updateDoc(doc(db, 'everyday_expenses', documentDoc.id), cleaned);
+            migrated++;
+            console.log(`Migrated receipts for Everyday Expense ID: ${documentDoc.id}`);
+          } catch (e) {
+            console.error(`Error migrating expense document ${documentDoc.id}:`, e);
+            errors++;
+          }
+        }
+      }
+
+      if (snapshot.docs.length < 10) {
+        hasMore = false;
+      } else {
+        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+      }
+    }
+    console.log(`Receipt migration complete. Migrated: ${migrated}, Errors: ${errors}`);
+  } catch (err) {
+    console.error('Error during migrateBase64ReceiptsToStorage:', err);
+  }
+
+  return { migrated, errors };
+};
+
 export const saveEverydayExpense = async (data: EverydayExpense) => {
   try {
-    const docData = await prepareDocForFirestore(data);
+    let docData = await uploadReceiptsForDoc(data, 'everyday_expenses');
+    docData = await prepareDocForFirestore(docData);
     await setDoc(doc(db, 'everyday_expenses', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `everyday_expenses/${data.id}`);
   }
 };
 
-export const deleteEverydayExpense = async (id: string) => {
+export const deleteEverydayExpense = async (id: string, attachmentUrl?: string) => {
   try {
+    if (attachmentUrl && typeof attachmentUrl === 'string' && attachmentUrl.startsWith('http') && attachmentUrl.includes('firebasestorage')) {
+      try {
+        const fileRef = ref(storage, attachmentUrl);
+        await deleteObject(fileRef);
+      } catch (e) {
+        console.warn('Storage file deletion skipped or failed:', e);
+      }
+    }
     await deleteDoc(doc(db, 'everyday_expenses', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `everyday_expenses/${id}`);
@@ -800,6 +955,75 @@ export const deleteVehicle = async (id: string) => {
     await deleteDoc(doc(db, 'vehicles', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `vehicles/${id}`);
+  }
+};
+
+// --- Recycle Bin Services ---
+export const moveToRecycleBin = async (
+  section: 'Expenses' | 'Petty Cash' | 'Accounts Payable' | 'Accounts Receivable' | 'General',
+  originalCollection: string,
+  docId: string,
+  itemData: any,
+  deletedBy?: string
+) => {
+  const recycleId = `recycle_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const recycleDoc: RecycleBinItem = {
+    id: recycleId,
+    originalCollection,
+    section,
+    docId,
+    data: itemData,
+    deletedAt: new Date().toISOString(),
+    deletedBy: deletedBy || auth.currentUser?.email || 'System User',
+    description: itemData.itemName || itemData.description || itemData.title || itemData.invoiceNo || 'Transaction Record',
+    amount: itemData.totalAmount ?? itemData.amount ?? itemData.credit ?? itemData.debit ?? 0,
+    personName: itemData.uploadedBy || itemData.employeeName || itemData.contact || itemData.requestedBy || itemData.category || 'N/A',
+    reference: itemData.invoiceNo || itemData.voucherNo || itemData.ref || itemData.reference || 'N/A'
+  };
+
+  try {
+    const prepared = await prepareDocForFirestore(recycleDoc);
+    await setDoc(doc(db, 'recycle_bin', recycleId), prepared);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `recycle_bin/${recycleId}`);
+  }
+
+  try {
+    await deleteDoc(doc(db, originalCollection, docId));
+    return recycleId;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `${originalCollection}/${docId}`);
+  }
+};
+
+export const restoreFromRecycleBin = async (item: RecycleBinItem) => {
+  try {
+    const preparedData = await prepareDocForFirestore(item.data);
+    await setDoc(doc(db, item.originalCollection, item.docId), preparedData);
+    await deleteDoc(doc(db, 'recycle_bin', item.id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `recycle_bin/restore/${item.id}`);
+  }
+};
+
+export const permanentlyDeleteFromRecycleBin = async (recycleBinItemId: string) => {
+  try {
+    await deleteDoc(doc(db, 'recycle_bin', recycleBinItemId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `recycle_bin/${recycleBinItemId}`);
+  }
+};
+
+export const emptyRecycleBin = async () => {
+  try {
+    const snap = await getDocs(collection(db, 'recycle_bin'));
+    const batch = writeBatch(db);
+    snap.docs.forEach(docSnap => {
+      batch.delete(docSnap.ref);
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'recycle_bin/empty');
   }
 };
 

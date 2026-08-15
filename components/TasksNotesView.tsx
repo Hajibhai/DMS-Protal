@@ -291,7 +291,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       setSystemUsers(list);
     });
     return unsub;
-  }, [systemUser]);
+  }, [systemUser?.uid]);
 
   // 2. Fetch Tasks with real-time sync
   useEffect(() => {
@@ -309,7 +309,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       setLoadingTasks(false);
     });
     return unsub;
-  }, [systemUser]);
+  }, [systemUser?.uid]);
 
   // 3. Fetch Notes with real-time sync
   useEffect(() => {
@@ -327,7 +327,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       setLoadingNotes(false);
     });
     return unsub;
-  }, [systemUser]);
+  }, [systemUser?.uid]);
 
   // 4. Fetch Meetings with real-time sync
   useEffect(() => {
@@ -345,7 +345,7 @@ export default function TasksNotesView({ systemUser }: TasksNotesViewProps) {
       setLoadingMeetings(false);
     });
     return unsub;
-  }, [systemUser]);
+  }, [systemUser?.uid]);
 
   const canManageTask = (t: Task | undefined) => {
     if (!t) return false;

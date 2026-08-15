@@ -327,7 +327,7 @@ export const Layout: React.FC<LayoutProps> = ({
       console.error("Error loading layout meetings:", err);
     });
     return () => unsub();
-  }, [user]);
+  }, [user?.uid]);
 
   const activeMeetingAlert = useMemo(() => {
     if (!user) return null;

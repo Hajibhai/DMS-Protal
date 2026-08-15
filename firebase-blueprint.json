@@ -563,6 +563,25 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "refNo", "date", "employeeName", "emiratesId", "nationality"]
+    },
+    "RecycleBinItem": {
+      "title": "Recycle Bin Item",
+      "description": "Deleted transaction record stored in recycle bin for recovery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "originalId": { "type": "string" },
+        "originalCollection": { "type": "string" },
+        "section": { "type": "string" },
+        "data": { "type": "object" },
+        "deletedAt": { "type": "string" },
+        "deletedBy": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "personName": { "type": "string" },
+        "reference": { "type": "string" }
+      },
+      "required": ["id", "originalId", "originalCollection", "section", "data", "deletedAt", "deletedBy"]
     }
   },
   "firestore": {
@@ -681,6 +700,10 @@
     "/emirates_id_acknowledgements/{ackId}": {
       "schema": "EmiratesIdAcknowledgement",
       "description": "Ledger of all Emirates ID custody collection acknowledgements"
+    },
+    "/recycle_bin/{itemId}": {
+      "schema": "RecycleBinItem",
+      "description": "Deleted transaction records stored in recycle bin"
     }
   }
 }

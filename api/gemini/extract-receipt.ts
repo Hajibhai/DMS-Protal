@@ -87,6 +87,7 @@ export default async function handler(req: any, res: any) {
           endDate: { type: Type.STRING, description: "End date in YYYY-MM-DD format if present, else empty string" },
           endTime: { type: Type.STRING, description: "End time on the bill in HH:MM 24-hour style if present (e.g., '17:35'), else empty" },
           vehicleNumber: { type: Type.STRING, description: "Vehicle plate number/code or car number if printed on the petrol/refuel/fuel receipt (e.g., 'DXB 12345', 'M 98765', '12345', 'G 54321'), or empty string if not found" },
+          employeeName: { type: Type.STRING, description: "Name of the employee, driver, or purchaser printed on the receipt or fuel card, or empty string if not found" },
         },
         required: ["date", "billAmount", "totalAmount"]
       };

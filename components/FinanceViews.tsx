@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { 
   Search, Filter, Download, Plus, Edit, Trash2, 
   ChevronDown, X, FileText, Globe, Truck, Car,
@@ -66,7 +66,7 @@ import { Vendor, AccountsPayable, AccountsReceivable, PettyCash,
 } from '../types';
 import { PrintModal, PrintOptions } from './PrintModal';
 import { GoogleDriveManager } from './GoogleDriveManager';
-import { saveEverydayExpense } from '../services/storageService';
+import { saveEverydayExpense, savePettyCash, moveToRecycleBin } from '../services/storageService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts';
 
 /**
@@ -1692,6 +1692,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending'>('All');
     const [soaCompanyId, setSoaCompanyId] = useState('All');
     const [soaIncludeDetails, setSoaIncludeDetails] = useState(false);
+    const [soaNotes, setSoaNotes] = useState("All invoices submitted as per the site provided time sheet and records.");
     const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
     const [expandedMonthDetails, setExpandedMonthDetails] = useState<string | null>(null);
     const [soaPdfModalOpen, setSoaPdfModalOpen] = useState(false);
@@ -2405,13 +2406,11 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
         let totalBilled = 0;
         let totalPaid = 0;
         soaFilteredItems.forEach((itm: any) => {
-            const amt = itm.totalAmount || itm.amount || 0;
-            totalBilled += amt;
-            if (itm.status === 'Paid') {
-                totalPaid += amt;
-            }
+            const { totalAmt, paidAmt } = getSOAItemAmounts(itm);
+            totalBilled += totalAmt;
+            totalPaid += paidAmt;
         });
-        const balance = totalBilled - totalPaid;
+        const balance = Math.max(0, totalBilled - totalPaid);
 
         let selectedCompanyObj = soaCompanyId !== 'All' ? (companies || []).find((c: any) => c.id === soaCompanyId) : null;
 
@@ -2439,7 +2438,8 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             orientation: targetOrientation,
             soaCompanyId,
             selectedCompanyObj,
-            bankAccounts
+            bankAccounts,
+            soaNotes
         });
     };
 
@@ -2462,7 +2462,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             }
         }
 
-        downloadSOAExcel(soaVendorId, pName, pType, soaFilteredItems, false, soaIncludeDetails, vendors, suppliers, projects);
+        downloadSOAExcel(soaVendorId, pName, pType, soaFilteredItems, false, soaIncludeDetails, vendors, suppliers, projects, soaNotes);
     };
 
     const { duplicateGroups, duplicateGroupsCount } = useMemo(() => {
@@ -4066,22 +4066,72 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                 </p>
                             </div>
 
-                            {/* Output Preview Card */}
-                            <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-3xl space-y-2 mt-4">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 font-mono">Matched Record Summary</p>
-                                <div className="grid grid-cols-2 gap-3 font-mono text-[11px]">
-                                    <div>
-                                        <span className="text-slate-450 block">Matched:</span>
-                                        <strong className="text-slate-800 text-xs font-black">{soaFilteredItems.length} invoices</strong>
-                                    </div>
-                                    <div>
-                                        <span className="text-slate-450 block">Net Liability:</span>
-                                        <strong className="text-rose-600 text-xs font-black">
-                                            AED {soaFilteredItems.reduce((acc, c) => acc + (c.status !== 'Paid' ? (c.totalAmount || c.amount || 0) : 0), 0).toLocaleString()}
-                                        </strong>
-                                    </div>
+                            {/* Statement Note / Remarks */}
+                            <div className="space-y-1.5">
+                                <div className="flex justify-between items-center">
+                                    <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Statement Note / Remark</label>
+                                    {soaNotes !== "All invoices submitted as per the site provided time sheet and records." && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setSoaNotes("All invoices submitted as per the site provided time sheet and records.")}
+                                            className="text-[10px] text-emerald-600 font-bold hover:underline cursor-pointer"
+                                        >
+                                            Reset Default
+                                        </button>
+                                    )}
                                 </div>
+                                <textarea 
+                                    value={soaNotes} 
+                                    onChange={e => setSoaNotes(e.target.value)}
+                                    rows={2}
+                                    placeholder="Enter statement note..."
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-slate-800 text-xs font-medium outline-hidden focus:border-emerald-500 transition-colors resize-none"
+                                />
+                                <p className="text-[10px] text-slate-400 font-medium">
+                                    Default note printed on downloaded PDF & Excel statement reports. Edit or clear content as required.
+                                </p>
                             </div>
+
+                            {/* Output Preview Card */}
+                            {(() => {
+                                let apBilled = 0;
+                                let apPaid = 0;
+                                soaFilteredItems.forEach((itm: any) => {
+                                    const { totalAmt, paidAmt } = getSOAItemAmounts(itm);
+                                    apBilled += totalAmt;
+                                    apPaid += paidAmt;
+                                });
+                                const apBal = Math.max(0, apBilled - apPaid);
+                                return (
+                                    <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-3xl space-y-2.5 mt-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 font-mono">Matched Record Summary</p>
+                                        <div className="grid grid-cols-2 gap-2.5 font-mono text-[11px]">
+                                            <div>
+                                                <span className="text-slate-400 block text-[10px]">Matching Records:</span>
+                                                <strong className="text-slate-800 text-xs font-bold">{soaFilteredItems.length} invoices</strong>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 block text-[10px]">Total Invoiced:</span>
+                                                <strong className="text-slate-900 text-xs font-black">
+                                                    AED {apBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </strong>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 block text-[10px]">Settled / Paid:</span>
+                                                <strong className="text-emerald-700 text-xs font-extrabold">
+                                                    AED {apPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </strong>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 block text-[10px]">Net Liability:</span>
+                                                <strong className="text-rose-600 text-xs font-extrabold">
+                                                    AED {apBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* CTAs */}
                             <div className="grid grid-cols-2 gap-3 pt-2">
@@ -5317,6 +5367,30 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setFontSize(10);
     doc.text(`AED ${Number(item.totalAmount || item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1.2, { align: 'right' });
 
+    if (item.status === 'Partially Received') {
+        const { paidAmt, balanceAmt } = getSOAItemAmounts(item);
+        yPos += 8;
+        doc.setFillColor(236, 253, 245);
+        doc.setDrawColor(167, 243, 208);
+        doc.rect(115, yPos - 4, 80, 7.5, 'F');
+        doc.rect(115, yPos - 4, 80, 7.5, 'D');
+        doc.setFontSize(8.5);
+        doc.setTextColor(5, 150, 105);
+        doc.text("Amount Received:", 119, yPos + 1);
+        doc.text(`AED ${paidAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1, { align: 'right' });
+
+        yPos += 7.5;
+        doc.setFillColor(255, 241, 242);
+        doc.setDrawColor(254, 205, 211);
+        doc.rect(115, yPos - 4, 80, 8, 'F');
+        doc.rect(115, yPos - 4, 80, 8, 'D');
+        doc.setFontSize(8.5);
+        doc.setTextColor(225, 29, 72);
+        doc.text("Balance Due (Pending):", 119, yPos + 1.2);
+        doc.setFontSize(9);
+        doc.text(`AED ${balanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 190, yPos + 1.2, { align: 'right' });
+    }
+
     // Advance position past the totals blocks
     yPos += 12;
     if (yPos > 240) {
@@ -5329,20 +5403,30 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.line(15, yPos, 195, yPos);
     yPos += 6;
 
-    // LEFT COLUMN: TERMS
+    // LEFT COLUMN: TERMS & VERIFICATION NOTICE
+    const verificationNoticeText = (item.description && item.description.trim()) 
+        ? item.description.trim() 
+        : "All invoices must be verified and certified within 3 days if not response within 3 days the invoices should considered certified and approved.";
+
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(9);
+    doc.setFontSize(8.5);
     doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-    doc.text("TERMS & INSTRUCTIONS", 15, yPos);
+    doc.text("TERMS & VERIFICATION NOTICE", 15, yPos);
 
     doc.setFont("Helvetica", "normal");
-    doc.setFontSize(7.5);
+    doc.setFontSize(7.2);
+    doc.setTextColor(darkTextColor[0], darkTextColor[1], darkTextColor[2]);
+    const splitNotice = doc.splitTextToSize(`Verification Notice: ${verificationNoticeText}`, 105);
+    doc.text(splitNotice, 15, yPos + 4.5);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7);
     doc.setTextColor(lightText[0], lightText[1], lightText[2]);
     doc.text([
         "1. Please reference the Invoice Number on bank transfers.",
         "2. Payment is due within the stipulated credit days.",
         "3. Standard 5% UAE VAT applies to overall civil items."
-    ], 15, yPos + 5);
+    ], 15, yPos + 5 + (splitNotice.length * 3.5));
 
     // RIGHT COLUMN: AUTHORIZED SIGNATORY (Placed parallel to TERMS under the line)
     doc.setFont("Helvetica", "bold");
@@ -5541,6 +5625,66 @@ export const formatToDDMMYYYY = (dateVal: any) => {
     return str;
 };
 
+export const getSOAItemAmounts = (itm: any) => {
+    const actualAmt = Number(itm.actualAmount !== undefined ? itm.actualAmount : (itm.amount || 0));
+    const vatAmt = Number(itm.vatAmount || 0);
+    const totalAmt = Number(itm.totalAmount !== undefined ? itm.totalAmount : actualAmt + vatAmt);
+    
+    let paidAmt = 0;
+    const isFullPaid = itm.status === 'Paid' || itm.status === 'Received';
+    
+    if (isFullPaid) {
+        paidAmt = totalAmt;
+    } else if (itm.status === 'Partially Received' || itm.status === 'Partially Paid') {
+        if (itm.receivedAmount !== undefined && Number(itm.receivedAmount) > 0) {
+            paidAmt = Number(itm.receivedAmount);
+        } else if (itm.paidAmount !== undefined && Number(itm.paidAmount) > 0) {
+            paidAmt = Number(itm.paidAmount);
+        } else if (itm.amountReceived !== undefined && Number(itm.amountReceived) > 0) {
+            paidAmt = Number(itm.amountReceived);
+        } else if (itm.paid !== undefined && Number(itm.paid) > 0) {
+            paidAmt = Number(itm.paid);
+        } else if (itm.balanceAmount !== undefined && Number(itm.balanceAmount) > 0 && Number(itm.balanceAmount) < totalAmt) {
+            paidAmt = Math.max(0, totalAmt - Number(itm.balanceAmount));
+        } else if (itm.balance !== undefined && Number(itm.balance) > 0 && Number(itm.balance) < totalAmt) {
+            paidAmt = Math.max(0, totalAmt - Number(itm.balance));
+        } else if (itm.adjustmentType === '-' && Number(itm.adjustmentAmount) > 0) {
+            paidAmt = Number(itm.adjustmentAmount);
+        } else if (Number(itm.adjustmentAmount) > 0) {
+            paidAmt = Number(itm.adjustmentAmount);
+        }
+    } else if (itm.status === 'Pending') {
+        if (itm.receivedAmount !== undefined && Number(itm.receivedAmount) > 0) {
+            paidAmt = Number(itm.receivedAmount);
+        } else if (itm.paidAmount !== undefined && Number(itm.paidAmount) > 0) {
+            paidAmt = Number(itm.paidAmount);
+        } else if (itm.balanceAmount !== undefined && Number(itm.balanceAmount) < totalAmt && Number(itm.balanceAmount) > 0) {
+            paidAmt = Math.max(0, totalAmt - Number(itm.balanceAmount));
+        } else if (itm.balance !== undefined && Number(itm.balance) < totalAmt && Number(itm.balance) > 0) {
+            paidAmt = Math.max(0, totalAmt - Number(itm.balance));
+        } else {
+            paidAmt = 0;
+        }
+    } else {
+        if (itm.receivedAmount !== undefined && Number(itm.receivedAmount) > 0) {
+            paidAmt = Number(itm.receivedAmount);
+        } else if (itm.paidAmount !== undefined && Number(itm.paidAmount) > 0) {
+            paidAmt = Number(itm.paidAmount);
+        }
+    }
+
+    paidAmt = Math.min(totalAmt, Math.max(0, paidAmt));
+
+    let balanceAmt = 0;
+    if (isFullPaid) {
+        balanceAmt = 0;
+    } else {
+        balanceAmt = Math.max(0, totalAmt - paidAmt);
+    }
+
+    return { actualAmt, vatAmt, totalAmt, paidAmt, balanceAmt };
+};
+
 interface PdfSOAParams {
     title: string;
     partnerName: string;
@@ -5566,6 +5710,7 @@ interface PdfSOAParams {
     soaCompanyId?: string;
     selectedCompanyObj?: any;
     bankAccounts?: any[];
+    soaNotes?: string;
 }
 
 export const generatePdfSOA = ({
@@ -5592,7 +5737,8 @@ export const generatePdfSOA = ({
     orientation = 'landscape',
     soaCompanyId,
     selectedCompanyObj,
-    bankAccounts = []
+    bankAccounts = [],
+    soaNotes
 }: PdfSOAParams) => {
     const isPortrait = orientation === 'portrait';
     const doc = new jsPDF({
@@ -5752,6 +5898,7 @@ export const generatePdfSOA = ({
         'ACT. AMT (AED)',
         'VAT AMT (AED)',
         'TOTAL (AED)',
+        'PAID / REC. (AED)',
         'BALANCE (AED)',
         'STATUS',
         'CHEQUE / PAYMENT DETAILS'
@@ -5760,6 +5907,7 @@ export const generatePdfSOA = ({
     let totalActualAmt = 0;
     let totalVatAmt = 0;
     let totalTotalAmt = 0;
+    let totalPaidAmt = 0;
     let totalBalanceAmt = 0;
 
     const tableBody = items.map((itm: any, idx: number) => {
@@ -5784,15 +5932,12 @@ export const generatePdfSOA = ({
             }
         }
 
-        const actualAmt = itm.amount || 0;
-        const vatAmt = itm.vatAmount || 0;
-        const totalAmt = itm.totalAmount || itm.amount || 0;
-        const isPaid = itm.status === 'Paid' || itm.status === 'Received';
-        const balanceAmt = isPaid ? 0 : totalAmt;
+        const { actualAmt, vatAmt, totalAmt, paidAmt, balanceAmt } = getSOAItemAmounts(itm);
 
         totalActualAmt += actualAmt;
         totalVatAmt += vatAmt;
         totalTotalAmt += totalAmt;
+        totalPaidAmt += paidAmt;
         totalBalanceAmt += balanceAmt;
 
         let invCellText = itm.invoiceNumber || '-';
@@ -5824,6 +5969,7 @@ export const generatePdfSOA = ({
             actualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
             vatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
             totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            paidAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
             balanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
             itm.status || 'Pending',
             chqStr
@@ -5835,6 +5981,7 @@ export const generatePdfSOA = ({
         { content: totalActualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
         { content: totalVatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
         { content: totalTotalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+        { content: totalPaidAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
         { content: totalBalanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
         '',
         ''
@@ -5848,8 +5995,8 @@ export const generatePdfSOA = ({
         margin: { left: margin, right: margin, bottom: 14, top: 12 },
         styles: {
             font: 'Helvetica',
-            fontSize: isPortrait ? 6.2 : 7.5,
-            cellPadding: isPortrait ? { top: 1.5, bottom: 1.5, left: 0.8, right: 0.8 } : 2,
+            fontSize: isPortrait ? 5.8 : 7.2,
+            cellPadding: isPortrait ? { top: 1.2, bottom: 1.2, left: 0.5, right: 0.5 } : 1.8,
             overflow: 'linebreak',
             valign: 'middle',
             textColor: [30, 41, 59]
@@ -5858,40 +6005,49 @@ export const generatePdfSOA = ({
             fillColor: themeColor,
             textColor: [255, 255, 255],
             fontStyle: 'bold',
-            fontSize: isPortrait ? 6.5 : 7.5,
+            fontSize: isPortrait ? 6.0 : 7.2,
             halign: 'left'
         },
         footStyles: {
             fillColor: [241, 245, 249],
             textColor: [15, 23, 42],
             fontStyle: 'bold',
-            fontSize: isPortrait ? 6.2 : 7.5,
-            cellPadding: isPortrait ? { top: 2, bottom: 2, left: 0.5, right: 0.5 } : 2,
+            fontSize: isPortrait ? 5.8 : 7.2,
+            cellPadding: isPortrait ? { top: 1.8, bottom: 1.8, left: 0.5, right: 0.5 } : 1.8,
             halign: 'right'
         },
         columnStyles: {
-            0: { halign: 'center', cellWidth: isPortrait ? 7 : 9 },
-            1: { halign: 'center', cellWidth: isPortrait ? 15 : 18 },
-            2: { cellWidth: isPortrait ? 28 : 38, fontStyle: 'bold' },
-            3: { halign: 'center', cellWidth: isPortrait ? 7 : 10 },
-            4: { halign: 'center', cellWidth: isPortrait ? 8 : 10 },
-            5: { halign: 'right', cellWidth: isPortrait ? 21 : 25, overflow: 'ellipsize' },
-            6: { halign: 'right', cellWidth: isPortrait ? 18 : 22, overflow: 'ellipsize' },
-            7: { halign: 'right', cellWidth: isPortrait ? 21 : 25, overflow: 'ellipsize' },
-            8: { halign: 'right', cellWidth: isPortrait ? 21 : 25, fontStyle: 'bold', overflow: 'ellipsize' },
-            9: { halign: 'center', cellWidth: isPortrait ? 14 : 18, fontStyle: 'bold' },
-            10: { cellWidth: 'auto' }
+            0: { halign: 'center', cellWidth: isPortrait ? 6 : 8 },
+            1: { halign: 'center', cellWidth: isPortrait ? 13 : 16 },
+            2: { cellWidth: isPortrait ? 24 : 32, fontStyle: 'bold' },
+            3: { halign: 'center', cellWidth: isPortrait ? 6 : 9 },
+            4: { halign: 'center', cellWidth: isPortrait ? 7 : 9 },
+            5: { halign: 'right', cellWidth: isPortrait ? 18 : 22, overflow: 'ellipsize' },
+            6: { halign: 'right', cellWidth: isPortrait ? 15 : 19, overflow: 'ellipsize' },
+            7: { halign: 'right', cellWidth: isPortrait ? 18 : 22, overflow: 'ellipsize' },
+            8: { halign: 'right', cellWidth: isPortrait ? 18 : 22, fontStyle: 'bold', overflow: 'ellipsize' },
+            9: { halign: 'right', cellWidth: isPortrait ? 18 : 22, fontStyle: 'bold', overflow: 'ellipsize' },
+            10: { halign: 'center', cellWidth: isPortrait ? 13 : 16, fontStyle: 'bold' },
+            11: { cellWidth: 'auto' }
         },
         didParseCell: (data: any) => {
-            if (data.section === 'body' && data.column.index === 9) {
+            if (data.section === 'body' && data.column.index === 10) {
                 const statusVal = String(data.cell.raw || '');
                 if (statusVal === 'Paid' || statusVal === 'Received') {
                     data.cell.styles.textColor = [16, 124, 65];
+                } else if (statusVal === 'Partially Received' || statusVal === 'Partially Paid') {
+                    data.cell.styles.textColor = [217, 119, 6];
                 } else {
-                    data.cell.styles.textColor = [220, 95, 0];
+                    data.cell.styles.textColor = [220, 38, 38];
                 }
             }
             if (data.section === 'body' && data.column.index === 8) {
+                const paidRaw = data.cell.raw;
+                if (paidRaw && paidRaw !== '0.00') {
+                    data.cell.styles.textColor = [16, 124, 65];
+                }
+            }
+            if (data.section === 'body' && data.column.index === 9) {
                 const balRaw = data.cell.raw;
                 if (balRaw && balRaw !== '0.00') {
                     data.cell.styles.textColor = [220, 38, 38];
@@ -5899,6 +6055,8 @@ export const generatePdfSOA = ({
             }
         }
     });
+
+    let currentY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 5 : 180;
 
     // Draw Bank Payment Details ONLY if a specific issuer company is selected (not 'All' / All Combined)
     if (soaCompanyId && soaCompanyId !== 'All' && selectedCompanyObj) {
@@ -5926,7 +6084,7 @@ export const generatePdfSOA = ({
             };
         }
 
-        let bankY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 6 : 180;
+        let bankY = currentY;
         const boxHeight = 22;
         if (bankY + boxHeight > pageHeight - 14) {
             doc.addPage();
@@ -5961,10 +6119,44 @@ export const generatePdfSOA = ({
         doc.text(`IBAN: ${targetBank.iban || 'N/A'}`, col2X, bankY + 10.5);
         doc.text(`SWIFT / BIC: ${targetBank.swiftCode || 'N/A'}`, col2X, bankY + 15);
         doc.text(`Currency: ${targetBank.currency || 'AED'}`, col2X, bankY + 19.5);
+
+        currentY = bankY + boxHeight + 4;
+    }
+
+    // Draw Statement Note / Remarks if provided
+    if (soaNotes && soaNotes.trim()) {
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(7.5);
+        const noteText = soaNotes.trim();
+        const splitText = doc.splitTextToSize(noteText, printableWidth - 12);
+        const noteBoxHeight = Math.max(12, splitText.length * 3.8 + 7);
+
+        if (currentY + noteBoxHeight > pageHeight - 14) {
+            doc.addPage();
+            currentY = 14;
+        }
+
+        doc.setFillColor(248, 250, 252);
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(margin, currentY, printableWidth, noteBoxHeight, 'FD');
+
+        // Theme accent vertical strip
+        doc.setFillColor(themeColor[0], themeColor[1], themeColor[2]);
+        doc.rect(margin, currentY, 2.5, noteBoxHeight, 'F');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(themeColor[0], themeColor[1], themeColor[2]);
+        doc.text("NOTE / REMARKS:", margin + 5, currentY + 4.5);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(7.2);
+        doc.setTextColor(51, 65, 85);
+        doc.text(splitText, margin + 5, currentY + 8.5);
     }
 
     // Draw page decorations (watermark, top/bottom bars, page X of Y) post-table generation across ALL pages
-    const totalPages = doc.internal.getNumberOfPages();
+    const totalPages = (doc.internal as any).getNumberOfPages();
     for (let page = 1; page <= totalPages; page++) {
         doc.setPage(page);
         drawPageDecorations(doc, page, totalPages);
@@ -5983,7 +6175,8 @@ export const downloadSOAExcel = (
     includeDetails: boolean = false,
     vendors: any[] = [],
     suppliers: any[] = [],
-    projects: any[] = []
+    projects: any[] = [],
+    soaNotes: string = ''
 ) => {
     const reportRows = items.map((itm: any, idx: number) => {
         let yr = '-';
@@ -5999,11 +6192,7 @@ export const downloadSOAExcel = (
             }
         }
         
-        const actualAmt = itm.amount || 0;
-        const vatAmt = itm.vatAmount || 0;
-        const totalAmt = itm.totalAmount || itm.amount || 0;
-        const isPaid = itm.status === 'Paid' || itm.status === 'Received';
-        const balanceAmt = isPaid ? 0 : totalAmt;
+        const { actualAmt, vatAmt, totalAmt, paidAmt, balanceAmt } = getSOAItemAmounts(itm);
 
         const rowObj: any = {
             "SI No": idx + 1,
@@ -6026,6 +6215,7 @@ export const downloadSOAExcel = (
         rowObj["Actual Amount"] = actualAmt;
         rowObj["VAT Amount"] = vatAmt;
         rowObj["Total Amount"] = totalAmt;
+        rowObj[isReceivable ? "Paid / Received Amount" : "Paid / Settled Amount"] = paidAmt;
         rowObj["Balance Amount"] = balanceAmt;
         rowObj["Payment Status"] = itm.status || 'Pending';
         rowObj["Cheque Date"] = formatToDDMMYYYY(itm.chequeDate);
@@ -6034,6 +6224,14 @@ export const downloadSOAExcel = (
 
         return rowObj;
     });
+
+    if (soaNotes && soaNotes.trim()) {
+        reportRows.push({});
+        reportRows.push({
+            "SI No": "Note / Remarks:",
+            "Invoice Date": soaNotes.trim()
+        });
+    }
 
     const ws = XLSX.utils.json_to_sheet(reportRows);
     const wb = XLSX.utils.book_new();
@@ -6075,6 +6273,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const [soaEndDate, setSoaEndDate] = useState('');
     const [soaScope, setSoaScope] = useState<'All' | 'Received' | 'Pending'>('All');
     const [soaIncludeDetails, setSoaIncludeDetails] = useState(false);
+    const [soaNotes, setSoaNotes] = useState("All invoices submitted as per the site provided time sheet and records.");
     const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
     const [expandedMonthDetails, setExpandedMonthDetails] = useState<string | null>(null);
     const [soaPdfModalOpen, setSoaPdfModalOpen] = useState(false);
@@ -6527,13 +6726,11 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         let totalBilled = 0;
         let totalPaid = 0;
         soaFilteredItems.forEach((itm: any) => {
-            const amt = itm.totalAmount || itm.amount || 0;
-            totalBilled += amt;
-            if (itm.status === 'Received') {
-                totalPaid += amt;
-            }
+            const { totalAmt, paidAmt } = getSOAItemAmounts(itm);
+            totalBilled += totalAmt;
+            totalPaid += paidAmt;
         });
-        const balance = totalBilled - totalPaid;
+        const balance = Math.max(0, totalBilled - totalPaid);
 
         let selectedCompanyObj = soaCompanyId !== 'All' ? (companies || []).find((c: any) => c.id === soaCompanyId) : null;
 
@@ -6561,7 +6758,8 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             orientation: targetOrientation,
             soaCompanyId,
             selectedCompanyObj,
-            bankAccounts
+            bankAccounts,
+            soaNotes
         });
     };
 
@@ -6585,7 +6783,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             pType = 'Client';
         }
 
-        downloadSOAExcel(soaEntityId, pName, pType, soaFilteredItems, true, soaIncludeDetails, vendors, suppliers, projects);
+        downloadSOAExcel(soaEntityId, pName, pType, soaFilteredItems, true, soaIncludeDetails, vendors, suppliers, projects, soaNotes);
     };
 
     const { duplicateGroups, duplicateGroupsCount } = useMemo(() => {
@@ -6670,24 +6868,19 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         let toBeCreatedInvoiceAmount = 0;
         
         (filteredData || []).forEach((item: any) => {
-            const amount = item.totalAmount || item.amount || 0;
-            const vat = item.vatAmount || 0;
-            totalBilled += amount;
-            totalVat += vat;
-
-            if (item.status === 'Received') {
-                totalCollected += amount;
-            } else {
-                totalPending += amount;
-            }
+            const { actualAmt, vatAmt, totalAmt, paidAmt, balanceAmt } = getSOAItemAmounts(item);
+            totalBilled += totalAmt;
+            totalVat += vatAmt;
+            totalCollected += paidAmt;
+            totalPending += balanceAmt;
 
             const genStatus = item.invoiceCreationStatus || 'Created';
             if (genStatus === 'Created') {
                 createdInvoiceCount += 1;
-                createdInvoiceAmount += amount;
+                createdInvoiceAmount += totalAmt;
             } else {
                 toBeCreatedInvoiceCount += 1;
-                toBeCreatedInvoiceAmount += amount;
+                toBeCreatedInvoiceAmount += totalAmt;
             }
         });
 
@@ -6701,7 +6894,10 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
             toBeCreatedInvoiceCount,
             toBeCreatedInvoiceAmount,
             count: filteredData?.length || 0,
-            pendingCount: (filteredData || []).filter((item: any) => item.status !== 'Received').length,
+            pendingCount: (filteredData || []).filter((item: any) => {
+                const { balanceAmt } = getSOAItemAmounts(item);
+                return balanceAmt > 0;
+            }).length,
             collectedCount: (filteredData || []).filter((item: any) => item.status === 'Received').length
         };
     }, [filteredData]);
@@ -6720,8 +6916,8 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
         today.setHours(0,0,0,0);
 
         (filteredData || []).forEach((item: any) => {
-            // Only non-Received items belong to aging
-            if (item.status === 'Received') return;
+            const { balanceAmt } = getSOAItemAmounts(item);
+            if (balanceAmt <= 0) return;
 
             const refDateStr = item.dueDate || item.date;
             if (!refDateStr) return;
@@ -6731,7 +6927,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
 
             const diffTime = today.getTime() - refDate.getTime();
             const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            const amount = item.totalAmount || item.amount || 0;
+            const amount = balanceAmt;
 
             if (diffDays <= 0) {
                 buckets.current.amount += amount;
@@ -6781,15 +6977,11 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                 };
             }
 
-            const amount = item.totalAmount || item.amount || 0;
-            trends[monthKey].bBilled += amount;
+            const { totalAmt, paidAmt, balanceAmt } = getSOAItemAmounts(item);
+            trends[monthKey].bBilled += totalAmt;
             trends[monthKey].itemsCount += 1;
-
-            if (item.status === 'Received') {
-                trends[monthKey].cCollected += amount;
-            } else {
-                trends[monthKey].pPending += amount;
-            }
+            trends[monthKey].cCollected += paidAmt;
+            trends[monthKey].pPending += balanceAmt;
         });
 
         return Object.keys(trends)
@@ -7731,16 +7923,33 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                         { 
                             key: 'status', 
                             label: 'Status',
-                            render: (item) => (
-                                <span className={cn(
-                                    "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
-                                    item.status === 'Received' ? "bg-emerald-100 text-emerald-600" :
-                                    item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
-                                    "bg-blue-100 text-blue-600"
-                                )}>
-                                    {item.status}
-                                </span>
-                            )
+                            render: (item) => {
+                                const { paidAmt, balanceAmt } = getSOAItemAmounts(item);
+                                if (item.status === 'Partially Received') {
+                                    return (
+                                        <div className="flex flex-col gap-0.5 min-w-[120px]">
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200/80 w-fit whitespace-nowrap">
+                                                Partially Received
+                                            </span>
+                                            <div className="flex items-center gap-1.5 text-[9px] font-mono whitespace-nowrap font-bold">
+                                                <span className="text-emerald-700">Rec: AED {paidAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                <span className="text-slate-300">|</span>
+                                                <span className="text-rose-600">Bal: AED {balanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <span className={cn(
+                                        "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider whitespace-nowrap",
+                                        item.status === 'Received' ? "bg-emerald-100 text-emerald-600" :
+                                        item.status === 'Pending' ? "bg-orange-100 text-orange-600" :
+                                        "bg-blue-100 text-blue-600"
+                                    )}>
+                                        {item.status || 'Pending'}
+                                    </span>
+                                );
+                            }
                         },
                     ]}
                     onAdd={onAdd}
@@ -8168,18 +8377,70 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                 </p>
                             </div>
 
-                            {/* Preview Badge Info */}
-                            <div className="bg-blue-50/50 border border-blue-100/30 p-4 rounded-3xl space-y-1.5">
-                                <h4 className="text-[11px] uppercase tracking-wider font-extrabold text-blue-700 font-mono">Statement Target Cohort</h4>
-                                <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                                    <span>Matching Records:</span>
-                                    <span className="font-mono text-slate-800 font-bold">{soaFilteredItems.length} invoices</span>
+                            {/* Statement Note / Remarks */}
+                            <div className="space-y-1.5">
+                                <div className="flex justify-between items-center">
+                                    <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Statement Note / Remark</label>
+                                    {soaNotes !== "All invoices submitted as per the site provided time sheet and records." && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setSoaNotes("All invoices submitted as per the site provided time sheet and records.")}
+                                            className="text-[10px] text-blue-600 font-bold hover:underline cursor-pointer"
+                                        >
+                                            Reset Default
+                                        </button>
+                                    )}
                                 </div>
-                                <div className="flex justify-between items-center text-slate-555 text-[11px]">
-                                    <span>Cumulative Billed:</span>
-                                    <span className="font-mono text-slate-900 font-black">AED {soaFilteredItems.reduce((sum, item) => sum + (item.totalAmount || item.amount || 0), 0).toLocaleString()}</span>
-                                </div>
+                                <textarea 
+                                    value={soaNotes} 
+                                    onChange={e => setSoaNotes(e.target.value)}
+                                    rows={2}
+                                    placeholder="Enter statement note..."
+                                    className="w-full bg-slate-55 border border-slate-200 rounded-2xl p-3 text-slate-800 text-xs font-medium outline-hidden focus:border-blue-500 transition-colors resize-none"
+                                />
+                                <p className="text-[10px] text-slate-400 font-medium">
+                                    Default note printed on downloaded PDF & Excel statement reports. Edit or clear content as required.
+                                </p>
                             </div>
+
+                            {/* Preview Badge Info */}
+                            {(() => {
+                                let arBilled = 0;
+                                let arPaid = 0;
+                                soaFilteredItems.forEach((itm: any) => {
+                                    const { totalAmt, paidAmt } = getSOAItemAmounts(itm);
+                                    arBilled += totalAmt;
+                                    arPaid += paidAmt;
+                                });
+                                const arBal = Math.max(0, arBilled - arPaid);
+                                return (
+                                    <div className="bg-blue-50/50 border border-blue-100/30 p-4 rounded-3xl space-y-2">
+                                        <h4 className="text-[11px] uppercase tracking-wider font-extrabold text-blue-700 font-mono">Statement Target Cohort</h4>
+                                        <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                                            <span>Matching Records:</span>
+                                            <span className="font-mono text-slate-800 font-bold">{soaFilteredItems.length} invoices</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                                            <span>Cumulative Billed:</span>
+                                            <span className="font-mono text-slate-900 font-black">
+                                                AED {arBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                                            <span>Collected / Received:</span>
+                                            <span className="font-mono text-emerald-600 font-extrabold">
+                                                AED {arPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-slate-500 text-[11px]">
+                                            <span>Outstanding Balance:</span>
+                                            <span className="font-mono text-rose-600 font-extrabold">
+                                                AED {arBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Generating Actions */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
@@ -8765,6 +9026,9 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                         <div className="space-y-6">
                                             <div className="flex justify-between items-end border-t border-slate-100 pt-6">
                                                 <div className="text-[10px] text-slate-400 max-w-sm leading-normal">
+                                                    <div className="mb-2 p-2 bg-amber-50 rounded-lg border border-amber-200/60 text-[10px] text-amber-950 font-semibold leading-relaxed">
+                                                        📜 Verification Notice: {item.description || "All invoices must be verified and certified within 3 days if not response within 3 days the invoices should considered certified and approved."}
+                                                    </div>
                                                     <span className="font-bold text-slate-600 block mb-1">TERMS & DISCLOSURES</span>
                                                     Please quote invoice numbers on your remittance. Electronic copy of invoice issued under official corporate authorization.
                                                 </div>
@@ -12610,13 +12874,25 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                         </div>
                     )}
 
-                    {/* Remarks Section */}
-                    {item.description && (
-                        <div className="bg-sky-50/20 p-5 rounded-2xl border border-sky-100/50 space-y-1.5">
-                            <span className="text-[10px] uppercase font-black tracking-widest text-[rgb(3,105,161)] block">Invoice Audit Notes & remarks</span>
-                            <p className="text-xs font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{item.description}</p>
+                    {/* Invoice Verification Notice & Remarks Section */}
+                    <div className="bg-amber-50/60 p-5 rounded-2xl border border-amber-200/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase font-black tracking-widest text-amber-900 flex items-center gap-1.5">
+                                📜 Invoice Verification & Certification Notice
+                            </span>
+                            <span className={cn(
+                                "text-[9px] px-2.5 py-0.5 rounded-md font-extrabold uppercase border",
+                                (item.invoiceCreationStatus || 'Created') === 'Created'
+                                    ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                                    : "bg-rose-50 border-rose-200 text-rose-700"
+                            )}>
+                                {(item.invoiceCreationStatus || 'Created') === 'Created' ? '📜 Invoice Created' : '⏳ To Be Created'}
+                            </span>
                         </div>
-                    )}
+                        <p className="text-xs font-bold text-amber-950 leading-relaxed whitespace-pre-wrap">
+                            {item.description || "All invoices must be verified and certified within 3 days if not response within 3 days the invoices should considered certified and approved."}
+                        </p>
+                    </div>
 
                     {/* Cheque settlement info rendering if exists */}
                     {(item.chequeNo || item.chequeDate || item.chequeAmount) && (
@@ -12738,6 +13014,8 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
     );
 };
 
+export const DEFAULT_INVOICE_VERIFICATION_NOTE = "All invoices must be verified and certified within 3 days if not response within 3 days the invoices should considered certified and approved.";
+
 export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSave, onCancel, companies, existingRecords }: any) => {
     const [focusedItemRowId, setFocusedItemRowId] = useState<string | null>(null);
     const [duplicateConflict, setDuplicateConflict] = useState<any>(null);
@@ -12754,8 +13032,14 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             const baseTotal = subtotal + vatAmt - ded;
             const adjEffect = adjType === '+' ? adjAmt : -adjAmt;
             const totalAmt = ar.totalAmount !== undefined ? ar.totalAmount : Number(Math.max(0, baseTotal + adjEffect).toFixed(2));
+
+            const initialStatus = ar.status || 'Pending';
+            let initialRecAmt = ar.receivedAmount !== undefined ? Number(ar.receivedAmount) : (ar.paidAmount !== undefined ? Number(ar.paidAmount) : (initialStatus === 'Received' ? totalAmt : 0));
+            let initialBalAmt = ar.balanceAmount !== undefined ? Number(ar.balanceAmount) : (initialStatus === 'Received' ? 0 : Math.max(0, totalAmt - initialRecAmt));
+
             return {
                 ...ar,
+                description: ar.description && ar.description.trim() ? ar.description : DEFAULT_INVOICE_VERIFICATION_NOTE,
                 invoiceType: ar.invoiceType || 'Tax Invoice',
                 companyId: ar.companyId || '',
                 companyName: ar.companyName || '',
@@ -12767,6 +13051,12 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                 adjustmentType: adjType,
                 vatAmount: vatAmt,
                 totalAmount: totalAmt,
+                status: initialStatus,
+                receivedAmount: initialRecAmt,
+                paidAmount: initialRecAmt,
+                balanceAmount: initialBalAmt,
+                receivedDate: ar.receivedDate || '',
+                partialPaymentNotes: ar.partialPaymentNotes || '',
                 dueDate: ar.dueDate || ar.date || new Date().toISOString().split('T')[0],
                 invoiceRef: ar.invoiceRef || '',
                 monthOf: ar.monthOf || '',
@@ -12809,8 +13099,13 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             actualAmount: 0,
             adjustmentAmount: 0,
             adjustmentType: '+',
-            description: '',
+            description: DEFAULT_INVOICE_VERIFICATION_NOTE,
             status: 'Pending',
+            receivedAmount: 0,
+            paidAmount: 0,
+            balanceAmount: 0,
+            receivedDate: '',
+            partialPaymentNotes: '',
             companyId: companies && companies.length > 0 ? companies[0].id : '',
             companyName: companies && companies.length > 0 ? companies[0].name : '',
             items: [defaultItem]
@@ -12873,6 +13168,19 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             const adjEffect = adjType === '+' ? adjAmt : -adjAmt;
             const total = Math.max(0, baseTotal + adjEffect);
 
+            let recAmt = prev.receivedAmount;
+            let balAmt = prev.balanceAmount;
+
+            if (prev.status === 'Received') {
+                recAmt = total;
+                balAmt = 0;
+            } else if (prev.status === 'Pending') {
+                recAmt = 0;
+                balAmt = total;
+            } else if (prev.status === 'Partially Received') {
+                balAmt = Math.max(0, total - (recAmt || 0));
+            }
+
             return {
                 ...prev,
                 items: nextItems,
@@ -12882,7 +13190,10 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                 adjustmentType: adjType,
                 amount: Number(subtotal.toFixed(2)),
                 vatAmount: Number(vat.toFixed(2)),
-                totalAmount: Number(total.toFixed(2))
+                totalAmount: Number(total.toFixed(2)),
+                receivedAmount: recAmt,
+                balanceAmount: balAmt,
+                paidAmount: recAmt
             };
         });
     };
@@ -13212,7 +13523,37 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Receivable State (Status)</label>
                             <select 
                                 value={formData.status}
-                                onChange={e => setFormData({ ...formData, status: e.target.value })}
+                                onChange={e => {
+                                    const nextStatus = e.target.value;
+                                    setFormData(prev => {
+                                        const tot = prev.totalAmount || 0;
+                                        let nextRec = prev.receivedAmount;
+                                        let nextBal = prev.balanceAmount;
+
+                                        if (nextStatus === 'Received') {
+                                            nextRec = tot;
+                                            nextBal = 0;
+                                        } else if (nextStatus === 'Pending') {
+                                            nextRec = 0;
+                                            nextBal = tot;
+                                        } else if (nextStatus === 'Partially Received') {
+                                            if (!nextRec || nextRec <= 0 || nextRec >= tot) {
+                                                nextRec = 0;
+                                                nextBal = tot;
+                                            } else {
+                                                nextBal = Math.max(0, tot - nextRec);
+                                            }
+                                        }
+
+                                        return {
+                                            ...prev,
+                                            status: nextStatus as any,
+                                            receivedAmount: nextRec,
+                                            paidAmount: nextRec,
+                                            balanceAmount: nextBal
+                                        };
+                                    });
+                                }}
                                 className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                             >
                                 <option value="Pending">Pending</option>
@@ -13234,6 +13575,96 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             </select>
                         </div>
                     </div>
+
+                    {/* Conditional Partial Payment Collection Section */}
+                    {formData.status === 'Partially Received' && (
+                        <div className="p-5 bg-gradient-to-br from-amber-50/90 via-orange-50/70 to-amber-50/90 border-2 border-amber-300 rounded-3xl space-y-4 animate-fadeIn shadow-sm">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-amber-200/80 pb-3">
+                                <div className="flex items-center gap-2.5">
+                                    <span className="w-3 h-3 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                                    <div>
+                                        <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider font-sans">
+                                            ⚡ Partial Payment Collection & Balance Tracking
+                                        </h4>
+                                        <p className="text-[11px] text-amber-800 font-medium font-sans">
+                                            Enter the exact amount collected from client. Balance due will be calculated and reported on SOA.
+                                        </p>
+                                    </div>
+                                </div>
+                                <span className="text-[10px] font-black text-amber-800 bg-amber-200/80 px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0">
+                                    Required *
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-sans">
+                                {/* 1. Partial Received Amount Input */}
+                                <div className="space-y-1.5">
+                                    <label className="text-[10.5px] font-black uppercase tracking-widest text-amber-950 ml-1 flex items-center gap-1">
+                                        <span>Partial Amount Received (AED)</span>
+                                        <span className="text-rose-600 font-black text-sm">*</span>
+                                    </label>
+                                    <div className="relative flex items-center">
+                                        <span className="absolute left-3.5 text-xs font-black text-amber-700 font-mono">AED</span>
+                                        <input 
+                                            type="number"
+                                            step="0.01"
+                                            min="0.01"
+                                            placeholder="0.00"
+                                            value={formData.receivedAmount !== undefined && formData.receivedAmount !== null && formData.receivedAmount !== 0 ? formData.receivedAmount : (formData.receivedAmount === 0 ? '' : '')}
+                                            onChange={e => {
+                                                const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                                setFormData(prev => {
+                                                    const tot = prev.totalAmount || 0;
+                                                    const bal = Math.max(0, tot - val);
+                                                    return {
+                                                        ...prev,
+                                                        receivedAmount: val,
+                                                        paidAmount: val,
+                                                        balanceAmount: Number(bal.toFixed(2))
+                                                    };
+                                                });
+                                            }}
+                                            className="w-full pl-12 pr-4 py-3 bg-white border-2 border-amber-300 focus:border-amber-600 focus:ring-3 focus:ring-amber-500/20 rounded-2xl text-sm font-black text-slate-900 outline-none transition-all shadow-xs font-mono"
+                                            required
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-amber-800 font-medium ml-1">
+                                        Invoice Total: <strong className="font-mono text-slate-900 font-bold">AED {(formData.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                                    </p>
+                                </div>
+
+                                {/* 2. Remaining Balance Display */}
+                                <div className="space-y-1.5">
+                                    <label className="text-[10.5px] font-black uppercase tracking-widest text-rose-700 ml-1">
+                                        Remaining Balance Pending (AED)
+                                    </label>
+                                    <div className="w-full px-4 py-3 bg-rose-50/90 border-2 border-rose-200 rounded-2xl text-sm font-black text-rose-700 font-mono flex items-center justify-between shadow-xs">
+                                        <span>AED {(Math.max(0, (formData.totalAmount || 0) - (formData.receivedAmount || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                        <span className="text-[9px] uppercase font-black text-rose-600 bg-rose-100 px-2 py-0.5 rounded-md tracking-wider">Unsettled</span>
+                                    </div>
+                                    <p className="text-[10px] text-rose-600 font-medium ml-1">
+                                        Reflected directly on Client Statement of Account (SOA).
+                                    </p>
+                                </div>
+
+                                {/* 3. Received Date */}
+                                <div className="space-y-1.5">
+                                    <label className="text-[10.5px] font-black uppercase tracking-widest text-slate-600 ml-1">
+                                        Payment Collection Date
+                                    </label>
+                                    <input 
+                                        type="date"
+                                        value={formData.receivedDate || ''}
+                                        onChange={e => setFormData({ ...formData, receivedDate: e.target.value })}
+                                        className="w-full px-3.5 py-3 bg-white border-2 border-slate-200 focus:border-amber-500 rounded-2xl text-xs font-bold text-slate-700 outline-none shadow-xs font-sans"
+                                    />
+                                    <p className="text-[10px] text-slate-400 font-medium ml-1">
+                                        Date when partial funds reached account.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Section 4: ITEMS GRID (ZOHO BOOKS SPECIAL BILLING ITEMS LIST) */}
                     <div className="space-y-3">
@@ -13371,13 +13802,29 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                         {/* Overall General Description & Cheque details */}
                         <div className="space-y-4">
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">General Notes / Footnotes</label>
+                                <div className="flex justify-between items-center">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">
+                                        General Notes / Footnotes / Verification Notice
+                                    </label>
+                                    {formData.description !== DEFAULT_INVOICE_VERIFICATION_NOTE && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setFormData({ ...formData, description: DEFAULT_INVOICE_VERIFICATION_NOTE })}
+                                            className="text-[10px] text-blue-600 font-bold hover:underline cursor-pointer"
+                                        >
+                                            Reset Default Notice
+                                        </button>
+                                    )}
+                                </div>
                                 <textarea 
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    placeholder="Additional notes to display on the Zoho Invoice footer..."
-                                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all min-h-[100px]"
+                                    placeholder="Additional notes / verification notice to display on the invoice footer..."
+                                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all min-h-[90px]"
                                 />
+                                <p className="text-[10px] text-slate-400 font-medium ml-1">
+                                    Default notice shown on invoices (Created & To Be Created). You can edit or change this content anytime.
+                                </p>
                             </div>
 
                             <div className="border border-slate-200/60 p-4 rounded-2xl bg-amber-50/20 space-y-3">
@@ -13515,6 +13962,29 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                 <span className="text-xs font-black uppercase tracking-wide">GRAND TOTAL (INCL. VAT):</span>
                                 <span className="text-lg font-black font-mono">AED {formData.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
+
+                            {formData.status === 'Partially Received' && (
+                                <div className="space-y-2 pt-1">
+                                    <div className="flex justify-between items-center bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl px-3.5 py-2.5">
+                                        <span className="text-[11px] font-black uppercase tracking-wide flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                            Received Amount:
+                                        </span>
+                                        <span className="text-sm font-black font-mono text-emerald-700">
+                                            AED {(Number(formData.receivedAmount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-rose-50 border border-rose-200 text-rose-900 rounded-xl px-3.5 py-2.5">
+                                        <span className="text-[11px] font-black uppercase tracking-wide flex items-center gap-1.5">
+                                            <span className="w-2 h-2 rounded-full bg-rose-500" />
+                                            Pending Balance:
+                                        </span>
+                                        <span className="text-sm font-black font-mono text-rose-700">
+                                            AED {Math.max(0, (formData.totalAmount || 0) - (Number(formData.receivedAmount) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -13526,6 +13996,21 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                         if (!formData.companyId) {
                             alert("Please select a selling corporate identity company first!");
                             return;
+                        }
+
+                        if (formData.status === 'Partially Received') {
+                            const recAmt = Number(formData.receivedAmount || 0);
+                            const totAmt = Number(formData.totalAmount || 0);
+
+                            if (isNaN(recAmt) || recAmt <= 0) {
+                                alert("Please enter the partial amount received from the client (must be greater than 0 AED).");
+                                return;
+                            }
+
+                            if (recAmt >= totAmt) {
+                                alert(`The partial received amount (AED ${recAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}) cannot be equal to or exceed the Grand Total (AED ${totAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}).\n\nIf the full amount has been settled, please change the status to 'Received'.`);
+                                return;
+                            }
                         }
 
                         const records = existingRecords || [];
@@ -13557,11 +14042,21 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             }
                         }
 
+                        const recAmt = formData.status === 'Received' 
+                            ? Number(formData.totalAmount || 0)
+                            : (formData.status === 'Partially Received' ? Number(formData.receivedAmount || 0) : 0);
+                        const balAmt = formData.status === 'Received'
+                            ? 0
+                            : (formData.status === 'Partially Received' ? Math.max(0, Number(formData.totalAmount || 0) - recAmt) : Number(formData.totalAmount || 0));
+
                         if (foundConflict) {
                             setDuplicateConflict(foundConflict);
                         } else {
                             onSave({
                                 ...formData,
+                                receivedAmount: recAmt,
+                                paidAmount: recAmt,
+                                balanceAmount: balAmt,
                                 companyTrn: selectedCompany?.trn || '',
                                 clientTrn: targetEntity?.trn || ''
                             });
@@ -15988,6 +16483,7 @@ export const EverydayExpenseView: React.FC<{
                    checkStr(item.requestedBy) ||
                    checkStr(item.staffMember) ||
                    checkStr(item.employeeName) ||
+                   checkStr(item.updatedBy) ||
                    checkStr(item.category);
         };
 
@@ -18798,9 +19294,33 @@ export const FinancialDashboardView: React.FC<{
     const [ledgerEndDate, setLedgerEndDate] = useState<string>('');
     const [ledgerSearchQuery, setLedgerSearchQuery] = useState<string>('');
     const [viewingBill, setViewingBill] = useState<string | null>(null);
+    const [selectedTxDetail, setSelectedTxDetail] = useState<any | null>(null);
+    const [editingAccountName, setEditingAccountName] = useState<string>('');
+    const [personSearchQuery, setPersonSearchQuery] = useState<string>('');
+    const [isSavingAccountChange, setIsSavingAccountChange] = useState<boolean>(false);
+    const [accountChangeSuccess, setAccountChangeSuccess] = useState<string | null>(null);
+    const [isDeletingTx, setIsDeletingTx] = useState<boolean>(false);
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState<boolean>(false);
+    const [deletingTxSuccess, setDeletingTxSuccess] = useState<string | null>(null);
     const [selectedMonth, setSelectedMonth] = useState<string>('all');
     const [selectedYear, setSelectedYear] = useState<string>('all');
     const [previewingPDF, setPreviewingPDF] = useState<boolean>(false);
+
+    // Sync editingAccountName whenever selectedTxDetail is opened
+    useEffect(() => {
+        if (selectedTxDetail) {
+            const currentName = selectedAccount || 
+                selectedTxDetail.originalItem?.uploadedBy || 
+                selectedTxDetail.originalItem?.employeeName || 
+                selectedTxDetail.originalItem?.category || 
+                'Accounts';
+            setEditingAccountName(currentName);
+            setPersonSearchQuery('');
+            setAccountChangeSuccess(null);
+            setDeletingTxSuccess(null);
+            setIsConfirmingDelete(false);
+        }
+    }, [selectedTxDetail, selectedAccount]);
 
     // Month & Year parsing helper
     const matchDashboardMonthYear = (dateStr: string | undefined, rentMonthStr: string | undefined, targetMonth: string, targetYear: string) => {
@@ -18874,34 +19394,205 @@ export const FinancialDashboardView: React.FC<{
     const totalCampRent = useMemo(() => (filteredCamps || []).reduce((sum: number, x: any) => sum + (Number(x.rent) || 0), 0), [filteredCamps]);
     const totalCampDeposit = useMemo(() => (filteredCamps || []).reduce((sum: number, x: any) => sum + (Number(x.depositAmount) || 0), 0), [filteredCamps]);
 
-    // Extract categories/books representing accounts in Petty Cash
-    const books = useMemo(() => {
-        const cats = new Set<string>();
-        (pettyCash || []).forEach((item: any) => {
-            if (item.category) cats.add(item.category);
-        });
-        return Array.from(cats).sort();
-    }, [pettyCash]);
+    // Helper to get clean display name from raw account/person string
+    const getCleanName = (str?: string) => {
+        if (!str) return '';
+        let cleaned = String(str).split('(')[0].split('@')[0].trim();
+        if (!cleaned) return '';
+        const lower = cleaned.toLowerCase();
+        if (lower === 'jamil') return 'Jamel';
+        if (lower === 'alam' || lower === 'alam g' || lower === 'alam-g') return 'Alam-G';
+        return cleaned.replace(/\b\w/g, l => l.toUpperCase());
+    };
 
-    // Reconciliation Calculation per Account/Book
+    // Robust unified helper for matching Everyday Expense item to Account/Person name
+    const matchEEToAccountName = useCallback((item: any, searchKey: string) => {
+        if (!item || !searchKey) return false;
+        const targetKey = searchKey.toLowerCase().trim();
+        if (!targetKey) return false;
+
+        const matchesCandidate = (candidate?: string) => {
+            if (!candidate) return false;
+            let clean = String(candidate).split('(')[0].split('@')[0].trim().toLowerCase();
+            if (!clean) return false;
+
+            if (clean === targetKey) return true;
+
+            // Alias rules
+            if ((clean === 'jamel' && targetKey === 'jamil') || (clean === 'jamil' && targetKey === 'jamel')) return true;
+            if ((clean === 'alam' || clean === 'alam-g' || clean === 'alam g') && 
+                (targetKey === 'alam' || targetKey === 'alam-g' || targetKey === 'alam g')) return true;
+
+            // Match first word if length >= 3 (e.g., "Arsath" matches "Arsath Kumar")
+            const cleanFirst = clean.split(/[\s-]+/)[0];
+            const targetFirst = targetKey.split(/[\s-]+/)[0];
+            if (cleanFirst.length >= 3 && cleanFirst === targetFirst) return true;
+
+            return false;
+        };
+
+        return matchesCandidate(item.uploadedBy) ||
+               matchesCandidate(item.employeeName) ||
+               matchesCandidate(item.requestedBy) ||
+               matchesCandidate(item.staffMember);
+    }, []);
+
+    // Extract categories/books representing actual Petty Cash Accounts/Holders with entries
+    const books = useMemo(() => {
+        const map = new Map<string, string>(); // lowercase key -> canonical name
+
+        const addRaw = (raw?: string) => {
+            if (!raw) return;
+            const canonical = getCleanName(raw);
+            if (!canonical) return;
+
+            const lower = canonical.toLowerCase();
+            // Exclude pure numbers/numeric codes (e.g. 117.14) and system roles/placeholders (e.g. Development Team)
+            if (/^[\d.\s-]+$/.test(canonical)) return;
+            if (lower === 'development team' || lower === 'admin' || lower === 'super admin' || lower === 'system') return;
+
+            const key = lower;
+            if (!map.has(key)) {
+                map.set(key, canonical);
+            }
+        };
+
+        (pettyCash || []).forEach((item: any) => {
+            addRaw(item.category);
+            addRaw(item.contact);
+            addRaw(item.requestedBy);
+        });
+
+        (everydayExpenses || []).forEach((item: any) => {
+            addRaw(item.uploadedBy);
+            addRaw(item.employeeName);
+            addRaw(item.requestedBy);
+            addRaw(item.staffMember);
+        });
+
+        return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+    }, [pettyCash, everydayExpenses]);
+
+    // Extract unified list of all available account/person names for re-assignment
+    const availableAccountNames = useMemo(() => {
+        const set = new Set<string>();
+        set.add('Accounts');
+        (books || []).forEach(b => { if (b) set.add(b); });
+        (employees || []).forEach((emp: any) => {
+            const name = getCleanName(emp.name || `${emp.firstName || ''} ${emp.lastName || ''}`);
+            if (name) set.add(name);
+        });
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, [books, employees]);
+
+    // Filter available account names by search query
+    const filteredAvailableAccountNames = useMemo(() => {
+        if (!personSearchQuery || !personSearchQuery.trim()) return availableAccountNames;
+        const q = personSearchQuery.toLowerCase().trim();
+        return availableAccountNames.filter(name => name.toLowerCase().includes(q));
+    }, [availableAccountNames, personSearchQuery]);
+
+    // Handle saving re-assigned account/person name to Firestore
+    const handleSaveTxAccountChange = async () => {
+        if (!selectedTxDetail || !editingAccountName || !editingAccountName.trim()) return;
+        const newName = editingAccountName.trim();
+        const orig = selectedTxDetail.originalItem;
+        if (!orig || !orig.id) return;
+
+        setIsSavingAccountChange(true);
+        setAccountChangeSuccess(null);
+        try {
+            if (selectedTxDetail.sourceType === 'Everyday Expense') {
+                const updatedDoc = {
+                    ...orig,
+                    uploadedBy: newName,
+                    employeeName: newName,
+                    requestedBy: newName,
+                    staffMember: newName,
+                    updatedBy: user?.displayName || user?.name || user?.email || newName,
+                    updatedByUid: user?.uid || orig.updatedByUid || ''
+                };
+                await saveEverydayExpense(updatedDoc);
+            } else {
+                const updatedDoc = {
+                    ...orig,
+                    category: newName,
+                    contact: newName,
+                    requestedBy: newName,
+                    employeeName: newName,
+                    updatedBy: user?.displayName || user?.name || user?.email || newName
+                };
+                await savePettyCash(updatedDoc);
+            }
+
+            setAccountChangeSuccess(`Transaction successfully moved to "${newName}"!`);
+            setTimeout(() => {
+                setSelectedTxDetail(null);
+                setIsSavingAccountChange(false);
+                setAccountChangeSuccess(null);
+            }, 800);
+        } catch (err) {
+            console.error("Error saving account re-assignment:", err);
+            setIsSavingAccountChange(false);
+        }
+    };
+
+    // Handle deleting transaction and moving it to Recycle Bin
+    const handleDeleteTransaction = async () => {
+        if (!selectedTxDetail) return;
+        const orig = selectedTxDetail.originalItem;
+        if (!orig || !orig.id) return;
+
+        const isExpense = selectedTxDetail.sourceType === 'Everyday Expense';
+
+        setIsDeletingTx(true);
+        setDeletingTxSuccess(null);
+        try {
+            const section = isExpense ? 'Expenses' : 'Petty Cash';
+            const originalCollection = isExpense ? 'everyday_expenses' : 'petty_cash';
+
+            await moveToRecycleBin(
+                section,
+                originalCollection,
+                orig.id,
+                orig,
+                user?.email || 'System User'
+            );
+
+            setDeletingTxSuccess('Transaction deleted and stored in Recycle Bin!');
+            setTimeout(() => {
+                setSelectedTxDetail(null);
+                setIsDeletingTx(false);
+                setIsConfirmingDelete(false);
+                setDeletingTxSuccess(null);
+            }, 800);
+        } catch (err) {
+            console.error("Error deleting transaction:", err);
+            setIsDeletingTx(false);
+            setIsConfirmingDelete(false);
+        }
+    };
+
+    // Reconciliation Calculation per Account/Book (shows ONLY accounts with collected advances or spent costs)
     const reconciliations = useMemo(() => {
-        return books.map(book => {
-            const bookPcs = (filteredPettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
+        const all = books.map(book => {
+            const bookKey = book.toLowerCase().trim();
+
+            const bookPcs = (filteredPettyCash || []).filter((item: any) => {
+                const cat = getCleanName(item.category || item.contact || item.requestedBy);
+                if (!cat) return false;
+                const catKey = cat.toLowerCase();
+                if (catKey === bookKey) return true;
+                if ((catKey === 'jamel' && bookKey === 'jamil') || (catKey === 'jamil' && bookKey === 'jamel')) return true;
+                if (catKey.includes('alam') && bookKey.includes('alam')) return true;
+                return false;
+            });
+
             const advances = bookPcs.filter((item: any) => item.type === 'Income').reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0);
             const directSpent = bookPcs.filter((item: any) => item.type === 'Expense').reduce((sum: number, item: any) => sum + (Number(item.amount) || 0), 0);
 
-            // Match everyday expenses where uploader matches book name
-            const matchingEE = (filteredEverydayExpenses || []).filter((item: any) => {
-                const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
-                const cleanUploader = uploaderRaw.split('(')[0].trim();
-                const targetBook = book.toLowerCase().trim();
-
-                return cleanUploader === targetBook || 
-                       uploaderRaw.includes(targetBook) || 
-                       targetBook.includes(cleanUploader) ||
-                       (cleanUploader === 'jamel' && targetBook === 'jamil') ||
-                       (cleanUploader === 'jamil' && targetBook === 'jamel');
-            });
+            // Match everyday expenses where uploader/employee matches book name
+            const matchingEE = (filteredEverydayExpenses || []).filter((item: any) => matchEEToAccountName(item, book));
 
             const everydaySpent = matchingEE.reduce((sum: number, item: any) => sum + (Number(item.totalAmount) || Number(item.billAmount) || 0), 0);
             const reconciledBalance = advances - directSpent - everydaySpent;
@@ -18915,7 +19606,15 @@ export const FinancialDashboardView: React.FC<{
                 matchingCount: matchingEE.length
             };
         });
-    }, [books, filteredPettyCash, filteredEverydayExpenses]);
+
+        // Filter out zero-activity accounts: show ONLY accounts with advances, direct spent, or uploaded bills
+        return all.filter(r => 
+            Math.abs(r.advances) > 0.001 || 
+            Math.abs(r.directSpent) > 0.001 || 
+            Math.abs(r.everydaySpent) > 0.001 || 
+            r.matchingCount > 0
+        );
+    }, [books, filteredPettyCash, filteredEverydayExpenses, matchEEToAccountName]);
 
     // Filtered accounts for display
     const filteredReconciliations = useMemo(() => {
@@ -18923,6 +19622,22 @@ export const FinancialDashboardView: React.FC<{
         const query = searchQuery.toLowerCase().trim();
         return reconciliations.filter(r => r.accountName.toLowerCase().includes(query));
     }, [reconciliations, searchQuery]);
+
+    // Totals for filtered reconciliation accounts
+    const filteredReconTotals = useMemo(() => {
+        const totalAdvances = filteredReconciliations.reduce((sum, r) => sum + (Number(r.advances) || 0), 0);
+        const totalDirectSpent = filteredReconciliations.reduce((sum, r) => sum + (Number(r.directSpent) || 0), 0);
+        const totalEverydaySpent = filteredReconciliations.reduce((sum, r) => sum + (Number(r.everydaySpent) || 0), 0);
+        const totalReconciled = totalAdvances - totalDirectSpent - totalEverydaySpent;
+        const totalBills = filteredReconciliations.reduce((sum, r) => sum + (Number(r.matchingCount) || 0), 0);
+        return {
+            totalAdvances,
+            totalDirectSpent,
+            totalEverydaySpent,
+            totalReconciled,
+            totalBills
+        };
+    }, [filteredReconciliations]);
 
     // Consolidated Net Petty Cash Hand Balance across all books!
     const totalPCReconciledBalance = useMemo(() => {
@@ -18943,7 +19658,17 @@ export const FinancialDashboardView: React.FC<{
         if (!selectedAccount) return [];
 
         const book = selectedAccount;
-        const bookPcs = (pettyCash || []).filter((item: any) => item.category && item.category.toLowerCase().trim() === book.toLowerCase().trim());
+        const bookKey = book.toLowerCase().trim();
+
+        const bookPcs = (pettyCash || []).filter((item: any) => {
+            const cat = getCleanName(item.category || item.contact || item.requestedBy);
+            if (!cat) return false;
+            const catKey = cat.toLowerCase();
+            if (catKey === bookKey) return true;
+            if ((catKey === 'jamel' && bookKey === 'jamil') || (catKey === 'jamil' && bookKey === 'jamel')) return true;
+            if (catKey.includes('alam') && bookKey.includes('alam')) return true;
+            return false;
+        });
 
         const pcsMapped = bookPcs.map(item => ({
             id: item.id,
@@ -18957,17 +19682,7 @@ export const FinancialDashboardView: React.FC<{
             originalItem: item
         }));
 
-        const matchingEE = (everydayExpenses || []).filter((item: any) => {
-            const uploaderRaw = (item.uploadedBy || '').toLowerCase().trim();
-            const cleanUploader = uploaderRaw.split('(')[0].trim();
-            const targetBook = book.toLowerCase().trim();
-
-            return cleanUploader === targetBook || 
-                   uploaderRaw.includes(targetBook) || 
-                   targetBook.includes(cleanUploader) ||
-                   (cleanUploader === 'jamel' && targetBook === 'jamil') ||
-                   (cleanUploader === 'jamil' && targetBook === 'jamel');
-        });
+        const matchingEE = (everydayExpenses || []).filter((item: any) => matchEEToAccountName(item, book));
 
         const eeMapped = matchingEE.map(item => ({
             id: item.id,
@@ -19003,7 +19718,7 @@ export const FinancialDashboardView: React.FC<{
                 balanceAfter: currentBal
             };
         });
-    }, [selectedAccount, pettyCash, everydayExpenses]);
+    }, [selectedAccount, pettyCash, everydayExpenses, employees, matchEEToAccountName]);
 
     // Calculate opening balance before the filtered date window, filtered ledger items, and total metrics
     const { openingBalance, filteredAccountLedger, ledgerTotalAdvances, ledgerTotalSpendings, ledgerClosingBalance } = useMemo(() => {
@@ -19908,7 +20623,7 @@ export const FinancialDashboardView: React.FC<{
                     </div>
 
                     <div className="flex-1 w-full min-h-[290px]">
-                        <ResponsiveContainer minWidth={0} minHeight={290} width="100%" height={290}>
+                        <ResponsiveContainer minWidth={100} minHeight={290} width="100%" height={290} initialDimension={{ width: 500, height: 290 }} debounce={50}>
                             <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                                 <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
@@ -20054,6 +20769,46 @@ export const FinancialDashboardView: React.FC<{
                                 })
                             )}
                         </tbody>
+                        {filteredReconciliations.length > 0 && (
+                            <tfoot className="bg-slate-100/90 border-t-2 border-slate-300/80 text-xs font-black">
+                                <tr>
+                                    <td className="px-6 py-4.5 text-slate-900 uppercase tracking-wider font-extrabold flex items-center gap-2">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-slate-700 shrink-0"></div>
+                                        <span>Total ({filteredReconciliations.length} Accounts)</span>
+                                    </td>
+                                    <td className="px-6 py-4.5 text-right font-black text-slate-900 text-xs">
+                                        AED {filteredReconTotals.totalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    </td>
+                                    <td className="px-6 py-4.5 text-right font-black text-slate-900 text-xs">
+                                        AED {filteredReconTotals.totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    </td>
+                                    <td className="px-6 py-4.5 text-right font-black text-amber-600 text-xs">
+                                        AED {filteredReconTotals.totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                        {filteredReconTotals.totalBills > 0 && (
+                                            <span className="block text-[9px] font-semibold text-slate-500 mt-0.5">
+                                                {filteredReconTotals.totalBills} verified bills
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td className={`px-6 py-4.5 text-right font-black text-sm ${filteredReconTotals.totalReconciled >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                        AED {filteredReconTotals.totalReconciled.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    </td>
+                                    <td className="px-6 py-4.5 text-center">
+                                        <span className={cn(
+                                            "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-block shadow-sm",
+                                            filteredReconTotals.totalReconciled >= 0 
+                                                ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
+                                                : "bg-rose-100 text-rose-800 border border-rose-200"
+                                        )}>
+                                            {filteredReconTotals.totalReconciled >= 0 ? "Balanced ✔" : "Deficit ✘"}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4.5 text-center text-slate-400 text-[10px] font-bold">
+                                        Summary Total
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        )}
                     </table>
                 </div>
             </div>
@@ -20061,19 +20816,19 @@ export const FinancialDashboardView: React.FC<{
             {/* Detailed Ledger Modal Panel */}
             <AnimatePresence>
                 {selectedAccount && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm no-print">
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95, y: 15 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 15 }}
                             transition={{ duration: 0.25, ease: 'easeOut' }}
-                            className="bg-white rounded-[2.5rem] w-full max-w-5xl overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh] border border-slate-200/80"
+                            className="bg-white rounded-[2.5rem] w-full max-w-5xl overflow-hidden shadow-2xl relative flex flex-col h-[92vh] max-h-[92vh] border border-slate-200/80"
                         >
                             {/* Modal Header */}
-                            <div className="p-6 sm:p-8 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50/50 animate-fade-in">
+                            <div className="p-5 sm:p-6 sm:px-8 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50/50 animate-fade-in shrink-0">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl shadow-sm">
-                                        <Scale className="w-6 h-6" />
+                                    <div className="p-2.5 sm:p-3 bg-brand-50 text-brand-600 rounded-2xl shadow-sm">
+                                        <Scale className="w-5 h-5 sm:w-6 sm:h-6" />
                                     </div>
                                     <div>
                                         <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex flex-wrap items-center gap-2">
@@ -20088,7 +20843,7 @@ export const FinancialDashboardView: React.FC<{
                                 <div className="flex flex-wrap items-center gap-2 sm:gap-3 self-end lg:self-auto">
                                     <button
                                         onClick={handleExportLedgerExcel}
-                                        className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-sm transition-all hover:scale-102 active:scale-98 cursor-pointer shrink-0"
+                                        className="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 sm:gap-2 shadow-sm transition-all hover:scale-102 active:scale-98 cursor-pointer shrink-0"
                                         title="Download statement ledger to Excel"
                                     >
                                         <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
@@ -20096,7 +20851,7 @@ export const FinancialDashboardView: React.FC<{
                                     </button>
                                     <button
                                         onClick={handleExportLedgerPDF}
-                                        className="px-4 py-2 bg-brand-50 hover:bg-brand-100 border border-brand-100 text-brand-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-sm transition-all hover:scale-102 active:scale-98 cursor-pointer shrink-0"
+                                        className="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-brand-50 hover:bg-brand-100 border border-brand-100 text-brand-600 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 sm:gap-2 shadow-sm transition-all hover:scale-102 active:scale-98 cursor-pointer shrink-0"
                                         title="Download statement ledger to PDF"
                                     >
                                         <Download className="w-4 h-4 text-brand-500" />
@@ -20105,21 +20860,21 @@ export const FinancialDashboardView: React.FC<{
                                     <div className="hidden sm:block w-[1px] h-6 bg-slate-200 mx-1" />
                                     <button
                                         onClick={() => setSelectedAccount(null)}
-                                        className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-405 hover:text-slate-600 shadow-sm cursor-pointer border border-slate-200/50 bg-white"
+                                        className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 shadow-sm cursor-pointer border border-slate-200/50 bg-white"
                                     >
-                                        <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                                        <X className="w-5 h-5" />
                                     </button>
                                 </div>
                             </div>
 
                             {/* Ledger Summary Cards banner */}
-                            <div className="px-6 sm:px-8 py-5 bg-slate-150/10 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
+                            <div className="px-5 sm:px-8 py-3.5 bg-slate-100/50 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+                                <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
                                         <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
                                             Opening Balance (Prev)
                                         </span>
-                                        <span className={`text-lg font-black block mt-0.5 ${openingBalance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
+                                        <span className={`text-base sm:text-lg font-black block mt-0.5 ${openingBalance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>
                                             AED {openingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
@@ -20128,12 +20883,12 @@ export const FinancialDashboardView: React.FC<{
                                     </div>
                                 </div>
 
-                                <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
+                                <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
                                         <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
                                             Total Cash Advances (IN)
                                         </span>
-                                        <span className="text-lg font-black text-emerald-700 block mt-0.5">
+                                        <span className="text-base sm:text-lg font-black text-emerald-700 block mt-0.5">
                                             AED {ledgerTotalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
@@ -20142,12 +20897,12 @@ export const FinancialDashboardView: React.FC<{
                                     </div>
                                 </div>
 
-                                <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
+                                <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
                                         <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
                                             Total Spendings Tally (OUT)
                                         </span>
-                                        <span className="text-lg font-black text-rose-600 block mt-0.5">
+                                        <span className="text-base sm:text-lg font-black text-rose-600 block mt-0.5">
                                             AED {ledgerTotalSpendings.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
@@ -20156,12 +20911,12 @@ export const FinancialDashboardView: React.FC<{
                                     </div>
                                 </div>
 
-                                <div className="bg-white p-4 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
+                                <div className="bg-white p-3 sm:p-3.5 rounded-2xl border border-slate-200/50 shadow-xs flex items-center justify-between">
                                     <div>
                                         <span className="text-[10px] font-black uppercase text-brand-600 block tracking-wider font-extrabold">
                                             Reconciled Safe Cash
                                         </span>
-                                        <span className={`text-lg font-black block mt-0.5 ${ledgerClosingBalance >= 0 ? 'text-brand-600' : 'text-rose-600'}`}>
+                                        <span className={`text-base sm:text-lg font-black block mt-0.5 ${ledgerClosingBalance >= 0 ? 'text-brand-600' : 'text-rose-600'}`}>
                                             AED {ledgerClosingBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}
                                         </span>
                                     </div>
@@ -20172,10 +20927,10 @@ export const FinancialDashboardView: React.FC<{
                             </div>
 
                             {/* Filter Bar: Search Box & Date Range Filter */}
-                            <div className="px-6 sm:px-8 py-3.5 bg-slate-100/60 border-b border-slate-200/70 flex flex-wrap items-center justify-between gap-3 text-xs">
-                                <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+                            <div className="px-5 sm:px-8 py-3 bg-slate-100/60 border-b border-slate-200/70 flex flex-wrap items-center justify-between gap-2.5 text-xs shrink-0">
+                                <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
                                     {/* Search Input */}
-                                    <div className="relative flex-1 min-w-[200px] max-w-sm">
+                                    <div className="relative flex-1 min-w-[180px] max-w-sm">
                                         <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                         <input
                                             type="text"
@@ -20244,11 +20999,11 @@ export const FinancialDashboardView: React.FC<{
                                 </div>
                             </div>
 
-                            {/* Chronological Table List with Scroll View */}
-                            <div className="p-6 sm:p-8 overflow-y-auto flex-1 bg-slate-50/20 max-h-[50vh]">
-                                <div className="overflow-x-auto rounded-2xl border border-slate-200/65 bg-white max-h-[42vh] overflow-y-auto relative">
+                            {/* Chronological Table List with Full Height Responsive Scroll View */}
+                            <div className="p-4 sm:p-6 overflow-hidden flex-1 min-h-0 flex flex-col bg-slate-50/20">
+                                <div className="overflow-x-auto overflow-y-auto rounded-2xl border border-slate-200/80 bg-white shadow-xs flex-1 min-h-0 relative">
                                     <table className="min-w-full divide-y divide-slate-100">
-                                        <thead className="bg-slate-50 sticky top-0 z-10 shadow-2xs">
+                                        <thead className="bg-slate-50 sticky top-0 z-10 shadow-xs">
                                             <tr>
                                                 <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-[110px] bg-slate-50">Date</th>
                                                 <th scope="col" className="px-5 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Transaction Details</th>
@@ -20287,14 +21042,18 @@ export const FinancialDashboardView: React.FC<{
                                                 filteredAccountLedger.map((tx, idx) => {
                                                     const isIncome = tx.changeType === 'in';
                                                     return (
-                                                        <tr key={tx.id || idx} className="hover:bg-slate-50/50 transition-all">
+                                                        <tr 
+                                                            key={tx.id || idx} 
+                                                            onClick={() => setSelectedTxDetail(tx)}
+                                                            className="hover:bg-brand-50/40 cursor-pointer transition-all group"
+                                                        >
                                                             {/* Date */}
                                                             <td className="px-5 py-4 font-semibold text-slate-500 whitespace-nowrap">
                                                                 {tx.date || 'N/A'}
                                                             </td>
                                                             {/* Transaction Details */}
                                                             <td className="px-5 py-4">
-                                                                <div className="font-extrabold text-slate-800 break-words max-w-[280px]">
+                                                                <div className="font-extrabold text-slate-800 break-words max-w-[280px] group-hover:text-brand-600 transition-colors">
                                                                     {tx.description}
                                                                 </div>
                                                                 <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
@@ -20345,15 +21104,24 @@ export const FinancialDashboardView: React.FC<{
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            setViewingBill(tx.attachment || null);
+                                                                            setSelectedTxDetail(tx);
                                                                         }}
-                                                                        className="p-1.5 hover:bg-white rounded-lg text-brand-600 hover:text-brand-700 hover:scale-110 active:scale-95 cursor-pointer transition-all border border-slate-200/40 shadow-xs"
-                                                                        title="View Attachment Receipt / Bill"
+                                                                        className="p-1.5 bg-brand-50 hover:bg-brand-100 rounded-lg text-brand-600 hover:text-brand-700 hover:scale-105 active:scale-95 cursor-pointer transition-all border border-brand-100 shadow-2xs"
+                                                                        title="View Complete Transaction Details"
                                                                     >
                                                                         <Eye className="w-4 h-4" />
                                                                     </button>
                                                                 ) : (
-                                                                    <span className="text-[10px] text-slate-300 font-bold uppercase select-none">—</span>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setSelectedTxDetail(tx);
+                                                                        }}
+                                                                        className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                                                                        title="View Complete Transaction Details"
+                                                                    >
+                                                                        <Eye className="w-4 h-4 opacity-50" />
+                                                                    </button>
                                                                 )}
                                                             </td>
                                                         </tr>
@@ -20461,6 +21229,7 @@ export const FinancialDashboardView: React.FC<{
                                                     <tr className="text-left font-bold text-slate-450 uppercase tracking-widest">
                                                         <th className="px-4 py-2 text-left">Cashbook Account</th>
                                                         <th className="px-4 py-2 text-right">Advances</th>
+                                                        <th className="px-4 py-2 text-right">Direct Petty Spent</th>
                                                         <th className="px-4 py-2 text-right">Everyday Cost</th>
                                                         <th className="px-4 py-2 text-right">Reconciled Safe Cash</th>
                                                         <th className="px-4 py-2 text-center">Status</th>
@@ -20473,7 +21242,8 @@ export const FinancialDashboardView: React.FC<{
                                                             <tr key={recon.accountName} className="hover:bg-slate-50/60 font-semibold text-slate-655">
                                                                 <td className="px-4 py-2.5 font-bold text-slate-755 capitalize">{recon.accountName}</td>
                                                                 <td className="px-4 py-2.5 text-right">AED {recon.advances.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                                                                <td className="px-4 py-2.5 text-right text-rose-600">AED {recon.everydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                                <td className="px-4 py-2.5 text-right font-medium text-slate-600">AED {recon.directSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                                <td className="px-4 py-2.5 text-right text-amber-600 font-bold">AED {recon.everydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                                                                 <td className={`px-4 py-2.5 text-right font-black ${isSurp ? "text-emerald-705" : "text-rose-600"}`}>AED {recon.reconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
                                                                 <td className="px-4 py-2.5 text-center">
                                                                     <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${isSurp ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{isSurp ? "Balanced" : "Deficit"}</span>
@@ -20482,6 +21252,20 @@ export const FinancialDashboardView: React.FC<{
                                                         );
                                                     })}
                                                 </tbody>
+                                                {filteredReconciliations.length > 0 && (
+                                                    <tfoot className="bg-slate-100 border-t border-slate-250 font-bold text-slate-800">
+                                                        <tr>
+                                                            <td className="px-4 py-2 font-black uppercase">Total ({filteredReconciliations.length} Accounts)</td>
+                                                            <td className="px-4 py-2 text-right font-black">AED {filteredReconTotals.totalAdvances.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                            <td className="px-4 py-2 text-right font-black">AED {filteredReconTotals.totalDirectSpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                            <td className="px-4 py-2 text-right font-black text-amber-600">AED {filteredReconTotals.totalEverydaySpent.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                            <td className={`px-4 py-2 text-right font-black ${filteredReconTotals.totalReconciled >= 0 ? "text-emerald-700" : "text-rose-600"}`}>AED {filteredReconTotals.totalReconciled.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                                            <td className="px-4 py-2 text-center">
+                                                                <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${filteredReconTotals.totalReconciled >= 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>{filteredReconTotals.totalReconciled >= 0 ? "Balanced" : "Deficit"}</span>
+                                                            </td>
+                                                        </tr>
+                                                    </tfoot>
+                                                )}
                                             </table>
                                         </div>
                                     </div>
@@ -20506,6 +21290,281 @@ export const FinancialDashboardView: React.FC<{
                                     <Download className="w-4 h-4 text-white" />
                                     <span>Download PDF Document</span>
                                 </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Complete Transaction Details Modal */}
+            <AnimatePresence>
+                {selectedTxDetail && (
+                    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md no-print">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                            transition={{ duration: 0.2, ease: 'easeOut' }}
+                            className="bg-white rounded-[2.5rem] w-full max-w-xl overflow-hidden shadow-2xl relative flex flex-col border border-slate-200/80"
+                        >
+                            {/* Modal Header */}
+                            <div className="p-6 sm:p-7 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-brand-50 text-brand-600 rounded-2xl shadow-2xs">
+                                        <FileText className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                                            Complete Transaction Details
+                                        </h3>
+                                        <p className="text-slate-500 text-xs font-semibold mt-0.5">
+                                            Transaction record summary for <span className="capitalize font-bold text-slate-700">{selectedAccount}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedTxDetail(null)}
+                                    className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600 cursor-pointer"
+                                    title="Close transaction details"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Details Body */}
+                            <div className="p-6 sm:p-7 space-y-4 max-h-[65vh] overflow-y-auto bg-slate-50/30">
+                                {/* Primary Amount Card */}
+                                <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
+                                            Transaction Amount
+                                        </span>
+                                        <span className={`text-2xl font-black block mt-0.5 ${
+                                            selectedTxDetail.changeType === 'in' ? 'text-emerald-600' : 'text-rose-600'
+                                        }`}>
+                                            {selectedTxDetail.changeType === 'in' ? '+' : '-'} AED {selectedTxDetail.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </span>
+                                    </div>
+                                    <span className={`px-3 py-1 rounded-xl text-xs font-extrabold uppercase tracking-wider ${
+                                        selectedTxDetail.sourceType === 'Everyday Expense'
+                                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                            : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                    }`}>
+                                        {selectedTxDetail.sourceType}
+                                    </span>
+                                </div>
+
+                                {/* Metadata Grid */}
+                                <div className="grid grid-cols-2 gap-3 text-xs">
+                                    <div className="p-3 bg-white rounded-xl border border-slate-200/60 shadow-2xs">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 block mb-0.5">Date</span>
+                                        <span className="font-bold text-slate-800">{selectedTxDetail.date || 'N/A'}</span>
+                                    </div>
+                                     {/* Account / Person Name - Editable Re-assignment Field with Person Search Box */}
+                                    <div className="p-3 bg-brand-50/50 rounded-xl border border-brand-200/90 shadow-2xs col-span-2 sm:col-span-1">
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <span className="text-[10px] font-black uppercase text-brand-700 block">
+                                                Account / Person Name
+                                            </span>
+                                            <span className="text-[9px] font-extrabold text-brand-600 bg-brand-100/80 px-1.5 py-0.5 rounded-md uppercase tracking-wider">
+                                                Re-assign / Search
+                                            </span>
+                                        </div>
+                                        {/* Search Box for Persons */}
+                                        <div className="relative mb-1.5">
+                                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                            <input
+                                                type="text"
+                                                value={personSearchQuery}
+                                                onChange={(e) => setPersonSearchQuery(e.target.value)}
+                                                placeholder="Search person or account..."
+                                                className="w-full bg-white font-medium text-slate-800 text-[11px] pl-8 pr-2.5 py-1 rounded-md border border-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                                            />
+                                        </div>
+                                        <select
+                                            value={availableAccountNames.includes(editingAccountName) ? editingAccountName : 'CUSTOM_ENTER_NAME'}
+                                            onChange={(e) => {
+                                                if (e.target.value !== 'CUSTOM_ENTER_NAME') {
+                                                    setEditingAccountName(e.target.value);
+                                                } else {
+                                                    setEditingAccountName('');
+                                                }
+                                            }}
+                                            className="w-full bg-white font-extrabold text-slate-900 text-xs px-2 py-1.5 rounded-lg border border-brand-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 capitalize cursor-pointer shadow-2xs"
+                                        >
+                                            {filteredAvailableAccountNames.map(name => (
+                                                <option key={name} value={name}>{name}</option>
+                                            ))}
+                                            {filteredAvailableAccountNames.length === 0 && (
+                                                <option disabled value="">No matching person found</option>
+                                            )}
+                                            <option value="CUSTOM_ENTER_NAME">+ Enter Custom Person Name...</option>
+                                        </select>
+                                        {(!availableAccountNames.includes(editingAccountName) || editingAccountName === '') && (
+                                            <input
+                                                type="text"
+                                                value={editingAccountName}
+                                                onChange={(e) => setEditingAccountName(e.target.value)}
+                                                placeholder="Type person / account name..."
+                                                className="w-full mt-1.5 bg-white font-extrabold text-slate-900 text-xs px-2.5 py-1.5 rounded-lg border border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-500/20 shadow-2xs"
+                                            />
+                                        )}
+                                    </div>
+                                    <div className="p-3 bg-white rounded-xl border border-slate-200/60 shadow-2xs col-span-2">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 block mb-0.5">Description / Item</span>
+                                        <span className="font-extrabold text-slate-900 block text-sm">{selectedTxDetail.description}</span>
+                                    </div>
+                                    <div className="p-3 bg-white rounded-xl border border-slate-200/60 shadow-2xs col-span-2">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 block mb-0.5">Reference / Voucher No.</span>
+                                        <span className="font-mono font-bold text-slate-700 block break-all">{selectedTxDetail.reference}</span>
+                                    </div>
+                                    <div className="p-3 bg-white rounded-xl border border-slate-200/60 shadow-2xs">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 block mb-0.5">Opening Balance</span>
+                                        <span className="font-bold text-slate-600">AED {selectedTxDetail.previousBalance.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                    </div>
+                                    <div className="p-3 bg-white rounded-xl border border-slate-200/60 shadow-2xs">
+                                        <span className="text-[10px] font-black uppercase text-slate-400 block mb-0.5">Closing Balance</span>
+                                        <span className={`font-extrabold ${selectedTxDetail.balanceAfter >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                            AED {selectedTxDetail.balanceAfter.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                        </span>
+                                    </div>
+                                    {(selectedTxDetail.originalItem?.supplierName || selectedTxDetail.originalItem?.shopName) && (
+                                        <div className="p-3 bg-white rounded-xl border border-slate-200/60 shadow-2xs col-span-2">
+                                            <span className="text-[10px] font-black uppercase text-slate-400 block mb-0.5">Supplier / Shop Name</span>
+                                            <span className="font-bold text-slate-800">{selectedTxDetail.originalItem.supplierName || selectedTxDetail.originalItem.shopName}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Attachment Status Banner */}
+                                <div className="p-3.5 bg-slate-100/80 rounded-2xl border border-slate-200/70 flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className={`p-2 rounded-lg ${selectedTxDetail.attachment ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                                            <Paperclip className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <span className="text-xs font-extrabold text-slate-800 block">
+                                                {selectedTxDetail.attachment ? 'Voucher Receipt Attached' : 'No Receipt Copy Attached'}
+                                            </span>
+                                            <span className="text-[10px] text-slate-500 font-medium block">
+                                                {selectedTxDetail.attachment ? 'Attached file document copy is available for viewing' : 'No document file associated with this record'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                 {isConfirmingDelete && !deletingTxSuccess && (
+                                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+                                        <div className="flex items-center gap-2.5">
+                                            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                                            <div>
+                                                <span className="text-xs font-black text-rose-900 block">
+                                                    Permanently remove from this account?
+                                                </span>
+                                                <span className="text-[11px] font-semibold text-rose-700 block mt-0.5">
+                                                    Transaction will be moved to the Recycle Bin.
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsConfirmingDelete(false)}
+                                                disabled={isDeletingTx}
+                                                className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleDeleteTransaction}
+                                                disabled={isDeletingTx}
+                                                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm cursor-pointer active:scale-98 disabled:opacity-50"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                                <span>{isDeletingTx ? 'Deleting...' : 'Yes, Delete Now'}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {accountChangeSuccess && (
+                                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-bold flex items-center gap-2.5 animate-pulse shadow-2xs">
+                                        <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                                        <span>{accountChangeSuccess}</span>
+                                    </div>
+                                )}
+
+                                {deletingTxSuccess && (
+                                    <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs font-bold flex items-center gap-2.5 animate-pulse shadow-2xs">
+                                        <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+                                        <span>{deletingTxSuccess}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Footer - Actions: DELETE, CLOSE, SAVE & MOVE RECORD, VIEW */}
+                            <div className="p-5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2.5 rounded-b-[2.5rem] flex-wrap">
+                                {/* Option 0: DELETE TRANSACTION */}
+                                <button
+                                    type="button"
+                                    disabled={isDeletingTx || isSavingAccountChange}
+                                    onClick={() => {
+                                        if (isConfirmingDelete) {
+                                            handleDeleteTransaction();
+                                        } else {
+                                            setIsConfirmingDelete(true);
+                                        }
+                                    }}
+                                    className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 hover:text-rose-800 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="Delete transaction and move to Recycle Bin"
+                                >
+                                    <Trash2 className="w-4 h-4 text-rose-600 shrink-0" />
+                                    <span>{isDeletingTx ? 'Deleting...' : (isConfirmingDelete ? 'Confirm Delete' : 'Delete Transaction')}</span>
+                                </button>
+
+                                <div className="flex items-center gap-2.5 ml-auto">
+                                    {/* Option 1: CLOSE */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedTxDetail(null)}
+                                        className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-2xs"
+                                    >
+                                        Close
+                                    </button>
+
+                                    {/* Option 2: SAVE RECORD & MOVE TRANSACTION */}
+                                    <button
+                                        type="button"
+                                        disabled={isSavingAccountChange || isDeletingTx || !editingAccountName || !editingAccountName.trim()}
+                                        onClick={handleSaveTxAccountChange}
+                                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Save name change and move transaction to that person's account"
+                                    >
+                                        <CheckCircle className="w-4 h-4" />
+                                        <span>{isSavingAccountChange ? 'Saving Record...' : 'Save & Move Record'}</span>
+                                    </button>
+
+                                    {/* Option 3: VIEW RECEIPT */}
+                                    <button
+                                        type="button"
+                                        disabled={!selectedTxDetail.attachment}
+                                        onClick={() => {
+                                            if (selectedTxDetail.attachment) {
+                                                setViewingBill(selectedTxDetail.attachment);
+                                            }
+                                        }}
+                                        className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md ${
+                                            selectedTxDetail.attachment
+                                                ? 'bg-brand-600 hover:bg-brand-700 text-white cursor-pointer active:scale-98'
+                                                : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+                                        }`}
+                                        title={selectedTxDetail.attachment ? 'View transaction receipt document copy' : 'No attachment file available'}
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                        <span>View</span>
+                                    </button>
+                                </div>
                             </div>
                         </motion.div>
                     </div>

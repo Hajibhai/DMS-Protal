@@ -11,12 +11,28 @@ import {
   updateEmail,
   updatePassword
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from './firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-1befa271-378d-46fb-90e8-ebc035d1db13');
+
+const databaseId = (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-1befa271-378d-46fb-90e8-ebc035d1db13';
+
+// Use initializeFirestore with auto-detect long polling to prevent WebChannel assertion failures (ID: ca9 / b815) in browser / iframe environments
+let firestoreDb: any;
+try {
+  firestoreDb = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+  }, databaseId);
+} catch (e) {
+  // If already initialized or fails, fallback to getFirestore
+  firestoreDb = getFirestore(app, databaseId);
+}
+
+export const db = firestoreDb;
+export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope("https://www.googleapis.com/auth/meetings.space.created");
 googleProvider.addScope("https://www.googleapis.com/auth/meetings.space.readonly");

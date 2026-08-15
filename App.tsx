@@ -136,7 +136,7 @@ import {
   saveAccountsReceivable, deleteAccountsReceivable,
   savePettyCash, deletePettyCash,
   saveProjectedExpense, deleteProjectedExpense,
-  saveEverydayExpense, deleteEverydayExpense,
+  saveEverydayExpense, deleteEverydayExpense, migrateBase64ReceiptsToStorage, fetchAllEverydayExpensesInBatches,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType,
   saveHoliday, deleteHoliday, saveEngineerDocument, deleteEngineerDocument,
   saveCamp, deleteCamp, saveVoucher, deleteVoucher,
@@ -4810,7 +4810,14 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'audit_logs');
     });
     return () => unsubscribe();
-  }, [user, systemUser]);
+  }, [
+    user?.uid, 
+    systemUser?.uid, 
+    systemUser?.role, 
+    systemUser?.permissions?.canManageSettings, 
+    systemUser?.permissions?.canManageUsers, 
+    systemUser?.permissions?.canManageEmployees
+  ]);
 
   const handleLogAction = async (action: string, details: string, type: 'create' | 'update' | 'delete' | 'system') => {
     if (systemUser) {
@@ -4950,54 +4957,29 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'projected_expenses');
     });
 
-    const loadAllEverydayExpenses = async () => {
-      try {
-        const expensesRef = collection(db, 'everyday_expenses');
-        let allDocs: EverydayExpense[] = [];
-        let lastDoc: any = null;
-        let hasMore = true;
-        let pageCount = 0;
-
-        while (hasMore && pageCount < 50) {
-          pageCount++;
-          const q = lastDoc
-            ? query(expensesRef, orderBy('__name__'), startAfter(lastDoc), limit(15))
-            : query(expensesRef, orderBy('__name__'), limit(15));
-
-          const snap = await getDocs(q);
-          if (snap.empty) {
-            hasMore = false;
-            break;
-          }
-
-          const chunk = snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense);
-          allDocs = [...allDocs, ...chunk];
-
-          if (snap.docs.length < 15) {
-            hasMore = false;
-          } else {
-            lastDoc = snap.docs[snap.docs.length - 1];
-          }
-        }
-
-        allDocs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-        setEverydayExpenses(allDocs);
-      } catch (err) {
-        console.error("Error loading all everyday expenses in chunks:", err);
-      }
+    const loadEverydayExpensesSafe = async () => {
+      const docs = await fetchAllEverydayExpensesInBatches();
+      setEverydayExpenses(docs);
     };
 
-    loadAllEverydayExpenses();
+    loadEverydayExpensesSafe();
 
     const unsubEverydayExpenses = onSnapshot(
-      query(collection(db, 'everyday_expenses'), limit(15)),
+      collection(db, 'everyday_expenses'),
       () => {
-        loadAllEverydayExpenses();
+        loadEverydayExpensesSafe();
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
+        console.warn("Realtime listener on everyday_expenses fallback:", error);
       }
     );
+
+    // Run background migration for existing Base64 receipts to Firebase Storage
+    migrateBase64ReceiptsToStorage().then(() => {
+      loadEverydayExpensesSafe();
+    }).catch(err => {
+      console.warn("Background receipt migration warning:", err);
+    });
 
     const unsubCamps = onSnapshot(collection(db, 'camps'), (snap) => {
       setCamps(snap.docs.map(d => ({ ...d.data(), id: d.id }) as CampExpense));
@@ -5102,7 +5084,20 @@ export default function App() {
       unsubUsers();
       unsubBranding();
     };
-  }, [isAuthReady, user, systemUser]);
+  }, [
+    isAuthReady, 
+    user?.uid, 
+    systemUser?.uid, 
+    systemUser?.role,
+    systemUser?.permissions?.canViewDirectory,
+    systemUser?.permissions?.canManageEmployees,
+    systemUser?.permissions?.canViewTimesheet,
+    systemUser?.permissions?.canManageAttendance,
+    systemUser?.permissions?.canManageLeaves,
+    systemUser?.permissions?.canViewPayroll,
+    systemUser?.permissions?.canManagePayroll,
+    systemUser?.permissions?.canManageUsers
+  ]);
 
   // Finance Handlers
   const handleSaveVendor = async (data: any) => {
@@ -5979,10 +5974,18 @@ export default function App() {
   };
 
   const handleSaveEverydayExpense = async (data: EverydayExpense) => {
+    // If employeeId is provided, resolve employee name if missing
+    let resolvedEmployeeName = (data as any).employeeName || '';
+    if (data.employeeId && !resolvedEmployeeName) {
+      const emp = employees.find(e => e.id === data.employeeId);
+      if (emp?.name) resolvedEmployeeName = emp.name;
+    }
+
     const enrichedData = {
       ...data,
-      uploadedBy: data.uploadedBy || systemUser?.name || '',
+      uploadedBy: data.uploadedBy || resolvedEmployeeName || systemUser?.name || '',
       uploadedByUid: data.uploadedByUid || systemUser?.uid || '',
+      employeeName: resolvedEmployeeName || (data as any).employeeName || '',
       uploadedDate: data.uploadedDate || new Date().toISOString().split('T')[0],
       updatedBy: systemUser?.name || '',
       updatedByUid: systemUser?.uid || ''
@@ -6007,7 +6010,7 @@ export default function App() {
     }
     openConfirm("Delete Entry", `Are you sure you want to delete everyday expense: ${ee.invoiceNo || ee.id}?`, async () => {
       try {
-        await deleteEverydayExpense(ee.id);
+        await deleteEverydayExpense(ee.id, ee.attachment || ee.receiptUrl);
         setEverydayExpenses(prev => prev.filter(x => x.id !== ee.id));
         handleLogAction('Everyday Expense Deleted', `Everyday expense ${ee.invoiceNo || ee.id} was deleted.`, 'delete');
       } catch (err: any) {
@@ -6797,7 +6800,15 @@ export default function App() {
             data={
               isAppAdmin 
                 ? everydayExpenses 
-                : everydayExpenses.filter(ee => ee.uploadedByUid === systemUser.uid || ee.uploadedBy === systemUser.name || ee.updatedBy === systemUser.name)
+                : everydayExpenses.filter(ee => {
+                    const empObj = employees.find(e => (e as any).userId === systemUser.uid || e.id === systemUser.uid || (e.name && systemUser.name && e.name.toLowerCase() === systemUser.name.toLowerCase()));
+                    const empId = empObj?.id;
+                    return ee.uploadedByUid === systemUser.uid || 
+                           ee.uploadedBy === systemUser.name || 
+                           ee.updatedBy === systemUser.name ||
+                           (empId && ee.employeeId === empId) ||
+                           ((ee as any).employeeName && systemUser.name && (ee as any).employeeName.toLowerCase() === systemUser.name.toLowerCase());
+                  })
             }
             projects={projects}
             onAdd={() => setShowEverydayExpenseModal(true)}
@@ -8290,51 +8301,18 @@ const SettingsView = ({
             setAllNotes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Note));
         }, (err) => console.error("Error loading notes for stats:", err));
 
-        const loadAllStatsExpenses = async () => {
-          try {
-            const expensesRef = collection(db, 'everyday_expenses');
-            let allDocs: EverydayExpense[] = [];
-            let lastDoc: any = null;
-            let hasMore = true;
-            let pageCount = 0;
-
-            while (hasMore && pageCount < 50) {
-              pageCount++;
-              const q = lastDoc
-                ? query(expensesRef, orderBy('__name__'), startAfter(lastDoc), limit(15))
-                : query(expensesRef, orderBy('__name__'), limit(15));
-
-              const snap = await getDocs(q);
-              if (snap.empty) {
-                hasMore = false;
-                break;
-              }
-
-              const chunk = snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense);
-              allDocs = [...allDocs, ...chunk];
-
-              if (snap.docs.length < 15) {
-                hasMore = false;
-              } else {
-                lastDoc = snap.docs[snap.docs.length - 1];
-              }
-            }
-
-            allDocs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-            setAllExpenses(allDocs);
-          } catch (err) {
-            console.error("Error loading expenses for stats:", err);
-          }
+        const loadStatsExpensesSafe = async () => {
+            const docs = await fetchAllEverydayExpensesInBatches();
+            setAllExpenses(docs);
         };
-
-        loadAllStatsExpenses();
+        loadStatsExpensesSafe();
 
         const unsubExpenses = onSnapshot(
-          query(collection(db, 'everyday_expenses'), limit(15)),
-          () => {
-            loadAllStatsExpenses();
-          },
-          (err) => console.error("Error loading expenses for stats:", err)
+            query(collection(db, 'everyday_expenses'), limit(25)),
+            () => {
+                loadStatsExpensesSafe();
+            },
+            (err) => console.warn("Error loading expenses for stats:", err)
         );
 
         const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
