@@ -11,7 +11,12 @@ import {
   updateEmail,
   updatePassword
 } from 'firebase/auth';
-import { initializeFirestore, getFirestore } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from './firebase-applet-config.json';
 
@@ -20,15 +25,17 @@ export const auth = getAuth(app);
 
 const databaseId = (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-1befa271-378d-46fb-90e8-ebc035d1db13';
 
-// Initialize Firestore with standard streaming connection and ignoreUndefinedProperties
-// Note: experimentalAutoDetectLongPolling or experimentalForceLongPolling must not be enabled as they trigger the known WebChannel ca9/b815 duplicate ACK assertion crash
+// Initialize Firestore with high-performance persistent cache and streaming WebChannel
 let firestoreDb: any;
 try {
   firestoreDb = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
   }, databaseId);
 } catch (e) {
-  // If already initialized or fails, fallback to getFirestore
+  // If already initialized or fallback
   firestoreDb = getFirestore(app, databaseId);
 }
 

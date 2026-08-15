@@ -80,8 +80,11 @@ export interface FirestoreErrorInfo {
 }
 
 export const handleFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const isQuotaError = errMsg.includes('resource-exhausted') || errMsg.includes('Quota exceeded');
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -98,6 +101,12 @@ export const handleFirestoreError = (error: unknown, operationType: OperationTyp
     operationType,
     path
   };
+
+  if (isQuotaError) {
+    console.warn('Firestore Notice: Daily free tier read/write quota limit reached. Using local cache / fallback.', JSON.stringify(errInfo));
+    return;
+  }
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   if (operationType === OperationType.LIST || operationType === OperationType.GET) {
     // Logging is sufficient for fetch and sync errors. Do not crash running UI or throw unhandled async exceptions.
@@ -655,37 +664,12 @@ export const uploadReceiptsForDoc = async (docData: any, collectionName: string 
 export const fetchAllEverydayExpensesInBatches = async (): Promise<EverydayExpense[]> => {
   try {
     const expensesRef = collection(db, 'everyday_expenses');
-    let allDocs: EverydayExpense[] = [];
-    let lastDoc: QueryDocumentSnapshot<DocumentData> | null = null;
-    let hasMore = true;
-    let pageCount = 0;
-
-    while (hasMore && pageCount < 100) {
-      pageCount++;
-      const q = lastDoc
-        ? query(expensesRef, orderBy('__name__'), startAfter(lastDoc), limit(15))
-        : query(expensesRef, orderBy('__name__'), limit(15));
-
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        hasMore = false;
-        break;
-      }
-
-      const chunk = snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense);
-      allDocs = [...allDocs, ...chunk];
-
-      if (snap.docs.length < 15) {
-        hasMore = false;
-      } else {
-        lastDoc = snap.docs[snap.docs.length - 1];
-      }
-    }
-
+    const snap = await getDocs(expensesRef);
+    const allDocs = snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense);
     allDocs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     return allDocs;
   } catch (err) {
-    console.error('Error fetching everyday expenses in batches:', err);
+    console.error('Error fetching everyday expenses:', err);
     return [];
   }
 };

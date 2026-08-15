@@ -136,7 +136,7 @@ import {
   saveAccountsReceivable, deleteAccountsReceivable,
   savePettyCash, deletePettyCash,
   saveProjectedExpense, deleteProjectedExpense,
-  saveEverydayExpense, deleteEverydayExpense, migrateBase64ReceiptsToStorage, fetchAllEverydayExpensesInBatches,
+  saveEverydayExpense, deleteEverydayExpense,
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType,
   saveHoliday, deleteHoliday, saveEngineerDocument, deleteEngineerDocument,
   saveCamp, deleteCamp, saveVoucher, deleteVoucher,
@@ -4802,7 +4802,7 @@ export default function App() {
       return;
     }
 
-    q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(500));
+    q = query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc'), limit(50));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setAuditLogs(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AuditLog)));
@@ -4957,29 +4957,17 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'projected_expenses');
     });
 
-    const loadEverydayExpensesSafe = async () => {
-      const docs = await fetchAllEverydayExpensesInBatches();
-      setEverydayExpenses(docs);
-    };
-
-    loadEverydayExpensesSafe();
-
     const unsubEverydayExpenses = onSnapshot(
       collection(db, 'everyday_expenses'),
-      () => {
-        loadEverydayExpensesSafe();
+      (snap) => {
+        const docs = snap.docs.map(d => ({ ...d.data(), id: d.id }) as EverydayExpense);
+        docs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setEverydayExpenses(docs);
       },
       (error) => {
-        console.warn("Realtime listener on everyday_expenses fallback:", error);
+        handleFirestoreError(error, OperationType.LIST, 'everyday_expenses');
       }
     );
-
-    // Run background migration for existing Base64 receipts to Firebase Storage
-    migrateBase64ReceiptsToStorage().then(() => {
-      loadEverydayExpensesSafe();
-    }).catch(err => {
-      console.warn("Background receipt migration warning:", err);
-    });
 
     const unsubCamps = onSnapshot(collection(db, 'camps'), (snap) => {
       setCamps(snap.docs.map(d => ({ ...d.data(), id: d.id }) as CampExpense));
@@ -8300,43 +8288,43 @@ const SettingsView = ({
     useEffect(() => {
         if (!user) return;
 
-        const unsubTasks = onSnapshot(collection(db, 'tasks'), (snap) => {
-            setAllTasks(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Task));
-        }, (err) => console.error("Error loading tasks for stats:", err));
+        let isMounted = true;
+        const loadStats = async () => {
+            try {
+                const [tasksSnap, notesSnap, expensesSnap, usersSnap] = await Promise.allSettled([
+                    getDocs(query(collection(db, 'tasks'), limit(100))),
+                    getDocs(query(collection(db, 'notes'), limit(100))),
+                    getDocs(query(collection(db, 'everyday_expenses'), limit(100))),
+                    getDocs(collection(db, 'users'))
+                ]);
 
-        const unsubNotes = onSnapshot(collection(db, 'notes'), (snap) => {
-            setAllNotes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Note));
-        }, (err) => console.error("Error loading notes for stats:", err));
+                if (!isMounted) return;
 
-        const loadStatsExpensesSafe = async () => {
-            const docs = await fetchAllEverydayExpensesInBatches();
-            setAllExpenses(docs);
+                if (tasksSnap.status === 'fulfilled') {
+                    setAllTasks(tasksSnap.value.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Task));
+                }
+                if (notesSnap.status === 'fulfilled') {
+                    setAllNotes(notesSnap.value.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Note));
+                }
+                if (expensesSnap.status === 'fulfilled') {
+                    setAllExpenses(expensesSnap.value.docs.map(doc => ({ id: doc.id, ...doc.data() }) as EverydayExpense));
+                }
+                if (usersSnap.status === 'fulfilled') {
+                    setAllUsers(usersSnap.value.docs.map(doc => ({ uid: doc.id, ...doc.data() } as unknown as SystemUser)));
+                }
+            } catch (err) {
+                console.warn("Storage stats info fetched with fallback:", err);
+            } finally {
+                if (isMounted) setLoadingStorage(false);
+            }
         };
-        loadStatsExpensesSafe();
 
-        const unsubExpenses = onSnapshot(
-            query(collection(db, 'everyday_expenses'), limit(25)),
-            () => {
-                loadStatsExpensesSafe();
-            },
-            (err) => console.warn("Error loading expenses for stats:", err)
-        );
-
-        const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
-            setAllUsers(snap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as unknown as SystemUser)));
-            setLoadingStorage(false);
-        }, (err) => {
-            console.error("Error loading users for stats:", err);
-            setLoadingStorage(false);
-        });
+        loadStats();
 
         return () => {
-            unsubTasks();
-            unsubNotes();
-            unsubExpenses();
-            unsubUsers();
+            isMounted = false;
         };
-    }, [user]);
+    }, [user?.uid]);
 
     // Helper functions
     const formatStorageSize = (bytes: number) => {
