@@ -18109,57 +18109,158 @@ export const EverydayExpenseModal: React.FC<{
     const [scanError, setScanError] = useState<string | null>(null);
     const [duplicateMatch, setDuplicateMatch] = useState<EverydayExpense | null>(null);
     const [validationError, setValidationError] = useState<string | null>(null);
+    const [isSavingRecord, setIsSavingRecord] = useState(false);
+
+    const normalizeDateStr = (raw: any): string => {
+        if (!raw) return new Date().toISOString().split('T')[0];
+        const s = String(raw).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        
+        const dmyMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+        if (dmyMatch) {
+            let [_, day, month, yr] = dmyMatch;
+            if (yr.length === 2) {
+                yr = parseInt(yr, 10) > 50 ? `19${yr}` : `20${yr}`;
+            }
+            const mm = month.padStart(2, '0');
+            const dd = day.padStart(2, '0');
+            return `${yr}-${mm}-${dd}`;
+        }
+        
+        const ymdMatch = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+        if (ymdMatch) {
+            const [_, yr, month, day] = ymdMatch;
+            return `${yr}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+        
+        const parsed = new Date(s);
+        if (!isNaN(parsed.getTime())) {
+            return parsed.toISOString().split('T')[0];
+        }
+        return new Date().toISOString().split('T')[0];
+    };
+
+    const normalizeTimeStr = (t: any): string => {
+        if (!t) return '';
+        let s = String(t).trim();
+        if (!s) return '';
+        const ampmMatch = s.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+        if (ampmMatch) {
+            let [_, h, m, meridiem] = ampmMatch;
+            let hours = parseInt(h, 10);
+            if (meridiem.toLowerCase() === 'pm' && hours < 12) hours += 12;
+            if (meridiem.toLowerCase() === 'am' && hours === 12) hours = 0;
+            return `${String(hours).padStart(2, '0')}:${m}`;
+        }
+        const match = s.match(/^(\d{1,2}):(\d{2})$/);
+        if (match) {
+            return `${match[1].padStart(2, '0')}:${match[2]}`;
+        }
+        return s;
+    };
+
+    const isFuelReceiptData = (d: any): boolean => {
+        if (!d) return false;
+        if (d.category && String(d.category).toLowerCase().includes('fuel')) return true;
+        const text = `${d.supplierName || ''} ${d.shopName || ''} ${d.description || ''}`.toLowerCase();
+        return text.includes('fuel') || text.includes('petrol') || text.includes('diesel') || text.includes('adnoc') || text.includes('enoc') || text.includes('emarat') || text.includes('refuel') || text.includes('petro');
+    };
 
     const findDuplicateEntry = (newExpense: EverydayExpense) => {
         if (!everydayExpenses || everydayExpenses.length === 0) return null;
         
+        const norm = (s: any) => {
+            if (!s) return '';
+            return String(s).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        };
+
+        const newInv = norm(newExpense.invoiceNo);
+        const newTrn = norm(newExpense.trnNo);
+        const newSup = norm(newExpense.supplierName);
+        const newShop = norm(newExpense.shopName);
+        const newVehicle = norm(newExpense.vehicleNumber);
+        const newDate = newExpense.date ? String(newExpense.date).split('T')[0] : '';
+        const newAmt = Number(newExpense.totalAmount || newExpense.billAmount || 0);
+
+        // Disregard generic non-unique placeholder invoice numbers
+        const isGenericInvoice = !newInv || ['na', 'none', 'cash', 'receipt', 'bill', '0', '00', '000', 'inv', 'null', 'undefined', 'paid'].includes(newInv);
+
         return everydayExpenses.find(existing => {
             if (existing.id === newExpense.id) return false;
             
-            // If both entries have different non-empty invoice numbers, they are NOT duplicates
+            const exInv = norm(existing.invoiceNo);
+            const exTrn = norm(existing.trnNo);
+            const exSup = norm(existing.supplierName);
+            const exShop = norm(existing.shopName);
+            const exVehicle = norm(existing.vehicleNumber);
+            const exDate = existing.date ? String(existing.date).split('T')[0] : '';
+            const exAmt = Number(existing.totalAmount || existing.billAmount || 0);
+
+            // 1. Exact Attachment Match (same uploaded image / PDF)
             if (
-                newExpense.invoiceNo && 
-                existing.invoiceNo && 
-                newExpense.invoiceNo.trim().length > 2 &&
-                existing.invoiceNo.trim().length > 2 &&
-                newExpense.invoiceNo.trim().toLowerCase() !== existing.invoiceNo.trim().toLowerCase()
-            ) {
-                return false;
-            }
-            
-            // 1. Check Invoice number match (case-insensitive, trimmed, not empty)
-            if (
-                newExpense.invoiceNo && 
-                existing.invoiceNo && 
-                newExpense.invoiceNo.trim().length > 2 &&
-                newExpense.invoiceNo.trim().toLowerCase() === existing.invoiceNo.trim().toLowerCase()
-            ) {
-                return true;
-            }
-            
-            // 2. Check TRN number + Date + Total Amount
-            if (
-                newExpense.trnNo && 
-                existing.trnNo &&
-                newExpense.trnNo.trim().length > 2 &&
-                newExpense.trnNo.trim().toLowerCase() === existing.trnNo.trim().toLowerCase() &&
-                newExpense.date === existing.date &&
-                Number(newExpense.totalAmount) === Number(existing.totalAmount)
+                newExpense.attachment && 
+                existing.attachment && 
+                newExpense.attachment.length > 200 && 
+                existing.attachment.length > 200 && 
+                newExpense.attachment === existing.attachment
             ) {
                 return true;
             }
 
-            // 3. Check Supplier + Date + Total Amount
-            if (
-                newExpense.supplierName &&
-                existing.supplierName &&
-                newExpense.supplierName.trim().length > 2 &&
-                existing.supplierName.trim().length > 2 &&
-                newExpense.supplierName.trim().toLowerCase() === existing.supplierName.trim().toLowerCase() &&
-                newExpense.date === existing.date &&
-                Number(newExpense.totalAmount) === Number(existing.totalAmount)
-            ) {
+            // Check if suppliers or shop names match or are related
+            const suppliersMatch = (newSup && exSup && (newSup === exSup || newSup.includes(exSup) || exSup.includes(newSup))) ||
+                                   (newShop && exShop && (newShop === exShop || newShop.includes(exShop) || exShop.includes(newShop))) ||
+                                   (newSup && exShop && (newSup === exShop || newSup.includes(exShop) || exShop.includes(newShop))) ||
+                                   (newShop && exSup && (newShop === exShop || newShop.includes(exShop) || exShop.includes(newShop)));
+
+            const trnMatch = !!(newTrn && exTrn && newTrn.length >= 5 && newTrn === exTrn);
+            const amtMatch = newAmt > 0 && exAmt > 0 && Math.abs(newAmt - exAmt) < 0.05;
+            const dateMatch = !!(newDate && exDate && newDate === exDate);
+
+            // 2. Invoice Number Match Logic:
+            // Invoice numbers are issued per supplier/vendor. They MUST NEVER be treated as global across different vendors.
+            if (!isGenericInvoice && exInv && newInv.length >= 2 && newInv === exInv) {
+                // Duplicate confirmed if:
+                // a) Same supplier / shop name
+                if (suppliersMatch) {
+                    return true;
+                }
+                // b) Same TRN number
+                if (trnMatch) {
+                    return true;
+                }
+                // c) Same total amount
+                if (amtMatch) {
+                    return true;
+                }
+                // d) Same date AND close amounts
+                if (dateMatch && Math.abs(newAmt - exAmt) <= 2) {
+                    return true;
+                }
+
+                // If invoice number is identical string (e.g. coincident number / plate number) but supplier is completely different,
+                // total amount is different, and date is different, it is NOT a duplicate!
+                return false;
+            }
+
+            // 3. Check TRN + Date + Total Amount (e.g. same vendor TRN on same date for same amount)
+            if (trnMatch && dateMatch && amtMatch) {
                 return true;
+            }
+
+            // 4. Check Supplier + Date + Total Amount (e.g. manual receipt without invoice number)
+            if (suppliersMatch && dateMatch && amtMatch) {
+                return true;
+            }
+
+            // 5. Vehicle Fuel/Parking specific match (Same vehicle plate + same date + same amount + same start time)
+            if (newVehicle && exVehicle && newVehicle.length >= 3 && newVehicle === exVehicle && dateMatch && amtMatch) {
+                if (newExpense.startTime && existing.startTime && newExpense.startTime === existing.startTime) {
+                    return true;
+                }
+                if (suppliersMatch) {
+                    return true;
+                }
             }
 
             return false;
@@ -18224,9 +18325,14 @@ export const EverydayExpenseModal: React.FC<{
                         delete cleanData.vatAmount;
                         delete cleanData.totalAmount;
                     }
+                    const isFuel = isFuelReceiptData(data);
                     const updated = {
                         ...prev,
                         ...cleanData,
+                        date: cleanData.date ? normalizeDateStr(cleanData.date) : (prev.date || new Date().toISOString().split('T')[0]),
+                        startTime: cleanData.startTime ? normalizeTimeStr(cleanData.startTime) : (prev.startTime || ''),
+                        endTime: cleanData.endTime ? normalizeTimeStr(cleanData.endTime) : (prev.endTime || ''),
+                        endDate: cleanData.endDate ? normalizeDateStr(cleanData.endDate) : (prev.endDate || ''),
                         siNo: calculatedSiNo,
                         uploadedBy: nameToSuggest,
                         uploadedByUid: user?.uid || '',
@@ -18234,7 +18340,8 @@ export const EverydayExpenseModal: React.FC<{
                         updatedBy: nameToSuggest,
                         updatedByUid: user?.uid || '',
                         attachment: base64,
-                        isVehicleFuel: !!(data && data.vehicleNumber && data.vehicleNumber.trim()) || prev.isVehicleFuel,
+                        isVehicleFuel: isFuel || prev.isVehicleFuel,
+                        vehicleNumber: (data && data.vehicleNumber) ? data.vehicleNumber : (prev.vehicleNumber || ''),
                         invoiceNoOriginal: data.invoiceNo || '',
                         invoiceChanged: false,
                         invoiceChangedBy: '',
@@ -18324,9 +18431,14 @@ export const EverydayExpenseModal: React.FC<{
                     delete cleanData.vatAmount;
                     delete cleanData.totalAmount;
                 }
+                const isFuel = isFuelReceiptData(data);
                 const updated = {
                     ...prev,
                     ...cleanData,
+                    date: cleanData.date ? normalizeDateStr(cleanData.date) : (prev.date || new Date().toISOString().split('T')[0]),
+                    startTime: cleanData.startTime ? normalizeTimeStr(cleanData.startTime) : (prev.startTime || ''),
+                    endTime: cleanData.endTime ? normalizeTimeStr(cleanData.endTime) : (prev.endTime || ''),
+                    endDate: cleanData.endDate ? normalizeDateStr(cleanData.endDate) : (prev.endDate || ''),
                     siNo: calculatedSiNo,
                     uploadedBy: uploaderName,
                     uploadedByUid: user?.uid || '',
@@ -18334,7 +18446,8 @@ export const EverydayExpenseModal: React.FC<{
                     updatedBy: uploaderName,
                     updatedByUid: user?.uid || '',
                     attachment: tempImageData.image,
-                    isVehicleFuel: !!(data && data.vehicleNumber && data.vehicleNumber.trim()) || prev.isVehicleFuel,
+                    isVehicleFuel: isFuel || prev.isVehicleFuel,
+                    vehicleNumber: (data && data.vehicleNumber) ? data.vehicleNumber : (prev.vehicleNumber || ''),
                     invoiceNoOriginal: data.invoiceNo || '',
                     invoiceChanged: false,
                     invoiceChangedBy: '',
@@ -18774,7 +18887,7 @@ export const EverydayExpenseModal: React.FC<{
 
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
-                                            KM Start {formData.attachment && <span className="text-rose-500">*</span>}
+                                            KM Start <span className="text-slate-400 font-normal">(Optional)</span>
                                         </label>
                                         <input 
                                             type="number"
@@ -18797,7 +18910,7 @@ export const EverydayExpenseModal: React.FC<{
 
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black uppercase tracking-widest text-amber-800 block ml-1">
-                                            KM End {formData.attachment && <span className="text-rose-500">*</span>}
+                                            KM End <span className="text-slate-400 font-normal">(Optional)</span>
                                         </label>
                                         <input 
                                             type="number"
@@ -18932,85 +19045,102 @@ export const EverydayExpenseModal: React.FC<{
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex gap-3">
                     <button onClick={onCancel} className="flex-1 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Cancel</button>
                     <button 
-                        onClick={() => {
-                            // Fuel Expense Custom Validations
-                            if (formData.isVehicleFuel) {
-                                if (!formData.vehicleNumber || !formData.vehicleNumber.trim()) {
-                                    setValidationError("Vehicle Number is required for fuel expenses.");
+                        disabled={isSavingRecord}
+                        onClick={async () => {
+                            try {
+                                setIsSavingRecord(true);
+                                setValidationError(null);
+
+                                // Sanitize and normalize date & times
+                                const validDate = normalizeDateStr(formData.date);
+                                const validEndDate = formData.endDate ? normalizeDateStr(formData.endDate) : '';
+                                const validStartTime = normalizeTimeStr(formData.startTime);
+                                const validEndTime = normalizeTimeStr(formData.endTime);
+
+                                // Sanitize numbers
+                                const cleanBillAmt = Number(formData.billAmount) || 0;
+                                const cleanVatAmt = Number(formData.vatAmount) || 0;
+                                const cleanTotalAmt = Number(formData.totalAmount) || (cleanBillAmt + cleanVatAmt);
+
+                                // Validate mandatory date
+                                if (!validDate) {
+                                    setValidationError("Please select or enter a valid date.");
+                                    setIsSavingRecord(false);
                                     return;
                                 }
-                                if (formData.attachment) {
-                                    if (formData.kmStart === undefined || formData.kmStart === null || isNaN(formData.kmStart)) {
-                                        setValidationError("Kilometer Start is mandatory when a bill/receipt photo is uploaded.");
-                                        return;
-                                    }
-                                    if (formData.kmEnd === undefined || formData.kmEnd === null || isNaN(formData.kmEnd)) {
-                                        setValidationError("Kilometer End is mandatory when a bill/receipt photo is uploaded.");
-                                        return;
-                                    }
-                                    if (Number(formData.kmEnd) < Number(formData.kmStart)) {
-                                        setValidationError("Kilometer End cannot be less than Kilometer Start.");
-                                        return;
+
+                                // Vehicle fuel specific validation
+                                if (formData.isVehicleFuel) {
+                                    if (formData.kmStart !== undefined && formData.kmEnd !== undefined && formData.kmStart !== null && formData.kmEnd !== null) {
+                                        if (Number(formData.kmEnd) < Number(formData.kmStart)) {
+                                            setValidationError("Kilometer End cannot be less than Kilometer Start.");
+                                            setIsSavingRecord(false);
+                                            return;
+                                        }
                                     }
                                 }
-                            }
 
-                            // Timeframe & Date Validations
-                            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-                            if (!formData.date || !dateRegex.test(formData.date)) {
-                                setValidationError("Start Date / Date must be a valid date in YYYY-MM-DD format.");
-                                return;
-                            }
-
-                            const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-                            if (formData.startTime && !timeRegex.test(formData.startTime)) {
-                                setValidationError("Start Time must be in valid 24-hour style, e.g., '14:20' or '08:05'.");
-                                return;
-                            }
-                            if (formData.endTime && !timeRegex.test(formData.endTime)) {
-                                setValidationError("End Time must be in valid 24-hour style, e.g., '14:20' or '08:05'.");
-                                return;
-                            }
-
-                            if (formData.endDate && !dateRegex.test(formData.endDate)) {
-                                setValidationError("End Date must be a valid date in YYYY-MM-DD format.");
-                                return;
-                            }
-
-                            const checkEndDate = formData.endDate || formData.date;
-                            if (formData.date && checkEndDate) {
-                                if (checkEndDate < formData.date) {
-                                    setValidationError("End Date cannot be before the Start Date.");
-                                    return;
-                                }
-                                
-                                if (formData.date === checkEndDate && formData.startTime && formData.endTime) {
-                                    const startMins = (() => {
-                                        const [h, m] = formData.startTime.split(':').map(Number);
-                                        return h * 60 + m;
-                                    })();
-                                    const endMins = (() => {
-                                        const [h, m] = formData.endTime.split(':').map(Number);
-                                        return h * 60 + m;
-                                    })();
-                                    if (endMins < startMins) {
-                                        setValidationError("End Time cannot be before Start Time on the same day.");
+                                // Date / timeframe ordering validation
+                                const checkEndDate = validEndDate || validDate;
+                                if (validDate && checkEndDate) {
+                                    if (checkEndDate < validDate) {
+                                        setValidationError("End Date cannot be before Start Date.");
+                                        setIsSavingRecord(false);
                                         return;
                                     }
+                                    
+                                    if (validDate === checkEndDate && validStartTime && validEndTime) {
+                                        const [sh, sm] = validStartTime.split(':').map(Number);
+                                        const [eh, em] = validEndTime.split(':').map(Number);
+                                        if (!isNaN(sh) && !isNaN(eh)) {
+                                            const startMins = sh * 60 + (sm || 0);
+                                            const endMins = eh * 60 + (em || 0);
+                                            if (endMins < startMins) {
+                                                setValidationError("End Time cannot be before Start Time on the same day.");
+                                                setIsSavingRecord(false);
+                                                return;
+                                            }
+                                        }
+                                    }
                                 }
-                            }
 
-                            setValidationError(null);
-                            const duplicate = findDuplicateEntry(formData);
-                            if (duplicate) {
-                                setDuplicateMatch(duplicate);
-                            } else {
-                                onSave(formData);
+                                const dataToSave: EverydayExpense = {
+                                    ...formData,
+                                    date: validDate,
+                                    endDate: validEndDate || undefined,
+                                    startTime: validStartTime || undefined,
+                                    endTime: validEndTime || undefined,
+                                    billAmount: cleanBillAmt,
+                                    vatAmount: cleanVatAmt,
+                                    totalAmount: cleanTotalAmt,
+                                    uploadedBy: formData.uploadedBy || formData.updatedBy || user?.name || 'Staff',
+                                    updatedBy: user?.name || formData.uploadedBy || 'Staff'
+                                };
+
+                                const duplicate = findDuplicateEntry(dataToSave);
+                                if (duplicate) {
+                                    setDuplicateMatch(duplicate);
+                                    setIsSavingRecord(false);
+                                } else {
+                                    await onSave(dataToSave);
+                                    setIsSavingRecord(false);
+                                }
+                            } catch (err: any) {
+                                console.error("Error saving expense:", err);
+                                setValidationError(err.message || "Failed to save expense. Please check your entries.");
+                                setIsSavingRecord(false);
                             }
                         }} 
-                        className="flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20"
+                        className={`flex-1 px-6 py-4 bg-brand-600 text-white rounded-2xl text-sm font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20 flex items-center justify-center gap-2 ${isSavingRecord ? 'opacity-75 cursor-wait' : ''}`}
                     >
-                        Save Expense
+                        {isSavingRecord ? (
+                            <>
+                                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>
+                                <span>Saving Expense...</span>
+                            </>
+                        ) : (
+                            <span>Save Expense</span>
+                        )}
                     </button>
                 </div>
             </motion.div>
@@ -19175,7 +19305,27 @@ export const EverydayExpenseModal: React.FC<{
                             <button 
                                 onClick={() => {
                                     setDuplicateMatch(null);
-                                    onSave(formData);
+                                    const validDate = normalizeDateStr(formData.date);
+                                    const validEndDate = formData.endDate ? normalizeDateStr(formData.endDate) : '';
+                                    const validStartTime = normalizeTimeStr(formData.startTime);
+                                    const validEndTime = normalizeTimeStr(formData.endTime);
+                                    const cleanBillAmt = Number(formData.billAmount) || 0;
+                                    const cleanVatAmt = Number(formData.vatAmount) || 0;
+                                    const cleanTotalAmt = Number(formData.totalAmount) || (cleanBillAmt + cleanVatAmt);
+
+                                    const dataToSave: EverydayExpense = {
+                                        ...formData,
+                                        date: validDate,
+                                        endDate: validEndDate || undefined,
+                                        startTime: validStartTime || undefined,
+                                        endTime: validEndTime || undefined,
+                                        billAmount: cleanBillAmt,
+                                        vatAmount: cleanVatAmt,
+                                        totalAmount: cleanTotalAmt,
+                                        uploadedBy: formData.uploadedBy || formData.updatedBy || user?.name || 'Staff',
+                                        updatedBy: user?.name || formData.uploadedBy || 'Staff'
+                                    };
+                                    onSave(dataToSave);
                                 }}
                                 className="flex-1 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-bold transition-all shadow-md cursor-pointer text-center"
                             >
@@ -19233,16 +19383,23 @@ export const EverydayExpenseModal: React.FC<{
                             .then((data) => {
                                 setFormData(prev => {
                                     const calculatedSiNo = expense ? expense.siNo : calculateNextSiNo(user?.uid || '', nameToSuggest);
+                                    const isFuel = isFuelReceiptData(data);
                                     const updated = {
                                         ...prev,
                                         ...data,
+                                        date: data.date ? normalizeDateStr(data.date) : (prev.date || new Date().toISOString().split('T')[0]),
+                                        startTime: data.startTime ? normalizeTimeStr(data.startTime) : (prev.startTime || ''),
+                                        endTime: data.endTime ? normalizeTimeStr(data.endTime) : (prev.endTime || ''),
+                                        endDate: data.endDate ? normalizeDateStr(data.endDate) : (prev.endDate || ''),
                                         siNo: calculatedSiNo,
                                         uploadedBy: nameToSuggest,
                                         uploadedByUid: user?.uid || '',
                                         uploadedDate: prev.uploadedDate || new Date().toISOString().split('T')[0],
                                         updatedBy: nameToSuggest,
                                         updatedByUid: user?.uid || '',
-                                        attachment: base64
+                                        attachment: base64,
+                                        isVehicleFuel: isFuel || prev.isVehicleFuel,
+                                        vehicleNumber: (data && data.vehicleNumber) ? data.vehicleNumber : (prev.vehicleNumber || '')
                                     };
                                     const duplicate = findDuplicateEntry(updated);
                                     if (duplicate) {

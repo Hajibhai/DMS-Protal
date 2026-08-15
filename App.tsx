@@ -5990,15 +5990,22 @@ export default function App() {
       updatedBy: systemUser?.name || '',
       updatedByUid: systemUser?.uid || ''
     };
-    await saveEverydayExpense(enrichedData);
+
+    // Instant optimistic UI update and modal close
     setEverydayExpenses(prev => {
       const idx = prev.findIndex(x => x.id === enrichedData.id);
       if (idx >= 0) { const c = [...prev]; c[idx] = enrichedData; return c; }
       return [enrichedData, ...prev];
     });
-    const isUpdate = everydayExpenses.some(ee => ee.id === enrichedData.id);
-    handleLogAction(isUpdate ? 'Everyday Expense Updated' : 'Everyday Expense Added', `Everyday expense ${enrichedData.invoiceNo} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
     setShowEverydayExpenseModal(false);
+
+    try {
+      await saveEverydayExpense(enrichedData);
+      const isUpdate = everydayExpenses.some(ee => ee.id === enrichedData.id);
+      handleLogAction(isUpdate ? 'Everyday Expense Updated' : 'Everyday Expense Added', `Everyday expense ${enrichedData.invoiceNo || enrichedData.id} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
+    } catch (err: any) {
+      console.error("Failed to persist everyday expense to database:", err);
+    }
   };
 
   const handleDeleteEverydayExpense = async (ee: EverydayExpense) => {

@@ -74,28 +74,31 @@ export default async function handler(req: any, res: any) {
         properties: {
           siNo: { type: Type.STRING, description: "Sequential number/serial number of the invoice if printed, or empty string" },
           date: { type: Type.STRING, description: "Transaction date in YYYY-MM-DD format. If this is a parking receipt, this represents the START date." },
-          invoiceNo: { type: Type.STRING, description: "Invoice or reference number on the receipt" },
+          invoiceNo: { type: Type.STRING, description: "Official Invoice or serial/receipt number printed on the bill (e.g. '0636' from 'No. 0636' or 'INV-1029'). Do not confuse vehicle plate numbers with invoice numbers." },
           trnNo: { type: Type.STRING, description: "Tax Registration Number (TRN) in UAE format (often 15 digits) or empty if not present" },
           clientName: { type: Type.STRING, description: "Company or Client Name to whom invoice is billed (e.g. Pioneer General Contracting LLC - SPC)" },
-          supplierName: { type: Type.STRING, description: "Supplier or vendor name selling the items" },
+          supplierName: { type: Type.STRING, description: "Supplier, garage, workshop, or vendor name selling the items (e.g. Kohat Tyre & Vehicle Repair)" },
           shopName: { type: Type.STRING, description: "Shop name or Trading name if different from supplier" },
           billAmount: { type: Type.NUMBER, description: "Subtotal or net value before tax/VAT" },
           vatAmount: { type: Type.NUMBER, description: "VAT amount (usually 5% in UAE)" },
           totalAmount: { type: Type.NUMBER, description: "Total amount including VAT" },
-          description: { type: Type.STRING, description: "Brief description of the goods or services purchased" },
+          description: { type: Type.STRING, description: "Brief description of the goods or services purchased (e.g. 'Car AC repair, gas filling, chemical service & labour')" },
           startTime: { type: Type.STRING, description: "Start time on the bill in HH:MM 24-hour style if present (e.g., '17:35'), else empty" },
           endDate: { type: Type.STRING, description: "End date in YYYY-MM-DD format if present, else empty string" },
           endTime: { type: Type.STRING, description: "End time on the bill in HH:MM 24-hour style if present (e.g., '17:35'), else empty" },
-          vehicleNumber: { type: Type.STRING, description: "Vehicle plate number/code or car number if printed on the petrol/refuel/fuel receipt (e.g., 'DXB 12345', 'M 98765', '12345', 'G 54321'), or empty string if not found" },
+          vehicleNumber: { type: Type.STRING, description: "Vehicle plate number/code, car number, or vehicle registration (e.g. '16339', 'DXB 12345', 'M 98765') printed or handwritten on vehicle repair/garage/petrol/refuel/fuel receipts, or empty string if not found" },
           employeeName: { type: Type.STRING, description: "Name of the employee, driver, or purchaser printed on the receipt or fuel card, or empty string if not found" },
         },
         required: ["date", "billAmount", "totalAmount"]
       };
-      prompt = "Analyze this receipt image and extract the following everyday operational invoice details into a JSON object. " +
-               "CRITICAL INSTRUCTIONS FOR DATE & TIMEFRAME & VEHICLES: " +
-               "1. UAE / Dubai receipts write dates in Day/Month/Year (DD/MM/YY) format. For example, '22/05/26' means May 22, 2026. You MUST extract this carefully as '2026-05-22' for the 'date' field. Do not swap month and date! " +
-               "2. For parking tickets stating 'START' and 'END' with times (e.g., '17:35') and dates (e.g., '22/05/26' and '23/05/26'), extract the 'startTime' as '17:35', the 'endDate' as '2026-05-23', and the 'endTime' as '17:35'. Ensure dates are formatted as YYYY-MM-DD. " +
-               "3. VEHICLE CODES: Carefully look for any vehicle registration number, plate code, or card plate details printed on the receipt (especially fuel bills from ENOC/ADNOC). Extract it verbatim (e.g., 'DXB 12345' or '12345') into the 'vehicleNumber' field.";
+      prompt = "Analyze this receipt/bill image and extract the everyday operational invoice details into a JSON object. " +
+               "CRITICAL EXTRACTION GUIDELINES: " +
+               "1. DATES: UAE / Dubai receipts write dates in Day/Month/Year (DD/MM/YY or DD-MM-YY) format. For example, '12-8-26' means 12 August 2026 -> '2026-08-12'. '22/05/26' means 22 May 2026 -> '2026-05-22'. Extract carefully as 'YYYY-MM-DD' for the 'date' field. Do not swap month and date! " +
+               "2. INVOICE / SERIAL NUMBER vs VEHICLE NUMBER: " +
+               "   - On manual/paper invoice pads/receipts with a pre-printed serial number like 'No. 0636' or 'No. 1234' or 'INV-550', extract that printed serial number (e.g., '0636') into 'invoiceNo'. " +
+               "   - Any 4-6 digit handwritten vehicle plate number, car registration, or customer car code (e.g., '16339', 'DXB 12345') written on vehicle repair / garage / tyre / mechanic / fuel bills MUST be extracted into 'vehicleNumber', NOT as 'invoiceNo'. " +
+               "3. PARKING TICKETS: For parking tickets with 'START' and 'END' times (e.g. '17:35') and dates, extract startTime as '17:35', endDate as 'YYYY-MM-DD', and endTime as '17:35'. " +
+               "4. SUPPLIER & DESCRIPTION: Extract the clear shop/garage/supplier name (e.g. 'Kohat Tyre & Vehicle Repair') and translate/summarize Urdu/Arabic/English notes (e.g. 'Car AC repair, gas filling, chemical service & labour').";
     } else if (type === "safety") {
       responseSchema = {
         type: Type.OBJECT,

@@ -604,12 +604,15 @@ export const uploadBase64ToStorage = async (base64Data: string, storagePath: str
     return base64Data;
   }
   try {
-    const storageRef = ref(storage, storagePath);
-    await uploadString(storageRef, base64Data, 'data_url');
-    const downloadUrl = await getDownloadURL(storageRef);
-    return downloadUrl;
+    const uploadPromise = (async () => {
+      const storageRef = ref(storage, storagePath);
+      await uploadString(storageRef, base64Data, 'data_url');
+      return await getDownloadURL(storageRef);
+    })();
+    const timeoutPromise = new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Storage upload timeout')), 4000));
+    return await Promise.race([uploadPromise, timeoutPromise]);
   } catch (err) {
-    console.warn(`Firebase Storage upload error for ${storagePath}:`, err);
+    console.warn(`Firebase Storage upload skipped/fallback for ${storagePath}:`, err);
     return base64Data;
   }
 };
@@ -745,8 +748,7 @@ export const migrateBase64ReceiptsToStorage = async (): Promise<{ migrated: numb
 
 export const saveEverydayExpense = async (data: EverydayExpense) => {
   try {
-    let docData = await uploadReceiptsForDoc(data, 'everyday_expenses');
-    docData = await prepareDocForFirestore(docData);
+    const docData = await prepareDocForFirestore(data);
     await setDoc(doc(db, 'everyday_expenses', data.id), docData);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `everyday_expenses/${data.id}`);
