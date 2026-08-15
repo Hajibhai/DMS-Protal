@@ -816,7 +816,7 @@ const KeyboardShortcutsModal = ({ isOpen, onClose }: { isOpen: boolean, onClose:
           </div>
         </div>
         <div className="p-6 bg-slate-50 border-t border-slate-100 text-center">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Pioneer DMS v2.5 Productivity Tools</p>
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Pioneer DMS v5.0 Productivity Tools</p>
         </div>
       </motion.div>
     </div>
@@ -17172,7 +17172,168 @@ const ReportsView = ({
     suppliers, vendors, user, companies 
 }: any) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+    const [startDate, setStartDate] = useState(() => {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        return `${y}-${m}-01`;
+    });
+    const [endDate, setEndDate] = useState(() => {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const lastDay = new Date(y, m + 1, 0).getDate();
+        return `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    });
+    const [activeDatePreset, setActiveDatePreset] = useState<string>('this_month');
     const [searchQuery, setSearchQuery] = useState('');
+    
+    // Quick Date Range Preset Handler
+    const applyDatePreset = (preset: 'this_month' | 'last_month' | 'last_30_days' | 'this_quarter' | 'this_year' | 'all_time') => {
+        setActiveDatePreset(preset);
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        if (preset === 'this_month') {
+            const s = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+            const lastDay = new Date(y, m + 1, 0).getDate();
+            const e = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+            setStartDate(s);
+            setEndDate(e);
+            setSelectedMonth(`${y}-${String(m + 1).padStart(2, '0')}`);
+        } else if (preset === 'last_month') {
+            const prevMonthDate = new Date(y, m - 1, 1);
+            const py = prevMonthDate.getFullYear();
+            const pm = prevMonthDate.getMonth();
+            const s = `${py}-${String(pm + 1).padStart(2, '0')}-01`;
+            const lastDay = new Date(py, pm + 1, 0).getDate();
+            const e = `${py}-${String(pm + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+            setStartDate(s);
+            setEndDate(e);
+            setSelectedMonth(`${py}-${String(pm + 1).padStart(2, '0')}`);
+        } else if (preset === 'last_30_days') {
+            const eDate = new Date();
+            const sDate = new Date(eDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+            const s = `${sDate.getFullYear()}-${String(sDate.getMonth() + 1).padStart(2, '0')}-${String(sDate.getDate()).padStart(2, '0')}`;
+            const e = `${eDate.getFullYear()}-${String(eDate.getMonth() + 1).padStart(2, '0')}-${String(eDate.getDate()).padStart(2, '0')}`;
+            setStartDate(s);
+            setEndDate(e);
+        } else if (preset === 'this_quarter') {
+            const qStartMonth = Math.floor(m / 3) * 3;
+            const s = `${y}-${String(qStartMonth + 1).padStart(2, '0')}-01`;
+            const lastDay = new Date(y, qStartMonth + 3, 0).getDate();
+            const e = `${y}-${String(qStartMonth + 3).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+            setStartDate(s);
+            setEndDate(e);
+        } else if (preset === 'this_year') {
+            setStartDate(`${y}-01-01`);
+            setEndDate(`${y}-12-31`);
+        } else if (preset === 'all_time') {
+            setStartDate('2020-01-01');
+            setEndDate(`${y + 2}-12-31`);
+        }
+    };
+
+    const handleMonthPickerChange = (monthStr: string) => {
+        setSelectedMonth(monthStr);
+        setActiveDatePreset('custom');
+        if (monthStr) {
+            const [yStr, mStr] = monthStr.split('-');
+            const y = Number(yStr);
+            const m = Number(mStr);
+            if (y && m) {
+                const s = `${y}-${String(m).padStart(2, '0')}-01`;
+                const lastDay = new Date(y, m, 0).getDate();
+                const e = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+                setStartDate(s);
+                setEndDate(e);
+            }
+        }
+    };
+
+    // Robust date normalizer supporting YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, ISO
+    const normalizeDateStr = (dateVal: any): string => {
+        if (!dateVal) return '';
+        if (dateVal instanceof Date) {
+            if (isNaN(dateVal.getTime())) return '';
+            const y = dateVal.getFullYear();
+            const m = String(dateVal.getMonth() + 1).padStart(2, '0');
+            const d = String(dateVal.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+        const strVal = String(dateVal).trim();
+        if (!strVal) return '';
+        const clean = strVal.split('T')[0].replace(/\//g, '-').replace(/\./g, '-');
+        const parts = clean.split('-').map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 3) {
+            if (parts[0].length === 4) {
+                return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+            }
+            if (parts[2].length === 4 || parts[2].length === 2) {
+                let y = parts[2];
+                if (y.length === 2) y = '20' + y;
+                let p0 = parseInt(parts[0], 10);
+                let p1 = parseInt(parts[1], 10);
+                let m = p0;
+                let d = p1;
+                if (p0 > 12) {
+                    d = p0;
+                    m = p1;
+                }
+                if (isNaN(m) || m < 1 || m > 12) m = 1;
+                if (isNaN(d) || d < 1 || d > 31) d = 1;
+                return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            }
+        } else if (parts.length === 2 && parts[0].length === 4) {
+            return `${parts[0]}-${parts[1].padStart(2, '0')}-01`;
+        }
+        const d = new Date(dateVal);
+        if (!isNaN(d.getTime())) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        }
+        return '';
+    };
+
+    const isDateInRange = useCallback((dateVal: any) => {
+        if (!dateVal) return false;
+        const norm = normalizeDateStr(dateVal);
+        if (!norm) return false;
+        if (startDate && norm < startDate) return false;
+        if (endDate && norm > endDate) return false;
+        return true;
+    }, [startDate, endDate]);
+
+    const formatDateDisplay = (dateStr: string) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            if (!isNaN(d.getTime())) {
+                return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+            }
+        }
+        return dateStr;
+    };
+
+    const dateRangeLabel = useMemo(() => {
+        if (!startDate && !endDate) return 'All Records';
+        if (startDate && !endDate) return `From ${formatDateDisplay(startDate)}`;
+        if (!startDate && endDate) return `Up to ${formatDateDisplay(endDate)}`;
+        if (startDate === endDate) return formatDateDisplay(startDate);
+
+        const [sy, sm, sd] = startDate.split('-').map(Number);
+        const [ey, em, ed] = endDate.split('-').map(Number);
+        if (sy === ey && sm === em && sd === 1) {
+            const lastDay = new Date(sy, sm, 0).getDate();
+            if (ed === lastDay) {
+                return new Date(sy, sm - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+            }
+        }
+        return `${formatDateDisplay(startDate)} — ${formatDateDisplay(endDate)}`;
+    }, [startDate, endDate]);
     
     // VAT-specific filtering and period states
     const [vatPeriodType, setVatPeriodType] = useState<'monthly' | 'quarterly'>('monthly');
@@ -17480,47 +17641,20 @@ const ReportsView = ({
     }, [allowedReports, reportType]);
 
     const [year, month] = selectedMonth.split('-').map(Number);
-    const currentMonth = month - 1;
-    const currentYear = year;
-    const monthName = new Date(year, currentMonth).toLocaleString('default', { month: 'long' });
+    const currentMonth = month ? month - 1 : new Date().getMonth();
+    const currentYear = year || new Date().getFullYear();
+    const monthName = new Date(currentYear, currentMonth).toLocaleString('default', { month: 'long' });
 
     const activeStaff = useMemo(() => employees.filter((e: any) => e.active), [employees]);
     
-    // Filtered data based on selected month
-    const monthlyAttendance = useMemo(() => attendance.filter((r: any) => {
-        const d = new Date(r.date);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    }), [attendance, currentMonth, currentYear]);
-
-    const monthlyDeductions = useMemo(() => deductions.filter((d: any) => {
-        const date = new Date(d.date);
-        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-    }), [deductions, currentMonth, currentYear]);
-
-    const monthlyAP = useMemo(() => accountsPayable.filter((ap: any) => {
-        const d = new Date(ap.date);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    }), [accountsPayable, currentMonth, currentYear]);
-
-    const monthlyAR = useMemo(() => accountsReceivable.filter((ar: any) => {
-        const d = new Date(ar.date);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    }), [accountsReceivable, currentMonth, currentYear]);
-
-    const monthlyPettyCash = useMemo(() => pettyCash.filter((pc: any) => {
-        const d = new Date(pc.date);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    }), [pettyCash, currentMonth, currentYear]);
-
-    const monthlyEveryday = useMemo(() => (everydayExpenses || []).filter((ee: any) => {
-        const d = new Date(ee.date);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    }), [everydayExpenses, currentMonth, currentYear]);
-
-    const monthlyProjected = useMemo(() => (projectedExpenses || []).filter((pe: any) => {
-        const d = new Date(pe.date);
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    }), [projectedExpenses, currentMonth, currentYear]);
+    // Filtered data based on Date Range [startDate, endDate]
+    const monthlyAttendance = useMemo(() => attendance.filter((r: any) => isDateInRange(r.date)), [attendance, isDateInRange]);
+    const monthlyDeductions = useMemo(() => deductions.filter((d: any) => isDateInRange(d.date)), [deductions, isDateInRange]);
+    const monthlyAP = useMemo(() => accountsPayable.filter((ap: any) => isDateInRange(ap.date)), [accountsPayable, isDateInRange]);
+    const monthlyAR = useMemo(() => accountsReceivable.filter((ar: any) => isDateInRange(ar.date)), [accountsReceivable, isDateInRange]);
+    const monthlyPettyCash = useMemo(() => pettyCash.filter((pc: any) => isDateInRange(pc.date)), [pettyCash, isDateInRange]);
+    const monthlyEveryday = useMemo(() => (everydayExpenses || []).filter((ee: any) => isDateInRange(ee.date)), [everydayExpenses, isDateInRange]);
+    const monthlyProjected = useMemo(() => (projectedExpenses || []).filter((pe: any) => isDateInRange(pe.date)), [projectedExpenses, isDateInRange]);
 
     const payrollData = useMemo(() => {
         return activeStaff.map((e: any) => {
@@ -17533,6 +17667,43 @@ const ReportsView = ({
         });
     }, [activeStaff, monthlyAttendance, monthlyDeductions]);
 
+    // Previous period calculation for comparative payroll analysis
+    const prevPeriod = useMemo(() => {
+        if (!startDate || !endDate) {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = now.getMonth();
+            const prev = new Date(y, m - 1, 1);
+            const py = prev.getFullYear();
+            const pm = prev.getMonth();
+            const pStart = `${py}-${String(pm + 1).padStart(2, '0')}-01`;
+            const lastDay = new Date(py, pm + 1, 0).getDate();
+            const pEnd = `${py}-${String(pm + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+            return { start: pStart, end: pEnd, name: prev.toLocaleString('default', { month: 'long', year: 'numeric' }) };
+        }
+        const sTime = new Date(startDate).getTime();
+        const eTime = new Date(endDate).getTime();
+        const duration = Math.max(0, eTime - sTime);
+        const prevEndD = new Date(sTime - 24 * 60 * 60 * 1000);
+        const prevStartD = new Date(prevEndD.getTime() - duration);
+        const pStart = normalizeDateStr(prevStartD);
+        const pEnd = normalizeDateStr(prevEndD);
+        return {
+            start: pStart,
+            end: pEnd,
+            name: `${formatDateDisplay(pStart)} — ${formatDateDisplay(pEnd)}`
+        };
+    }, [startDate, endDate]);
+
+    const isDateInPrevPeriod = useCallback((dateVal: any) => {
+        if (!dateVal) return false;
+        const norm = normalizeDateStr(dateVal);
+        if (!norm) return false;
+        if (prevPeriod.start && norm < prevPeriod.start) return false;
+        if (prevPeriod.end && norm > prevPeriod.end) return false;
+        return true;
+    }, [prevPeriod]);
+
     const prevMonthDate = useMemo(() => {
         return new Date(currentYear, currentMonth - 1, 1);
     }, [currentYear, currentMonth]);
@@ -17544,29 +17715,22 @@ const ReportsView = ({
     }, [prevMonthDate]);
 
     const prevMonthName = useMemo(() => {
-        return prevMonthDate.toLocaleString('default', { month: 'long' });
-    }, [prevMonthDate]);
+        return prevPeriod.name || prevMonthDate.toLocaleString('default', { month: 'long' });
+    }, [prevPeriod, prevMonthDate]);
 
-    const prevMonthAttendance = useMemo(() => attendance.filter((r: any) => {
-        const d = new Date(r.date);
-        return d.getMonth() === prevMonthDate.getMonth() && d.getFullYear() === prevMonthDate.getFullYear();
-    }), [attendance, prevMonthDate]);
-
-    const prevMonthDeductions = useMemo(() => deductions.filter((d: any) => {
-        const date = new Date(d.date);
-        return date.getMonth() === prevMonthDate.getMonth() && date.getFullYear() === prevMonthDate.getFullYear();
-    }), [deductions, prevMonthDate]);
+    const prevMonthAttendance = useMemo(() => attendance.filter((r: any) => isDateInPrevPeriod(r.date)), [attendance, isDateInPrevPeriod]);
+    const prevMonthDeductions = useMemo(() => deductions.filter((d: any) => isDateInPrevPeriod(d.date)), [deductions, isDateInPrevPeriod]);
 
     const comparativePayrollData = useMemo(() => {
         const targetEmployees = employees.filter((e: any) => {
             if (e.active) return true;
             
-            const hasCurrentRecs = attendance.some((r: any) => r.employeeId === e.id && new Date(r.date).getMonth() === currentMonth && new Date(r.date).getFullYear() === currentYear) ||
-                                  deductions.some((d: any) => d.employeeId === e.id && new Date(d.date).getMonth() === currentMonth && new Date(d.date).getFullYear() === currentYear);
+            const hasCurrentRecs = attendance.some((r: any) => r.employeeId === e.id && isDateInRange(r.date)) ||
+                                  deductions.some((d: any) => d.employeeId === e.id && isDateInRange(d.date));
             if (hasCurrentRecs) return true;
             
-            const hasPrevRecs = attendance.some((r: any) => r.employeeId === e.id && new Date(r.date).getMonth() === prevMonthDate.getMonth() && new Date(r.date).getFullYear() === prevMonthDate.getFullYear()) ||
-                                deductions.some((d: any) => d.employeeId === e.id && new Date(d.date).getMonth() === prevMonthDate.getMonth() && new Date(d.date).getFullYear() === prevMonthDate.getFullYear());
+            const hasPrevRecs = attendance.some((r: any) => r.employeeId === e.id && isDateInPrevPeriod(r.date)) ||
+                                deductions.some((d: any) => d.employeeId === e.id && isDateInPrevPeriod(d.date));
             return hasPrevRecs;
         });
 
@@ -17638,7 +17802,7 @@ const ReportsView = ({
                 isOffboarded
             };
         });
-    }, [employees, attendance, deductions, monthlyAttendance, monthlyDeductions, prevMonthAttendance, prevMonthDeductions, currentMonth, currentYear, prevMonthDate]);
+    }, [employees, attendance, deductions, monthlyAttendance, monthlyDeductions, prevMonthAttendance, prevMonthDeductions, isDateInRange, isDateInPrevPeriod]);
 
     const filteredComparativePayrollData = useMemo(() => {
         if (!searchQuery) return comparativePayrollData;
@@ -18008,7 +18172,10 @@ const ReportsView = ({
 
     const handleExport = () => {
         let data: any[] = [];
-        let fileName = `Pioneer_${reportType}_Report_${monthName}_${currentYear}`;
+        const dateTag = (startDate && endDate) 
+            ? (startDate === endDate ? startDate : `${startDate}_to_${endDate}`) 
+            : `${monthName}_${currentYear}`;
+        let fileName = `Pioneer_${reportType}_Report_${dateTag}`;
         if (reportType === 'uae_vat') {
             const compLabel = vatCompanyFilter === 'all' 
                 ? 'All_Entities' 
@@ -18375,14 +18542,14 @@ const ReportsView = ({
             <motion.div 
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 no-print"
+                className="space-y-4 no-print"
             >
-                <div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">Intelligence Hub</h2>
-                    <p className="text-slate-500 font-medium">Comprehensive analytics for <span className="text-brand-600 font-bold">{monthName} {currentYear}</span>.</p>
-                </div>
-                
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div>
+                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Intelligence Hub</h2>
+                        <p className="text-slate-500 font-medium">Comprehensive analytics & statements for <span className="text-brand-600 font-bold">{dateRangeLabel}</span>.</p>
+                    </div>
+                    
                     <div className="flex flex-wrap items-center bg-white border border-slate-200 rounded-2xl p-1 shadow-sm max-w-full gap-1">
                         {reportOptions.filter(opt => allowedReports.includes(opt.id)).map((opt) => (
                             <button
@@ -18400,44 +18567,106 @@ const ReportsView = ({
                             </button>
                         ))}
                     </div>
+                </div>
 
-                    <div className="relative">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input 
-                            type="text" 
-                            placeholder="Search report..." 
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-12 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm w-48 focus:w-64"
-                        />
-                    </div>
+                {/* Comprehensive Date Range Filter & Action Toolbar */}
+                <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs">
+                    {/* Left: Quick Date Presets & From-To Date Inputs */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-1 bg-slate-100/90 p-1 rounded-xl">
+                            {[
+                                { id: 'this_month', label: 'This Month' },
+                                { id: 'last_month', label: 'Last Month' },
+                                { id: 'last_30_days', label: 'Last 30 Days' },
+                                { id: 'this_quarter', label: 'This Quarter' },
+                                { id: 'this_year', label: 'This Year' },
+                                { id: 'all_time', label: 'All Time' },
+                            ].map((p) => (
+                                <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => applyDatePreset(p.id as any)}
+                                    className={cn(
+                                        "px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all",
+                                        activeDatePreset === p.id 
+                                            ? "bg-white text-brand-600 shadow-xs" 
+                                            : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                                    )}
+                                >
+                                    {p.label}
+                                </button>
+                            ))}
+                        </div>
 
-                    {reportType !== 'uae_vat' && (
-                        <div className="relative">
-                            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        {/* From Date -> To Date Pickers */}
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">From</span>
+                            <input 
+                                type="date" 
+                                value={startDate}
+                                onChange={(e) => {
+                                    setStartDate(e.target.value);
+                                    setActiveDatePreset('custom');
+                                }}
+                                className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer"
+                                title="Select Start Date"
+                            />
+                            <span className="text-slate-300 font-bold">→</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">To</span>
+                            <input 
+                                type="date" 
+                                value={endDate}
+                                onChange={(e) => {
+                                    setEndDate(e.target.value);
+                                    setActiveDatePreset('custom');
+                                }}
+                                className="bg-transparent text-xs font-bold text-slate-800 outline-none cursor-pointer"
+                                title="Select End Date"
+                            />
+                        </div>
+
+                        {/* Quick Month Picker */}
+                        <div className="hidden md:flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5" title="Quick Select Entire Month">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
                             <input 
                                 type="month" 
                                 value={selectedMonth}
-                                onChange={(e) => setSelectedMonth(e.target.value)}
-                                className="pl-12 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm"
+                                onChange={(e) => handleMonthPickerChange(e.target.value)}
+                                className="bg-transparent text-xs font-bold text-slate-700 outline-none cursor-pointer"
                             />
                         </div>
-                    )}
+                    </div>
 
-                    <div className="flex items-center gap-2">
+                    {/* Right: Search & Action Buttons */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative flex-1 min-w-[180px] sm:w-52">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <input 
+                                type="text" 
+                                placeholder="Search report records..." 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-10 pr-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                            />
+                        </div>
+
                         <button 
+                            type="button"
                             onClick={handleExport}
-                            className="p-2.5 bg-white border border-slate-200 rounded-2xl text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
-                            title="Export to Excel"
+                            className="px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs flex items-center gap-2 text-xs font-bold active:scale-95"
+                            title={`Download records (${dateRangeLabel}) to Excel`}
                         >
-                            <Download className="w-5 h-5" />
+                            <Download className="w-4 h-4 text-emerald-600" />
+                            <span>Download Records</span>
                         </button>
                         <button 
+                            type="button"
                             onClick={handlePrint}
-                            className="p-2.5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20"
-                            title="Print Report"
+                            className="px-3.5 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-all shadow-md shadow-brand-600/20 flex items-center gap-2 text-xs font-bold active:scale-95"
+                            title={`Print records (${dateRangeLabel})`}
                         >
-                            <Printer className="w-5 h-5" />
+                            <Printer className="w-4 h-4 text-white" />
+                            <span>Print Records</span>
                         </button>
                     </div>
                 </div>
@@ -18452,7 +18681,7 @@ const ReportsView = ({
                     </div>
                     <div className="text-right">
                         <h2 className="text-2xl font-bold text-slate-900">{reportOptions.find(o => o.id === reportType)?.label} Report</h2>
-                        <p className="text-slate-500 font-medium">{monthName} {currentYear}</p>
+                        <p className="text-slate-500 font-medium">{dateRangeLabel}</p>
                     </div>
                 </div>
             </div>

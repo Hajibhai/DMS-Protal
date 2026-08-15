@@ -472,7 +472,7 @@ export const BackupRestoreView: React.FC<BackupRestoreViewProps> = ({ user, ever
 
     const exportBundle: any = {
       metadata: {
-        version: '2.0',
+        version: '5.0',
         system: 'Pioneer DMS Corporate Portal',
         exportedAt: new Date().toISOString(),
         exportedBy: user?.email || user?.name || 'Administrator',

@@ -6,7 +6,8 @@ import {
   TrendingUp, TrendingDown, Wallet, Calendar,
   MoreVertical, Check, ListFilter, ArrowUpDown,
   FileSpreadsheet, ExternalLink, Paperclip, Printer, Eye, AlertTriangle,
-  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent, Scale, Home, Building, FileArchive
+  Camera, Upload, CheckCircle, AlertCircle, Clock, BarChart3, Percent, Scale, Home, Building, FileArchive,
+  CreditCard, Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as XLSX from 'xlsx';
@@ -19305,6 +19306,7 @@ export const FinancialDashboardView: React.FC<{
     const [selectedMonth, setSelectedMonth] = useState<string>('all');
     const [selectedYear, setSelectedYear] = useState<string>('all');
     const [previewingPDF, setPreviewingPDF] = useState<boolean>(false);
+    const [visaSearchQuery, setVisaSearchQuery] = useState<string>('');
 
     // Sync editingAccountName whenever selectedTxDetail is opened
     useEffect(() => {
@@ -19393,6 +19395,64 @@ export const FinancialDashboardView: React.FC<{
     const totalCampExpenses = useMemo(() => (filteredCamps || []).reduce((sum: number, x: any) => sum + (Number(x.rent) || 0) + (Number(x.depositAmount) || 0), 0), [filteredCamps]);
     const totalCampRent = useMemo(() => (filteredCamps || []).reduce((sum: number, x: any) => sum + (Number(x.rent) || 0), 0), [filteredCamps]);
     const totalCampDeposit = useMemo(() => (filteredCamps || []).reduce((sum: number, x: any) => sum + (Number(x.depositAmount) || 0), 0), [filteredCamps]);
+
+    // Helper to calculate total visa fees for an employee
+    const getEmployeeVisaTotal = useCallback((emp: any) => {
+        if (!emp) return 0;
+        const fees = emp.visaFees || {};
+        if (fees.totalFee && Number(fees.totalFee) > 0) {
+            return Number(fees.totalFee);
+        }
+        const sum = 
+            (Number(fees.initialApplicationFee) || 0) +
+            (Number(fees.approvalFee) || 0) +
+            (Number(fees.dicFee) || 0) +
+            (Number(fees.iloeFee) || 0) +
+            (Number(fees.lcFee) || 0) +
+            (Number(fees.entryPermitFee) || 0) +
+            (Number(fees.changeStatusFee) || 0) +
+            (Number(fees.medicalFee) || 0) +
+            (Number(fees.insuranceFee) || 0) +
+            (Number(fees.biometricFee) || 0) +
+            (Number(fees.visaEidFee) || 0) +
+            (Number(fees.othersFee) || 0);
+        return sum;
+    }, []);
+
+    // Filtered Visa Employees based on selected month & year filter
+    const filteredVisaEmployees = useMemo(() => {
+        return (employees || []).filter((emp: any) => {
+            const totalFee = getEmployeeVisaTotal(emp);
+            if (totalFee <= 0) return false;
+            if (selectedMonth === 'all' && selectedYear === 'all') return true;
+            const dateToCheck = emp.visaFees?.updatedAt || emp.joiningDate || emp.visaExpiryDate || emp.passportExpiryDate;
+            return matchDashboardMonthYear(dateToCheck, undefined, selectedMonth, selectedYear);
+        });
+    }, [employees, selectedMonth, selectedYear, getEmployeeVisaTotal]);
+
+    const totalVisaExpenses = useMemo(() => {
+        return (filteredVisaEmployees || []).reduce((sum: number, emp: any) => sum + getEmployeeVisaTotal(emp), 0);
+    }, [filteredVisaEmployees, getEmployeeVisaTotal]);
+
+    const totalVisaStaffCount = useMemo(() => {
+        return (filteredVisaEmployees || []).length;
+    }, [filteredVisaEmployees]);
+
+    const avgVisaFee = useMemo(() => {
+        return totalVisaStaffCount > 0 ? (totalVisaExpenses / totalVisaStaffCount) : 0;
+    }, [totalVisaExpenses, totalVisaStaffCount]);
+
+    const displayedVisaEmployees = useMemo(() => {
+        if (!visaSearchQuery.trim()) return filteredVisaEmployees;
+        const q = visaSearchQuery.toLowerCase().trim();
+        return (filteredVisaEmployees || []).filter((emp: any) => {
+            const nameMatch = (emp.name || '').toLowerCase().includes(q);
+            const codeMatch = (emp.code || emp.employeeCode || '').toLowerCase().includes(q);
+            const desgMatch = (emp.designation || '').toLowerCase().includes(q);
+            const compMatch = (emp.company || '').toLowerCase().includes(q);
+            return nameMatch || codeMatch || desgMatch || compMatch;
+        });
+    }, [filteredVisaEmployees, visaSearchQuery]);
 
     // Helper to get clean display name from raw account/person string
     const getCleanName = (str?: string) => {
@@ -19650,8 +19710,9 @@ export const FinancialDashboardView: React.FC<{
         { name: 'Payables', amount: totalAP, color: '#ef4444' },
         { name: 'Everyday Costs', amount: totalEE, color: '#f59e0b' },
         { name: 'Camp Accommodation', amount: totalCampExpenses, color: '#6366f1' },
+        { name: 'Visa Expenses', amount: totalVisaExpenses, color: '#8b5cf6' },
         { name: 'Petty Cash In Hand', amount: totalPCReconciledBalance >= 0 ? totalPCReconciledBalance : 0, color: '#2563eb' },
-    ], [totalAR, totalAP, totalEE, totalCampExpenses, totalPCReconciledBalance]);
+    ], [totalAR, totalAP, totalEE, totalCampExpenses, totalVisaExpenses, totalPCReconciledBalance]);
 
     // Chronological detail ledger for the selected account click (computed from raw data to maintain true opening balances across time)
     const selectedAccountLedger = useMemo(() => {
@@ -20225,6 +20286,7 @@ export const FinancialDashboardView: React.FC<{
             { 'Financial Metric (Consolidated)': 'Accounts Payable (Total Liability Value)', 'Amount (AED)': totalAP, 'Details': `Pending Outflow: AED ${pendingAP}` },
             { 'Financial Metric (Consolidated)': 'Everyday Expenses (Tally)', 'Amount (AED)': totalEE, 'Details': `${filteredEverydayExpenses.length} verified bill receipts` },
             { 'Financial Metric (Consolidated)': 'Camp Accommodation (Cumulative Portions)', 'Amount (AED)': totalCampExpenses, 'Details': `Rent portion: AED ${totalCampRent} | Deposits portion: AED ${totalCampDeposit}` },
+            { 'Financial Metric (Consolidated)': 'Visa & Onboarding Expenses (Per Employee Total)', 'Amount (AED)': totalVisaExpenses, 'Details': `${totalVisaStaffCount} staff recorded with visa & onboarding fees (Avg: AED ${avgVisaFee.toFixed(2)})` },
             { 'Financial Metric (Consolidated)': 'Petty Cash In Hand (Reconciled Balance)', 'Amount (AED)': totalPCReconciledBalance, 'Details': totalPCReconciledBalance >= 0 ? "SURPLUS" : "DEFICIT" },
             { 'Financial Metric (Consolidated)': 'Net Corporate System Liquidity', 'Amount (AED)': (totalAR + totalPCReconciledBalance - totalAP), 'Details': 'Consolidated available system-wide safe liquid currency' }
         ];
@@ -20242,9 +20304,35 @@ export const FinancialDashboardView: React.FC<{
         }));
         const ws2 = XLSX.utils.json_to_sheet(ws2Data);
 
+        const ws3Data = filteredVisaEmployees.map(emp => {
+            const fees = emp.visaFees || {};
+            return {
+                'Employee Code': emp.code || emp.employeeCode || 'N/A',
+                'Employee Name': emp.name || 'N/A',
+                'Designation': emp.designation || 'N/A',
+                'Company': emp.company || 'N/A',
+                'Initial Application Fee (AED)': Number(fees.initialApplicationFee) || 0,
+                'Approval Fee (AED)': Number(fees.approvalFee) || 0,
+                'DIC Fee (AED)': Number(fees.dicFee) || 0,
+                'ILOE Fee (AED)': Number(fees.iloeFee) || 0,
+                'LC Fee (AED)': Number(fees.lcFee) || 0,
+                'Entry Permit Fee (AED)': Number(fees.entryPermitFee) || 0,
+                'Change Status Fee (AED)': Number(fees.changeStatusFee) || 0,
+                'Medical Fee (AED)': Number(fees.medicalFee) || 0,
+                'Insurance Fee (AED)': Number(fees.insuranceFee) || 0,
+                'Biometric Fee (AED)': Number(fees.biometricFee) || 0,
+                'Visa & EID Fee (AED)': Number(fees.visaEidFee) || 0,
+                'Others Fee (AED)': Number(fees.othersFee) || 0,
+                'Others Remarks': fees.othersRemarks || '',
+                'Total Visa Expense (AED)': getEmployeeVisaTotal(emp)
+            };
+        });
+        const ws3 = XLSX.utils.json_to_sheet(ws3Data);
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws1, "Dashboard KPI Summary");
         XLSX.utils.book_append_sheet(wb, ws2, "Integrated Reconciliations");
+        XLSX.utils.book_append_sheet(wb, ws3, "Visa Expenses Breakdown");
 
         XLSX.writeFile(wb, `Corporate_Dashboard_Summary_${selectedMonth}_${selectedYear}.xlsx`);
     };
@@ -20282,25 +20370,26 @@ export const FinancialDashboardView: React.FC<{
 
         // Section 1: KPI Metrics Panel Box
         doc.setFillColor(248, 250, 252);
-        doc.roundedRect(15, 35, 180, 52, 3, 3, 'F');
+        doc.roundedRect(15, 34, 180, 59, 3, 3, 'F');
 
         doc.setFont("Helvetica", "bold");
         doc.setFontSize(9);
         doc.setTextColor(51, 65, 85);
-        doc.text("I. CONSOLIDATED KEY PERFORMANCE INDICATORS", 20, 42);
+        doc.text("I. CONSOLIDATED KEY PERFORMANCE INDICATORS", 20, 40);
 
         doc.setFont("Helvetica", "normal");
         doc.setFontSize(8);
         doc.setTextColor(100, 116, 139);
 
-        const rowH = 7;
-        let yPos = 49;
+        const rowH = 6.5;
+        let yPos = 46.5;
         
         const metrics = [
             { name: "Accounts Receivable Asset Value (Total AR)", val: totalAR, extra: `AED ${pendingAR.toLocaleString()} Pending` },
             { name: "Accounts Payable Liability Value (Total AP)", val: totalAP, extra: `AED ${pendingAP.toLocaleString()} Pending` },
             { name: "Everyday Expense Spend Tally (Total EE)", val: totalEE, extra: `${filteredEverydayExpenses.length} Verified Receipts` },
             { name: "Camp Accommodation Cumulative Portions", val: totalCampExpenses, extra: `Rent: AED ${totalCampRent.toLocaleString()} | Deposit: AED ${totalCampDeposit.toLocaleString()}` },
+            { name: "Employee Visa & Onboarding Expenses", val: totalVisaExpenses, extra: `${totalVisaStaffCount} Staff (Avg AED ${Math.round(avgVisaFee).toLocaleString()})` },
             { name: "Petty Cash in Hand (Fully Reconciled Balance)", val: totalPCReconciledBalance, extra: totalPCReconciledBalance >= 0 ? "Balanced Surplus" : "Overdrawn Deficit" }
         ];
 
@@ -20332,10 +20421,10 @@ export const FinancialDashboardView: React.FC<{
         doc.setFont("Helvetica", "bold");
         doc.setFontSize(10);
         doc.setTextColor(15, 23, 42);
-        doc.text("II. DETAILED PETTY CASH RECONCILIATIONS DIRECTORY", 15, 96);
+        doc.text("II. DETAILED PETTY CASH RECONCILIATIONS DIRECTORY", 15, 100);
 
         // Header Table block
-        const tableHeaderY = 100;
+        const tableHeaderY = 104;
         doc.setFillColor(37, 99, 235);
         doc.rect(15, tableHeaderY, 180, 8.5, 'F');
 
@@ -20492,20 +20581,20 @@ export const FinancialDashboardView: React.FC<{
             </div>
 
             {/* Top KPIs Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5">
                 {/* 1. Accounts Receivable card */}
                 <div 
                     onClick={() => setActiveTab('accounts-receivable')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-emerald-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-emerald-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative group"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1 pr-12">
+                        <div className="space-y-1 pr-10">
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Accounts Receivable</span>
                             <span className="text-2xl font-black text-slate-900 tracking-tight block">
                                 AED {totalAR.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl absolute top-6 right-6">
+                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl absolute top-6 right-6 group-hover:scale-105 transition-transform">
                             <TrendingUp className="w-5 h-5" />
                         </div>
                     </div>
@@ -20518,16 +20607,16 @@ export const FinancialDashboardView: React.FC<{
                 {/* 2. Accounts Payable card */}
                 <div 
                     onClick={() => setActiveTab('accounts-payable')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-red-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-red-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative group"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1 pr-12">
+                        <div className="space-y-1 pr-10">
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Accounts Payable</span>
                             <span className="text-2xl font-black text-slate-900 tracking-tight block">
                                 AED {totalAP.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-red-50 text-red-600 rounded-2xl absolute top-6 right-6">
+                        <div className="p-3 bg-red-50 text-red-600 rounded-2xl absolute top-6 right-6 group-hover:scale-105 transition-transform">
                             <TrendingDown className="w-5 h-5" />
                         </div>
                     </div>
@@ -20540,16 +20629,16 @@ export const FinancialDashboardView: React.FC<{
                 {/* 3. Everyday Expenses card */}
                 <div 
                     onClick={() => setActiveTab('everyday-expenses')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-amber-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-amber-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative group"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1 pr-12">
+                        <div className="space-y-1 pr-10">
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Everyday Expenses</span>
                             <span className="text-2xl font-black text-slate-900 tracking-tight block">
                                 AED {totalEE.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl absolute top-6 right-6">
+                        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl absolute top-6 right-6 group-hover:scale-105 transition-transform">
                             <Wallet className="w-5 h-5" />
                         </div>
                     </div>
@@ -20562,16 +20651,16 @@ export const FinancialDashboardView: React.FC<{
                 {/* 4. Camp Accommodation card */}
                 <div 
                     onClick={() => setActiveTab('camp')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-indigo-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-indigo-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative group"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1 pr-12">
+                        <div className="space-y-1 pr-10">
                             <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400 block">Camp Accommodation</span>
                             <span className="text-2xl font-black text-slate-900 tracking-tight block">
                                 AED {totalCampExpenses.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-indigo-50 text-indigo-650 rounded-2xl absolute top-6 right-6">
+                        <div className="p-3 bg-indigo-50 text-indigo-650 rounded-2xl absolute top-6 right-6 group-hover:scale-105 transition-transform">
                             <Home className="w-5 h-5" />
                         </div>
                     </div>
@@ -20581,24 +20670,47 @@ export const FinancialDashboardView: React.FC<{
                     </div>
                 </div>
 
-                {/* 5. Petty Cash In Hand card */}
+                {/* 5. Visa Expenses card */}
                 <div 
-                    onClick={() => setActiveTab('petty-cash')}
-                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-brand-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative"
+                    onClick={() => setActiveTab('visa-fees')}
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-violet-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative group"
+                    title="Click to open Visa & Onboarding Fees Manager"
                 >
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1 pr-12">
+                        <div className="space-y-1 pr-10">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-violet-500 block">Visa Expenses</span>
+                            <span className="text-2xl font-black text-slate-900 tracking-tight block">
+                                AED {totalVisaExpenses.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                            </span>
+                        </div>
+                        <div className="p-3 bg-violet-50 text-violet-600 rounded-2xl absolute top-6 right-6 group-hover:scale-105 transition-transform">
+                            <CreditCard className="w-5 h-5" />
+                        </div>
+                    </div>
+                    <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
+                        <span>{totalVisaStaffCount} Staff Total</span>
+                        <span className="text-violet-600 font-extrabold">Avg: AED {Math.round(avgVisaFee).toLocaleString()}</span>
+                    </div>
+                </div>
+
+                {/* 6. Petty Cash In Hand card */}
+                <div 
+                    onClick={() => setActiveTab('petty-cash')}
+                    className="bg-white p-6 rounded-[2.5rem] border border-slate-200/50 shadow-sm hover:shadow-md hover:border-brand-250 active:scale-98 cursor-pointer transition-all flex flex-col justify-between relative group"
+                >
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-1 pr-10">
                             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block">Petty Cash In Hand</span>
                             <span className={`text-2xl font-black tracking-tight block ${totalPCReconciledBalance >= 0 ? "text-slate-900" : "text-rose-600"}`}>
                                 AED {totalPCReconciledBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                             </span>
                         </div>
-                        <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl absolute top-6 right-6">
+                        <div className="p-3 bg-brand-50 text-brand-600 rounded-2xl absolute top-6 right-6 group-hover:scale-105 transition-transform">
                             <Scale className="w-5 h-5" />
                         </div>
                     </div>
                     <div className="mt-4 border-t border-slate-50 pt-3 flex items-center justify-between text-xs font-bold text-slate-500">
-                        <span>Fully Reconciled Balance:</span>
+                        <span>Fully Reconciled:</span>
                         <span className={totalPCReconciledBalance >= 0 ? "text-brand-605" : "text-rose-600"}>
                             {totalPCReconciledBalance >= 0 ? "Surplus ✔" : "Deficit ✘"}
                         </span>
@@ -20805,6 +20917,154 @@ export const FinancialDashboardView: React.FC<{
                                     </td>
                                     <td className="px-6 py-4.5 text-center text-slate-400 text-[10px] font-bold">
                                         Summary Total
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        )}
+                    </table>
+                </div>
+            </div>
+
+            {/* Employee Visa & Onboarding Expenses Section */}
+            <div className="bg-white rounded-[2.5rem] border border-slate-200/60 p-6 sm:p-8 shadow-sm space-y-6">
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 border-b border-slate-100 pb-5">
+                    <div>
+                        <div className="flex items-center gap-2.5">
+                            <CreditCard className="w-5 h-5 text-violet-600" />
+                            <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                                Employee Visa & Onboarding Expenses Breakdown
+                            </h3>
+                            <span className="bg-violet-50 text-violet-700 text-xs font-black px-3 py-1 rounded-full border border-violet-100/80">
+                                AED {totalVisaExpenses.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-semibold mt-1">
+                            Individual visa, permit, medical, insurance, and onboarding costs compiled per employee for the active financial period.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
+                        <div className="relative w-full sm:w-64">
+                            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                            <input
+                                type="text"
+                                placeholder="Search employee..."
+                                value={visaSearchQuery}
+                                onChange={(e) => setVisaSearchQuery(e.target.value)}
+                                className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-violet-500/10 focus:border-violet-500 transition-all"
+                            />
+                        </div>
+                        <button
+                            onClick={() => setActiveTab('visa-fees')}
+                            className="px-4 py-2.5 bg-violet-50 hover:bg-violet-100 text-violet-700 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 border border-violet-200/60 shadow-xs transition-all hover:scale-102 active:scale-98 cursor-pointer shrink-0"
+                            title="Open Visa & Onboarding Fees Management"
+                        >
+                            <Users className="w-4 h-4 text-violet-600" />
+                            <span>Manage Visa Fees</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-2xl border border-slate-200/60 shadow-xs">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                                <th className="px-6 py-4">Employee</th>
+                                <th className="px-6 py-4">Designation & Company</th>
+                                <th className="px-6 py-4 text-right">App & Permit</th>
+                                <th className="px-6 py-4 text-right">Medical & Insurance</th>
+                                <th className="px-6 py-4 text-right">Visa / EID</th>
+                                <th className="px-6 py-4 text-right">Other Fees</th>
+                                <th className="px-6 py-4 text-right">Total Expense</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-xs">
+                            {displayedVisaEmployees.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                                        <CreditCard className="w-8 h-8 text-slate-300 mx-auto mb-2 opacity-50" />
+                                        <p className="font-semibold text-sm text-slate-600">No visa expense records found for this period</p>
+                                        <p className="text-xs text-slate-400 mt-1">Add employee visa fees under the "Visa & Onboarding Fees" module or adjust period filter.</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                displayedVisaEmployees.map((emp: any, idx: number) => {
+                                    const fees = emp.visaFees || {};
+                                    const appPermitTotal = (Number(fees.initialApplicationFee) || 0) + (Number(fees.approvalFee) || 0) + (Number(fees.entryPermitFee) || 0) + (Number(fees.changeStatusFee) || 0) + (Number(fees.lcFee) || 0) + (Number(fees.dicFee) || 0);
+                                    const medInsTotal = (Number(fees.medicalFee) || 0) + (Number(fees.insuranceFee) || 0) + (Number(fees.iloeFee) || 0) + (Number(fees.biometricFee) || 0);
+                                    const visaEidTotal = Number(fees.visaEidFee) || 0;
+                                    const otherTotal = Number(fees.othersFee) || 0;
+                                    const empTotal = getEmployeeVisaTotal(emp);
+
+                                    return (
+                                        <tr key={emp.id || idx} className="hover:bg-violet-50/20 transition-colors group">
+                                            <td className="px-6 py-4 font-bold text-slate-800">
+                                                <div className="flex items-center gap-2.5">
+                                                    <div className="w-7 h-7 rounded-xl bg-violet-100 text-violet-700 font-black text-xs flex items-center justify-center shrink-0">
+                                                        {(emp.name || 'E').charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <span className="block text-slate-900 font-extrabold">{emp.name || 'Unnamed Employee'}</span>
+                                                        <span className="text-[10px] text-slate-400 font-semibold">{emp.code || emp.employeeCode || 'ID: ' + emp.id}</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 text-slate-600">
+                                                <span className="font-semibold block">{emp.designation || 'Staff'}</span>
+                                                <span className="text-[10px] text-slate-400">{emp.company || 'Pioneer'}</span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right font-medium text-slate-700">
+                                                AED {appPermitTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </td>
+                                            <td className="px-6 py-4 text-right font-medium text-slate-700">
+                                                AED {medInsTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </td>
+                                            <td className="px-6 py-4 text-right font-medium text-slate-700">
+                                                AED {visaEidTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </td>
+                                            <td className="px-6 py-4 text-right font-medium text-slate-700">
+                                                AED {otherTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                {fees.othersRemarks && (
+                                                    <span className="block text-[9px] text-slate-400 truncate max-w-[120px] ml-auto" title={fees.othersRemarks}>
+                                                        {fees.othersRemarks}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 text-right font-black text-violet-700 text-sm">
+                                                AED {empTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                        {displayedVisaEmployees.length > 0 && (
+                            <tfoot className="bg-violet-50/40 border-t-2 border-violet-100 text-xs font-black">
+                                <tr>
+                                    <td colSpan={2} className="px-6 py-4 text-slate-900 uppercase tracking-wider font-extrabold flex items-center gap-2">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-violet-600 shrink-0"></div>
+                                        <span>Total Visa Expenses ({displayedVisaEmployees.length} Staff)</span>
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-bold text-slate-700">
+                                        AED {displayedVisaEmployees.reduce((sum: number, emp: any) => {
+                                            const f = emp.visaFees || {};
+                                            return sum + (Number(f.initialApplicationFee) || 0) + (Number(f.approvalFee) || 0) + (Number(f.entryPermitFee) || 0) + (Number(f.changeStatusFee) || 0) + (Number(f.lcFee) || 0) + (Number(f.dicFee) || 0);
+                                        }, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-bold text-slate-700">
+                                        AED {displayedVisaEmployees.reduce((sum: number, emp: any) => {
+                                            const f = emp.visaFees || {};
+                                            return sum + (Number(f.medicalFee) || 0) + (Number(f.insuranceFee) || 0) + (Number(f.iloeFee) || 0) + (Number(f.biometricFee) || 0);
+                                        }, 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-bold text-slate-700">
+                                        AED {displayedVisaEmployees.reduce((sum: number, emp: any) => sum + (Number(emp.visaFees?.visaEidFee) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-bold text-slate-700">
+                                        AED {displayedVisaEmployees.reduce((sum: number, emp: any) => sum + (Number(emp.visaFees?.othersFee) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </td>
+                                    <td className="px-6 py-4 text-right font-black text-violet-700 text-sm">
+                                        AED {displayedVisaEmployees.reduce((sum: number, emp: any) => sum + getEmployeeVisaTotal(emp), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </td>
                                 </tr>
                             </tfoot>

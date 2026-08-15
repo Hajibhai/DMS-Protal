@@ -20,11 +20,12 @@ export const auth = getAuth(app);
 
 const databaseId = (firebaseConfig as any).firestoreDatabaseId || 'ai-studio-1befa271-378d-46fb-90e8-ebc035d1db13';
 
-// Use initializeFirestore with auto-detect long polling to prevent WebChannel assertion failures (ID: ca9 / b815) in browser / iframe environments
+// Initialize Firestore with standard streaming connection and ignoreUndefinedProperties
+// Note: experimentalAutoDetectLongPolling or experimentalForceLongPolling must not be enabled as they trigger the known WebChannel ca9/b815 duplicate ACK assertion crash
 let firestoreDb: any;
 try {
   firestoreDb = initializeFirestore(app, {
-    experimentalAutoDetectLongPolling: true,
+    ignoreUndefinedProperties: true,
   }, databaseId);
 } catch (e) {
   // If already initialized or fails, fallback to getFirestore
