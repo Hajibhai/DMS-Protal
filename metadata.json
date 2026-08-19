@@ -1,6 +1,6 @@
 {
   "name": "Pioneer DMS Portal",
-  "description": "A smart attendance management system for office staff and rotational workers, featuring natural language logging and CSV export compatible with Google Sheets.",
+  "description": "A comprehensive enterprise ERP and document management portal for Pioneer, featuring attendance tracking, multi-company finance (Accounts Receivable/Payable, VAT Invoicing, Tax Credit Notes), and HR workflows.",
   "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

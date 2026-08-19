@@ -241,6 +241,30 @@
       },
       "required": ["id", "date", "invoiceNumber", "amount", "status"]
     },
+    "CreditNote": {
+      "title": "Credit Note",
+      "description": "UAE VAT compliant Tax Credit Note issued for revised or cancelled invoices",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "creditNoteNumber": { "type": "string" },
+        "date": { "type": "string" },
+        "originalInvoiceNumber": { "type": "string" },
+        "originalInvoiceAmount": { "type": "number" },
+        "revisedInvoiceNumber": { "type": "string" },
+        "revisedInvoiceAmount": { "type": "number" },
+        "entityId": { "type": "string" },
+        "entityType": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientTrn": { "type": "string" },
+        "reason": { "type": "string" },
+        "amount": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["Draft", "Issued", "Applied", "Cancelled"] }
+      },
+      "required": ["id", "creditNoteNumber", "date", "originalInvoiceNumber", "reason", "totalAmount"]
+    },
     "PettyCash": {
       "title": "Petty Cash",
       "description": "Small daily expenses and cash on hand",
@@ -636,6 +660,10 @@
     "/accounts_receivable/{arId}": {
       "schema": "AccountsReceivable",
       "description": "Accounts receivable records"
+    },
+    "/credit_notes/{creditNoteId}": {
+      "schema": "CreditNote",
+      "description": "Tax credit notes for accounts receivable"
     },
     "/petty_cash/{pcId}": {
       "schema": "PettyCash",

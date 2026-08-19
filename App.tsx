@@ -120,7 +120,8 @@ import {
   Voucher,
   Vehicle,
   VehicleDocument,
-  VisaFees
+  VisaFees,
+  CreditNote
 } from './types';
 import { 
   saveEmployee, deleteEmployee, offboardEmployee, rehireEmployee,
@@ -140,7 +141,8 @@ import {
   testConnection, logAudit, updateAuditLog, deleteAuditLog, clearAuditLogs, handleFirestoreError, OperationType,
   saveHoliday, deleteHoliday, saveEngineerDocument, deleteEngineerDocument,
   saveCamp, deleteCamp, saveVoucher, deleteVoucher,
-  saveVehicle, deleteVehicle
+  saveVehicle, deleteVehicle,
+  saveCreditNote, deleteCreditNote
 } from './services/storageService';
 import { DEFAULT_ABOUT_DATA, CREATOR_USER } from './constants';
 import SmartCommand from './components/SmartCommand';
@@ -149,7 +151,7 @@ import { GoogleDriveManager } from './components/GoogleDriveManager';
 import { 
   VendorView, AccountsPayableView, AccountsReceivableView, PettyCashView, ProjectedExpenseView, EverydayExpenseView,
   VendorModal, AccountsPayableModal, AccountsReceivableModal, PettyCashModal, ProjectedExpenseModal, EverydayExpenseModal,
-  FinancialDashboardView
+  FinancialDashboardView, TaxCreditNoteModal
 } from './components/FinanceViews';
 import { CampView, CampModal } from './components/CampView';
 import { HolidayManagementModal } from './components/HolidayManagementModal';
@@ -4550,6 +4552,8 @@ export default function App() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [accountsPayable, setAccountsPayable] = useState<AccountsPayable[]>([]);
   const [accountsReceivable, setAccountsReceivable] = useState<AccountsReceivable[]>([]);
+  const [creditNotes, setCreditNotes] = useState<CreditNote[]>([]);
+  const [showTaxCreditNoteModal, setShowTaxCreditNoteModal] = useState<CreditNote | boolean>(false);
   const [pettyCash, setPettyCash] = useState<PettyCash[]>([]);
   const [projectedExpenses, setProjectedExpenses] = useState<ProjectedExpense[]>([]);
   const [everydayExpenses, setEverydayExpenses] = useState<EverydayExpense[]>([]);
@@ -4945,6 +4949,12 @@ export default function App() {
       handleFirestoreError(error, OperationType.LIST, 'accounts_receivable');
     });
 
+    const unsubCreditNotes = onSnapshot(collection(db, 'credit_notes'), (snap) => {
+      setCreditNotes(snap.docs.map(d => ({ ...d.data(), id: d.id } as CreditNote)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'credit_notes');
+    });
+
     const unsubPettyCash = onSnapshot(collection(db, 'petty_cash'), (snap) => {
       setPettyCash(snap.docs.map(d => d.data() as PettyCash));
     }, (error) => {
@@ -5059,6 +5069,7 @@ export default function App() {
       unsubVendors();
       unsubAP();
       unsubAR();
+      unsubCreditNotes();
       unsubPettyCash();
       unsubProjectedExpenses();
       unsubEverydayExpenses();
@@ -5871,6 +5882,35 @@ export default function App() {
     const isUpdate = accountsReceivable.some(ar => ar.id === data.id);
     handleLogAction(isUpdate ? 'Receivable Updated' : 'Receivable Added', `Accounts receivable entry ${data.invoiceNumber} was ${isUpdate ? 'updated' : 'added'}.`, isUpdate ? 'update' : 'create');
     setShowARModal(false);
+  };
+
+  const handleSaveCreditNote = async (data: CreditNote) => {
+    try {
+      const saved = await saveCreditNote(data);
+      const isUpdate = creditNotes.some(cn => cn.id === saved.id);
+      handleLogAction(
+        isUpdate ? 'Tax Credit Note Updated' : 'Tax Credit Note Issued',
+        `Tax Credit Note ${saved.creditNoteNumber || saved.id} for Invoice #${saved.originalInvoiceNumber} was ${isUpdate ? 'updated' : 'issued'}.`,
+        isUpdate ? 'update' : 'create'
+      );
+      setShowTaxCreditNoteModal(false);
+    } catch (err: any) {
+      console.error("Failed to save Credit Note:", err);
+      alert(`Failed to save Tax Credit Note: ${err.message || err}`);
+    }
+  };
+
+  const handleDeleteCreditNote = async (id: string) => {
+    openConfirm("Delete Tax Credit Note", "Are you sure you want to permanently delete this Tax Credit Note? This action cannot be undone.", async () => {
+      try {
+        await deleteCreditNote(id);
+        setCreditNotes(prev => prev.filter(x => x.id !== id));
+        handleLogAction('Tax Credit Note Deleted', `Tax Credit Note ${id} was deleted.`, 'delete');
+      } catch (err: any) {
+        console.error("Failed to delete Tax Credit Note:", err);
+        alert(`Failed to delete Tax Credit Note: ${err.message || err}`);
+      }
+    });
   };
 
   const handleDeleteAR = async (ar: AccountsReceivable) => {
@@ -6692,6 +6732,11 @@ export default function App() {
           onSave={handleSaveAR}
           user={systemUser}
           bankAccounts={bankAccounts}
+          creditNotes={creditNotes}
+          onAddCreditNote={(init) => setShowTaxCreditNoteModal(init || true)}
+          onEditCreditNote={(cn) => setShowTaxCreditNoteModal(cn)}
+          onDeleteCreditNote={handleDeleteCreditNote}
+          onSaveCreditNote={handleSaveCreditNote}
         />
       )}
       {activeTab === 'finance' && (
@@ -7058,6 +7103,18 @@ export default function App() {
             onSave={handleSaveAR}
             onCancel={() => setShowARModal(false)}
             existingRecords={accountsReceivable}
+          />
+        )}
+        {showTaxCreditNoteModal && (
+          <TaxCreditNoteModal
+            isOpen={true}
+            onClose={() => setShowTaxCreditNoteModal(false)}
+            initialData={typeof showTaxCreditNoteModal === 'object' ? showTaxCreditNoteModal : undefined}
+            invoices={accountsReceivable}
+            clients={vendors}
+            companies={companies}
+            bankAccounts={bankAccounts}
+            onSave={handleSaveCreditNote}
           />
         )}
         {showPettyCashModal && (

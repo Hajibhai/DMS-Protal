@@ -60,6 +60,10 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    match /credit_notes/{creditNoteId} {
+      allow read, write: if isAuthenticated();
+    }
+
     match /petty_cash/{pcId} {
       allow read, write: if isAuthenticated();
     }

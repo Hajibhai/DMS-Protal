@@ -38,6 +38,7 @@ import {
   Vendor,
   AccountsPayable,
   AccountsReceivable,
+  CreditNote,
   PettyCash,
   ProjectedExpense,
   EverydayExpense,
@@ -568,6 +569,26 @@ export const deleteAccountsReceivable = async (id: string) => {
     await deleteDoc(doc(db, 'accounts_receivable', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `accounts_receivable/${id}`);
+  }
+};
+
+// --- Tax Credit Notes ---
+export const saveCreditNote = async (data: CreditNote): Promise<CreditNote> => {
+  try {
+    const docData = await prepareDocForFirestore(data);
+    await setDoc(doc(db, 'credit_notes', data.id), docData);
+    return data;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `credit_notes/${data.id}`);
+    return data;
+  }
+};
+
+export const deleteCreditNote = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, 'credit_notes', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `credit_notes/${id}`);
   }
 };
 

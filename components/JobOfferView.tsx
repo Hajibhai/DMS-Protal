@@ -53,7 +53,7 @@ import {
   Users, Mail, Phone, Shield, FileText, Download, Plus, Search, 
   Trash2, Edit, CheckCircle, XCircle, Calendar, DollarSign,
   ChevronRight, Sparkles, SlidersHorizontal, Info, Briefcase, FileCheck, Check,
-  Video, ExternalLink, Upload, Eye
+  Video, ExternalLink, Upload, Eye, X, Filter, Building2
 } from 'lucide-react';
 
 interface JobOfferViewProps {
@@ -79,10 +79,16 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
   const [offers, setOffers] = useState<JobOffer[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [positionFilter, setPositionFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
+  // Filters State for Applicants (Tab 1)
+  const [applicantSearchQuery, setApplicantSearchQuery] = useState('');
+  const [applicantPositionFilter, setApplicantPositionFilter] = useState('All');
+  const [applicantStatusFilter, setApplicantStatusFilter] = useState('All');
+
+  // Filters State for Job Offers (Tab 2)
+  const [offerSearchQuery, setOfferSearchQuery] = useState('');
+  const [offerPositionFilter, setOfferPositionFilter] = useState('All');
+  const [offerStatusFilter, setOfferStatusFilter] = useState('All');
+  const [offerCompanyFilter, setOfferCompanyFilter] = useState('All');
 
   // Modal State
   const [showApplicantModal, setShowApplicantModal] = useState(false);
@@ -1263,17 +1269,46 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
     }
   };
 
-  // Filtration logic
+  // Filtration logic for Applicants (Tab 1)
   const filteredApplicants = applicants.filter(app => {
-    const matchesSearch = app.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          app.email.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          app.position.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (app.passportNumber && app.passportNumber.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = applicantSearchQuery.toLowerCase().trim();
+    const matchesSearch = !q || (
+      (app.name && app.name.toLowerCase().includes(q)) || 
+      (app.email && app.email.toLowerCase().includes(q)) || 
+      (app.position && app.position.toLowerCase().includes(q)) ||
+      (app.mobileNumber && app.mobileNumber.toLowerCase().includes(q)) ||
+      (app.emiratesIdNumber && app.emiratesIdNumber.toLowerCase().includes(q)) ||
+      (app.passportNumber && app.passportNumber.toLowerCase().includes(q)) ||
+      (app.notes && app.notes.toLowerCase().includes(q))
+    );
     
-    const matchesPosition = positionFilter === 'All' || app.position === positionFilter;
-    const matchesStatus = statusFilter === 'All' || app.status === statusFilter;
+    const matchesPosition = applicantPositionFilter === 'All' || (app.position && app.position.trim().toLowerCase() === applicantPositionFilter.trim().toLowerCase());
+    const matchesStatus = applicantStatusFilter === 'All' || app.status === applicantStatusFilter;
     
     return matchesSearch && matchesPosition && matchesStatus;
+  });
+
+  // Filtration logic for Job Offers (Tab 2)
+  const filteredOffers = offers.filter(offer => {
+    const q = offerSearchQuery.toLowerCase().trim();
+    const matchesSearch = !q || (
+      (offer.employeeName && offer.employeeName.toLowerCase().includes(q)) ||
+      (offer.position && offer.position.toLowerCase().includes(q)) ||
+      (offer.passportNumber && offer.passportNumber.toLowerCase().includes(q)) ||
+      (offer.emiratesIdNumber && offer.emiratesIdNumber.toLowerCase().includes(q)) ||
+      (offer.mobileNumber && offer.mobileNumber.toLowerCase().includes(q)) ||
+      (offer.email && offer.email.toLowerCase().includes(q)) ||
+      (offer.company && offer.company.toLowerCase().includes(q)) ||
+      (offer.additionalDetails && offer.additionalDetails.toLowerCase().includes(q)) ||
+      (offer.joiningDate && offer.joiningDate.toLowerCase().includes(q)) ||
+      (offer.offerDate && offer.offerDate.toLowerCase().includes(q))
+    );
+
+    const matchesPosition = offerPositionFilter === 'All' || (offer.position && offer.position.trim().toLowerCase() === offerPositionFilter.trim().toLowerCase());
+    const matchesStatus = offerStatusFilter === 'All' || offer.status === offerStatusFilter;
+    const matchesCompany = offerCompanyFilter === 'All' || (offer.company && offer.company.trim().toLowerCase() === offerCompanyFilter.trim().toLowerCase());
+
+    return matchesSearch && matchesPosition && matchesStatus && matchesCompany;
   });
 
   const stats = positionStats();
@@ -1348,30 +1383,44 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
             No active positions applications logged yet. Add some to build the pool!
           </div>
         ) : (
-          Object.keys(stats).map(pos => (
-            <div 
-              key={pos} 
-              onClick={() => setPositionFilter(pos)}
-              className={`p-3 bg-white rounded-xl border cursor-pointer transition-all ${
-                positionFilter === pos ? 'border-brand-500 ring-2 ring-brand-100 shadow-sm' : 'border-slate-100 hover:border-slate-300'
-              }`}
-            >
-              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider text-ellipsis overflow-hidden whitespace-nowrap">
-                {pos}
+          Object.keys(stats).map(pos => {
+            const isSelected = activeTab === 'applicants' 
+              ? applicantPositionFilter.toLowerCase() === pos.toLowerCase()
+              : offerPositionFilter.toLowerCase() === pos.toLowerCase();
+            return (
+              <div 
+                key={pos} 
+                onClick={() => {
+                  if (activeTab === 'applicants') {
+                    setApplicantPositionFilter(prev => prev.toLowerCase() === pos.toLowerCase() ? 'All' : pos);
+                  } else {
+                    setOfferPositionFilter(prev => prev.toLowerCase() === pos.toLowerCase() ? 'All' : pos);
+                  }
+                }}
+                className={`p-3 bg-white rounded-xl border cursor-pointer transition-all ${
+                  isSelected ? 'border-brand-500 ring-2 ring-brand-100 shadow-sm bg-brand-50/20' : 'border-slate-100 hover:border-slate-300'
+                }`}
+              >
+                <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider text-ellipsis overflow-hidden whitespace-nowrap">
+                  {pos}
+                </div>
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-xl font-black text-slate-900">{stats[pos]}</span>
+                  <span className="text-[9px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded-full font-bold">Applied</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-xl font-black text-slate-900">{stats[pos]}</span>
-                <span className="text-[9px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded-full font-bold">Applied</span>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
-        {positionFilter !== 'All' && (
+        {((activeTab === 'applicants' && applicantPositionFilter !== 'All') || (activeTab === 'offers' && offerPositionFilter !== 'All')) && (
           <button 
-            onClick={() => setPositionFilter('All')} 
-            className="text-xs text-slate-500 font-bold underline text-left px-2 sm:col-span-2 hover:text-slate-800 transition-colors"
+            onClick={() => {
+              if (activeTab === 'applicants') setApplicantPositionFilter('All');
+              else setOfferPositionFilter('All');
+            }} 
+            className="text-xs text-brand-600 hover:text-brand-800 font-bold underline text-left px-2 sm:col-span-2 transition-colors cursor-pointer"
           >
-            Clear Position Filter
+            Clear Position Filter ({activeTab === 'applicants' ? applicantPositionFilter : offerPositionFilter})
           </button>
         )}
       </div>
@@ -1380,25 +1429,25 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
       <div className="flex border-b border-slate-200">
         <button
           onClick={() => setActiveTab('applicants')}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
+          className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'applicants' 
               ? 'border-brand-600 text-brand-600' 
               : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
           <Users className="w-4 h-4" />
-          1. Applied Positions & Candidates ({filteredApplicants.length})
+          1. Applied Positions & Candidates ({filteredApplicants.length}{filteredApplicants.length !== applicants.length ? ` / ${applicants.length}` : ''})
         </button>
         <button
           onClick={() => setActiveTab('offers')}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
+          className={`px-5 py-3 text-xs font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
             activeTab === 'offers' 
               ? 'border-brand-600 text-brand-600' 
               : 'border-transparent text-slate-500 hover:text-slate-900'
           }`}
         >
           <FileCheck className="w-4 h-4" />
-          2. Hired & Job Offers / Letters Hub ({offers.length})
+          2. Hired & Job Offers / Letters Hub ({filteredOffers.length}{filteredOffers.length !== offers.length ? ` / ${offers.length}` : ''})
         </button>
       </div>
 
@@ -1411,11 +1460,20 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search candidates by name, position, passport..."
-                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+                value={applicantSearchQuery}
+                onChange={(e) => setApplicantSearchQuery(e.target.value)}
+                placeholder="Search candidates by name, position, passport, EID, mobile..."
+                className="w-full pl-9 pr-9 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
               />
+              {applicantSearchQuery && (
+                <button
+                  onClick={() => setApplicantSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                  title="Clear Search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             
             <div className="flex flex-wrap items-center gap-2">
@@ -1423,9 +1481,9 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
               <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
                 <span className="text-[10px] font-bold text-slate-500">Designation:</span>
                 <select
-                  value={positionFilter}
-                  onChange={(e) => setPositionFilter(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-slate-800 outline-none border-none py-0.5"
+                  value={applicantPositionFilter}
+                  onChange={(e) => setApplicantPositionFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-800 outline-none border-none py-0.5 cursor-pointer"
                 >
                   <option value="All">All Applied</option>
                   {Array.from(new Set([...designationsList.map(x => x.trim()), ...applicants.map(a => a.position?.trim()).filter(Boolean)])).sort().map((item, idx) => (
@@ -1438,9 +1496,9 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
               <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
                 <span className="text-[10px] font-bold text-slate-500">Status:</span>
                 <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-slate-800 outline-none border-none py-0.5"
+                  value={applicantStatusFilter}
+                  onChange={(e) => setApplicantStatusFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-800 outline-none border-none py-0.5 cursor-pointer"
                 >
                   <option value="All">All Statuses</option>
                   <option value="Applied">Applied</option>
@@ -1451,6 +1509,21 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
                   <option value="Rejected">Rejected</option>
                 </select>
               </div>
+
+              {(applicantSearchQuery || applicantPositionFilter !== 'All' || applicantStatusFilter !== 'All') && (
+                <button
+                  onClick={() => {
+                    setApplicantSearchQuery('');
+                    setApplicantPositionFilter('All');
+                    setApplicantStatusFilter('All');
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                  title="Reset all filters"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Reset</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1668,7 +1741,97 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
             </div>
           </div>
 
-          {offers.length === 0 ? (
+          {/* Filters Row for Job Offers */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100 gap-3">
+            <div className="flex-1 relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={offerSearchQuery}
+                onChange={(e) => setOfferSearchQuery(e.target.value)}
+                placeholder="Search offers by candidate name, position, passport, EID, mobile, company..."
+                className="w-full pl-9 pr-9 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none"
+              />
+              {offerSearchQuery && (
+                <button
+                  onClick={() => setOfferSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
+                  title="Clear Search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Position Filter */}
+              <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500">Designation:</span>
+                <select
+                  value={offerPositionFilter}
+                  onChange={(e) => setOfferPositionFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-800 outline-none border-none py-0.5 cursor-pointer"
+                >
+                  <option value="All">All Designations</option>
+                  {Array.from(new Set([...designationsList.map(x => x.trim()), ...offers.map(o => o.position?.trim()).filter(Boolean)])).sort().map((item, idx) => (
+                    <option key={`${item}-${idx}`} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Company Filter */}
+              <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500">Company:</span>
+                <select
+                  value={offerCompanyFilter}
+                  onChange={(e) => setOfferCompanyFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-800 outline-none border-none py-0.5 cursor-pointer max-w-[160px] truncate"
+                >
+                  <option value="All">All Companies</option>
+                  {Array.from(new Set([...(companies || []).map(c => c.name?.trim()).filter(Boolean), ...offers.map(o => o.company?.trim()).filter(Boolean), 'Pioneer DMS Group Ltd'])).sort().map((comp, idx) => (
+                    <option key={`${comp}-${idx}`} value={comp}>{comp}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-500">Status:</span>
+                <select
+                  value={offerStatusFilter}
+                  onChange={(e) => setOfferStatusFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-800 outline-none border-none py-0.5 cursor-pointer"
+                >
+                  <option value="All">All Statuses</option>
+                  <option value="Offered">Offered</option>
+                  <option value="Accepted">Accepted</option>
+                  <option value="Declined">Declined</option>
+                </select>
+              </div>
+
+              {(offerSearchQuery || offerPositionFilter !== 'All' || offerStatusFilter !== 'All' || offerCompanyFilter !== 'All') && (
+                <button
+                  onClick={() => {
+                    setOfferSearchQuery('');
+                    setOfferPositionFilter('All');
+                    setOfferStatusFilter('All');
+                    setOfferCompanyFilter('All');
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                  title="Reset all filters"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Reset</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="text-center py-20 bg-white border rounded-2xl">
+              <span className="text-xs text-slate-400">Syncing job offers database, please wait...</span>
+            </div>
+          ) : offers.length === 0 ? (
             <div className="text-center py-20 bg-white border border-slate-100 rounded-2xl">
               <FileCheck className="w-10 h-10 text-slate-300 mx-auto stroke-1" />
               <h3 className="text-sm font-bold text-slate-700 mt-2">No Job Offers Issued Yet</h3>
@@ -1676,9 +1839,28 @@ export const JobOfferView: React.FC<JobOfferViewProps> = ({ user, openConfirm, c
                 Issue a standalone offer using "Draft Job Offer" above or transition any applied candidate to draft status.
               </p>
             </div>
+          ) : filteredOffers.length === 0 ? (
+            <div className="text-center py-20 bg-white border border-slate-100 rounded-2xl">
+              <Search className="w-10 h-10 text-slate-300 mx-auto stroke-1" />
+              <h3 className="text-sm font-bold text-slate-700 mt-2">No Matching Job Offers Found</h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                No job offers match your search query {offerSearchQuery ? `"${offerSearchQuery}"` : ''} or selected filters.
+              </p>
+              <button
+                onClick={() => {
+                  setOfferSearchQuery('');
+                  setOfferPositionFilter('All');
+                  setOfferStatusFilter('All');
+                  setOfferCompanyFilter('All');
+                }}
+                className="mt-3 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              >
+                Reset Search & Filters
+              </button>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {offers.map((offer) => {
+              {filteredOffers.map((offer) => {
                 const isAccepted = offer.status === 'Accepted';
                 const isDeclined = offer.status === 'Declined';
                 

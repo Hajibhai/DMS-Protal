@@ -344,6 +344,50 @@ export interface AccountsReceivable {
     endDate?: string;
 }
 
+export interface CreditNoteItem {
+    id: string;
+    name: string;
+    description?: string;
+    quantity: number;
+    rate: number;
+    total: number;
+}
+
+export interface CreditNote {
+    id: string;
+    creditNoteNumber: string; // e.g., "CN-2660" or "CN-2026-001"
+    date: string; // YYYY-MM-DD
+    originalInvoiceNumber: string; // e.g., "2660"
+    originalInvoiceDate?: string;
+    originalInvoiceAmount?: number; // e.g. 74279.10
+    originalInvoiceId?: string; // Linked AccountsReceivable id
+    revisedInvoiceNumber?: string; // e.g. "2660 (Revised)"
+    revisedInvoiceAmount?: number; // e.g. 105898.80
+    entityId: string; // Client / Vendor / Project ID
+    entityType: 'Vendor' | 'Project' | 'Supplier';
+    clientName?: string;
+    clientTrn?: string;
+    clientAddress?: string;
+    clientEmail?: string;
+    clientPhone?: string;
+    companyId?: string; // Pioneer corporate entity
+    companyName?: string;
+    companyTrn?: string;
+    reason: string; // e.g. "Cancellation of previous invoice due to revision"
+    amount: number; // Taxable credited amount before VAT
+    vatAmount: number; // 5% VAT credited
+    totalAmount: number; // Total Credited Amount incl. VAT
+    status: 'Issued' | 'Applied' | 'Draft' | 'Cancelled';
+    items?: CreditNoteItem[];
+    notes?: string;
+    terms?: string;
+    createdAt: string;
+    createdBy?: string;
+    createdByUid?: string;
+    attachment?: string;
+    attachments?: string[];
+}
+
 export interface PettyCash {
     id: string;
     date: string;

@@ -62,7 +62,7 @@ import {
   where 
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Vendor, AccountsPayable, AccountsReceivable, PettyCash, 
+import { Vendor, AccountsPayable, AccountsReceivable, CreditNote, CreditNoteItem, PettyCash, 
   Supplier, Project, SystemUser, UserRole, ProjectedExpense, EverydayExpense 
 } from '../types';
 import { PrintModal, PrintOptions } from './PrintModal';
@@ -5511,6 +5511,500 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.save(`Invoice_${item.invoiceNumber || 'INV'}.pdf`);
 };
 
+export const downloadTaxCreditNotePDF = async (
+    item: CreditNote, 
+    company?: any, 
+    client?: any, 
+    bankAccounts: any[] = []
+) => {
+    const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+    });
+
+    const primaryColor = [190, 24, 93]; // Rose-700 for Credit Note distinction
+    const secondaryColor = [30, 41, 59]; // Slate-800
+    const lightBg = [253, 242, 248]; // Rose-50
+    const borderColor = [244, 114, 182]; // Rose-400
+
+    // Top Brand Accent Stripe
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 0, 210, 5, 'F');
+
+    // Watermark Background
+    try {
+        const assets = getPioneerPDFAssets();
+        if (assets.watermark) {
+            (doc as any).saveGraphicsState?.();
+            (doc as any).setGState?.(new (doc as any).GState({ opacity: 0.04 }));
+            doc.addImage(assets.watermark, 'PNG', 45, 90, 120, 120);
+            (doc as any).restoreGraphicsState?.();
+        }
+    } catch (e) {}
+
+    // Company Header
+    const companyName = company?.name || item.companyName || "Pioneer General Contracting LLC";
+    const companyTrn = company?.trn || item.companyTrn || "100459382100003";
+    const companyAddress = company?.address || "Abu Dhabi / Dubai, United Arab Emirates";
+    const companyEmail = company?.email || "accounts@pioneerdms.ae";
+    const companyPhone = company?.phone || "+971 2 644 4455";
+
+    // Logo / Initials Badge
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.roundedRect(14, 12, 16, 16, 3, 3, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("CN", 22, 22.5, { align: "center" });
+
+    // Company Information
+    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text(companyName, 34, 18);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(companyAddress, 34, 23);
+    doc.text(`Email: ${companyEmail}  |  Tel: ${companyPhone}`, 34, 27);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text(`Supplier TRN (VAT ID): ${companyTrn}`, 34, 31);
+
+    // Document Title Banner (Right Header)
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("TAX CREDIT NOTE", 196, 18, { align: "right" });
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text("UAE FTA VAT COMPLIANT", 196, 23.5, { align: "right" });
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(159, 18, 57);
+    doc.text(`ORIGINAL REF: INV #${item.originalInvoiceNumber || 'N/A'}`, 196, 29, { align: "right" });
+
+    // Divider
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.line(14, 35, 196, 35);
+
+    // Meta Columns: Billed To (Left) & Credit Note Details (Right)
+    const clientName = client?.name || item.clientName || "Valued Client";
+    const clientTrn = client?.trn || item.clientTrn || "N/A / Unregistered";
+    const clientAddress = client?.address || item.clientAddress || "United Arab Emirates";
+    const clientEmail = client?.email || item.clientEmail || "";
+    const clientPhone = client?.phone || item.clientPhone || "";
+
+    // Left Box: Billed To / Recipient
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, 38, 88, 38, 2, 2, 'FD');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("CREDITED TO / RECIPIENT DETAILS", 18, 44);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.text(doc.splitTextToSize(clientName, 80), 18, 50);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(doc.splitTextToSize(clientAddress, 80), 18, 56);
+    if (clientEmail || clientPhone) {
+        doc.text(`${clientEmail} ${clientPhone ? ' | ' + clientPhone : ''}`, 18, 62);
+    }
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.text(`Recipient TRN: ${clientTrn}`, 18, 68);
+
+    // Right Box: Credit Note Info
+    doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
+    doc.setDrawColor(borderColor[0], borderColor[1], borderColor[2]);
+    doc.roundedRect(108, 38, 88, 38, 2, 2, 'FD');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("CREDIT NOTE SPECIFICATIONS", 112, 44);
+
+    const rightFields = [
+        ["Credit Note No:", item.creditNoteNumber || `CN-${item.originalInvoiceNumber || '001'}`],
+        ["Credit Note Date:", item.date || new Date().toISOString().split('T')[0]],
+        ["Original Tax Invoice:", `#${item.originalInvoiceNumber || 'N/A'}`],
+        ["Original Invoice Date:", item.originalInvoiceDate || "As per record"],
+        ["Original Inv. Amount:", item.originalInvoiceAmount ? `AED ${Number(item.originalInvoiceAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "N/A"]
+    ];
+
+    let rY = 49;
+    rightFields.forEach(([label, val]) => {
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(label, 112, rY);
+
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+        doc.text(String(val), 192, rY, { align: "right" });
+        rY += 5;
+    });
+
+    // Reason for Issuance Box
+    const reasonBoxY = 79;
+    doc.setFillColor(255, 241, 242);
+    doc.setDrawColor(254, 205, 211);
+    doc.roundedRect(14, reasonBoxY, 182, 15, 2, 2, 'FD');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(159, 18, 57);
+    doc.text("REASON FOR ISSUING TAX CREDIT NOTE:", 18, reasonBoxY + 5);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+    const reasonText = item.reason || `Cancellation of previous invoice #${item.originalInvoiceNumber} due to revision with updated billing amount.`;
+    const revisedNote = item.revisedInvoiceNumber ? ` [Revised Invoice Ref: #${item.revisedInvoiceNumber}${item.revisedInvoiceAmount ? ' - AED ' + Number(item.revisedInvoiceAmount).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}]` : '';
+    doc.text(doc.splitTextToSize(`${reasonText}${revisedNote}`, 174), 18, reasonBoxY + 10);
+
+    // Line Items Table
+    const tableItems = (item.items && item.items.length > 0) ? item.items : [
+        {
+            id: '1',
+            name: `Tax Credit against Invoice #${item.originalInvoiceNumber || 'N/A'}`,
+            description: item.reason || 'Full credit of previous invoice value',
+            quantity: 1,
+            rate: item.amount || 0,
+            total: item.amount || 0
+        }
+    ];
+
+    const tableRows = tableItems.map((rowItem, idx) => {
+        const rowTaxable = rowItem.total !== undefined ? Number(rowItem.total) : (Number(rowItem.quantity || 1) * Number(rowItem.rate || 0));
+        const rowVat = Number((rowTaxable * 0.05).toFixed(2));
+        const rowTotal = Number((rowTaxable + rowVat).toFixed(2));
+
+        return [
+            (idx + 1).toString(),
+            `${rowItem.name || 'Credit Item'}\n${rowItem.description ? rowItem.description : ''}`.trim(),
+            (rowItem.quantity || 1).toString(),
+            Number(rowItem.rate || rowTaxable).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            rowTaxable.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            "5.00%",
+            rowVat.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+            rowTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })
+        ];
+    });
+
+    (doc as any).autoTable({
+        startY: reasonBoxY + 18,
+        head: [['#', 'Item & Description', 'Qty', 'Rate (AED)', 'Taxable (AED)', 'VAT %', 'VAT (AED)', 'Total (AED)']],
+        body: tableRows,
+        theme: 'grid',
+        headStyles: {
+            fillColor: primaryColor,
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 7.5,
+            halign: 'center'
+        },
+        bodyStyles: {
+            fontSize: 7.5,
+            textColor: [30, 41, 59],
+            valign: 'middle'
+        },
+        columnStyles: {
+            0: { halign: 'center', cellWidth: 10 },
+            1: { cellWidth: 54 },
+            2: { halign: 'center', cellWidth: 14 },
+            3: { halign: 'right', cellWidth: 24 },
+            4: { halign: 'right', cellWidth: 26 },
+            5: { halign: 'center', cellWidth: 14 },
+            6: { halign: 'right', cellWidth: 18 },
+            7: { halign: 'right', cellWidth: 22, fontStyle: 'bold' }
+        },
+        styles: {
+            cellPadding: 2.5,
+            lineColor: [226, 232, 240],
+            lineWidth: 0.2
+        },
+        margin: { left: 14, right: 14 }
+    });
+
+    const finalY = (doc as any).lastAutoTable?.finalY || 160;
+
+    // Totals Box (Right Side)
+    const totalsBoxY = finalY + 4;
+    const taxableAmt = item.amount !== undefined ? Number(item.amount) : Number((item.totalAmount / 1.05).toFixed(2));
+    const vatAmt = item.vatAmount !== undefined ? Number(item.vatAmount) : Number((item.totalAmount - taxableAmt).toFixed(2));
+    const totalAmt = item.totalAmount !== undefined ? Number(item.totalAmount) : Number((taxableAmt + vatAmt).toFixed(2));
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(114, totalsBoxY, 82, 34, 2, 2, 'FD');
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Total Taxable Value Credited:", 118, totalsBoxY + 8);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.text(`AED ${taxableAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 192, totalsBoxY + 8, { align: "right" });
+
+    doc.setFont("Helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    doc.text("Output VAT Credited (5.0%):", 118, totalsBoxY + 16);
+    doc.setFont("Helvetica", "bold");
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text(`AED ${vatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 192, totalsBoxY + 16, { align: "right" });
+
+    doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.setLineWidth(0.4);
+    doc.line(118, totalsBoxY + 20, 192, totalsBoxY + 20);
+
+    doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
+    doc.roundedRect(116, totalsBoxY + 22, 78, 9, 1.5, 1.5, 'F');
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("TOTAL CREDITED AMOUNT:", 119, totalsBoxY + 28);
+    doc.setFontSize(9.5);
+    doc.text(`AED ${totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 191, totalsBoxY + 28, { align: "right" });
+
+    // Legal / FTA VAT Compliance Box (Left Side)
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(14, totalsBoxY, 94, 34, 2, 2, 'FD');
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.text("FTA VAT COMPLIANCE & LEGAL NOTICE:", 18, totalsBoxY + 7);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    const legalNotice = `This Tax Credit Note is issued in accordance with Article (60) of the Executive Regulations of UAE Federal Decree-Law No. (8) of 2017 on Value Added Tax. It fully amends / credits Tax Invoice #${item.originalInvoiceNumber || ''}. The output tax and payable client ledger balances have been credited accordingly.`;
+    doc.text(doc.splitTextToSize(legalNotice, 86), 18, totalsBoxY + 12);
+
+    // Signatory & Bank Details Section
+    const signBoxY = totalsBoxY + 40;
+    
+    // Left: Bank details reference
+    const defaultBank = bankAccounts && bankAccounts.length > 0 ? bankAccounts[0] : {
+        bankName: "ADCB / First Abu Dhabi Bank",
+        accountName: companyName,
+        iban: "AE000000000000000000000"
+    };
+
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(14, signBoxY, 94, 28, 2, 2, 'F');
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.text("ORIGINAL SETTLEMENT ACCOUNT", 18, signBoxY + 6);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Bank: ${defaultBank.bankName || "ADCB / FAB"}`, 18, signBoxY + 12);
+    doc.text(`A/C Name: ${defaultBank.accountName || companyName}`, 18, signBoxY + 17);
+    doc.text(`IBAN: ${defaultBank.iban || "AE..."}`, 18, signBoxY + 22);
+
+    // Right: Authorized Signatory Block
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(114, signBoxY, 82, 28, 2, 2, 'F');
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+    doc.text("FOR PIONEER GENERAL CONTRACTING LLC", 118, signBoxY + 6);
+
+    doc.setDrawColor(203, 213, 225);
+    doc.line(118, signBoxY + 19, 190, signBoxY + 19);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Authorized Finance & Tax Signatory", 118, signBoxY + 24);
+
+    // Bottom Stripe
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 289, 210, 8, 'F');
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`Official UAE FTA Tax Credit Note generated inside Pioneer Group DMS. Document Reference: ${item.creditNoteNumber || 'CN'}`, 105, 294, { align: "center" });
+
+    doc.save(`Tax_Credit_Note_${item.creditNoteNumber || item.originalInvoiceNumber || 'CN'}.pdf`);
+};
+
+export const printTaxCreditNotePreview = (
+    item: CreditNote, 
+    company?: any, 
+    client?: any, 
+    bankAccounts: any[] = []
+) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        alert("Pop-up blocked. Please allow pop-ups for this site to print.");
+        return;
+    }
+
+    const companyName = company?.name || item.companyName || "Pioneer General Contracting LLC";
+    const companyTrn = company?.trn || item.companyTrn || "100459382100003";
+    const companyAddress = company?.address || "Abu Dhabi / Dubai, United Arab Emirates";
+    const clientName = client?.name || item.clientName || "Valued Client";
+    const clientTrn = client?.trn || item.clientTrn || "N/A";
+    const clientAddress = client?.address || item.clientAddress || "United Arab Emirates";
+    
+    const taxableAmt = item.amount !== undefined ? Number(item.amount) : Number((item.totalAmount / 1.05).toFixed(2));
+    const vatAmt = item.vatAmount !== undefined ? Number(item.vatAmount) : Number((item.totalAmount - taxableAmt).toFixed(2));
+    const totalAmt = item.totalAmount !== undefined ? Number(item.totalAmount) : Number((taxableAmt + vatAmt).toFixed(2));
+
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Tax Credit Note - ${item.creditNoteNumber || 'CN'}</title>
+        <meta charset="utf-8" />
+        <style>
+            @page { size: A4 portrait; margin: 15mm; }
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b; margin: 0; padding: 20px; font-size: 12px; }
+            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #be185d; padding-bottom: 12px; margin-bottom: 16px; }
+            .company-name { font-size: 18px; font-weight: 900; color: #1e293b; }
+            .doc-title { font-size: 20px; font-weight: 900; color: #be185d; text-align: right; }
+            .arabic-title { font-size: 14px; color: #64748b; text-align: right; }
+            .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+            .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+            .card.highlight { background: #fdf2f8; border-color: #f472b6; }
+            .card-title { font-size: 10px; font-weight: 900; color: #be185d; text-transform: uppercase; margin-bottom: 6px; }
+            .reason-box { background: #fff1f2; border: 1px solid #fecdd3; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+            th { background: #be185d; color: white; padding: 8px; font-size: 11px; text-align: left; }
+            th.right, td.right { text-align: right; }
+            th.center, td.center { text-align: center; }
+            td { padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; }
+            .totals-table { width: 320px; margin-left: auto; margin-bottom: 20px; }
+            .totals-table td { padding: 6px 8px; }
+            .grand-total { background: #fdf2f8; color: #be185d; font-weight: 900; font-size: 14px; }
+            .footer-notice { border-top: 1px solid #e2e8f0; padding-top: 12px; font-size: 10px; color: #64748b; }
+            .signatures { display: flex; justify-content: space-between; margin-top: 30px; }
+            .sign-box { border-top: 1px solid #94a3b8; width: 220px; text-align: center; padding-top: 6px; font-size: 11px; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div>
+                <div class="company-name">${companyName}</div>
+                <div style="color: #64748b; font-size: 11px;">${companyAddress}</div>
+                <div style="color: #be185d; font-weight: bold; margin-top: 4px;">Supplier TRN: ${companyTrn}</div>
+            </div>
+            <div>
+                <div class="doc-title">TAX CREDIT NOTE</div>
+                <div class="arabic-title">فاتورة ضريبية دائنة</div>
+                <div style="font-weight: bold; color: #9f1239; font-size: 11px; margin-top: 4px;">REF INV: #${item.originalInvoiceNumber}</div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-title">CREDITED TO / RECIPIENT</div>
+                <div style="font-weight: bold; font-size: 13px;">${clientName}</div>
+                <div style="color: #64748b; margin-top: 2px;">${clientAddress}</div>
+                <div style="font-weight: bold; margin-top: 6px;">Client TRN: ${clientTrn}</div>
+            </div>
+            <div class="card highlight">
+                <div class="card-title">CREDIT NOTE DETAILS</div>
+                <div><strong>Credit Note #:</strong> ${item.creditNoteNumber || 'CN-' + item.originalInvoiceNumber}</div>
+                <div><strong>Date:</strong> ${item.date}</div>
+                <div><strong>Original Invoice #:</strong> #${item.originalInvoiceNumber}</div>
+                <div><strong>Original Inv. Date:</strong> ${item.originalInvoiceDate || 'N/A'}</div>
+                <div><strong>Original Inv. Amount:</strong> AED ${item.originalInvoiceAmount ? Number(item.originalInvoiceAmount).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}</div>
+            </div>
+        </div>
+
+        <div class="reason-box">
+            <div style="font-weight: bold; color: #9f1239; font-size: 10px; text-transform: uppercase;">Reason for Issuance / سبب إصدار الإشعار الدائن:</div>
+            <div style="margin-top: 4px; font-size: 11px;">${item.reason || 'Cancellation of previous invoice due to revision with updated billing amount.'} ${item.revisedInvoiceNumber ? `(Revised Invoice Ref: #${item.revisedInvoiceNumber})` : ''}</div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th class="center" style="width: 30px;">#</th>
+                    <th>Item & Description</th>
+                    <th class="center" style="width: 50px;">Qty</th>
+                    <th class="right" style="width: 90px;">Rate (AED)</th>
+                    <th class="right" style="width: 100px;">Taxable (AED)</th>
+                    <th class="center" style="width: 60px;">VAT %</th>
+                    <th class="right" style="width: 80px;">VAT (AED)</th>
+                    <th class="right" style="width: 100px;">Total (AED)</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${((item.items && item.items.length > 0) ? item.items : [{ id: '1', name: 'Tax Credit against Invoice #' + item.originalInvoiceNumber, description: item.reason || '', quantity: 1, rate: item.amount || 0, total: item.amount || 0 }]).map((r, i) => {
+                    const rowTax = r.total !== undefined ? Number(r.total) : (Number(r.quantity || 1) * Number(r.rate || 0));
+                    const rowVat = Number((rowTax * 0.05).toFixed(2));
+                    const rowTot = Number((rowTax + rowVat).toFixed(2));
+                    return `
+                        <tr>
+                            <td class="center">${i + 1}</td>
+                            <td><strong>${r.name || 'Credit Item'}</strong><br/><span style="color:#64748b; font-size:10px;">${r.description || ''}</span></td>
+                            <td class="center">${r.quantity || 1}</td>
+                            <td class="right">${Number(r.rate || rowTax).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td class="right">${rowTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td class="center">5.0%</td>
+                            <td class="right">${rowVat.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td class="right" style="font-weight:bold;">${rowTot.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+        </table>
+
+        <table class="totals-table">
+            <tr>
+                <td>Total Taxable Value Credited:</td>
+                <td class="right"><strong>AED ${taxableAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></td>
+            </tr>
+            <tr>
+                <td>Output VAT Credited (5.0%):</td>
+                <td class="right" style="color: #be185d;"><strong>AED ${vatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></td>
+            </tr>
+            <tr class="grand-total">
+                <td>GRAND TOTAL CREDITED:</td>
+                <td class="right">AED ${totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+            </tr>
+        </table>
+
+        <div class="footer-notice">
+            <strong>FTA VAT Compliance Note:</strong> This Tax Credit Note is issued in accordance with Article (60) of the Executive Regulation of UAE Federal Decree-Law No. (8) of 2017 on Value Added Tax. It amends and credits Tax Invoice #${item.originalInvoiceNumber}.
+        </div>
+
+        <div class="signatures">
+            <div class="sign-box">Prepared by: Finance Dept</div>
+            <div class="sign-box">Authorized Signatory / Tax Stamp</div>
+        </div>
+
+        <script>
+            window.onload = function() { window.print(); }
+        </script>
+    </body>
+    </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+};
+
 export const resolveItemDetails = (
     itm: any, 
     isReceivable: boolean, 
@@ -6240,11 +6734,39 @@ export const downloadSOAExcel = (
     XLSX.writeFile(wb, `${isReceivable ? 'Receivable' : 'Payable'}_SOA_${partnerName.replace(/\s+/g, '_')}.xlsx`);
 };
 
-export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onAdd, onEdit, onDelete, onDeleteMultiple, onBulkUpdateDate, user, companies, bankAccounts = [] }: any) => {
+export const AccountsReceivableView = ({ 
+    data, 
+    projects, 
+    suppliers, 
+    vendors, 
+    onAdd, 
+    onEdit, 
+    onDelete, 
+    onDeleteMultiple, 
+    onBulkUpdateDate, 
+    user, 
+    companies, 
+    bankAccounts = [],
+    creditNotes = [],
+    onAddCreditNote,
+    onEditCreditNote,
+    onDeleteCreditNote,
+    onSaveCreditNote
+}: any) => {
     const [previewInvoiceItem, setPreviewInvoiceItem] = useState<{ item: any; comp: any; client: any } | null>(null);
-    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa' | 'duplicates'>('ledger');
+    const [previewCreditNoteItem, setPreviewCreditNoteItem] = useState<{ creditNote: any; comp: any; client: any } | null>(null);
+    const [localCreditNoteModal, setLocalCreditNoteModal] = useState<any | null>(null);
+    const [activeTabMode, setActiveTabMode] = useState<'ledger' | 'insights' | 'soa' | 'duplicates' | 'credit-notes'>('ledger');
     const [selectedAgingBucket, setSelectedAgingBucket] = useState<string | null>(null);
     const [kpiFilter, setKpiFilter] = useState<'all' | 'collected' | 'pending' | 'vat' | null>(null);
+
+    // Credit Note Filter states
+    const [creditNoteSearchQuery, setCreditNoteSearchQuery] = useState('');
+    const [creditNoteClientFilter, setCreditNoteClientFilter] = useState('All');
+    const [creditNoteCompanyFilter, setCreditNoteCompanyFilter] = useState('All');
+    const [creditNoteStatusFilter, setCreditNoteStatusFilter] = useState('All');
+    const [creditNoteStartDate, setCreditNoteStartDate] = useState('');
+    const [creditNoteEndDate, setCreditNoteEndDate] = useState('');
 
     // Advanced Filter State variables
     const [isAdvFilterOpen, setIsAdvFilterOpen] = useState(false);
@@ -7111,6 +7633,100 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
     const activeAgingList = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.items || [] : [];
     const activeAgingLabel = selectedAgingBucket ? agingBuckets[selectedAgingBucket]?.label : '';
 
+    // --- Tax Credit Note Handlers & Filters ---
+    const handleOpenCreditNoteForInvoice = (inv: any) => {
+        const comp = (companies || []).find((c: any) => c.id === inv.companyId || c.name === inv.companyName);
+        const client = getEntityObject(inv.entityId, inv.entityType);
+        const totVal = Number(inv.totalAmount || inv.amount || 0);
+        const taxableVal = inv.amount !== undefined ? Number(inv.amount) : Number((totVal / 1.05).toFixed(2));
+        const vatVal = inv.vatAmount !== undefined ? Number(inv.vatAmount) : Number((totVal - taxableVal).toFixed(2));
+
+        const initialCN: CreditNote = {
+            id: Math.random().toString(36).substr(2, 9),
+            creditNoteNumber: `CN-${inv.invoiceNumber || '2660'}`,
+            date: new Date().toISOString().split('T')[0],
+            originalInvoiceNumber: inv.invoiceNumber || '',
+            originalInvoiceDate: inv.date || '',
+            originalInvoiceAmount: totVal,
+            originalInvoiceId: inv.id,
+            revisedInvoiceNumber: `${inv.invoiceNumber} (Revised)`,
+            revisedInvoiceAmount: 0,
+            entityId: inv.entityId,
+            entityType: inv.entityType || 'Vendor',
+            clientName: client?.name || inv.clientName || '',
+            clientTrn: client?.trn || inv.clientTrn || '',
+            clientAddress: client?.address || inv.clientAddress || '',
+            companyId: inv.companyId || comp?.id || (companies[0]?.id || ''),
+            companyName: comp?.name || inv.companyName || (companies[0]?.name || ''),
+            companyTrn: comp?.trn || inv.companyTrn || (companies[0]?.trn || ''),
+            reason: `Cancellation of previous invoice #${inv.invoiceNumber} due to revision with updated billing amount.`,
+            amount: taxableVal,
+            vatAmount: vatVal,
+            totalAmount: totVal,
+            status: 'Issued',
+            items: inv.items && inv.items.length > 0 ? inv.items : [
+                { id: '1', name: `Tax Credit against Invoice #${inv.invoiceNumber}`, description: 'Full credit against previous invoice value', quantity: 1, rate: taxableVal, total: taxableVal }
+            ],
+            createdAt: new Date().toISOString()
+        };
+
+        if (onAddCreditNote) {
+            onAddCreditNote(initialCN);
+        } else {
+            setLocalCreditNoteModal(initialCN);
+        }
+    };
+
+    const filteredCreditNotes = useMemo(() => {
+        return (creditNotes || []).filter((cn: CreditNote) => {
+            if (creditNoteClientFilter !== 'All') {
+                if (cn.entityId !== creditNoteClientFilter && cn.clientName !== creditNoteClientFilter) return false;
+            }
+            if (creditNoteCompanyFilter !== 'All') {
+                if (cn.companyId !== creditNoteCompanyFilter && cn.companyName !== creditNoteCompanyFilter) return false;
+            }
+            if (creditNoteStatusFilter !== 'All') {
+                if ((cn.status || 'Issued') !== creditNoteStatusFilter) return false;
+            }
+            if (creditNoteStartDate) {
+                if (cn.date && cn.date < creditNoteStartDate) return false;
+            }
+            if (creditNoteEndDate) {
+                if (cn.date && cn.date > creditNoteEndDate) return false;
+            }
+            if (creditNoteSearchQuery.trim()) {
+                const q = creditNoteSearchQuery.toLowerCase().trim();
+                const cnNum = (cn.creditNoteNumber || '').toLowerCase();
+                const origNum = (cn.originalInvoiceNumber || '').toLowerCase();
+                const revNum = (cn.revisedInvoiceNumber || '').toLowerCase();
+                const client = (cn.clientName || '').toLowerCase();
+                const reason = (cn.reason || '').toLowerCase();
+                if (!cnNum.includes(q) && !origNum.includes(q) && !revNum.includes(q) && !client.includes(q) && !reason.includes(q)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }, [creditNotes, creditNoteClientFilter, creditNoteCompanyFilter, creditNoteStatusFilter, creditNoteStartDate, creditNoteEndDate, creditNoteSearchQuery]);
+
+    const creditNoteMetrics = useMemo(() => {
+        let totalCount = filteredCreditNotes.length;
+        let totalNet = 0;
+        let totalVat = 0;
+        let totalGrand = 0;
+
+        filteredCreditNotes.forEach((cn: CreditNote) => {
+            const tot = Number(cn.totalAmount || 0);
+            const net = cn.amount !== undefined ? Number(cn.amount) : Number((tot / 1.05).toFixed(2));
+            const vat = cn.vatAmount !== undefined ? Number(cn.vatAmount) : Number((tot - net).toFixed(2));
+            totalNet += net;
+            totalVat += vat;
+            totalGrand += tot;
+        });
+
+        return { totalCount, totalNet, totalVat, totalGrand };
+    }, [filteredCreditNotes]);
+
     return (
         <div className="relative space-y-6">
             
@@ -7123,49 +7739,82 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     </h2>
                     <p className="text-xs text-slate-400 font-medium">Analyze client invoices, outstanding aged debts, and payment trends.</p>
                 </div>
-                <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/45 shrink-0">
-                    <button 
-                        onClick={() => setActiveTabMode('ledger')}
-                        className={cn(
-                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
-                            activeTabMode === 'ledger' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                        )}
-                    >
-                        📋 Invoice Ledger Table
-                    </button>
-                    <button 
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/45 shrink-0 flex-wrap gap-1">
+                        <button 
+                            onClick={() => setActiveTabMode('ledger')}
+                            className={cn(
+                                "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                                activeTabMode === 'ledger' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                            )}
+                        >
+                            📋 Invoice Ledger Table
+                        </button>
+                        <button 
+                            onClick={() => {
+                                setActiveTabMode('insights');
+                                setSelectedAgingBucket('days30'); // Default to 1-30 days overdue
+                            }}
+                            className={cn(
+                                "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                                activeTabMode === 'insights' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                            )}
+                        >
+                            📊 Aging & Monthly Reports
+                        </button>
+                        <button 
+                            onClick={() => setActiveTabMode('soa')}
+                            className={cn(
+                                "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                                activeTabMode === 'soa' ? "bg-white text-blue-600 shadow-sm" : "text-slate-505 hover:text-slate-800"
+                            )}
+                        >
+                            📄 SOA & Monthly Packs
+                        </button>
+                        <button 
+                            onClick={() => setActiveTabMode('credit-notes')}
+                            className={cn(
+                                "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer flex items-center gap-1.5",
+                                activeTabMode === 'credit-notes' ? "bg-white text-rose-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                            )}
+                        >
+                            <Scale className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Tax Credit Notes</span>
+                            {(creditNotes || []).length > 0 && (
+                                <span className="px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[9px] font-bold">
+                                    {(creditNotes || []).length}
+                                </span>
+                            )}
+                        </button>
+                        <button 
+                            onClick={() => setActiveTabMode('duplicates')}
+                            className={cn(
+                                "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
+                                activeTabMode === 'duplicates' ? "bg-white text-rose-600 shadow-sm animate-pulse-subtle" : "text-slate-500 hover:text-slate-800"
+                            )}
+                        >
+                            🔍 Double-Entry Auditor {duplicateGroupsCount > 0 && (
+                                <span className="ml-1 px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[9px] font-bold animate-pulse">
+                                    {duplicateGroupsCount}
+                                </span>
+                            )}
+                        </button>
+                    </div>
+
+                    <button
                         onClick={() => {
-                            setActiveTabMode('insights');
-                            setSelectedAgingBucket('days30'); // Default to 1-30 days overdue
+                            if (onAddCreditNote) {
+                                onAddCreditNote();
+                            } else {
+                                setLocalCreditNoteModal({});
+                            }
                         }}
-                        className={cn(
-                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
-                            activeTabMode === 'insights' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                        )}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl text-xs font-black shadow-sm shadow-rose-600/20 transition-all cursor-pointer shrink-0"
+                        title="Create a new UAE VAT compliant Tax Credit Note against an invoice"
                     >
-                        📊 Aging & Monthly Reports
-                    </button>
-                    <button 
-                        onClick={() => setActiveTabMode('soa')}
-                        className={cn(
-                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
-                            activeTabMode === 'soa' ? "bg-white text-blue-600 shadow-sm" : "text-slate-505 hover:text-slate-800"
-                        )}
-                    >
-                        📄 SOA & Monthly Packs
-                    </button>
-                    <button 
-                        onClick={() => setActiveTabMode('duplicates')}
-                        className={cn(
-                            "px-4 py-2 text-xs font-black rounded-xl transition-all cursor-pointer",
-                            activeTabMode === 'duplicates' ? "bg-white text-rose-600 shadow-sm animate-pulse-subtle" : "text-slate-500 hover:text-slate-800"
-                        )}
-                    >
-                        🔍 Double-Entry Auditor {duplicateGroupsCount > 0 && (
-                            <span className="ml-1 px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[9px] font-bold animate-pulse">
-                                {duplicateGroupsCount}
-                            </span>
-                        )}
+                        <Plus className="w-3.5 h-3.5" />
+                        <Scale className="w-3.5 h-3.5" />
+                        <span>Issue Credit Note</span>
                     </button>
                 </div>
             </div>
@@ -7896,7 +8545,7 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                         },
                         {
                             key: 'zoho_invoice',
-                            label: 'Zoho Invoice',
+                            label: 'Actions & PDF',
                             render: (item: any) => {
                                 const comp = (companies || []).find((c: any) => c.id === item.companyId || c.name === item.companyName);
                                 const client = getEntityObject(item.entityId, item.entityType);
@@ -7916,6 +8565,13 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                                             title="View Invoice Live Preview"
                                         >
                                             <Eye className="w-4 h-4 text-emerald-600" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleOpenCreditNoteForInvoice(item)}
+                                            className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-450 hover:text-rose-600 transition-colors shrink-0"
+                                            title="Issue Tax Credit Note against this invoice (e.g. for revision/cancellation)"
+                                        >
+                                            <Scale className="w-4 h-4 text-rose-600" />
                                         </button>
                                     </div>
                                 );
@@ -8651,6 +9307,356 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                         )}
                     </div>
                 </div>
+            ) : activeTabMode === 'credit-notes' ? (
+                /* activeTabMode === 'credit-notes' */
+                <div className="space-y-6 animate-fadeIn">
+                    <div className="bg-white border border-slate-100 p-6 md:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                    <Scale className="w-5 h-5 text-rose-600" />
+                                    <span>Tax Credit Notes Ledger / سجل الإشعارات الدائنة الضريبية</span>
+                                </h3>
+                                <p className="text-xs text-slate-400 font-medium">
+                                    Official UAE VAT-compliant Tax Credit Notes issued to adjust or fully cancel previously billed invoices upon revision.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    if (onAddCreditNote) {
+                                        onAddCreditNote();
+                                    } else {
+                                        setLocalCreditNoteModal({});
+                                    }
+                                }}
+                                className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs px-5 py-2.5 rounded-2xl shadow-lg shadow-rose-500/20 transition-all cursor-pointer shrink-0"
+                            >
+                                <Plus className="w-4 h-4" />
+                                <span>Issue Tax Credit Note</span>
+                            </button>
+                        </div>
+
+                        {/* Summary Metrics Bar */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="p-5 bg-slate-50 border border-slate-200/60 rounded-2xl">
+                                <span className="text-[10px] uppercase font-black text-slate-500 tracking-wider">Total Credit Notes</span>
+                                <p className="text-2xl font-black text-slate-900 mt-1 font-mono">{creditNoteMetrics.totalCount}</p>
+                                <span className="text-[10px] text-slate-400 font-medium mt-0.5 block">Issued adjustments</span>
+                            </div>
+                            <div className="p-5 bg-blue-50/50 border border-blue-100 rounded-2xl">
+                                <span className="text-[10px] uppercase font-black text-blue-800 tracking-wider">Taxable Amount Credited</span>
+                                <p className="text-2xl font-black text-blue-700 mt-1 font-mono">
+                                    AED {creditNoteMetrics.totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                                <span className="text-[10px] text-blue-600 font-medium mt-0.5 block">Excluding 5% VAT</span>
+                            </div>
+                            <div className="p-5 bg-amber-50/50 border border-amber-100 rounded-2xl">
+                                <span className="text-[10px] uppercase font-black text-amber-800 tracking-wider">Output VAT Credited (5%)</span>
+                                <p className="text-2xl font-black text-amber-700 mt-1 font-mono">
+                                    AED {creditNoteMetrics.totalVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                                <span className="text-[10px] text-amber-600 font-medium mt-0.5 block">Tax adjustment to FTA</span>
+                            </div>
+                            <div className="p-5 bg-rose-50/50 border border-rose-100 rounded-2xl">
+                                <span className="text-[10px] uppercase font-black text-rose-800 tracking-wider">Total Value Credited</span>
+                                <p className="text-2xl font-black text-rose-600 mt-1 font-mono">
+                                    AED {creditNoteMetrics.totalGrand.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                                <span className="text-[10px] text-rose-500 font-medium mt-0.5 block">Gross reversal incl. VAT</span>
+                            </div>
+                        </div>
+
+                        {/* Search & Filter Bar */}
+                        <div className="p-4 bg-slate-50 border border-slate-200/60 rounded-2xl space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                                {/* Search input */}
+                                <div className="lg:col-span-2 relative">
+                                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                                    <input 
+                                        type="text"
+                                        placeholder="Search by Credit Note #, Invoice #, Client, Reason..."
+                                        value={creditNoteSearchQuery}
+                                        onChange={e => setCreditNoteSearchQuery(e.target.value)}
+                                        className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 outline-hidden focus:border-rose-500 transition-colors font-medium"
+                                    />
+                                    {creditNoteSearchQuery && (
+                                        <button 
+                                            onClick={() => setCreditNoteSearchQuery('')}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Client Filter */}
+                                <div>
+                                    <select
+                                        value={creditNoteClientFilter}
+                                        onChange={e => setCreditNoteClientFilter(e.target.value)}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 outline-hidden font-bold cursor-pointer"
+                                    >
+                                        <option value="All">All Clients</option>
+                                        {vendors.map((v: any) => (
+                                            <option key={v.id} value={v.id}>{v.name}{v.code ? ` (${v.code})` : ''}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Company Filter */}
+                                <div>
+                                    <select
+                                        value={creditNoteCompanyFilter}
+                                        onChange={e => setCreditNoteCompanyFilter(e.target.value)}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 outline-hidden font-bold cursor-pointer"
+                                    >
+                                        <option value="All">All Issuer Companies</option>
+                                        {(companies || []).map((c: any) => (
+                                            <option key={c.id} value={c.id}>💼 {c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Status Filter */}
+                                <div>
+                                    <select
+                                        value={creditNoteStatusFilter}
+                                        onChange={e => setCreditNoteStatusFilter(e.target.value)}
+                                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 outline-hidden font-bold cursor-pointer"
+                                    >
+                                        <option value="All">All Statuses</option>
+                                        <option value="Issued">Issued</option>
+                                        <option value="Applied">Applied</option>
+                                        <option value="Draft">Draft</option>
+                                        <option value="Cancelled">Cancelled</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Date range filter */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/40 text-xs">
+                                <div className="flex items-center gap-2">
+                                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                    <span className="text-slate-500 font-bold text-[11px]">Date Filter:</span>
+                                    <input 
+                                        type="date"
+                                        value={creditNoteStartDate}
+                                        onChange={e => setCreditNoteStartDate(e.target.value)}
+                                        className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 outline-hidden"
+                                    />
+                                    <span className="text-slate-400">to</span>
+                                    <input 
+                                        type="date"
+                                        value={creditNoteEndDate}
+                                        onChange={e => setCreditNoteEndDate(e.target.value)}
+                                        className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-700 outline-hidden"
+                                    />
+                                </div>
+
+                                {(creditNoteSearchQuery || creditNoteClientFilter !== 'All' || creditNoteCompanyFilter !== 'All' || creditNoteStatusFilter !== 'All' || creditNoteStartDate || creditNoteEndDate) && (
+                                    <button
+                                        onClick={() => {
+                                            setCreditNoteSearchQuery('');
+                                            setCreditNoteClientFilter('All');
+                                            setCreditNoteCompanyFilter('All');
+                                            setCreditNoteStatusFilter('All');
+                                            setCreditNoteStartDate('');
+                                            setCreditNoteEndDate('');
+                                        }}
+                                        className="text-[11px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                                    >
+                                        Reset All Filters
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Credit Notes Table */}
+                        {filteredCreditNotes.length === 0 ? (
+                            <div className="text-center py-16 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-3">
+                                <div className="mx-auto w-14 h-14 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center shadow-xs">
+                                    <Scale className="w-7 h-7" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-black text-slate-800">No Tax Credit Notes Found</h4>
+                                    <p className="text-xs text-slate-400 font-medium max-w-md mx-auto mt-1">
+                                        {creditNotes.length === 0 
+                                            ? "You haven't issued any Tax Credit Notes yet. If an invoice was revised or created with incorrect values, issue a Tax Credit Note to provide to the client."
+                                            : "No credit notes match your selected search criteria and filters."}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        if (onAddCreditNote) {
+                                            onAddCreditNote();
+                                        } else {
+                                            setLocalCreditNoteModal({});
+                                        }
+                                    }}
+                                    className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition cursor-pointer mt-2"
+                                >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Issue Tax Credit Note Now</span>
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto rounded-2xl border border-slate-200/80 shadow-xs">
+                                <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                            <th className="py-3 px-3">Credit Note #</th>
+                                            <th className="py-3 px-3">Date</th>
+                                            <th className="py-3 px-3">Original Invoice Ref</th>
+                                            <th className="py-3 px-3">Revised Invoice Ref</th>
+                                            <th className="py-3 px-3">Client / TRN</th>
+                                            <th className="py-3 px-3">Reason</th>
+                                            <th className="py-3 px-3 text-right">Taxable (AED)</th>
+                                            <th className="py-3 px-3 text-right">VAT 5% (AED)</th>
+                                            <th className="py-3 px-3 text-right">Total Credited (AED)</th>
+                                            <th className="py-3 px-3 text-center">Status</th>
+                                            <th className="py-3 px-3 text-center">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 bg-white">
+                                        {filteredCreditNotes.map((cnItem: CreditNote) => {
+                                            const comp = (companies || []).find((c: any) => c.id === cnItem.companyId || c.name === cnItem.companyName);
+                                            const client = getEntityObject(cnItem.entityId, cnItem.entityType);
+                                            const tot = Number(cnItem.totalAmount || 0);
+                                            const tax = cnItem.amount !== undefined ? Number(cnItem.amount) : Number((tot / 1.05).toFixed(2));
+                                            const vat = cnItem.vatAmount !== undefined ? Number(cnItem.vatAmount) : Number((tot - tax).toFixed(2));
+
+                                            return (
+                                                <tr key={cnItem.id} className="hover:bg-slate-50/70 transition-colors">
+                                                    <td className="py-3 px-3 font-mono font-black text-rose-700 whitespace-nowrap">
+                                                        <span className="px-2 py-1 bg-rose-50 border border-rose-200 rounded-lg inline-flex items-center gap-1">
+                                                            <Scale className="w-3 h-3 text-rose-600" />
+                                                            {cnItem.creditNoteNumber}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-3 font-mono font-medium text-slate-600 whitespace-nowrap">
+                                                        {cnItem.date}
+                                                    </td>
+                                                    <td className="py-3 px-3 whitespace-nowrap">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-mono font-bold text-slate-800">
+                                                                #{cnItem.originalInvoiceNumber || '-'}
+                                                            </span>
+                                                            {cnItem.originalInvoiceAmount && (
+                                                                <span className="text-[10px] text-slate-400 font-mono">
+                                                                    AED {Number(cnItem.originalInvoiceAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-3 whitespace-nowrap">
+                                                        {cnItem.revisedInvoiceNumber ? (
+                                                            <div className="flex flex-col">
+                                                                <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 text-[11px] w-fit">
+                                                                    {cnItem.revisedInvoiceNumber}
+                                                                </span>
+                                                                {cnItem.revisedInvoiceAmount && (
+                                                                    <span className="text-[10px] text-emerald-600 font-mono mt-0.5">
+                                                                        AED {Number(cnItem.revisedInvoiceAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-300">-</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3 px-3">
+                                                        <div className="flex flex-col max-w-[200px]">
+                                                            <span className="font-extrabold text-slate-900 truncate">
+                                                                {cnItem.clientName || getEntityName(cnItem.entityId, cnItem.entityType)}
+                                                            </span>
+                                                            {cnItem.clientTrn && (
+                                                                <span className="text-[9.5px] font-mono text-slate-400">
+                                                                    TRN: {cnItem.clientTrn}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-3">
+                                                        <p className="text-[11px] text-slate-600 font-medium max-w-[240px] line-clamp-2" title={cnItem.reason}>
+                                                            {cnItem.reason}
+                                                        </p>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-mono font-bold text-slate-700 whitespace-nowrap">
+                                                        AED {tax.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-mono font-bold text-amber-700 whitespace-nowrap">
+                                                        AED {vat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-right font-mono font-black text-rose-600 whitespace-nowrap">
+                                                        AED {tot.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </td>
+                                                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                                                        <span className={cn(
+                                                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
+                                                            cnItem.status === 'Issued' ? "bg-rose-100 text-rose-700 border border-rose-200" :
+                                                            cnItem.status === 'Applied' ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                                                            cnItem.status === 'Cancelled' ? "bg-slate-100 text-slate-600 border border-slate-200" :
+                                                            "bg-amber-100 text-amber-700 border border-amber-200"
+                                                        )}>
+                                                            {cnItem.status || 'Issued'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                                                        <div className="flex items-center justify-center gap-1">
+                                                            <button
+                                                                onClick={() => downloadTaxCreditNotePDF(cnItem, comp, client, bankAccounts)}
+                                                                className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                                                                title="Download Official PDF Tax Credit Note"
+                                                            >
+                                                                <Download className="w-4 h-4 text-rose-600" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => printTaxCreditNotePreview(cnItem, comp, client, bankAccounts)}
+                                                                className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-700 rounded-lg transition cursor-pointer"
+                                                                title="Print Tax Credit Note"
+                                                            >
+                                                                <Printer className="w-4 h-4 text-slate-600" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setPreviewCreditNoteItem({ creditNote: cnItem, comp, client })}
+                                                                className="p-1.5 hover:bg-blue-50 text-slate-400 hover:text-blue-600 rounded-lg transition cursor-pointer"
+                                                                title="Live Preview Tax Credit Note"
+                                                            >
+                                                                <Eye className="w-4 h-4 text-blue-600" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (onEditCreditNote) {
+                                                                        onEditCreditNote(cnItem);
+                                                                    } else {
+                                                                        setLocalCreditNoteModal(cnItem);
+                                                                    }
+                                                                }}
+                                                                className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-800 rounded-lg transition cursor-pointer"
+                                                                title="Edit Tax Credit Note"
+                                                            >
+                                                                <Edit className="w-4 h-4 text-slate-600" />
+                                                            </button>
+                                                            {onDeleteCreditNote && (
+                                                                <button
+                                                                    onClick={() => onDeleteCreditNote(cnItem.id)}
+                                                                    className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                                                                    title="Delete Tax Credit Note"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4 text-rose-500" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                </div>
             ) : (
                 /* activeTabMode === 'duplicates' */
                 <div className="space-y-6 animate-fadeIn">
@@ -9075,6 +10081,216 @@ export const AccountsReceivableView = ({ data, projects, suppliers, vendors, onA
                     </div>
                 );
             })()}
+
+            {/* Tax Credit Note Live Preview Lightbox */}
+            {previewCreditNoteItem && (() => {
+                const { creditNote, comp, client } = previewCreditNoteItem;
+                const totVal = Number(creditNote.totalAmount || 0);
+                const taxVal = creditNote.amount !== undefined ? Number(creditNote.amount) : Number((totVal / 1.05).toFixed(2));
+                const vatVal = creditNote.vatAmount !== undefined ? Number(creditNote.vatAmount) : Number((totVal - taxVal).toFixed(2));
+                const itemsList = creditNote.items && creditNote.items.length > 0
+                    ? creditNote.items
+                    : [{ id: '1', name: `Credit against Invoice #${creditNote.originalInvoiceNumber}`, description: creditNote.reason || 'Full credit note adjustment', quantity: 1, rate: taxVal, total: taxVal }];
+
+                return (
+                    <div 
+                        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+                        onClick={() => setPreviewCreditNoteItem(null)}
+                    >
+                        <div 
+                            className="bg-white w-full max-w-4xl h-[90vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col animate-in scale-in duration-300 border border-slate-100"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* Toolbar header */}
+                            <div className="flex justify-between items-center px-8 py-5 border-b border-slate-100 bg-rose-50/50">
+                                <div>
+                                    <span className="text-[10px] font-black text-rose-600 uppercase tracking-widest bg-rose-100/70 px-2.5 py-1 rounded-full">
+                                        UAE VAT Law Compliant Tax Credit Note
+                                    </span>
+                                    <h3 className="font-extrabold text-slate-900 text-lg mt-1">
+                                        Credit Note Preview: {creditNote.creditNoteNumber || 'CN-DRAFT'}
+                                    </h3>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        onClick={() => downloadTaxCreditNotePDF(creditNote, comp, client, bankAccounts)}
+                                        className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black px-4 py-2.5 rounded-xl transition shadow-lg shadow-rose-500/10 cursor-pointer"
+                                    >
+                                        <Download className="w-4 h-4" /> Download PDF
+                                    </button>
+                                    <button 
+                                        onClick={() => printTaxCreditNotePreview(creditNote, comp, client, bankAccounts)}
+                                        className="inline-flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold px-3 py-2.5 rounded-xl transition cursor-pointer"
+                                    >
+                                        <Printer className="w-4 h-4 text-slate-600" /> Print
+                                    </button>
+                                    <button 
+                                        onClick={() => setPreviewCreditNoteItem(null)}
+                                        className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 rounded-xl transition cursor-pointer"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Live Tax Credit Note Render Container */}
+                            <div className="flex-1 overflow-auto bg-slate-100 p-3 sm:p-8 flex justify-start sm:justify-center items-start">
+                                <div className="bg-white w-full max-w-[184mm] min-h-fit sm:min-h-[260mm] shadow-lg rounded-2xl p-4 sm:p-10 border border-slate-200/60 flex flex-col justify-between relative">
+                                    {/* Top Red Accent line */}
+                                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-rose-600 rounded-t-2xl"></div>
+
+                                    <div>
+                                        {/* Header Row */}
+                                        <div className="flex justify-between items-start border-b border-slate-100 pb-6 mb-6">
+                                            <div>
+                                                <h1 className="text-xl font-black text-rose-700 uppercase tracking-tight">
+                                                    {comp?.name || creditNote.companyName || "PIONEER GENERAL CONTRACTING LLC"}
+                                                </h1>
+                                                <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                                                    {comp?.address || "Abu Dhabi, United Arab Emirates"}
+                                                </p>
+                                                <p className="text-xs font-mono font-bold text-slate-700 mt-1">
+                                                    TRN: {comp?.trn || creditNote.companyTrn || "100345678900003"}
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className="text-lg font-black text-rose-600 uppercase tracking-wider block">
+                                                    TAX CREDIT NOTE
+                                                </span>
+                                                <span className="text-xs font-bold text-slate-400 block font-arabic">
+                                                    إشعار دائن ضريبي
+                                                </span>
+                                                <div className="mt-3 space-y-1 font-mono text-xs">
+                                                    <p><span className="text-slate-400 font-sans">Credit Note #:</span> <strong>{creditNote.creditNoteNumber}</strong></p>
+                                                    <p><span className="text-slate-400 font-sans">Date:</span> <strong>{creditNote.date}</strong></p>
+                                                    <p><span className="text-slate-400 font-sans">Orig. Invoice #:</span> <strong className="text-blue-700 font-bold">#{creditNote.originalInvoiceNumber}</strong></p>
+                                                    {creditNote.revisedInvoiceNumber && (
+                                                        <p><span className="text-slate-400 font-sans">Revised Inv #:</span> <strong className="text-emerald-700 font-bold">{creditNote.revisedInvoiceNumber}</strong></p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Bill To & Reference Row */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-rose-50/30 rounded-2xl border border-rose-100/60 mb-6 text-xs">
+                                            <div>
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-rose-800 block mb-1">
+                                                    CREDIT ISSUED TO (CUSTOMER):
+                                                </span>
+                                                <p className="font-extrabold text-slate-900 text-sm">
+                                                    {creditNote.clientName || client?.name || "Client"}
+                                                </p>
+                                                <p className="text-slate-500 mt-0.5">
+                                                    {creditNote.clientAddress || client?.address || "United Arab Emirates"}
+                                                </p>
+                                                <p className="font-mono font-bold text-slate-700 mt-1">
+                                                    Client TRN: {creditNote.clientTrn || client?.trn || "N/A"}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-rose-800 block mb-1">
+                                                    REASON FOR TAX ADJUSTMENT:
+                                                </span>
+                                                <p className="text-slate-700 bg-white p-2.5 rounded-xl border border-rose-150 font-medium leading-relaxed">
+                                                    {creditNote.reason || "Cancellation/Revision of invoice with updated values."}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Line Items Table */}
+                                        <div className="overflow-hidden rounded-xl border border-slate-200 mb-6">
+                                            <table className="w-full text-xs">
+                                                <thead className="bg-slate-50 text-slate-600 font-black uppercase text-[10px] border-b border-slate-200">
+                                                    <tr>
+                                                        <th className="py-2.5 px-3 text-left">#</th>
+                                                        <th className="py-2.5 px-3 text-left">Description / Details</th>
+                                                        <th className="py-2.5 px-3 text-center">Qty</th>
+                                                        <th className="py-2.5 px-3 text-right">Taxable Rate</th>
+                                                        <th className="py-2.5 px-3 text-right">VAT (5%)</th>
+                                                        <th className="py-2.5 px-3 text-right">Total (AED)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {itemsList.map((li: any, idx: number) => {
+                                                        const rateVal = Number(li.rate || 0);
+                                                        const qVal = Number(li.quantity || 1);
+                                                        const totRow = rateVal * qVal;
+                                                        const vatRow = totRow * 0.05;
+                                                        const grossRow = totRow + vatRow;
+                                                        return (
+                                                            <tr key={li.id || idx}>
+                                                                <td className="py-2.5 px-3 font-mono text-slate-400">{idx + 1}</td>
+                                                                <td className="py-2.5 px-3">
+                                                                    <span className="font-bold text-slate-800 block">{li.name}</span>
+                                                                    {li.description && <span className="text-[10px] text-slate-400">{li.description}</span>}
+                                                                </td>
+                                                                <td className="py-2.5 px-3 text-center font-mono">{qVal}</td>
+                                                                <td className="py-2.5 px-3 text-right font-mono">AED {totRow.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                                <td className="py-2.5 px-3 text-right font-mono text-amber-700">AED {vatRow.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                                <td className="py-2.5 px-3 text-right font-mono font-black text-rose-600">AED {grossRow.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {/* Totals */}
+                                        <div className="flex justify-end mb-6">
+                                            <div className="w-full sm:w-1/2 space-y-2 text-xs">
+                                                <div className="flex justify-between text-slate-500 font-medium">
+                                                    <span>Taxable Amount Credited:</span>
+                                                    <span className="font-bold text-slate-800 font-mono">AED {taxVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                </div>
+                                                <div className="flex justify-between text-slate-500 font-medium">
+                                                    <span>Output VAT Credited (5%):</span>
+                                                    <span className="font-bold text-amber-700 font-mono">AED {vatVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center bg-rose-50 border border-rose-200 p-3 rounded-xl font-black text-sm text-rose-700 mt-2">
+                                                    <span>Total Value Credited (AED):</span>
+                                                    <span className="text-base font-mono">AED {totVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Footer / Signatures */}
+                                        <div className="border-t border-slate-100 pt-6 flex justify-between items-end text-xs">
+                                            <div className="text-[10px] text-slate-400 max-w-sm">
+                                                <p className="font-bold text-slate-600 mb-0.5">UAE VAT COMPLIANCE NOTE</p>
+                                                This Tax Credit Note is issued pursuant to Federal Decree-Law No. (8) of 2017 on Value Added Tax to adjust output tax on previously issued tax invoices.
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="w-32 border-b border-slate-300 h-8 ml-auto"></div>
+                                                <span className="text-[9px] font-black text-slate-900 uppercase block pt-1">AUTHORIZED SIGNATURE</span>
+                                                <span className="text-[8px] text-slate-400">Finance & Accounts Department</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* Local Fallback Credit Note Modal */}
+            {localCreditNoteModal && (
+                <TaxCreditNoteModal
+                    isOpen={true}
+                    onClose={() => setLocalCreditNoteModal(null)}
+                    initialData={localCreditNoteModal}
+                    invoices={data || []}
+                    clients={vendors || []}
+                    companies={companies || []}
+                    bankAccounts={bankAccounts || []}
+                    onSave={async (savedCN: CreditNote) => {
+                        if (onSaveCreditNote) {
+                            await onSaveCreditNote(savedCN);
+                        }
+                        setLocalCreditNoteModal(null);
+                    }}
+                />
+            )}
         </div>
     );
 };
@@ -14321,6 +15537,646 @@ const LiveCameraCapture = ({
                             Capture Photo
                         </button>
                     )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export const TaxCreditNoteModal = ({
+    creditNote,
+    initialData,
+    accountsReceivable,
+    invoices,
+    data,
+    projects = [],
+    suppliers = [],
+    vendors = [],
+    clients = [],
+    companies = [],
+    bankAccounts = [],
+    onSave,
+    onCancel,
+    onClose
+}: any) => {
+    const rawInvoices = accountsReceivable || invoices || data || [];
+    const rawClients = vendors?.length ? vendors : (clients || []);
+    const initialCN = creditNote || initialData;
+    const handleClose = onCancel || onClose || (() => {});
+
+    const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('');
+    const [invoiceSearchQuery, setInvoiceSearchQuery] = useState<string>('');
+    const [calcMode, setCalcMode] = useState<'total' | 'taxable'>('total');
+
+    const [formData, setFormData] = useState<CreditNote>(() => {
+        const defaultItem = { 
+            id: Math.random().toString(36).substr(2, 9), 
+            name: initialCN?.originalInvoiceNumber ? `Tax Credit against Invoice #${initialCN.originalInvoiceNumber}` : 'Tax Credit Note Adjustment', 
+            description: 'Credit against previously issued tax invoice', 
+            quantity: 1, 
+            rate: initialCN?.amount || initialCN?.totalAmount || 0, 
+            total: initialCN?.amount || initialCN?.totalAmount || 0 
+        };
+
+        if (initialCN && initialCN.id) {
+            const tot = Number(initialCN.totalAmount || 0);
+            const tax = initialCN.amount !== undefined ? Number(initialCN.amount) : Number((tot / 1.05).toFixed(2));
+            const vat = initialCN.vatAmount !== undefined ? Number(initialCN.vatAmount) : Number((tot - tax).toFixed(2));
+
+            return {
+                ...initialCN,
+                creditNoteNumber: initialCN.creditNoteNumber || `CN-${initialCN.originalInvoiceNumber || '001'}`,
+                date: initialCN.date || new Date().toISOString().split('T')[0],
+                originalInvoiceNumber: initialCN.originalInvoiceNumber || '',
+                originalInvoiceDate: initialCN.originalInvoiceDate || '',
+                originalInvoiceAmount: initialCN.originalInvoiceAmount || tot,
+                revisedInvoiceNumber: initialCN.revisedInvoiceNumber || '',
+                revisedInvoiceAmount: initialCN.revisedInvoiceAmount || 0,
+                entityId: initialCN.entityId || '',
+                entityType: initialCN.entityType || 'Vendor',
+                clientName: initialCN.clientName || '',
+                clientTrn: initialCN.clientTrn || '',
+                clientAddress: initialCN.clientAddress || '',
+                companyId: initialCN.companyId || (companies[0]?.id || ''),
+                companyName: initialCN.companyName || (companies[0]?.name || ''),
+                companyTrn: initialCN.companyTrn || (companies[0]?.trn || ''),
+                reason: initialCN.reason || 'Cancellation of previous invoice due to revision with updated billing amount.',
+                amount: tax,
+                vatAmount: vat,
+                totalAmount: tot,
+                status: initialCN.status || 'Issued',
+                items: initialCN.items && initialCN.items.length > 0 ? initialCN.items : [defaultItem],
+                createdAt: initialCN.createdAt || new Date().toISOString()
+            };
+        }
+
+        // Prefill from passed initial props (e.g. from table row click)
+        const initialTot = Number(initialCN?.totalAmount || initialCN?.originalInvoiceAmount || 0);
+        const initialTax = initialCN?.amount !== undefined ? Number(initialCN.amount) : Number((initialTot / 1.05).toFixed(2));
+        const initialVat = initialCN?.vatAmount !== undefined ? Number(initialCN.vatAmount) : Number((initialTot - initialTax).toFixed(2));
+        const initInvNum = initialCN?.originalInvoiceNumber || '';
+
+        return {
+            id: Math.random().toString(36).substr(2, 9),
+            creditNoteNumber: initInvNum ? `CN-${initInvNum}` : `CN-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+            date: initialCN?.date || new Date().toISOString().split('T')[0],
+            originalInvoiceNumber: initInvNum,
+            originalInvoiceDate: initialCN?.originalInvoiceDate || initialCN?.date || '',
+            originalInvoiceAmount: initialTot,
+            originalInvoiceId: initialCN?.originalInvoiceId || initialCN?.id || '',
+            revisedInvoiceNumber: initialCN?.revisedInvoiceNumber || (initInvNum ? `${initInvNum} (Revised)` : ''),
+            revisedInvoiceAmount: initialCN?.revisedInvoiceAmount || 0,
+            entityId: initialCN?.entityId || '',
+            entityType: initialCN?.entityType || 'Vendor',
+            clientName: initialCN?.clientName || '',
+            clientTrn: initialCN?.clientTrn || '',
+            clientAddress: initialCN?.clientAddress || '',
+            companyId: initialCN?.companyId || (companies[0]?.id || ''),
+            companyName: initialCN?.companyName || (companies[0]?.name || ''),
+            companyTrn: initialCN?.companyTrn || (companies[0]?.trn || ''),
+            reason: initialCN?.reason || (initInvNum ? `Cancellation of previous invoice #${initInvNum} due to revision with updated billing amount.` : 'Cancellation of previous invoice due to revision.'),
+            amount: initialTax,
+            vatAmount: initialVat,
+            totalAmount: initialTot,
+            status: 'Issued',
+            items: initialCN?.items && initialCN.items.length > 0 ? initialCN.items : [defaultItem],
+            createdAt: new Date().toISOString()
+        };
+    });
+
+    // Handle invoice selection from searchable picker
+    const handleSelectInvoice = (inv: any) => {
+        if (!inv) return;
+        setSelectedInvoiceId(inv.id);
+
+        const clientObj = (rawClients || []).find((v: any) => v.id === inv.entityId || v.id === inv.clientId) || 
+                          (projects || []).find((p: any) => p.id === inv.entityId || p.id === inv.projectId) || 
+                          (suppliers || []).find((s: any) => s.id === inv.entityId || s.id === inv.supplierId);
+        
+        const sellerComp = (companies || []).find((c: any) => c.id === inv.companyId || c.name === inv.companyName);
+
+        const totalVal = Number(inv.totalAmount || inv.amount || 0);
+        const taxableVal = inv.amount !== undefined ? Number(inv.amount) : Number((totalVal / 1.05).toFixed(2));
+        const vatVal = inv.vatAmount !== undefined ? Number(inv.vatAmount) : Number((totalVal - taxableVal).toFixed(2));
+
+        setFormData(prev => ({
+            ...prev,
+            originalInvoiceNumber: inv.invoiceNumber || '',
+            originalInvoiceDate: inv.date || '',
+            originalInvoiceAmount: totalVal,
+            originalInvoiceId: inv.id,
+            creditNoteNumber: prev.creditNoteNumber.startsWith('CN-') && !prev.creditNoteNumber.includes(inv.invoiceNumber) ? `CN-${inv.invoiceNumber}` : prev.creditNoteNumber,
+            entityId: inv.entityId || prev.entityId,
+            entityType: inv.entityType || prev.entityType,
+            clientName: clientObj?.name || inv.clientName || inv.contact || prev.clientName,
+            clientTrn: clientObj?.trn || inv.clientTrn || prev.clientTrn,
+            clientAddress: clientObj?.address || inv.clientAddress || prev.clientAddress,
+            companyId: inv.companyId || sellerComp?.id || prev.companyId,
+            companyName: sellerComp?.name || inv.companyName || prev.companyName,
+            companyTrn: sellerComp?.trn || inv.companyTrn || prev.companyTrn,
+            amount: taxableVal,
+            vatAmount: vatVal,
+            totalAmount: totalVal,
+            reason: `Full cancellation of previous invoice #${inv.invoiceNumber} (AED ${totalVal.toLocaleString()}) to facilitate replacement with revised invoice.`,
+            revisedInvoiceNumber: `${inv.invoiceNumber} (Revised)`,
+            items: inv.items && inv.items.length > 0 ? inv.items.map((it: any) => ({
+                id: Math.random().toString(36).substr(2, 9),
+                name: `Tax Credit against ${it.name || 'Invoice #' + inv.invoiceNumber}`,
+                description: it.description || 'Full credit of previous billed value',
+                quantity: it.quantity || 1,
+                rate: it.rate || it.total || 0,
+                total: it.total || (Number(it.quantity || 1) * Number(it.rate || 0))
+            })) : [
+                {
+                    id: Math.random().toString(36).substr(2, 9),
+                    name: `Tax Credit against Invoice #${inv.invoiceNumber}`,
+                    description: 'Full credit against previously issued tax invoice',
+                    quantity: 1,
+                    rate: taxableVal,
+                    total: taxableVal
+                }
+            ]
+        }));
+    };
+
+    // Filter available invoices for picker
+    const filteredInvoices = useMemo(() => {
+        const q = (invoiceSearchQuery || '').toLowerCase().trim();
+        const list = rawInvoices || [];
+        if (!q) return list;
+        return list.filter((inv: any) => {
+            const num = String(inv.invoiceNumber || '').toLowerCase();
+            const client = String(inv.clientName || '').toLowerCase();
+            const comp = String(inv.companyName || '').toLowerCase();
+            const desc = String(inv.description || '').toLowerCase();
+            const ref = String(inv.invoiceRef || '').toLowerCase();
+            return num.includes(q) || client.includes(q) || comp.includes(q) || desc.includes(q) || ref.includes(q);
+        });
+    }, [rawInvoices, invoiceSearchQuery]);
+
+    // Handle Total Amount Change (Auto calculates Taxable & 5% VAT)
+    const handleTotalAmountChange = (newTotal: number) => {
+        const safeTotal = Math.max(0, newTotal);
+        const taxable = Number((safeTotal / 1.05).toFixed(2));
+        const vat = Number((safeTotal - taxable).toFixed(2));
+        setFormData(prev => ({
+            ...prev,
+            totalAmount: safeTotal,
+            amount: taxable,
+            vatAmount: vat,
+            items: prev.items && prev.items.length === 1 ? [
+                { ...prev.items[0], rate: taxable, total: taxable }
+            ] : prev.items
+        }));
+    };
+
+    // Handle Taxable Amount Change (Auto calculates 5% VAT & Total)
+    const handleTaxableAmountChange = (newTaxable: number) => {
+        const safeTaxable = Math.max(0, newTaxable);
+        const vat = Number((safeTaxable * 0.05).toFixed(2));
+        const total = Number((safeTaxable + vat).toFixed(2));
+        setFormData(prev => ({
+            ...prev,
+            amount: safeTaxable,
+            vatAmount: vat,
+            totalAmount: total,
+            items: prev.items && prev.items.length === 1 ? [
+                { ...prev.items[0], rate: safeTaxable, total: safeTaxable }
+            ] : prev.items
+        }));
+    };
+
+    // Preset Reasons
+    const reasonPresets = [
+        {
+            label: "⚡ Invoice Revision",
+            text: `Cancellation of previous invoice #${formData.originalInvoiceNumber || 'INV'} due to revision with updated billing amount.`
+        },
+        {
+            label: "⚡ Full Invoice Cancellation",
+            text: `Full cancellation of Tax Invoice #${formData.originalInvoiceNumber || 'INV'} due to billing entry error / duplicate issue.`
+        },
+        {
+            label: "⚡ Commercial Discount / Rebate",
+            text: `Agreed commercial discount / rate rebate against Tax Invoice #${formData.originalInvoiceNumber || 'INV'}.`
+        },
+        {
+            label: "⚡ Scope / Timesheet Adjustment",
+            text: `Adjustment of billed hours/quantities as per certified site record against Invoice #${formData.originalInvoiceNumber || 'INV'}.`
+        }
+    ];
+
+    const handleSubmit = (downloadPDFAfter: boolean = false) => {
+        if (!formData.originalInvoiceNumber?.trim()) {
+            alert("Please specify the Original Tax Invoice Number being credited.");
+            return;
+        }
+        if (!formData.creditNoteNumber?.trim()) {
+            alert("Please specify a Credit Note Number (e.g. CN-2660).");
+            return;
+        }
+        if (formData.totalAmount <= 0) {
+            alert("Please enter a valid Credited Amount greater than 0.");
+            return;
+        }
+
+        const comp = (companies || []).find((c: any) => c.id === formData.companyId || c.name === formData.companyName);
+        const client = (rawClients || []).find((v: any) => v.id === formData.entityId) ||
+                       (projects || []).find((p: any) => p.id === formData.entityId) ||
+                       (suppliers || []).find((s: any) => s.id === formData.entityId) ||
+                       { name: formData.clientName, trn: formData.clientTrn, address: formData.clientAddress };
+
+        onSave(formData);
+
+        if (downloadPDFAfter) {
+            setTimeout(() => {
+                downloadTaxCreditNotePDF(formData, comp, client, bankAccounts);
+            }, 300);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl p-6 md:p-8 max-w-4xl w-full shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto border border-slate-100">
+                {/* Header */}
+                <div className="flex justify-between items-start border-b border-slate-100 pb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100">
+                            <Scale className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                                    {initialCN?.id ? 'Edit Tax Credit Note' : 'Issue Tax Credit Note / فاتورة ضريبية دائنة'}
+                                </h3>
+                                <span className="px-2.5 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                    UAE FTA VAT
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-400 font-medium mt-0.5">
+                                Official Tax Credit Note referencing the previous invoice to cancel or adjust amounts legally in UAE VAT books.
+                            </p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={handleClose} 
+                        className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                {/* Quick Link from Existing Invoices */}
+                <div className="bg-gradient-to-r from-rose-50/70 to-slate-50 p-4 rounded-2xl border border-rose-100 space-y-3">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                        <span className="text-xs font-black text-rose-800 uppercase tracking-wider flex items-center gap-1.5">
+                            <FileText className="w-4 h-4 text-rose-600" />
+                            <span>Quick Select from Invoices in System</span>
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-medium">Pick an invoice to auto-fill client, amounts, VAT, & TRN</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <input 
+                                type="text" 
+                                placeholder="Search by Invoice # (e.g. 2660), Client name..."
+                                value={invoiceSearchQuery}
+                                onChange={e => setInvoiceSearchQuery(e.target.value)}
+                                className="w-full px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-rose-500"
+                            />
+                        </div>
+                        <div>
+                            <select
+                                value={selectedInvoiceId}
+                                onChange={e => {
+                                    const selected = (rawInvoices || []).find((ar: any) => ar.id === e.target.value);
+                                    if (selected) handleSelectInvoice(selected);
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-rose-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-rose-500"
+                            >
+                                <option value="">-- Click to choose an invoice ({filteredInvoices.length} available) --</option>
+                                {filteredInvoices.map((inv: any) => {
+                                    const invNum = inv.invoiceNumber || inv.invoiceRef || inv.id || 'N/A';
+                                    const cName = inv.clientName || (rawClients.find((c: any) => c.id === inv.entityId)?.name) || (projects.find((p: any) => p.id === inv.entityId)?.name) || 'Client';
+                                    const compName = (companies || []).find((c: any) => c.id === inv.companyId)?.name || inv.companyName || '';
+                                    const amt = Number(inv.totalAmount || inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+                                    return (
+                                        <option key={inv.id} value={inv.id}>
+                                            INV #{invNum} | {cName} {compName ? `(${compName})` : ''} | AED {amt} ({inv.date || 'No Date'})
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Main Form Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Credit Note Number */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Credit Note Number *</label>
+                        <input 
+                            type="text" 
+                            placeholder="e.g. CN-2660"
+                            value={formData.creditNoteNumber}
+                            onChange={e => setFormData({ ...formData, creditNoteNumber: e.target.value })}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-500 font-mono"
+                        />
+                    </div>
+
+                    {/* Credit Note Date */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Credit Note Date *</label>
+                        <input 
+                            type="date" 
+                            value={formData.date}
+                            onChange={e => setFormData({ ...formData, date: e.target.value })}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
+                        />
+                    </div>
+
+                    {/* Status */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">Document Status</label>
+                        <select 
+                            value={formData.status}
+                            onChange={e => setFormData({ ...formData, status: e.target.value as any })}
+                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
+                        >
+                            <option value="Issued">Issued / Active</option>
+                            <option value="Applied">Applied in Books</option>
+                            <option value="Draft">Draft</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Original Invoice & Revision References */}
+                <div className="border border-slate-200 p-4 rounded-2xl bg-slate-50/50 space-y-3">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Original Invoice Being Credited / Revised</span>
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Original Invoice # *</label>
+                            <input 
+                                type="text"
+                                placeholder="e.g. 2660"
+                                value={formData.originalInvoiceNumber}
+                                onChange={e => setFormData({ ...formData, originalInvoiceNumber: e.target.value })}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none font-mono"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Original Invoice Date</label>
+                            <input 
+                                type="date"
+                                value={formData.originalInvoiceDate || ''}
+                                onChange={e => setFormData({ ...formData, originalInvoiceDate: e.target.value })}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Original Inv. Amount (AED)</label>
+                            <input 
+                                type="number"
+                                placeholder="e.g. 74279.10"
+                                value={formData.originalInvoiceAmount || ''}
+                                onChange={e => setFormData({ ...formData, originalInvoiceAmount: parseFloat(e.target.value) || 0 })}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase tracking-wider text-slate-400">Revised Invoice Ref (Optional)</label>
+                            <input 
+                                type="text"
+                                placeholder="e.g. 2660 (Revised) - AED 105,898.80"
+                                value={formData.revisedInvoiceNumber || ''}
+                                onChange={e => setFormData({ ...formData, revisedInvoiceNumber: e.target.value })}
+                                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Seller & Client Details */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Selling Entity (Pioneer Company) */}
+                    <div className="border border-slate-200 p-4 rounded-2xl bg-white space-y-3">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                            <Building className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Supplier / Seller Entity (Pioneer)</span>
+                        </span>
+                        <div className="space-y-2">
+                            <select 
+                                value={formData.companyId}
+                                onChange={e => {
+                                    const comp = (companies || []).find((c: any) => c.id === e.target.value);
+                                    setFormData({
+                                        ...formData,
+                                        companyId: e.target.value,
+                                        companyName: comp?.name || '',
+                                        companyTrn: comp?.trn || ''
+                                    });
+                                }}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none"
+                            >
+                                {(companies || []).map((c: any) => (
+                                    <option key={c.id} value={c.id}>{c.name} {c.trn ? `(TRN: ${c.trn})` : ''}</option>
+                                ))}
+                            </select>
+                            <input 
+                                type="text" 
+                                placeholder="Supplier TRN (Tax Registration Number)"
+                                value={formData.companyTrn || ''}
+                                onChange={e => setFormData({ ...formData, companyTrn: e.target.value })}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none font-mono"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Client / Recipient Entity */}
+                    <div className="border border-slate-200 p-4 rounded-2xl bg-white space-y-3">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                            <Users className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Client / Credited Recipient</span>
+                        </span>
+                        <div className="space-y-2">
+                            <input 
+                                type="text"
+                                placeholder="Client / Company Name (e.g. APCC / Al Nasr)"
+                                value={formData.clientName || ''}
+                                onChange={e => setFormData({ ...formData, clientName: e.target.value })}
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none"
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                                <input 
+                                    type="text" 
+                                    placeholder="Client TRN (VAT ID)"
+                                    value={formData.clientTrn || ''}
+                                    onChange={e => setFormData({ ...formData, clientTrn: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none font-mono"
+                                />
+                                <input 
+                                    type="text" 
+                                    placeholder="Client Address / Location"
+                                    value={formData.clientAddress || ''}
+                                    onChange={e => setFormData({ ...formData, clientAddress: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Reason for Issuing Credit Note */}
+                <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                            Reason for Credit Note / سبب إصدار الإشعار الدائن *
+                        </label>
+                        <span className="text-[10px] text-slate-400 font-medium">Click quick presets below to auto-fill</span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mb-2">
+                        {reasonPresets.map((preset, pIdx) => (
+                            <button
+                                key={pIdx}
+                                type="button"
+                                onClick={() => setFormData({ ...formData, reason: preset.text })}
+                                className="px-3 py-1 bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200 hover:border-rose-200 rounded-lg text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+                            >
+                                {preset.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <textarea 
+                        rows={2}
+                        value={formData.reason}
+                        onChange={e => setFormData({ ...formData, reason: e.target.value })}
+                        placeholder="e.g. Cancellation of previous invoice #2660 due to revision with updated billing amount of AED 105,898.80..."
+                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                </div>
+
+                {/* Amounts & 5% VAT Calculation Section */}
+                <div className="bg-rose-50/40 border border-rose-100 p-5 rounded-2xl space-y-4">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-rose-100 pb-3">
+                        <span className="text-xs font-black text-rose-900 uppercase tracking-wider flex items-center gap-2">
+                            <Percent className="w-4 h-4 text-rose-600" />
+                            <span>Credited Amounts & 5% UAE VAT Breakdown</span>
+                        </span>
+                        <div className="flex items-center gap-2 text-xs font-bold">
+                            <span className="text-slate-500">Entry Mode:</span>
+                            <button
+                                type="button"
+                                onClick={() => setCalcMode('total')}
+                                className={cn("px-2.5 py-1 rounded-lg transition-all", calcMode === 'total' ? "bg-rose-600 text-white shadow-2xs" : "bg-white text-slate-600 border border-slate-200")}
+                            >
+                                Enter Total (Incl. VAT)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCalcMode('taxable')}
+                                className={cn("px-2.5 py-1 rounded-lg transition-all", calcMode === 'taxable' ? "bg-rose-600 text-white shadow-2xs" : "bg-white text-slate-600 border border-slate-200")}
+                            >
+                                Enter Taxable Subtotal
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* Taxable Amount */}
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                Credited Taxable Amount (AED)
+                            </label>
+                            <input 
+                                type="number" 
+                                step="0.01"
+                                placeholder="0.00"
+                                value={formData.amount || ''}
+                                onChange={e => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    handleTaxableAmountChange(val);
+                                }}
+                                disabled={calcMode === 'total'}
+                                className={cn(
+                                    "w-full px-3 py-2.5 rounded-xl text-sm font-black outline-none font-mono",
+                                    calcMode === 'taxable' ? "bg-white border-2 border-rose-400 text-slate-900" : "bg-slate-100 border border-slate-200 text-slate-600 cursor-not-allowed"
+                                )}
+                            />
+                            <p className="text-[9px] text-slate-400">Net work / goods value before tax</p>
+                        </div>
+
+                        {/* 5% VAT Amount */}
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                Output VAT Credited (5.0%) (AED)
+                            </label>
+                            <input 
+                                type="number" 
+                                step="0.01"
+                                readOnly
+                                value={formData.vatAmount || 0}
+                                className="w-full px-3 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-black text-rose-700 outline-none font-mono cursor-not-allowed"
+                            />
+                            <p className="text-[9px] text-slate-400">Auto-calculated 5% VAT rate</p>
+                        </div>
+
+                        {/* Total Credited Amount */}
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black uppercase tracking-wider text-rose-900 font-bold">
+                                Grand Total Credited (AED) *
+                            </label>
+                            <input 
+                                type="number" 
+                                step="0.01"
+                                placeholder="e.g. 74279.10"
+                                value={formData.totalAmount || ''}
+                                onChange={e => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    handleTotalAmountChange(val);
+                                }}
+                                disabled={calcMode === 'taxable'}
+                                className={cn(
+                                    "w-full px-3 py-2.5 rounded-xl text-base font-black outline-none font-mono",
+                                    calcMode === 'total' ? "bg-white border-2 border-rose-600 text-rose-700 shadow-sm" : "bg-slate-100 border border-slate-200 text-slate-800 cursor-not-allowed"
+                                )}
+                            />
+                            <p className="text-[9px] text-rose-600 font-bold">Total amount credited on client statement</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer Actions */}
+                <div className="flex flex-col sm:flex-row justify-end items-center gap-3 pt-4 border-t border-slate-100">
+                    <button 
+                        type="button" 
+                        onClick={onCancel}
+                        className="w-full sm:w-auto px-5 py-3 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-600 transition"
+                    >
+                        Cancel
+                    </button>
+                    <button 
+                        type="button" 
+                        onClick={() => handleSubmit(false)}
+                        className="w-full sm:w-auto px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black transition shadow-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Save Credit Note</span>
+                    </button>
+                    <button 
+                        type="button" 
+                        onClick={() => handleSubmit(true)}
+                        className="w-full sm:w-auto px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black transition shadow-md shadow-rose-600/20 uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                        <Download className="w-4 h-4" />
+                        <span>Save & Download PDF</span>
+                    </button>
                 </div>
             </div>
         </div>
