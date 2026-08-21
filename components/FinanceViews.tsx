@@ -62,7 +62,7 @@ import {
   where 
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Vendor, AccountsPayable, AccountsReceivable, CreditNote, CreditNoteItem, PettyCash, 
+import { Vendor, AccountsPayable, AccountsReceivable, CreditNote, CreditNoteItem, InvoiceCheque, PettyCash, 
   Supplier, Project, SystemUser, UserRole, ProjectedExpense, EverydayExpense 
 } from '../types';
 import { PrintModal, PrintOptions } from './PrintModal';
@@ -5500,6 +5500,65 @@ export const downloadZohoInvoicePDF = (item: any, company?: any, client?: any, b
     doc.setTextColor(33, 37, 41);
     doc.text(`${defaultBank.swiftCode || "N/A"} / ${defaultBank.currency || "AED"}`, 42, finalBoxY + 25.5);
 
+    // Cheque Settlement Box (Parallel to Bank Details on Right)
+    const hasCheques = (item.cheques && item.cheques.length > 0) || (item.chequeNo || item.chequeDate || item.chequeAmount);
+    if (hasCheques) {
+        doc.setFillColor(254, 249, 235);
+        doc.setDrawColor(245, 158, 11);
+        doc.setLineWidth(0.35);
+        doc.roundedRect(118, finalBoxY, 74, 30, 2, 2, 'FD');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(8);
+        doc.setTextColor(180, 83, 9);
+        doc.text("Cheque Settlement:", 121, finalBoxY + 4.5);
+
+        if (item.cheques && item.cheques.length > 0) {
+            let chqY = finalBoxY + 9.5;
+            item.cheques.slice(0, 2).forEach((c: any, cIdx: number) => {
+                doc.setFont("Helvetica", "bold");
+                doc.setFontSize(6.8);
+                doc.setTextColor(100, 116, 139);
+                doc.text(`Chq #${c.chequeNo || (cIdx + 1)}:`, 121, chqY);
+                doc.setFont("Helvetica", "bold");
+                doc.setTextColor(33, 37, 41);
+                doc.text(`AED ${Number(c.chequeAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 189, chqY, { align: 'right' });
+                
+                chqY += 3.5;
+                doc.setFont("Helvetica", "normal");
+                doc.setFontSize(6.0);
+                doc.setTextColor(120, 120, 120);
+                const metaText = [c.chequeDate ? `Date: ${c.chequeDate}` : '', c.remarks || ''].filter(Boolean).join(' - ');
+                doc.text(metaText || 'Cheque Clearance', 121, chqY);
+                chqY += 4.5;
+            });
+            if (item.cheques.length > 2) {
+                doc.setFont("Helvetica", "bold");
+                doc.setFontSize(6.0);
+                doc.setTextColor(180, 83, 9);
+                doc.text(`+ ${item.cheques.length - 2} more cheque(s) recorded`, 121, chqY);
+            }
+        } else {
+            doc.setFont("Helvetica", "bold");
+            doc.setFontSize(6.8);
+            doc.setTextColor(100, 116, 139);
+            doc.text("Cheque No:", 121, finalBoxY + 9.5);
+            doc.setFont("Helvetica", "bold");
+            doc.setTextColor(33, 37, 41);
+            doc.text(item.chequeNo || "-", 150, finalBoxY + 9.5);
+
+            doc.setTextColor(100, 116, 139);
+            doc.text("Cheque Date:", 121, finalBoxY + 15.0);
+            doc.setTextColor(33, 37, 41);
+            doc.text(item.chequeDate || "-", 150, finalBoxY + 15.0);
+
+            doc.setTextColor(100, 116, 139);
+            doc.text("Cheque Amt:", 121, finalBoxY + 20.5);
+            doc.setTextColor(180, 83, 9);
+            doc.text(`AED ${Number(item.chequeAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 150, finalBoxY + 20.5);
+        }
+    }
+
     doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
     doc.rect(0, 289, 210, 8, 'F');
 
@@ -6447,7 +6506,16 @@ export const generatePdfSOA = ({
         }
 
         let chqStr = "-";
-        if (itm.chequeNo || itm.chequeDate || itm.chequeAmount) {
+        if (itm.cheques && Array.isArray(itm.cheques) && itm.cheques.length > 0) {
+            chqStr = itm.cheques.map((c: any, cIdx: number) => {
+                const parts = [];
+                if (c.chequeNo) parts.push(`Chq #${c.chequeNo}`);
+                if (c.chequeDate) parts.push(`Date: ${formatToDDMMYYYY(c.chequeDate)}`);
+                if (c.chequeAmount) parts.push(`Amt: ${Number(c.chequeAmount).toLocaleString()}`);
+                if (c.remarks) parts.push(`(${c.remarks})`);
+                return parts.join(" ");
+            }).join(" | ");
+        } else if (itm.chequeNo || itm.chequeDate || itm.chequeAmount) {
             const chqParts = [];
             if (itm.chequeNo) chqParts.push(`Chq #${itm.chequeNo}`);
             if (itm.chequeDate) chqParts.push(`Date: ${formatToDDMMYYYY(itm.chequeDate)}`);
@@ -6713,9 +6781,16 @@ export const downloadSOAExcel = (
         rowObj[isReceivable ? "Paid / Received Amount" : "Paid / Settled Amount"] = paidAmt;
         rowObj["Balance Amount"] = balanceAmt;
         rowObj["Payment Status"] = itm.status || 'Pending';
-        rowObj["Cheque Date"] = formatToDDMMYYYY(itm.chequeDate);
-        rowObj["Cheque Number"] = itm.chequeNo || '-';
-        rowObj["Cheque Amount"] = itm.chequeAmount || '-';
+        if (itm.cheques && Array.isArray(itm.cheques) && itm.cheques.length > 0) {
+            rowObj["Cheque Date"] = itm.cheques.map((c: any) => formatToDDMMYYYY(c.chequeDate)).filter(Boolean).join(", ");
+            rowObj["Cheque Number"] = itm.cheques.map((c: any) => c.chequeNo).filter(Boolean).join(", ");
+            rowObj["Cheque Amount"] = itm.cheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0);
+            rowObj["Cheques Breakdown"] = itm.cheques.map((c: any, i: number) => `Chq #${c.chequeNo || (i+1)}: AED ${Number(c.chequeAmount || 0).toLocaleString()} (${formatToDDMMYYYY(c.chequeDate)}${c.remarks ? ' - ' + c.remarks : ''})`).join(" | ");
+        } else {
+            rowObj["Cheque Date"] = formatToDDMMYYYY(itm.chequeDate);
+            rowObj["Cheque Number"] = itm.chequeNo || '-';
+            rowObj["Cheque Amount"] = itm.chequeAmount || '-';
+        }
 
         return rowObj;
     });
@@ -12456,6 +12531,32 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             return initialDate;
         })();
 
+        const initialCheques: InvoiceCheque[] = (() => {
+            if (base.cheques && Array.isArray(base.cheques) && base.cheques.length > 0) {
+                return base.cheques.map((c: any) => ({
+                    id: c.id || Math.random().toString(36).substr(2, 9),
+                    chequeNo: c.chequeNo || '',
+                    chequeDate: c.chequeDate || '',
+                    chequeAmount: Number(c.chequeAmount) || 0,
+                    bankName: c.bankName || '',
+                    remarks: c.remarks || '',
+                    status: c.status || 'Cleared'
+                }));
+            }
+            if (base.chequeNo || base.chequeDate || base.chequeAmount) {
+                return [{
+                    id: Math.random().toString(36).substr(2, 9),
+                    chequeNo: base.chequeNo || '',
+                    chequeDate: base.chequeDate || '',
+                    chequeAmount: Number(base.chequeAmount) || 0,
+                    bankName: '',
+                    remarks: '',
+                    status: 'Cleared'
+                }];
+            }
+            return [];
+        })();
+
         return {
             id: base.id || 'ap_' + Math.random().toString(36).substr(2, 9),
             date: initialDate,
@@ -12477,6 +12578,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             paid,
             payableAmount,
             paymentDate: base.paymentDate || base.clearDate || '',
+            cheques: initialCheques,
             chequeNo: base.chequeNo || '',
             chequeDate: base.chequeDate || '',
             chequeAmount: base.chequeAmount || '',
@@ -12664,6 +12766,54 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
             supplierCode,
             dueDate,
             siteInvoices
+        });
+    };
+
+    const handleAddCheque = (preset?: Partial<InvoiceCheque>) => {
+        const newCheque: InvoiceCheque = {
+            id: Math.random().toString(36).substr(2, 9),
+            chequeNo: preset?.chequeNo || '',
+            chequeDate: preset?.chequeDate || formData.date || new Date().toISOString().split('T')[0],
+            chequeAmount: preset?.chequeAmount !== undefined ? Number(preset.chequeAmount) : 0,
+            bankName: preset?.bankName || '',
+            remarks: preset?.remarks || '',
+            status: preset?.status || 'Cleared'
+        };
+        setFormData((prev: any) => ({
+            ...prev,
+            cheques: [...(prev.cheques || []), newCheque]
+        }));
+    };
+
+    const handleRemoveCheque = (id: string) => {
+        setFormData((prev: any) => ({
+            ...prev,
+            cheques: (prev.cheques || []).filter((c: any) => c.id !== id)
+        }));
+    };
+
+    const handleUpdateCheque = (id: string, field: keyof InvoiceCheque, value: any) => {
+        setFormData((prev: any) => ({
+            ...prev,
+            cheques: (prev.cheques || []).map((c: any) => {
+                if (c.id === id) {
+                    return { ...c, [field]: value };
+                }
+                return c;
+            })
+        }));
+    };
+
+    const handleAddBalanceCheque = () => {
+        const currentChequeSum = (formData.cheques || []).reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0);
+        const targetAmount = Number(formData.paid || formData.totalAmount || 0);
+        const remaining = Math.max(0, targetAmount - currentChequeSum);
+        
+        handleAddCheque({
+            chequeNo: '',
+            chequeDate: new Date().toISOString().split('T')[0],
+            chequeAmount: Number(remaining.toFixed(2)),
+            remarks: (formData.cheques && formData.cheques.length > 0) ? 'Balance Payment' : 'Settlement'
         });
     };
 
@@ -13391,42 +13541,137 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                         </div>
                     </div>
                     
-                    <div className="border border-slate-200/60 p-4 rounded-2xl bg-amber-50/20 space-y-3">
-                        <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-brand-600 rounded-full inline-block" />
-                            <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider">Cheque Settlement (Optional)</span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque No</label>
-                                <input 
-                                    type="text" 
-                                    placeholder="e.g. 10482"
-                                    value={formData.chequeNo || ''}
-                                    onChange={e => handleRecalculate({ chequeNo: e.target.value })}
-                                    className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs font-bold outline-none"
-                                />
+                    <div className="border border-slate-200/70 p-4 rounded-2xl bg-amber-50/20 space-y-3.5">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 bg-brand-600 rounded-full inline-block" />
+                                <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider">Cheque Settlement Details</span>
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Date</label>
-                                <input 
-                                    type="date" 
-                                    value={formData.chequeDate || ''}
-                                    onChange={e => handleRecalculate({ chequeDate: e.target.value })}
-                                    className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs font-bold outline-none"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Amt</label>
-                                <input 
-                                    type="number" 
-                                    placeholder="AED"
-                                    value={formData.chequeAmount || ''}
-                                    onChange={e => handleRecalculate({ chequeAmount: e.target.value ? Number(e.target.value) : '' })}
-                                    className="w-full px-2 py-1.5 bg-white border border-slate-250 rounded-lg text-xs font-bold outline-none"
-                                />
+                            <div className="flex items-center gap-2">
+                                {formData.cheques && formData.cheques.length > 0 && (
+                                    <span className="text-[10px] font-bold text-slate-500 bg-white px-2.5 py-1 rounded-full border border-slate-200 shadow-2xs">
+                                        {formData.cheques.length} Cheque{formData.cheques.length > 1 ? 's' : ''} (AED {formData.cheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                                    </span>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => handleAddCheque()}
+                                    className="px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                >
+                                    <Plus className="w-3 h-3" /> Add Cheque
+                                </button>
                             </div>
                         </div>
+
+                        {(!formData.cheques || formData.cheques.length === 0) ? (
+                            <div className="p-4 bg-white/80 rounded-xl border border-dashed border-slate-250 text-center space-y-2">
+                                <p className="text-xs text-slate-500 font-medium">No cheque records added for this payable.</p>
+                                <div className="flex items-center justify-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleAddCheque()}
+                                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <Plus className="w-3.5 h-3.5 text-brand-600" /> Enter First Cheque
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleAddBalanceCheque}
+                                        className="px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <CreditCard className="w-3.5 h-3.5" /> Auto-fill Total Amount (AED {Number(formData.paid || formData.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {formData.cheques.map((c: any, index: number) => (
+                                    <div key={c.id || index} className="p-3 bg-white rounded-xl border border-slate-200/90 shadow-2xs space-y-2 relative">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black uppercase tracking-wider text-brand-700 bg-brand-50 px-2 py-0.5 rounded-md">
+                                                Cheque #{index + 1}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemoveCheque(c.id)}
+                                                className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
+                                                title="Remove this cheque"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque No *</label>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="e.g. 10482"
+                                                    value={c.chequeNo || ''}
+                                                    onChange={e => handleUpdateCheque(c.id, 'chequeNo', e.target.value)}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-brand-500 transition"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Date *</label>
+                                                <input 
+                                                    type="date" 
+                                                    value={c.chequeDate || ''}
+                                                    onChange={e => handleUpdateCheque(c.id, 'chequeDate', e.target.value)}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-brand-500 transition"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Amount (AED) *</label>
+                                                <input 
+                                                    type="number" 
+                                                    placeholder="0.00"
+                                                    value={c.chequeAmount !== undefined ? c.chequeAmount : ''}
+                                                    onChange={e => handleUpdateCheque(c.id, 'chequeAmount', e.target.value ? Number(e.target.value) : '')}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-brand-500 transition font-mono"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Bank Name (Optional)</label>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="e.g. Emirates NBD, ADCB, DIB"
+                                                    value={c.bankName || ''}
+                                                    onChange={e => handleUpdateCheque(c.id, 'bankName', e.target.value)}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:bg-white focus:border-brand-500 transition"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Remarks / Purpose</label>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="e.g. advance installment, balance clearing"
+                                                    value={c.remarks || ''}
+                                                    onChange={e => handleUpdateCheque(c.id, 'remarks', e.target.value)}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:bg-white focus:border-brand-500 transition"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                                    <button
+                                        type="button"
+                                        onClick={handleAddBalanceCheque}
+                                        className="text-[11px] font-bold text-brand-600 hover:text-brand-800 flex items-center gap-1 hover:underline cursor-pointer"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" /> Add another cheque for remaining balance
+                                    </button>
+                                    <span className="text-[11px] font-bold text-slate-600">
+                                        Total Cheques: <strong className="font-mono text-brand-700">AED {formData.cheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -13464,7 +13709,23 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                         if (foundConflict) {
                             setDuplicateConflict(foundConflict);
                         } else {
-                            onSave(formData);
+                            const validCheques = (formData.cheques || []).filter((c: any) => 
+                                (c.chequeNo && String(c.chequeNo).trim()) || 
+                                (c.chequeDate && String(c.chequeDate).trim()) || 
+                                (Number(c.chequeAmount) > 0) || 
+                                (c.remarks && String(c.remarks).trim())
+                            );
+                            const combinedChequeNo = validCheques.map((c: any) => c.chequeNo).filter(Boolean).join(', ') || '';
+                            const combinedChequeDate = validCheques.length > 0 ? (validCheques[validCheques.length - 1].chequeDate || validCheques[0].chequeDate || '') : '';
+                            const combinedChequeAmount = validCheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0);
+
+                            onSave({
+                                ...formData,
+                                cheques: validCheques,
+                                chequeNo: combinedChequeNo,
+                                chequeDate: combinedChequeDate,
+                                chequeAmount: combinedChequeAmount
+                            });
                         }
                     };
 
@@ -13870,7 +14131,35 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                         </p>
                     ` : ''}
 
-                    ${item.chequeNo || item.chequeDate || item.chequeAmount ? `
+                    ${item.cheques && item.cheques.length > 0 ? `
+                        <div class="section-title">Cheque Settlement Information (${item.cheques.length} Cheque${item.cheques.length > 1 ? 's' : ''})</div>
+                        <table style="width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px;">
+                            <thead>
+                                <tr style="background-color: #f8fafc; border-bottom: 1px solid #cbd5e1; text-align: left;">
+                                    <th style="padding: 6px 8px;">#</th>
+                                    <th style="padding: 6px 8px;">Cheque No</th>
+                                    <th style="padding: 6px 8px;">Date</th>
+                                    <th style="padding: 6px 8px;">Remarks / Bank</th>
+                                    <th style="padding: 6px 8px; text-align: right;">Amount (AED)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${item.cheques.map((c: any, i: number) => `
+                                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                                        <td style="padding: 6px 8px; font-weight: bold;">${i + 1}</td>
+                                        <td style="padding: 6px 8px; font-family: monospace; font-weight: bold;">${c.chequeNo || '-'}</td>
+                                        <td style="padding: 6px 8px;">${c.chequeDate || '-'}</td>
+                                        <td style="padding: 6px 8px; color: #64748b;">${c.remarks || c.bankName || '-'}</td>
+                                        <td style="padding: 6px 8px; text-align: right; font-family: monospace; font-weight: bold;">AED ${(Number(c.chequeAmount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    </tr>
+                                `).join('')}
+                                <tr style="background-color: #f1f5f9; font-weight: bold;">
+                                    <td colspan="4" style="padding: 6px 8px; text-align: right;">Total Cheques Value:</td>
+                                    <td style="padding: 6px 8px; text-align: right; font-family: monospace; color: #2563eb;">AED ${item.cheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    ` : (item.chequeNo || item.chequeDate || item.chequeAmount ? `
                         <div class="section-title">Cheque Settlement Information</div>
                         <div class="grid">
                             <div class="grid-col">
@@ -13886,7 +14175,7 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                                 <span class="value value-mono">AED ${(item.chequeAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
                         </div>
-                    ` : ''}
+                    ` : '')}
 
                     <div style="margin-top: 50px; font-size: 9px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 15px;">
                         Pioneer DMS Portal • Automated Ledger Audit Copy • ID: ${item.id}
@@ -14112,26 +14401,58 @@ export const AccountsPayableDetailModal = ({ item, vendors, suppliers, projects,
                     </div>
 
                     {/* Cheque settlement info rendering if exists */}
-                    {(item.chequeNo || item.chequeDate || item.chequeAmount) && (
-                        <div className="bg-amber-50/15 p-5 rounded-2xl border border-amber-100/40 space-y-2">
-                            <div className="flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 bg-brand-600 rounded-full inline-block" />
-                                <span className="text-[10px] font-black uppercase text-brand-600 tracking-wider">Cheque Settlement Status</span>
+                    {((item.cheques && item.cheques.length > 0) || item.chequeNo || item.chequeDate || item.chequeAmount) && (
+                        <div className="bg-amber-50/20 p-5 rounded-2xl border border-amber-100/60 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-blue-600 rounded-full inline-block" />
+                                    <span className="text-[10px] font-black uppercase text-blue-700 tracking-wider">Cheque Settlement Details</span>
+                                </div>
+                                {item.cheques && item.cheques.length > 0 && (
+                                    <span className="text-[10px] font-bold text-slate-500 bg-white px-2.5 py-0.5 rounded-full border border-slate-200">
+                                        {item.cheques.length} Cheque{item.cheques.length > 1 ? 's' : ''} • Total: <strong className="font-mono text-blue-700 font-black">AED {item.cheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                                    </span>
+                                )}
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                                <div>
-                                    <span className="text-slate-450 font-bold block">Cheque Number:</span>
-                                    <span className="font-mono font-black text-slate-700">{item.chequeNo || '-'}</span>
+                            {item.cheques && item.cheques.length > 0 ? (
+                                <div className="space-y-2">
+                                    {item.cheques.map((c: any, i: number) => (
+                                        <div key={i} className="bg-white p-3 rounded-xl border border-slate-200/70 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 font-bold block uppercase">Cheque #{i + 1}</span>
+                                                <span className="font-mono font-black text-slate-800">{c.chequeNo || '-'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 font-bold block uppercase">Date</span>
+                                                <span className="font-bold text-slate-700">{c.chequeDate || '-'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 font-bold block uppercase">Amount</span>
+                                                <span className="font-mono font-black text-blue-600">AED {(Number(c.chequeAmount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] text-slate-400 font-bold block uppercase">Remarks</span>
+                                                <span className="font-medium text-slate-600 truncate block">{c.remarks || c.bankName || '-'}</span>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div>
-                                    <span className="text-slate-450 font-bold block">Cheque Date:</span>
-                                    <span className="font-bold text-slate-700">{item.chequeDate || '-'}</span>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                                    <div>
+                                        <span className="text-slate-450 font-bold block">Cheque Number:</span>
+                                        <span className="font-mono font-black text-slate-700">{item.chequeNo || '-'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-450 font-bold block">Cheque Date:</span>
+                                        <span className="font-bold text-slate-700">{item.chequeDate || '-'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-450 font-bold block">Cheque Paid Value:</span>
+                                        <span className="font-mono font-black text-brand-600">AED {(item.chequeAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                    </div>
                                 </div>
-                                <div>
-                                    <span className="text-slate-450 font-bold block">Cheque Paid Value:</span>
-                                    <span className="font-mono font-black text-brand-600">AED {(item.chequeAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                </div>
-                            </div>
+                            )}
                         </div>
                     )}
 
@@ -14254,6 +14575,32 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             let initialRecAmt = ar.receivedAmount !== undefined ? Number(ar.receivedAmount) : (ar.paidAmount !== undefined ? Number(ar.paidAmount) : (initialStatus === 'Received' ? totalAmt : 0));
             let initialBalAmt = ar.balanceAmount !== undefined ? Number(ar.balanceAmount) : (initialStatus === 'Received' ? 0 : Math.max(0, totalAmt - initialRecAmt));
 
+            const initialCheques: InvoiceCheque[] = (() => {
+                if (ar.cheques && Array.isArray(ar.cheques) && ar.cheques.length > 0) {
+                    return ar.cheques.map((c: any) => ({
+                        id: c.id || Math.random().toString(36).substr(2, 9),
+                        chequeNo: c.chequeNo || '',
+                        chequeDate: c.chequeDate || '',
+                        chequeAmount: Number(c.chequeAmount) || 0,
+                        bankName: c.bankName || '',
+                        remarks: c.remarks || '',
+                        status: c.status || 'Cleared'
+                    }));
+                }
+                if (ar.chequeNo || ar.chequeDate || ar.chequeAmount) {
+                    return [{
+                        id: Math.random().toString(36).substr(2, 9),
+                        chequeNo: ar.chequeNo || '',
+                        chequeDate: ar.chequeDate || '',
+                        chequeAmount: Number(ar.chequeAmount) || 0,
+                        bankName: '',
+                        remarks: '',
+                        status: 'Cleared'
+                    }];
+                }
+                return [];
+            })();
+
             return {
                 ...ar,
                 description: ar.description && ar.description.trim() ? ar.description : DEFAULT_INVOICE_VERIFICATION_NOTE,
@@ -14274,6 +14621,10 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                 balanceAmount: initialBalAmt,
                 receivedDate: ar.receivedDate || '',
                 partialPaymentNotes: ar.partialPaymentNotes || '',
+                cheques: initialCheques,
+                chequeNo: ar.chequeNo || '',
+                chequeDate: ar.chequeDate || '',
+                chequeAmount: ar.chequeAmount || '',
                 dueDate: ar.dueDate || ar.date || new Date().toISOString().split('T')[0],
                 invoiceRef: ar.invoiceRef || '',
                 monthOf: ar.monthOf || '',
@@ -14323,6 +14674,10 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             balanceAmount: 0,
             receivedDate: '',
             partialPaymentNotes: '',
+            cheques: [] as InvoiceCheque[],
+            chequeNo: '',
+            chequeDate: '',
+            chequeAmount: '',
             companyId: companies && companies.length > 0 ? companies[0].id : '',
             companyName: companies && companies.length > 0 ? companies[0].name : '',
             items: [defaultItem]
@@ -14470,6 +14825,56 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
             ...formData,
             companyId: id,
             companyName: comp ? comp.name : ''
+        });
+    };
+
+    const handleAddCheque = (preset?: Partial<InvoiceCheque>) => {
+        const newCheque: InvoiceCheque = {
+            id: Math.random().toString(36).substr(2, 9),
+            chequeNo: preset?.chequeNo || '',
+            chequeDate: preset?.chequeDate || formData.date || new Date().toISOString().split('T')[0],
+            chequeAmount: preset?.chequeAmount !== undefined ? Number(preset.chequeAmount) : 0,
+            bankName: preset?.bankName || '',
+            remarks: preset?.remarks || '',
+            status: preset?.status || 'Cleared'
+        };
+        setFormData((prev: any) => ({
+            ...prev,
+            cheques: [...(prev.cheques || []), newCheque]
+        }));
+    };
+
+    const handleRemoveCheque = (id: string) => {
+        setFormData((prev: any) => ({
+            ...prev,
+            cheques: (prev.cheques || []).filter((c: any) => c.id !== id)
+        }));
+    };
+
+    const handleUpdateCheque = (id: string, field: keyof InvoiceCheque, value: any) => {
+        setFormData((prev: any) => ({
+            ...prev,
+            cheques: (prev.cheques || []).map((c: any) => {
+                if (c.id === id) {
+                    return { ...c, [field]: value };
+                }
+                return c;
+            })
+        }));
+    };
+
+    const handleAddBalanceCheque = () => {
+        const currentChequeSum = (formData.cheques || []).reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0);
+        const targetAmount = formData.status === 'Partially Received' 
+            ? Number(formData.receivedAmount || 0) 
+            : Number(formData.totalAmount || 0);
+        const remaining = Math.max(0, targetAmount - currentChequeSum);
+        
+        handleAddCheque({
+            chequeNo: '',
+            chequeDate: new Date().toISOString().split('T')[0],
+            chequeAmount: Number(remaining.toFixed(2)),
+            remarks: (formData.cheques && formData.cheques.length > 0) ? 'Balance Payment' : 'Full Settlement'
         });
     };
 
@@ -15044,42 +15449,140 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                 </p>
                             </div>
 
-                            <div className="border border-slate-200/60 p-4 rounded-2xl bg-amber-50/20 space-y-3">
-                                <div className="flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 bg-blue-600 rounded-full inline-block" />
-                                    <span className="text-[10px] font-black uppercase text-blue-600 tracking-wider">Cheque Settlement (Optional)</span>
-                                </div>
-                                <div className="grid grid-cols-3 gap-2">
-                                    <div className="space-y-1">
-                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque No</label>
-                                        <input 
-                                            type="text" 
-                                            placeholder="e.g. 5032"
-                                            value={formData.chequeNo || ''}
-                                            onChange={e => setFormData({ ...formData, chequeNo: e.target.value })}
-                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none"
-                                        />
+                            <div className="border border-slate-200/70 p-4 rounded-2xl bg-amber-50/20 space-y-3.5">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-blue-600 rounded-full inline-block" />
+                                        <span className="text-[10px] font-black uppercase text-blue-600 tracking-wider">Cheque Settlement Details</span>
                                     </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Date</label>
-                                        <input 
-                                            type="date" 
-                                            value={formData.chequeDate || ''}
-                                            onChange={e => setFormData({ ...formData, chequeDate: e.target.value })}
-                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Amt</label>
-                                        <input 
-                                            type="number" 
-                                            placeholder="AED"
-                                            value={formData.chequeAmount || ''}
-                                            onChange={e => setFormData({ ...formData, chequeAmount: e.target.value ? Number(e.target.value) : '' })}
-                                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none"
-                                        />
+                                    <div className="flex items-center gap-2">
+                                        {formData.cheques && formData.cheques.length > 0 && (
+                                            <span className="text-[10px] font-bold text-slate-500 bg-white px-2.5 py-1 rounded-full border border-slate-200 shadow-2xs">
+                                                {formData.cheques.length} Cheque{formData.cheques.length > 1 ? 's' : ''} (AED {formData.cheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                                            </span>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAddCheque()}
+                                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                        >
+                                            <Plus className="w-3 h-3" /> Add Cheque
+                                        </button>
                                     </div>
                                 </div>
+
+                                {(!formData.cheques || formData.cheques.length === 0) ? (
+                                    <div className="p-4 bg-white/80 rounded-xl border border-dashed border-slate-250 text-center space-y-2">
+                                        <p className="text-xs text-slate-500 font-medium">No cheque records added for this invoice.</p>
+                                        <div className="flex items-center justify-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAddCheque()}
+                                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                            >
+                                                <Plus className="w-3.5 h-3.5 text-blue-600" /> Enter First Cheque
+                                            </button>
+                                            {formData.status === 'Partially Received' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddBalanceCheque}
+                                                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <CreditCard className="w-3.5 h-3.5" /> Auto-fill Received Amount (AED {Number(formData.receivedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {formData.cheques.map((c: any, index: number) => (
+                                            <div key={c.id || index} className="p-3 bg-white rounded-xl border border-slate-200/90 shadow-2xs space-y-2 relative">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
+                                                        Cheque #{index + 1}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveCheque(c.id)}
+                                                        className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
+                                                        title="Remove this cheque"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque No *</label>
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="e.g. 5032"
+                                                            value={c.chequeNo || ''}
+                                                            onChange={e => handleUpdateCheque(c.id, 'chequeNo', e.target.value)}
+                                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-blue-500 transition"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Date *</label>
+                                                        <input 
+                                                            type="date" 
+                                                            value={c.chequeDate || ''}
+                                                            onChange={e => handleUpdateCheque(c.id, 'chequeDate', e.target.value)}
+                                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-blue-500 transition"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Amount (AED) *</label>
+                                                        <input 
+                                                            type="number" 
+                                                            placeholder="0.00"
+                                                            value={c.chequeAmount !== undefined ? c.chequeAmount : ''}
+                                                            onChange={e => handleUpdateCheque(c.id, 'chequeAmount', e.target.value ? Number(e.target.value) : '')}
+                                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-blue-500 transition font-mono"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Bank Name (Optional)</label>
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="e.g. Emirates NBD, ADCB, DIB"
+                                                            value={c.bankName || ''}
+                                                            onChange={e => handleUpdateCheque(c.id, 'bankName', e.target.value)}
+                                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:bg-white focus:border-blue-500 transition"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Remarks / Collection Notes</label>
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder="e.g. 1st installment, balance settlement"
+                                                            value={c.remarks || ''}
+                                                            onChange={e => handleUpdateCheque(c.id, 'remarks', e.target.value)}
+                                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:bg-white focus:border-blue-500 transition"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {/* Helper action to add balance cheque if total of cheques < grand total or received amount */}
+                                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={handleAddBalanceCheque}
+                                                className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline cursor-pointer"
+                                            >
+                                                <Plus className="w-3.5 h-3.5" /> Add another cheque for remaining balance
+                                            </button>
+                                            <span className="text-[11px] font-bold text-slate-600">
+                                                Total Cheques: <strong className="font-mono text-blue-700">AED {formData.cheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -15269,8 +15772,22 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                         if (foundConflict) {
                             setDuplicateConflict(foundConflict);
                         } else {
+                            const validCheques = (formData.cheques || []).filter((c: any) => 
+                                (c.chequeNo && String(c.chequeNo).trim()) || 
+                                (c.chequeDate && String(c.chequeDate).trim()) || 
+                                (Number(c.chequeAmount) > 0) || 
+                                (c.remarks && String(c.remarks).trim())
+                            );
+                            const combinedChequeNo = validCheques.map((c: any) => c.chequeNo).filter(Boolean).join(', ') || '';
+                            const combinedChequeDate = validCheques.length > 0 ? (validCheques[validCheques.length - 1].chequeDate || validCheques[0].chequeDate || '') : '';
+                            const combinedChequeAmount = validCheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0);
+
                             onSave({
                                 ...formData,
+                                cheques: validCheques,
+                                chequeNo: combinedChequeNo,
+                                chequeDate: combinedChequeDate,
+                                chequeAmount: combinedChequeAmount,
                                 receivedAmount: recAmt,
                                 paidAmount: recAmt,
                                 balanceAmount: balAmt,

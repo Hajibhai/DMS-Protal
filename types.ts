@@ -337,11 +337,22 @@ export interface AccountsReceivable {
     chequeNo?: string;
     chequeDate?: string;
     chequeAmount?: number;
+    cheques?: InvoiceCheque[];
     invoiceRef?: string;
     monthOf?: string;
     projectLpoNo?: string;
     startDate?: string;
     endDate?: string;
+}
+
+export interface InvoiceCheque {
+    id: string;
+    chequeNo: string;
+    chequeDate: string;
+    chequeAmount: number;
+    bankName?: string;
+    remarks?: string;
+    status?: 'Pending' | 'Cleared' | 'Bounced' | 'Deposited';
 }
 
 export interface CreditNoteItem {

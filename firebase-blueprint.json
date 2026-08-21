@@ -237,7 +237,11 @@
         "status": { "type": "string", "enum": ["Pending", "Received", "Partially Received"] },
         "dueDate": { "type": "string" },
         "receivedDate": { "type": "string" },
-        "attachment": { "type": "string" }
+        "attachment": { "type": "string" },
+        "chequeNo": { "type": "string" },
+        "chequeDate": { "type": "string" },
+        "chequeAmount": { "type": "number" },
+        "cheques": { "type": "array" }
       },
       "required": ["id", "date", "invoiceNumber", "amount", "status"]
     },

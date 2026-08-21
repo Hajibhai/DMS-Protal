@@ -14542,6 +14542,20 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
     const [previewAttachment, setPreviewAttachment] = useState<{ data: string; name: string } | null>(null);
     const canManagePayroll = user?.permissions?.canManagePayroll;
 
+    // --- Enhanced Filters State ---
+    const [periodFilter, setPeriodFilter] = useState<'month' | 'all' | 'custom'>('month');
+    const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    });
+    const [customRange, setCustomRange] = useState<{ from: string; to: string }>({ from: '', to: '' });
+    const [selectedCategory, setSelectedCategory] = useState<string>('all');
+    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
+    const [selectedCompany, setSelectedCompany] = useState<string>('all');
+    const [attachmentFilter, setAttachmentFilter] = useState<'all' | 'with_receipt' | 'without_receipt'>('all');
+    const [sortBy, setSortBy] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc' | 'name_asc'>('date_desc');
+    const [filterStaffSearch, setFilterStaffSearch] = useState('');
+
     const handleAdd = async () => {
         if(newItem.employeeId && newItem.amount && newItem.date) {
             await saveDeduction(newItem as any);
@@ -14703,46 +14717,784 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
         doc.save(`Deduction_Record_${emp?.name ? emp.name.replace(/\s+/g, '_') : 'Employee'}_${d.date}.pdf`);
     };
 
+    // Calculate dynamic available months from all deduction records
+    const availableMonths = useMemo(() => {
+        const map = new Map<string, { count: number; total: number }>();
+        deductions.forEach((d: DeductionRecord) => {
+            if (!d.date) return;
+            const dObj = new Date(d.date);
+            if (isNaN(dObj.getTime())) return;
+            const ym = `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}`;
+            const cur = map.get(ym) || { count: 0, total: 0 };
+            cur.count += 1;
+            cur.total += Number(d.amount) || 0;
+            map.set(ym, cur);
+        });
+
+        // Ensure current month is present
+        const now = new Date();
+        const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        if (!map.has(curYm)) {
+            map.set(curYm, { count: 0, total: 0 });
+        }
+
+        return Array.from(map.entries())
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([ym, data]) => {
+                const [year, month] = ym.split('-');
+                const monthName = new Date(Number(year), Number(month) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+                return {
+                    key: ym,
+                    label: monthName,
+                    count: data.count,
+                    total: data.total
+                };
+            });
+    }, [deductions]);
+
+    // Prev / Next Month Helpers
+    const handlePrevMonth = () => {
+        if (!selectedMonth) return;
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const prevDate = new Date(year, month - 2, 1);
+        const prevYm = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+        setSelectedMonth(prevYm);
+        setPeriodFilter('month');
+    };
+
+    const handleNextMonth = () => {
+        if (!selectedMonth) return;
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const nextDate = new Date(year, month, 1);
+        const nextYm = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`;
+        setSelectedMonth(nextYm);
+        setPeriodFilter('month');
+    };
+
+    // Filter and sort deductions
     const filteredDeductions = useMemo(() => {
         return deductions.filter((d: DeductionRecord) => {
             const emp = employees.find((e: Employee) => e.id === d.employeeId);
             const company = companies.find((c: Company) => c.name === emp?.company);
-            const search = searchTerm.toLowerCase();
-            return (
-                (emp?.name?.toLowerCase() || '').includes(search) ||
-                (emp?.code?.toLowerCase() || '').includes(search) ||
-                (company?.code?.toLowerCase() || '').includes(search) ||
-                (d.type?.toLowerCase() || '').includes(search) ||
-                (d.note && (d.note?.toLowerCase() || '').includes(search))
-            );
+
+            // Month / Date Filtering
+            if (periodFilter === 'month') {
+                if (selectedMonth) {
+                    const dDate = new Date(d.date);
+                    if (!isNaN(dDate.getTime())) {
+                        const dYm = `${dDate.getFullYear()}-${String(dDate.getMonth() + 1).padStart(2, '0')}`;
+                        if (dYm !== selectedMonth) return false;
+                    } else {
+                        return false;
+                    }
+                }
+            } else if (periodFilter === 'custom') {
+                if (customRange.from && d.date < customRange.from) return false;
+                if (customRange.to && d.date > customRange.to) return false;
+            }
+
+            // Category filter
+            if (selectedCategory !== 'all' && d.type !== selectedCategory) {
+                return false;
+            }
+
+            // Employee filter
+            if (selectedEmployeeId !== 'all' && d.employeeId !== selectedEmployeeId) {
+                return false;
+            }
+
+            // Company filter
+            if (selectedCompany !== 'all' && emp?.company !== selectedCompany) {
+                return false;
+            }
+
+            // Attachment filter
+            if (attachmentFilter === 'with_receipt') {
+                if (!d.attachment && !d.googleDriveLink) return false;
+            } else if (attachmentFilter === 'without_receipt') {
+                if (d.attachment || d.googleDriveLink) return false;
+            }
+
+            // Text search
+            if (searchTerm.trim()) {
+                const search = searchTerm.toLowerCase();
+                const match = 
+                    (emp?.name?.toLowerCase() || '').includes(search) ||
+                    (emp?.code?.toLowerCase() || '').includes(search) ||
+                    (emp?.nickName?.toLowerCase() || '').includes(search) ||
+                    (company?.code?.toLowerCase() || '').includes(search) ||
+                    (company?.name?.toLowerCase() || '').includes(search) ||
+                    (d.type?.toLowerCase() || '').includes(search) ||
+                    (d.id?.toLowerCase() || '').includes(search) ||
+                    (d.note && (d.note?.toLowerCase() || '').includes(search)) ||
+                    (String(d.amount).includes(search));
+                if (!match) return false;
+            }
+
+            return true;
+        }).sort((a: DeductionRecord, b: DeductionRecord) => {
+            if (sortBy === 'date_desc') {
+                return new Date(b.date).getTime() - new Date(a.date).getTime();
+            } else if (sortBy === 'date_asc') {
+                return new Date(a.date).getTime() - new Date(b.date).getTime();
+            } else if (sortBy === 'amount_desc') {
+                return (Number(b.amount) || 0) - (Number(a.amount) || 0);
+            } else if (sortBy === 'amount_asc') {
+                return (Number(a.amount) || 0) - (Number(b.amount) || 0);
+            } else if (sortBy === 'name_asc') {
+                const empA = employees.find((e: any) => e.id === a.employeeId)?.name || '';
+                const empB = employees.find((e: any) => e.id === b.employeeId)?.name || '';
+                return empA.localeCompare(empB);
+            }
+            return 0;
         });
-    }, [deductions, employees, searchTerm, companies]);
+    }, [deductions, employees, companies, periodFilter, selectedMonth, customRange, selectedCategory, selectedEmployeeId, selectedCompany, attachmentFilter, searchTerm, sortBy]);
+
+    // Live KPI metrics based on filtered records
+    const kpiSummary = useMemo(() => {
+        let totalAmount = 0;
+        let salaryAdvanceAmount = 0;
+        let salaryAdvanceCount = 0;
+        let fineAmount = 0;
+        let fineCount = 0;
+        let damageOrLoanAmount = 0;
+        let damageOrLoanCount = 0;
+        let otherAmount = 0;
+        let otherCount = 0;
+
+        filteredDeductions.forEach((d: DeductionRecord) => {
+            const amt = Number(d.amount) || 0;
+            totalAmount += amt;
+
+            if (d.type === 'Salary Advance') {
+                salaryAdvanceAmount += amt;
+                salaryAdvanceCount += 1;
+            } else if (d.type === 'Fine Amount' || d.type === 'Penalty') {
+                fineAmount += amt;
+                fineCount += 1;
+            } else if (d.type === 'Damage Material/Asset' || d.type === 'Loan Amount') {
+                damageOrLoanAmount += amt;
+                damageOrLoanCount += 1;
+            } else {
+                otherAmount += amt;
+                otherCount += 1;
+            }
+        });
+
+        return {
+            totalAmount,
+            totalCount: filteredDeductions.length,
+            salaryAdvanceAmount,
+            salaryAdvanceCount,
+            fineAmount,
+            fineCount,
+            damageOrLoanAmount,
+            damageOrLoanCount,
+            otherAmount,
+            otherCount
+        };
+    }, [filteredDeductions]);
+
+    // Active filters count
+    const activeFilterCount = useMemo(() => {
+        let count = 0;
+        if (periodFilter !== 'all') count++;
+        if (selectedCategory !== 'all') count++;
+        if (selectedEmployeeId !== 'all') count++;
+        if (selectedCompany !== 'all') count++;
+        if (attachmentFilter !== 'all') count++;
+        if (searchTerm.trim()) count++;
+        return count;
+    }, [periodFilter, selectedCategory, selectedEmployeeId, selectedCompany, attachmentFilter, searchTerm]);
+
+    const handleResetFilters = () => {
+        setPeriodFilter('all');
+        setSelectedMonth(() => {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        });
+        setCustomRange({ from: '', to: '' });
+        setSelectedCategory('all');
+        setSelectedEmployeeId('all');
+        setSelectedCompany('all');
+        setAttachmentFilter('all');
+        setSearchTerm('');
+        setSortBy('date_desc');
+    };
+
+    // Excel Export
+    const exportFilteredDeductionsExcel = () => {
+        const rows = filteredDeductions.map((d: DeductionRecord, index: number) => {
+            const emp = employees.find((e: Employee) => e.id === d.employeeId);
+            return {
+                "S.No": index + 1,
+                "Voucher ID": `#DED-${d.id ? d.id.substring(0, 8).toUpperCase() : 'N/A'}`,
+                "Date": d.date || 'N/A',
+                "Employee Name": emp?.name || 'Unknown',
+                "Employee Code": emp?.code || 'N/A',
+                "Company": emp?.company || 'N/A',
+                "Department": emp?.department || 'N/A',
+                "Category / Type": d.type,
+                "Amount (AED)": Number(d.amount) || 0,
+                "Notes / Reason": d.note || '',
+                "Drive Link": d.googleDriveLink || '',
+                "Receipt Attached": d.attachment ? 'Yes (Image/PDF)' : (d.googleDriveLink ? 'Yes (Drive)' : 'No')
+            };
+        });
+
+        rows.push({
+            "S.No": "" as any,
+            "Voucher ID": "",
+            "Date": "",
+            "Employee Name": "TOTAL",
+            "Employee Code": "",
+            "Company": "",
+            "Department": "",
+            "Category / Type": `${filteredDeductions.length} Records`,
+            "Amount (AED)": kpiSummary.totalAmount,
+            "Notes / Reason": "",
+            "Drive Link": "",
+            "Receipt Attached": ""
+        });
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Deductions Report");
+
+        const periodLabel = periodFilter === 'month' ? (selectedMonth || 'all_months') : (periodFilter === 'custom' ? `${customRange.from}_to_${customRange.to}` : 'all_time');
+        XLSX.writeFile(wb, `Deductions_Penalties_Report_${periodLabel}.xlsx`);
+    };
+
+    // PDF Summary Export
+    const downloadFilteredDeductionsPDF = () => {
+        const doc = new jsPDF({
+            orientation: 'landscape',
+            unit: 'mm',
+            format: 'a4'
+        });
+
+        const assets = getPioneerPDFAssets();
+        if (assets.watermark) {
+            doc.addImage(assets.watermark, 'PNG', 75, 45, 140, 140, undefined, 'FAST');
+        }
+
+        const primaryColor = [15, 23, 42];
+        const secondaryColor = [71, 85, 105];
+        const accentColor = [220, 38, 38];
+
+        // Top Accent Bar
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.rect(0, 0, 297, 8, 'F');
+
+        // Header Title
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text("PIONEER DMS PORTAL - DEDUCTIONS & PENALTIES SUMMARY REPORT", 14, 20);
+
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
+        const periodStr = periodFilter === 'month' 
+            ? `Period: ${selectedMonth ? new Date(Number(selectedMonth.split('-')[0]), Number(selectedMonth.split('-')[1]) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' }) : 'All Months'}`
+            : (periodFilter === 'custom' ? `Period: ${customRange.from || 'Start'} to ${customRange.to || 'End'}` : 'Period: All Time');
+        const catStr = selectedCategory === 'all' ? 'All Categories' : selectedCategory;
+        const compStr = selectedCompany === 'all' ? 'All Companies' : selectedCompany;
+        doc.text(`${periodStr}  |  Category: ${catStr}  |  Company: ${compStr}  |  Generated: ${new Date().toLocaleString()}`, 14, 26);
+
+        // Summary Metric Box
+        doc.setFillColor(248, 250, 252);
+        doc.rect(14, 32, 269, 14, 'F');
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(14, 32, 269, 14, 'D');
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.text(`Total Records: ${filteredDeductions.length}`, 18, 41);
+        doc.text(`Salary Advances: AED ${kpiSummary.salaryAdvanceAmount.toFixed(2)} (${kpiSummary.salaryAdvanceCount})`, 75, 41);
+        doc.text(`Fines & Penalties: AED ${kpiSummary.fineAmount.toFixed(2)} (${kpiSummary.fineCount})`, 145, 41);
+        doc.setTextColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.text(`Grand Total: AED ${kpiSummary.totalAmount.toFixed(2)}`, 220, 41);
+
+        // Table Header
+        let y = 54;
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.rect(14, y, 269, 8, 'F');
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(8.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text("Date", 18, y + 5.5);
+        doc.text("Staff Code", 42, y + 5.5);
+        doc.text("Staff Member Name", 70, y + 5.5);
+        doc.text("Company", 130, y + 5.5);
+        doc.text("Category", 175, y + 5.5);
+        doc.text("Notes / Reason", 210, y + 5.5);
+        doc.text("Amount (AED)", 255, y + 5.5);
+
+        y += 8;
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(51, 65, 85);
+
+        filteredDeductions.forEach((d: DeductionRecord, idx: number) => {
+            if (y > 185) {
+                doc.addPage();
+                y = 20;
+                // Repeat header
+                doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+                doc.rect(14, y, 269, 8, 'F');
+                doc.setFont("Helvetica", "bold");
+                doc.setFontSize(8.5);
+                doc.setTextColor(255, 255, 255);
+                doc.text("Date", 18, y + 5.5);
+                doc.text("Staff Code", 42, y + 5.5);
+                doc.text("Staff Member Name", 70, y + 5.5);
+                doc.text("Company", 130, y + 5.5);
+                doc.text("Category", 175, y + 5.5);
+                doc.text("Notes / Reason", 210, y + 5.5);
+                doc.text("Amount (AED)", 255, y + 5.5);
+                y += 8;
+                doc.setFont("Helvetica", "normal");
+                doc.setFontSize(8);
+                doc.setTextColor(51, 65, 85);
+            }
+
+            const emp = employees.find((e: Employee) => e.id === d.employeeId);
+            if (idx % 2 === 1) {
+                doc.setFillColor(248, 250, 252);
+                doc.rect(14, y, 269, 7, 'F');
+            }
+
+            doc.text(d.date || '-', 18, y + 5);
+            doc.text(emp?.code || '-', 42, y + 5);
+            doc.text((emp?.name || 'Unknown').substring(0, 30), 70, y + 5);
+            doc.text((emp?.company || '-').substring(0, 22), 130, y + 5);
+            doc.text(d.type || '-', 175, y + 5);
+            doc.text((d.note || '-').substring(0, 25), 210, y + 5);
+            doc.setFont("Helvetica", "bold");
+            doc.text(`AED ${Number(d.amount).toFixed(2)}`, 255, y + 5);
+            doc.setFont("Helvetica", "normal");
+
+            y += 7;
+        });
+
+        // Bottom Total
+        y += 4;
+        if (y > 185) {
+            doc.addPage();
+            y = 20;
+        }
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+        doc.rect(170, y, 113, 8, 'F');
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(255, 255, 255);
+        doc.text("TOTAL DEDUCTIONS:", 175, y + 5.5);
+        doc.text(`AED ${kpiSummary.totalAmount.toFixed(2)}`, 255, y + 5.5);
+
+        doc.save(`Deductions_Penalties_Report_${periodStr.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
+    };
+
+    // Toggle column sorting
+    const handleSortToggle = (column: 'date' | 'amount' | 'name') => {
+        if (column === 'date') {
+            setSortBy(prev => prev === 'date_desc' ? 'date_asc' : 'date_desc');
+        } else if (column === 'amount') {
+            setSortBy(prev => prev === 'amount_desc' ? 'amount_asc' : 'amount_desc');
+        } else if (column === 'name') {
+            setSortBy(prev => prev === 'name_asc' ? 'date_desc' : 'name_asc');
+        }
+    };
     
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center justify-between">
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Header with Title & Quick Search */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Deductions & Penalties</h2>
-                    <p className="text-slate-500 text-sm mt-1">Manage employee advances, fines, and asset damages.</p>
+                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
+                        Deductions & Penalties
+                        <span className="text-xs font-black px-2.5 py-1 bg-red-50 text-red-600 rounded-full border border-red-100">
+                            {filteredDeductions.length} {filteredDeductions.length === 1 ? 'Record' : 'Records'}
+                        </span>
+                    </h2>
+                    <p className="text-slate-500 text-sm mt-1">Manage employee advances, fines, asset damages, and filter transactions month-wise.</p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-wrap items-center gap-3">
                     <div className="relative group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-500 transition-colors" />
                         <input 
                             type="text"
-                            placeholder="Search deductions..."
+                            placeholder="Search staff, code, reason..."
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            className="pl-11 pr-6 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-64 shadow-sm"
+                            className="pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-500 transition-all w-64 shadow-sm"
                         />
+                        {searchTerm && (
+                            <button 
+                                onClick={() => setSearchTerm('')} 
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        )}
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-brand-50 text-brand-700 rounded-2xl border border-brand-100">
-                        <AlertCircle className="w-4 h-4" />
-                        <span className="text-xs font-bold uppercase tracking-wider">Financial Records</span>
-                    </div>
+                    <button 
+                        onClick={exportFilteredDeductionsExcel}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-2xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                        title="Export filtered records to Excel"
+                    >
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                        Export Excel
+                    </button>
+                    <button 
+                        onClick={downloadFilteredDeductionsPDF}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white hover:bg-slate-800 rounded-2xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                        title="Download formatted summary PDF report"
+                    >
+                        <FileDown className="w-4 h-4" />
+                        PDF Report
+                    </button>
                 </div>
             </div>
 
+            {/* Enhanced Month-Wise & Multi-Dimensional Filter Control Bar */}
+            <div className="glass-card p-5 rounded-3xl border border-white shadow-xl shadow-slate-200/50 space-y-4">
+                {/* Row 1: Period Selection & Month Picker */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">
+                            <Calendar className="w-4 h-4 text-brand-600" />
+                            Period:
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const now = new Date();
+                                const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                                setSelectedMonth(curYm);
+                                setPeriodFilter('month');
+                            }}
+                            className={cn(
+                                "px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all border",
+                                periodFilter === 'month' && selectedMonth === `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+                                    ? "bg-brand-600 text-white border-brand-600 shadow-sm"
+                                    : "bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200"
+                            )}
+                        >
+                            This Month
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const now = new Date();
+                                const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                                const lastYm = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+                                setSelectedMonth(lastYm);
+                                setPeriodFilter('month');
+                            }}
+                            className={cn(
+                                "px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all border",
+                                periodFilter === 'month' && selectedMonth === `${new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).getFullYear()}-${String(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).getMonth() + 1).padStart(2, '0')}`
+                                    ? "bg-brand-600 text-white border-brand-600 shadow-sm"
+                                    : "bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200"
+                            )}
+                        >
+                            Last Month
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setPeriodFilter('all')}
+                            className={cn(
+                                "px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all border",
+                                periodFilter === 'all'
+                                    ? "bg-brand-600 text-white border-brand-600 shadow-sm"
+                                    : "bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200"
+                            )}
+                        >
+                            All Time
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setPeriodFilter('custom')}
+                            className={cn(
+                                "px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all border",
+                                periodFilter === 'custom'
+                                    ? "bg-brand-600 text-white border-brand-600 shadow-sm"
+                                    : "bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200"
+                            )}
+                        >
+                            Custom Range
+                        </button>
+                    </div>
+
+                    {/* Month Picker / Navigator or Range Inputs */}
+                    {periodFilter === 'month' && (
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={handlePrevMonth}
+                                className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-600 transition"
+                                title="Previous Month"
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="month"
+                                    value={selectedMonth}
+                                    onChange={e => {
+                                        if (e.target.value) {
+                                            setSelectedMonth(e.target.value);
+                                            setPeriodFilter('month');
+                                        }
+                                    }}
+                                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500/20"
+                                />
+                                <select
+                                    value={selectedMonth}
+                                    onChange={e => {
+                                        setSelectedMonth(e.target.value);
+                                        setPeriodFilter('month');
+                                    }}
+                                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20 max-w-[200px]"
+                                >
+                                    {availableMonths.map(m => (
+                                        <option key={m.key} value={m.key}>
+                                            {m.label} ({m.count} • AED {m.total.toFixed(0)})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleNextMonth}
+                                className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-600 transition"
+                                title="Next Month"
+                            >
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
+
+                    {periodFilter === 'custom' && (
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="date"
+                                value={customRange.from}
+                                onChange={e => setCustomRange({ ...customRange, from: e.target.value })}
+                                placeholder="From Date"
+                                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500/20"
+                            />
+                            <span className="text-xs text-slate-400 font-bold">to</span>
+                            <input
+                                type="date"
+                                value={customRange.to}
+                                onChange={e => setCustomRange({ ...customRange, to: e.target.value })}
+                                placeholder="To Date"
+                                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-brand-500/20"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Row 2: Secondary Multi-Filters (Category, Staff, Company, Attachment, Sort) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {/* Category Filter */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Category</label>
+                        <select
+                            value={selectedCategory}
+                            onChange={e => setSelectedCategory(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                            <option value="all">All Categories</option>
+                            <option value="Salary Advance">Salary Advance</option>
+                            <option value="Fine Amount">Fine Amount</option>
+                            <option value="Damage Material/Asset">Damage Material/Asset</option>
+                            <option value="Loan Amount">Loan Amount</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    {/* Staff Filter */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Staff Member</label>
+                        <select
+                            value={selectedEmployeeId}
+                            onChange={e => setSelectedEmployeeId(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                            <option value="all">All Staff ({employees.length})</option>
+                            {employees.map((e: Employee) => (
+                                <option key={e.id} value={e.id}>
+                                    {e.name}{e.code ? ` (${e.code})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Company Filter */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Company / Entity</label>
+                        <select
+                            value={selectedCompany}
+                            onChange={e => setSelectedCompany(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                            <option value="all">All Companies</option>
+                            {companies.map((c: Company) => (
+                                <option key={c.id || c.name} value={c.name}>
+                                    {c.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Attachment Filter */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Receipt / Proof</label>
+                        <select
+                            value={attachmentFilter}
+                            onChange={e => setAttachmentFilter(e.target.value as any)}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                            <option value="all">All Records</option>
+                            <option value="with_receipt">With Receipt / Doc Link</option>
+                            <option value="without_receipt">Without Receipt</option>
+                        </select>
+                    </div>
+
+                    {/* Sort Order */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Sort By</label>
+                        <select
+                            value={sortBy}
+                            onChange={e => setSortBy(e.target.value as any)}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-brand-500/20"
+                        >
+                            <option value="date_desc">Date (Newest First)</option>
+                            <option value="date_asc">Date (Oldest First)</option>
+                            <option value="amount_desc">Amount (Highest First)</option>
+                            <option value="amount_asc">Amount (Lowest First)</option>
+                            <option value="name_asc">Staff Name (A to Z)</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* Active Filter Chips & Reset */}
+                {activeFilterCount > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                            <span className="font-bold text-slate-400 mr-1">Active Filters:</span>
+                            {periodFilter === 'month' && selectedMonth && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-brand-50 text-brand-700 rounded-lg font-bold border border-brand-100">
+                                    Month: {new Date(Number(selectedMonth.split('-')[0]), Number(selectedMonth.split('-')[1]) - 1, 1).toLocaleString('default', { month: 'short', year: 'numeric' })}
+                                </span>
+                            )}
+                            {periodFilter === 'custom' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-brand-50 text-brand-700 rounded-lg font-bold border border-brand-100">
+                                    Range: {customRange.from || 'Start'} to {customRange.to || 'End'}
+                                </span>
+                            )}
+                            {selectedCategory !== 'all' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 text-amber-700 rounded-lg font-bold border border-amber-100">
+                                    Category: {selectedCategory}
+                                    <button onClick={() => setSelectedCategory('all')} className="hover:text-amber-900"><X className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            {selectedEmployeeId !== 'all' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 text-purple-700 rounded-lg font-bold border border-purple-100">
+                                    Staff: {employees.find((e: any) => e.id === selectedEmployeeId)?.name}
+                                    <button onClick={() => setSelectedEmployeeId('all')} className="hover:text-purple-900"><X className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            {selectedCompany !== 'all' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg font-bold border border-blue-100">
+                                    Company: {selectedCompany}
+                                    <button onClick={() => setSelectedCompany('all')} className="hover:text-blue-900"><X className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            {attachmentFilter !== 'all' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg font-bold border border-slate-200">
+                                    {attachmentFilter === 'with_receipt' ? 'Has Receipt' : 'No Receipt'}
+                                    <button onClick={() => setAttachmentFilter('all')} className="hover:text-slate-900"><X className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            {searchTerm && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg font-bold border border-slate-200">
+                                    Search: "{searchTerm}"
+                                    <button onClick={() => setSearchTerm('')} className="hover:text-slate-900"><X className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleResetFilters}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl transition"
+                        >
+                            <RefreshCw className="w-3 h-3" />
+                            Reset All Filters
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Live Filter Summary KPI Strip */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-5 bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl text-white shadow-lg shadow-slate-900/10 border border-slate-800">
+                    <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">
+                        <span>Total Deductions</span>
+                        <span className="p-1.5 bg-white/10 rounded-lg text-white font-mono">{kpiSummary.totalCount} txns</span>
+                    </div>
+                    <div className="text-2xl font-black text-white">AED {kpiSummary.totalAmount.toFixed(2)}</div>
+                    <div className="text-[11px] text-slate-400 mt-1 font-medium">
+                        {periodFilter === 'month' && selectedMonth 
+                            ? `For ${new Date(Number(selectedMonth.split('-')[0]), Number(selectedMonth.split('-')[1]) - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' })}`
+                            : 'All Filtered Transactions'}
+                    </div>
+                </div>
+
+                <div className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm">
+                    <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">
+                        <span className="flex items-center gap-1.5 text-blue-600">
+                            <Wallet className="w-4 h-4" />
+                            Salary Advances
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">{kpiSummary.salaryAdvanceCount} txns</span>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900">AED {kpiSummary.salaryAdvanceAmount.toFixed(2)}</div>
+                    <div className="text-[11px] text-slate-400 mt-1 font-medium">
+                        {kpiSummary.totalAmount > 0 ? `${((kpiSummary.salaryAdvanceAmount / kpiSummary.totalAmount) * 100).toFixed(0)}% of total filtered` : '0%'}
+                    </div>
+                </div>
+
+                <div className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm">
+                    <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">
+                        <span className="flex items-center gap-1.5 text-red-600">
+                            <AlertCircle className="w-4 h-4" />
+                            Fines & Penalties
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">{kpiSummary.fineCount} txns</span>
+                    </div>
+                    <div className="text-2xl font-black text-red-600">AED {kpiSummary.fineAmount.toFixed(2)}</div>
+                    <div className="text-[11px] text-slate-400 mt-1 font-medium">Violations & Disciplinary Fines</div>
+                </div>
+
+                <div className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm">
+                    <div className="flex items-center justify-between text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">
+                        <span className="flex items-center gap-1.5 text-emerald-600">
+                            <CreditCard className="w-4 h-4" />
+                            Loans & Asset Damage
+                        </span>
+                        <span className="text-xs font-bold text-slate-400">{kpiSummary.damageOrLoanCount} txns</span>
+                    </div>
+                    <div className="text-2xl font-black text-slate-900">AED {kpiSummary.damageOrLoanAmount.toFixed(2)}</div>
+                    <div className="text-[11px] text-slate-400 mt-1 font-medium">Damages, Equipment & Loans</div>
+                </div>
+            </div>
+
+            {/* Record New Transaction Card */}
             <div className="glass-card p-8 rounded-3xl border border-white shadow-xl shadow-slate-200/50">
                 <div className="flex items-center gap-3 mb-8">
                     <div className="w-10 h-10 bg-brand-100 rounded-xl flex items-center justify-center text-brand-600">
@@ -14833,7 +15585,7 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                     {/* Receipt / Bill Upload Option */}
                     <div className="pt-4 border-t border-slate-100/80">
                         <div className="max-w-md space-y-2">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5Packed font-semibold">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1.5 font-semibold">
                                 <Paperclip className="w-3.5 h-3.5 text-slate-400" />
                                 Bill / Receipt Attachment (Optional)
                             </label>
@@ -14862,7 +15614,7 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                     />
                                     <label 
                                         htmlFor="deduction-receipt-upload"
-                                        className="flex items-center gap-3 w-full p-3 bg-slate-55 border border-slate-200 border-dashed rounded-2xl text-xs font-bold text-slate-500 hover:bg-slate-100/50 hover:border-slate-350 cursor-pointer transition-all"
+                                        className="flex items-center gap-3 w-full p-3 bg-slate-50 border border-slate-200 border-dashed rounded-2xl text-xs font-bold text-slate-500 hover:bg-slate-100/50 hover:border-slate-300 cursor-pointer transition-all"
                                     >
                                         <Upload className="w-4 h-4 text-slate-400" />
                                         <span className="truncate">{newItem.attachmentName ? newItem.attachmentName : "Upload Receipt/Bill Image or PDF"}</span>
@@ -14871,7 +15623,7 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                 {newItem.attachment && (
                                     <button 
                                         onClick={() => setNewItem({...newItem, attachment: undefined, attachmentName: undefined})}
-                                        className="px-4 py-3 text-xs bg-red-50 text-red-650 hover:bg-red-100/80 border border-red-100 rounded-2xl font-bold transition-all"
+                                        className="px-4 py-3 text-xs bg-red-50 text-red-600 hover:bg-red-100/80 border border-red-100 rounded-2xl font-bold transition-all"
                                     >
                                         Clear
                                     </button>
@@ -14882,22 +15634,50 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                 </div>
             </div>
 
+            {/* Deductions Table */}
             <div className="glass-card rounded-3xl overflow-hidden border border-white shadow-xl shadow-slate-200/50">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-100">
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Date</th>
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Employee</th>
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Type</th>
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Amount</th>
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Note</th>
-                                <th className="p-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                            <tr className="bg-slate-50/75 border-b border-slate-100">
+                                <th 
+                                    onClick={() => handleSortToggle('date')}
+                                    className="p-5 text-[10px] font-bold text-slate-500 uppercase tracking-widest cursor-pointer hover:bg-slate-100/80 transition select-none"
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <span>Date</span>
+                                        {sortBy === 'date_desc' && <span className="text-brand-600 font-bold">↓</span>}
+                                        {sortBy === 'date_asc' && <span className="text-brand-600 font-bold">↑</span>}
+                                    </div>
+                                </th>
+                                <th 
+                                    onClick={() => handleSortToggle('name')}
+                                    className="p-5 text-[10px] font-bold text-slate-500 uppercase tracking-widest cursor-pointer hover:bg-slate-100/80 transition select-none"
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <span>Employee</span>
+                                        {sortBy === 'name_asc' && <span className="text-brand-600 font-bold">A-Z</span>}
+                                    </div>
+                                </th>
+                                <th className="p-5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Company</th>
+                                <th className="p-5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Type</th>
+                                <th 
+                                    onClick={() => handleSortToggle('amount')}
+                                    className="p-5 text-[10px] font-bold text-slate-500 uppercase tracking-widest cursor-pointer hover:bg-slate-100/80 transition select-none"
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <span>Amount</span>
+                                        {sortBy === 'amount_desc' && <span className="text-brand-600 font-bold">↓</span>}
+                                        {sortBy === 'amount_asc' && <span className="text-brand-600 font-bold">↑</span>}
+                                    </div>
+                                </th>
+                                <th className="p-5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Note</th>
+                                <th className="p-5 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                             <AnimatePresence mode="popLayout">
-                                {filteredDeductions.sort((a:any, b:any) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((d: DeductionRecord) => {
+                                {filteredDeductions.map((d: DeductionRecord) => {
                                     const emp = employees.find((e:any) => e.id === d.employeeId);
                                     return (
                                         <motion.tr 
@@ -14906,48 +15686,62 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0, scale: 0.95 }}
-                                            className="hover:bg-slate-50/50 transition-colors group"
+                                            className="hover:bg-slate-50/60 transition-colors group"
                                         >
-                                            <td className="p-5">
+                                            <td className="p-5 whitespace-nowrap">
                                                 <div className="text-sm font-bold text-slate-900">{new Date(d.date).toLocaleDateString()}</div>
+                                                <div className="text-[10px] text-slate-400 font-mono">#DED-{d.id ? d.id.substring(0, 6).toUpperCase() : ''}</div>
                                             </td>
                                             <td className="p-5">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center text-[10px] font-bold text-brand-600 border border-brand-100 overflow-hidden">
+                                                    <div className="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center text-[10px] font-bold text-brand-600 border border-brand-100 overflow-hidden shrink-0">
                                                         {emp?.profileImage ? (
                                                             <img src={emp.profileImage} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                                         ) : (
                                                             emp?.name?.charAt(0) || '?'
                                                         )}
                                                     </div>
-                                                    <div className="text-sm font-bold text-slate-700">{emp?.name || 'Unknown'}</div>
+                                                    <div>
+                                                        <div className="text-sm font-bold text-slate-800">{emp?.name || 'Unknown Staff'}</div>
+                                                        {emp?.code && (
+                                                            <div className="text-[11px] font-bold text-slate-400">{emp.code}</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="p-5">
+                                                <div className="text-xs font-semibold text-slate-600 truncate max-w-[150px]">
+                                                    {emp?.company || '-'}
                                                 </div>
                                             </td>
                                             <td className="p-5">
                                                 <span className={cn(
-                                                    "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
-                                                    d.type === 'Fine Amount' ? 'bg-red-50 text-red-600 border-red-100' :
+                                                    "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border whitespace-nowrap inline-block",
+                                                    d.type === 'Fine Amount' || d.type === 'Penalty' ? 'bg-red-50 text-red-600 border-red-100' :
                                                     d.type === 'Salary Advance' ? 'bg-blue-50 text-blue-600 border-blue-100' :
                                                     d.type === 'Loan Amount' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                                                    d.type === 'Damage Material/Asset' ? 'bg-amber-50 text-amber-700 border-amber-100' :
                                                     'bg-slate-50 text-slate-600 border-slate-100'
                                                 )}>
                                                     {d.type}
                                                 </span>
                                             </td>
-                                            <td className="p-5">
-                                                <div className="text-sm font-bold text-red-600">AED {d.amount.toFixed(2)}</div>
+                                            <td className="p-5 whitespace-nowrap">
+                                                <div className="text-sm font-black text-red-600">AED {Number(d.amount).toFixed(2)}</div>
                                             </td>
                                             <td className="p-5">
-                                                <div className="text-sm text-slate-500 italic max-w-xs truncate">{d.note || '-'}</div>
+                                                <div className="text-sm text-slate-500 italic max-w-xs truncate" title={d.note || ''}>
+                                                    {d.note || '-'}
+                                                </div>
                                             </td>
                                             <td className="p-5">
-                                                <div className="flex justify-end items-center gap-3">
+                                                <div className="flex justify-end items-center gap-2">
                                                     {d.googleDriveLink && (
                                                         <a 
                                                             href={d.googleDriveLink}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="p-2 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-55 rounded-xl transition-all"
+                                                            className="p-2 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-all"
                                                             title="Open Signed Google Drive Link"
                                                         >
                                                             <ExternalLink className="w-4 h-4" />
@@ -14956,7 +15750,7 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                                     {d.attachment && (
                                                         <button 
                                                             onClick={() => setPreviewAttachment({ data: d.attachment!, name: d.attachmentName || 'Attachment' })}
-                                                            className="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl transition-all"
+                                                            className="p-2 text-brand-600 hover:bg-brand-50 rounded-xl transition-all"
                                                             title="View Receipt / Bill"
                                                         >
                                                             <Paperclip className="w-4 h-4" />
@@ -14965,7 +15759,7 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                                     <button 
                                                         onClick={() => downloadDeductionPDF(d, emp)}
                                                         className="p-2 text-slate-400 hover:text-brand-600 hover:bg-slate-50 rounded-xl transition-all"
-                                                        title="Download Record PDF"
+                                                        title="Download Voucher PDF"
                                                     >
                                                         <FileDown className="w-4 h-4" />
                                                     </button>
@@ -14992,15 +15786,36 @@ const DeductionsView = ({ employees, deductions, openConfirm, user, companies }:
                                 })}
                             </AnimatePresence>
                         </tbody>
+                        {filteredDeductions.length > 0 && (
+                            <tfoot>
+                                <tr className="bg-slate-50/90 font-bold border-t-2 border-slate-200">
+                                    <td colSpan={4} className="p-4 text-xs uppercase tracking-wider text-slate-500">
+                                        Showing {filteredDeductions.length} of {deductions.length} transactions
+                                    </td>
+                                    <td className="p-4 text-base font-black text-red-600 whitespace-nowrap">
+                                        AED {kpiSummary.totalAmount.toFixed(2)}
+                                    </td>
+                                    <td colSpan={2} className="p-4 text-xs text-slate-400 text-right font-medium">
+                                        Filtered Grand Total
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        )}
                     </table>
                 </div>
-                {deductions.length === 0 && (
-                    <div className="p-20 text-center">
+                {filteredDeductions.length === 0 && (
+                    <div className="p-16 text-center">
                         <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
                             <CreditCard className="w-8 h-8 text-slate-300" />
                         </div>
-                        <h3 className="text-lg font-bold text-slate-900">No transactions yet</h3>
-                        <p className="text-slate-500 max-w-xs mx-auto mt-1">Add deductions or penalties to see them listed here.</p>
+                        <h3 className="text-lg font-bold text-slate-900">No transactions match your filter</h3>
+                        <p className="text-slate-500 max-w-xs mx-auto mt-1 text-sm">Try choosing a different month or clearing active search filters.</p>
+                        <button
+                            onClick={handleResetFilters}
+                            className="mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition"
+                        >
+                            Reset Filters
+                        </button>
                     </div>
                 )}
             </div>
