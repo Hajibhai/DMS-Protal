@@ -6507,20 +6507,44 @@ export const generatePdfSOA = ({
 
         let chqStr = "-";
         if (itm.cheques && Array.isArray(itm.cheques) && itm.cheques.length > 0) {
-            chqStr = itm.cheques.map((c: any, cIdx: number) => {
+            if (itm.cheques.length === 1) {
+                const c = itm.cheques[0];
                 const parts = [];
                 if (c.chequeNo) parts.push(`Chq #${c.chequeNo}`);
                 if (c.chequeDate) parts.push(`Date: ${formatToDDMMYYYY(c.chequeDate)}`);
-                if (c.chequeAmount) parts.push(`Amt: ${Number(c.chequeAmount).toLocaleString()}`);
-                if (c.remarks) parts.push(`(${c.remarks})`);
-                return parts.join(" ");
-            }).join(" | ");
+                if (c.chequeAmount !== undefined && c.chequeAmount !== null && c.chequeAmount !== '') {
+                    parts.push(`Amt: ${Number(c.chequeAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                }
+                if (c.remarks && String(c.remarks).trim()) {
+                    parts.push(`(${c.remarks.trim()})`);
+                }
+                chqStr = parts.join(" ");
+            } else {
+                chqStr = itm.cheques.map((c: any, cIdx: number) => {
+                    const parts = [];
+                    if (c.chequeNo) {
+                        parts.push(`Chq #${c.chequeNo}`);
+                    } else {
+                        parts.push(`Chq #${cIdx + 1}`);
+                    }
+                    if (c.chequeDate) parts.push(`Date: ${formatToDDMMYYYY(c.chequeDate)}`);
+                    if (c.chequeAmount !== undefined && c.chequeAmount !== null && c.chequeAmount !== '') {
+                        parts.push(`Amt: ${Number(c.chequeAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                    }
+                    if (c.remarks && String(c.remarks).trim()) {
+                        parts.push(`(${c.remarks.trim()})`);
+                    }
+                    return parts.join(" ");
+                }).join("\n");
+            }
         } else if (itm.chequeNo || itm.chequeDate || itm.chequeAmount) {
             const chqParts = [];
             if (itm.chequeNo) chqParts.push(`Chq #${itm.chequeNo}`);
             if (itm.chequeDate) chqParts.push(`Date: ${formatToDDMMYYYY(itm.chequeDate)}`);
-            if (itm.chequeAmount) chqParts.push(`Amt: ${Number(itm.chequeAmount).toLocaleString()}`);
-            chqStr = chqParts.join(" | ");
+            if (itm.chequeAmount !== undefined && itm.chequeAmount !== null && itm.chequeAmount !== '') {
+                chqParts.push(`Amt: ${Number(itm.chequeAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+            }
+            chqStr = chqParts.join(" ");
         }
 
         return [
@@ -6785,11 +6809,41 @@ export const downloadSOAExcel = (
             rowObj["Cheque Date"] = itm.cheques.map((c: any) => formatToDDMMYYYY(c.chequeDate)).filter(Boolean).join(", ");
             rowObj["Cheque Number"] = itm.cheques.map((c: any) => c.chequeNo).filter(Boolean).join(", ");
             rowObj["Cheque Amount"] = itm.cheques.reduce((sum: number, c: any) => sum + (Number(c.chequeAmount) || 0), 0);
-            rowObj["Cheques Breakdown"] = itm.cheques.map((c: any, i: number) => `Chq #${c.chequeNo || (i+1)}: AED ${Number(c.chequeAmount || 0).toLocaleString()} (${formatToDDMMYYYY(c.chequeDate)}${c.remarks ? ' - ' + c.remarks : ''})`).join(" | ");
+            if (itm.cheques.length === 1) {
+                const c = itm.cheques[0];
+                const parts = [];
+                if (c.chequeNo) parts.push(`Chq #${c.chequeNo}`);
+                if (c.chequeDate) parts.push(`Date: ${formatToDDMMYYYY(c.chequeDate)}`);
+                if (c.chequeAmount !== undefined && c.chequeAmount !== null && c.chequeAmount !== '') {
+                    parts.push(`Amt: ${Number(c.chequeAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                }
+                if (c.remarks && String(c.remarks).trim()) {
+                    parts.push(`(${c.remarks.trim()})`);
+                }
+                rowObj["Cheques Breakdown"] = parts.join(" ");
+            } else {
+                rowObj["Cheques Breakdown"] = itm.cheques.map((c: any, i: number) => {
+                    const parts = [];
+                    if (c.chequeNo) {
+                        parts.push(`Chq #${c.chequeNo}`);
+                    } else {
+                        parts.push(`Chq #${i + 1}`);
+                    }
+                    if (c.chequeDate) parts.push(`Date: ${formatToDDMMYYYY(c.chequeDate)}`);
+                    if (c.chequeAmount !== undefined && c.chequeAmount !== null && c.chequeAmount !== '') {
+                        parts.push(`Amt: ${Number(c.chequeAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                    }
+                    if (c.remarks && String(c.remarks).trim()) {
+                        parts.push(`(${c.remarks.trim()})`);
+                    }
+                    return parts.join(" ");
+                }).join("\r\n");
+            }
         } else {
             rowObj["Cheque Date"] = formatToDDMMYYYY(itm.chequeDate);
             rowObj["Cheque Number"] = itm.chequeNo || '-';
             rowObj["Cheque Amount"] = itm.chequeAmount || '-';
+            rowObj["Cheques Breakdown"] = itm.chequeNo ? `Chq #${itm.chequeNo} Date: ${formatToDDMMYYYY(itm.chequeDate)} Amt: ${Number(itm.chequeAmount || 0).toLocaleString()}` : '-';
         }
 
         return rowObj;
