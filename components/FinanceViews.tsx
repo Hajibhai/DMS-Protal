@@ -1690,7 +1690,7 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
     const [soaProjectId, setSoaProjectId] = useState('All');
     const [soaStartDate, setSoaStartDate] = useState('');
     const [soaEndDate, setSoaEndDate] = useState('');
-    const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending'>('All');
+    const [soaScope, setSoaScope] = useState<'All' | 'Paid' | 'Pending' | 'Pending_NoCheque' | 'Pending_Cheque'>('All');
     const [soaCompanyId, setSoaCompanyId] = useState('All');
     const [soaIncludeDetails, setSoaIncludeDetails] = useState(false);
     const [soaNotes, setSoaNotes] = useState("All invoices submitted as per the site provided time sheet and records.");
@@ -2203,8 +2203,15 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
             if (soaEndDate && item.date > soaEndDate) return false;
 
             // Settlement scope
-            if (soaScope === 'Paid' && item.status !== 'Paid') return false;
-            if (soaScope === 'Pending' && item.status === 'Paid') return false;
+            const breakdown = getItemChequeBreakdown(item, false);
+            if (soaScope === 'Paid' && !breakdown.isSettled) return false;
+            if (soaScope === 'Pending' && breakdown.isSettled) return false;
+            if (soaScope === 'Pending_NoCheque') {
+                if (breakdown.isSettled || breakdown.hasPendingCheque) return false;
+            }
+            if (soaScope === 'Pending_Cheque') {
+                if (breakdown.isSettled || !breakdown.hasPendingCheque) return false;
+            }
 
             return true;
         });
@@ -3202,11 +3209,15 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                         <select 
                                             value={filterStatus} 
                                             onChange={e => setFilterStatus(e.target.value)}
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer"
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-slate-700 outline-hidden font-bold cursor-pointer font-sans"
                                         >
                                             <option value="All">All Statuses</option>
                                             <option value="Paid">Paid</option>
                                             <option value="Pending">Pending</option>
+                                            <option value="Partially Paid">Partially Paid</option>
+                                            <option value="Partial Amount Paid by Cheque">Partial Paid by Chq</option>
+                                            <option value="CPD Pending">CPD Pending</option>
+                                            <option value="PDC Issued">PDC Issued / In Hand</option>
                                         </select>
                                         <select 
                                             value={filterMonth} 
@@ -4035,20 +4046,17 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                             {/* Settlement Scope */}
                             <div className="space-y-1.5">
                                 <label className="block text-slate-500 font-extrabold uppercase text-[10px] tracking-wider">Settlement Scope</label>
-                                <div className="grid grid-cols-3 bg-slate-50 p-1 border border-slate-200 rounded-2xl gap-1">
-                                    {(['All', 'Paid', 'Pending'] as const).map((sc) => (
-                                        <button
-                                            key={sc}
-                                            onClick={() => setSoaScope(sc)}
-                                            className={cn(
-                                                "py-1.5 font-bold rounded-xl transition-all text-center cursor-pointer",
-                                                soaScope === sc ? "bg-white text-emerald-600 shadow-xs" : "text-slate-500 hover:text-slate-850"
-                                            )}
-                                        >
-                                            {sc === 'All' ? 'All Rows' : sc === 'Paid' ? 'Cleared' : 'Outstanding'}
-                                        </button>
-                                    ))}
-                                </div>
+                                <select 
+                                    value={soaScope} 
+                                    onChange={e => setSoaScope(e.target.value as any)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-850 outline-hidden font-extrabold cursor-pointer text-xs"
+                                >
+                                    <option value="All">🌐 All Records (Combined History)</option>
+                                    <option value="Pending_NoCheque">🚨 Pure Pending: No Cheque in Hand (Unsettled Balance)</option>
+                                    <option value="Pending_Cheque">✍️ Pending: Cheques Issued (PDC / Future Clearance)</option>
+                                    <option value="Pending">⏳ All Outstanding / Pending Demands (Combined)</option>
+                                    <option value="Paid">✅ Settled / Cleared Bills Only</option>
+                                </select>
                             </div>
 
                             {/* Optional Detail Inclusions Toggle */}
@@ -4097,37 +4105,82 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                             {(() => {
                                 let apBilled = 0;
                                 let apPaid = 0;
+                                let apBal = 0;
+                                let pdcBal = 0;
+                                let pdcCount = 0;
+                                let purePendingBal = 0;
+                                let purePendingCount = 0;
+
                                 soaFilteredItems.forEach((itm: any) => {
-                                    const { totalAmt, paidAmt } = getSOAItemAmounts(itm);
-                                    apBilled += totalAmt;
-                                    apPaid += paidAmt;
+                                    const breakdown = getItemChequeBreakdown(itm, false);
+                                    apBilled += breakdown.totalAmt;
+                                    apPaid += breakdown.paidAmt;
+                                    apBal += breakdown.balanceAmt;
+
+                                    if (!breakdown.isSettled) {
+                                        pdcBal += breakdown.pendingPdcAmount;
+                                        if (breakdown.hasPendingCheque) {
+                                            pdcCount += 1;
+                                        }
+                                        purePendingBal += breakdown.purePendingAmount;
+                                        if (breakdown.purePendingAmount > 0) {
+                                            purePendingCount += 1;
+                                        }
+                                    }
                                 });
-                                const apBal = Math.max(0, apBilled - apPaid);
+
                                 return (
-                                    <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-3xl space-y-2.5 mt-4">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 font-mono">Matched Record Summary</p>
-                                        <div className="grid grid-cols-2 gap-2.5 font-mono text-[11px]">
-                                            <div>
-                                                <span className="text-slate-400 block text-[10px]">Matching Records:</span>
-                                                <strong className="text-slate-800 text-xs font-bold">{soaFilteredItems.length} invoices</strong>
-                                            </div>
-                                            <div>
-                                                <span className="text-slate-400 block text-[10px]">Total Invoiced:</span>
-                                                <strong className="text-slate-900 text-xs font-black">
+                                    <div className="p-4.5 bg-emerald-50/50 border border-emerald-100 rounded-3xl space-y-3 mt-4">
+                                        <div className="flex justify-between items-center">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 font-mono">Matched Record Summary</p>
+                                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-emerald-100/80 text-emerald-800 rounded-lg">
+                                                {soaFilteredItems.length} invoices
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                            <div className="p-2.5 bg-white/80 rounded-xl border border-slate-100">
+                                                <span className="text-[10px] text-slate-400 block font-bold">Total Invoiced:</span>
+                                                <strong className="text-slate-900 text-xs font-black font-mono">
                                                     AED {apBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                 </strong>
                                             </div>
-                                            <div>
-                                                <span className="text-slate-400 block text-[10px]">Settled / Paid:</span>
-                                                <strong className="text-emerald-700 text-xs font-extrabold">
+                                            <div className="p-2.5 bg-white/80 rounded-xl border border-slate-100">
+                                                <span className="text-[10px] text-emerald-600 block font-bold">Settled / Paid:</span>
+                                                <strong className="text-emerald-700 text-xs font-black font-mono">
                                                     AED {apPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                 </strong>
                                             </div>
-                                            <div>
-                                                <span className="text-slate-400 block text-[10px]">Net Liability:</span>
-                                                <strong className="text-rose-600 text-xs font-extrabold">
+                                        </div>
+
+                                        <div className="p-2.5 bg-white/90 rounded-xl border border-slate-200 space-y-1.5">
+                                            <div className="flex justify-between items-center text-[11px]">
+                                                <span className="font-bold text-slate-700">Gross Liability Balance:</span>
+                                                <strong className="text-slate-900 text-xs font-black font-mono">
                                                     AED {apBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                 </strong>
+                                            </div>
+
+                                            <div className="border-t border-dashed border-slate-200 pt-2 grid grid-cols-2 gap-2">
+                                                <div className="bg-indigo-50/70 p-2 rounded-lg border border-indigo-100/60">
+                                                    <div className="flex items-center gap-1 text-[9px] font-extrabold text-indigo-700 uppercase">
+                                                        <span>✍️ PDC Issued ({pdcCount})</span>
+                                                    </div>
+                                                    <p className="font-mono font-black text-indigo-900 text-[11px] mt-0.5">
+                                                        AED {pdcBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                    <p className="text-[8.5px] text-indigo-500 font-medium">Future Clearance</p>
+                                                </div>
+
+                                                <div className="bg-rose-50/80 p-2 rounded-lg border border-rose-200/60">
+                                                    <div className="flex items-center gap-1 text-[9px] font-extrabold text-rose-700 uppercase">
+                                                        <span>🚨 Pure Pending ({purePendingCount})</span>
+                                                    </div>
+                                                    <p className="font-mono font-black text-rose-700 text-[11px] mt-0.5">
+                                                        AED {purePendingBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                    <p className="text-[8.5px] text-rose-500 font-medium">No Cheque Issued</p>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -4430,13 +4483,48 @@ export const AccountsPayableView = ({ data, vendors, suppliers, projects, onAdd,
                                                                     <td className="py-3 px-3 font-bold text-rose-500 font-mono">AED {Number(item.deduction || 0).toLocaleString()}</td>
                                                                     <td className="py-3 px-3 font-black text-brand-600 font-mono">AED {Number(item.totalAmount || item.amount || 0).toLocaleString()}</td>
                                                                     <td className="py-3 px-3">
-                                                                        <span className={cn(
-                                                                            "px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase",
-                                                                            item.status === 'Paid' ? "bg-emerald-50 text-emerald-700" :
-                                                                            item.status === 'Partially Paid' ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"
-                                                                        )}>
-                                                                            {item.status}
-                                                                        </span>
+                                                                        {(() => {
+                                                                            if (item.status === 'Paid') {
+                                                                                return (
+                                                                                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                                        Paid
+                                                                                    </span>
+                                                                                );
+                                                                            }
+                                                                            if (item.status === 'Partially Paid' || item.status === 'Partial Paid') {
+                                                                                return (
+                                                                                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200">
+                                                                                        Partial Paid
+                                                                                    </span>
+                                                                                );
+                                                                            }
+                                                                            if (item.status === 'Partial Amount Paid by Cheque' || item.status === 'Partially Paid by Cheque') {
+                                                                                return (
+                                                                                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                                                                        Partial Paid by Chq
+                                                                                    </span>
+                                                                                );
+                                                                            }
+                                                                            if (item.status === 'CPD Pending') {
+                                                                                return (
+                                                                                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-sky-50 text-sky-700 border border-sky-200">
+                                                                                        CPD Pending
+                                                                                    </span>
+                                                                                );
+                                                                            }
+                                                                            if (item.status === 'PDC Issued' || item.status === 'PDC in Hand') {
+                                                                                return (
+                                                                                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-purple-50 text-purple-700 border border-purple-200">
+                                                                                        PDC Issued
+                                                                                    </span>
+                                                                                );
+                                                                            }
+                                                                            return (
+                                                                                <span className="px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-200">
+                                                                                    {item.status || 'Pending'}
+                                                                                </span>
+                                                                            );
+                                                                        })()}
                                                                     </td>
                                                                     <td className="py-3 px-3 text-right">
                                                                         <div className="flex items-center justify-end gap-1.5">
@@ -6186,10 +6274,14 @@ export const getSOAItemAmounts = (itm: any) => {
     
     let paidAmt = 0;
     const isFullPaid = itm.status === 'Paid' || itm.status === 'Received';
+    const isPartial = itm.status === 'Partially Received' || itm.status === 'Partial Received' || 
+                      itm.status === 'Partial Amount Received by Cheque' || itm.status === 'Partially Received by Cheque' || itm.status === 'Partial Rec by Chq' ||
+                      itm.status === 'Partially Paid' || itm.status === 'Partial Paid' ||
+                      itm.status === 'Partial Amount Paid by Cheque' || itm.status === 'Partially Paid by Cheque' || itm.status === 'Partial Paid by Chq';
     
     if (isFullPaid) {
         paidAmt = totalAmt;
-    } else if (itm.status === 'Partially Received' || itm.status === 'Partially Paid') {
+    } else if (isPartial) {
         if (itm.receivedAmount !== undefined && Number(itm.receivedAmount) > 0) {
             paidAmt = Number(itm.receivedAmount);
         } else if (itm.paidAmount !== undefined && Number(itm.paidAmount) > 0) {
@@ -6207,15 +6299,13 @@ export const getSOAItemAmounts = (itm: any) => {
         } else if (Number(itm.adjustmentAmount) > 0) {
             paidAmt = Number(itm.adjustmentAmount);
         }
-    } else if (itm.status === 'Pending') {
-        if (itm.receivedAmount !== undefined && Number(itm.receivedAmount) > 0) {
+    } else if (itm.status === 'Pending' || itm.status === 'CPD Pending' || itm.status === 'PDC in Hand' || itm.status === 'PDC Issued') {
+        if (itm.receivedAmount !== undefined && Number(itm.receivedAmount) > 0 && itm.receivedAmount < totalAmt) {
             paidAmt = Number(itm.receivedAmount);
-        } else if (itm.paidAmount !== undefined && Number(itm.paidAmount) > 0) {
+        } else if (itm.paidAmount !== undefined && Number(itm.paidAmount) > 0 && itm.paidAmount < totalAmt) {
             paidAmt = Number(itm.paidAmount);
-        } else if (itm.balanceAmount !== undefined && Number(itm.balanceAmount) < totalAmt && Number(itm.balanceAmount) > 0) {
-            paidAmt = Math.max(0, totalAmt - Number(itm.balanceAmount));
-        } else if (itm.balance !== undefined && Number(itm.balance) < totalAmt && Number(itm.balance) > 0) {
-            paidAmt = Math.max(0, totalAmt - Number(itm.balance));
+        } else if (itm.paid !== undefined && Number(itm.paid) > 0 && itm.paid < totalAmt) {
+            paidAmt = Number(itm.paid);
         } else {
             paidAmt = 0;
         }
@@ -6237,6 +6327,229 @@ export const getSOAItemAmounts = (itm: any) => {
     }
 
     return { actualAmt, vatAmt, totalAmt, paidAmt, balanceAmt };
+};
+
+export const hasItemCheque = (itm: any): boolean => {
+    if (!itm) return false;
+    if (itm.cheques && Array.isArray(itm.cheques) && itm.cheques.length > 0) {
+        return itm.cheques.some((c: any) => Boolean(
+            (c.chequeNo && String(c.chequeNo).trim() && String(c.chequeNo).trim() !== '-') ||
+            (c.chequeDate && String(c.chequeDate).trim() && String(c.chequeDate).trim() !== '-') ||
+            (Number(c.chequeAmount) > 0) ||
+            (c.remarks && String(c.remarks).trim())
+        ));
+    }
+    return Boolean(
+        (itm.chequeNo && String(itm.chequeNo).trim() && String(itm.chequeNo).trim() !== '-') ||
+        (itm.chequeDate && String(itm.chequeDate).trim() && String(itm.chequeDate).trim() !== '-') ||
+        (Number(itm.chequeAmount) > 0) ||
+        (itm.remarks && String(itm.remarks).trim())
+    );
+};
+
+export const getChequeAllocatedAmount = (c: any, totalInvoiceAmt?: number, balanceAmt?: number): number => {
+    if (!c) return 0;
+    
+    // 1. If explicit allocatedAmount is provided and > 0, always use it
+    if (c.allocatedAmount !== undefined && c.allocatedAmount !== null && c.allocatedAmount !== '' && Number(c.allocatedAmount) > 0) {
+        return Number(c.allocatedAmount);
+    }
+    
+    // 2. Intelligent extraction from remarks
+    // Examples:
+    // "PAID - 44391.90 & BALANCE - 149,814" -> 44391.90
+    // "PAID - 64518.30 & BALANCE - 1,543.50" -> 64518.30
+    // "PAID - 18, 945.85 & BALANCE - 39,858.35" -> 18945.85
+    // "95,104.80" -> 95104.80
+    // "Balance Payment - 64, 180.20" -> 64180.20
+    // "BALANCE PAID - 39858.35" -> 39858.35
+    if (c.remarks && typeof c.remarks === 'string' && c.remarks.trim()) {
+        const str = c.remarks.trim();
+        
+        // Pattern 1: "PAID - 44391.90" or "PAID : 44,391.90" or "PAID - 44391.90 & BALANCE - 149,814"
+        const paidMatch = str.match(/\b(?:PAID|REC|RECEIVED|AMOUNT)\s*[-:]\s*([0-9\s,]+(?:\.[0-9]+)?)/i);
+        if (paidMatch && paidMatch[1]) {
+            const cleanVal = Number(paidMatch[1].replace(/[\s,]/g, ''));
+            if (!isNaN(cleanVal) && cleanVal > 0) {
+                return cleanVal;
+            }
+        }
+        
+        // Pattern 2: "BALANCE PAID - 39858.35" or "Balance Payment - 64, 180.20" or "BALANCE - 64180.20"
+        const balMatch = str.match(/\b(?:BALANCE PAID|BALANCE PAYMENT|BALANCE SETTLED)\s*[-:]\s*([0-9\s,]+(?:\.[0-9]+)?)/i);
+        if (balMatch && balMatch[1]) {
+            const cleanVal = Number(balMatch[1].replace(/[\s,]/g, ''));
+            if (!isNaN(cleanVal) && cleanVal > 0) {
+                return cleanVal;
+            }
+        }
+        
+        // Pattern 3: Solo number like "95,104.80" or "(95,104.80)"
+        const soloMatch = str.match(/^\(?\s*([0-9\s,]+(?:\.[0-9]+)?)\s*\)?$/);
+        if (soloMatch && soloMatch[1]) {
+            const cleanVal = Number(soloMatch[1].replace(/[\s,]/g, ''));
+            if (!isNaN(cleanVal) && cleanVal > 0) {
+                return cleanVal;
+            }
+        }
+    }
+    
+    // 3. Fallback to c.chequeAmount
+    const amt = Number(c.chequeAmount) || 0;
+    if (balanceAmt !== undefined && balanceAmt > 0 && amt > balanceAmt) {
+        // Bulk cheque where no specific split is indicated
+        return balanceAmt;
+    }
+    return amt;
+};
+
+export interface ItemChequeBreakdown {
+    actualAmt: number;
+    vatAmt: number;
+    totalAmt: number;
+    paidAmt: number;
+    balanceAmt: number;
+    isSettled: boolean;
+    hasRecordedCheque: boolean;
+    hasPendingCheque: boolean;
+    pendingPdcAmount: number;
+    purePendingAmount: number;
+    statusLabel: string;
+}
+
+export const getItemChequeBreakdown = (itm: any, isReceivable: boolean = true): ItemChequeBreakdown => {
+    const { actualAmt, vatAmt, totalAmt, paidAmt, balanceAmt } = getSOAItemAmounts(itm);
+    const isSettled = itm.status === 'Paid' || itm.status === 'Received' || balanceAmt <= 0;
+    const hasRecorded = hasItemCheque(itm);
+    const isCPD = itm.status === 'CPD Pending';
+    const isExplicitPDC = itm.status === 'PDC in Hand' || itm.status === 'PDC Issued';
+    const isPartialCheque = itm.status === 'Partial Amount Received by Cheque' || itm.status === 'Partially Received by Cheque' || itm.status === 'Partial Rec by Chq' ||
+                            itm.status === 'Partial Amount Paid by Cheque' || itm.status === 'Partially Paid by Cheque' || itm.status === 'Partial Paid by Chq';
+    const isPartial = isPartialCheque || itm.status === 'Partially Received' || itm.status === 'Partial Received' || itm.status === 'Partially Paid' || itm.status === 'Partial Paid';
+
+    let pendingPdcAmount = 0;
+    let purePendingAmount = 0;
+    let hasPendingCheque = false;
+
+    if (isSettled) {
+        pendingPdcAmount = 0;
+        purePendingAmount = 0;
+        hasPendingCheque = false;
+    } else {
+        // Collect all valid cheques (from cheques array or single cheque fields)
+        let validCheques: any[] = [];
+        if (itm.cheques && Array.isArray(itm.cheques) && itm.cheques.length > 0) {
+            validCheques = itm.cheques.filter((c: any) => 
+                (c.chequeNo && String(c.chequeNo).trim() && String(c.chequeNo).trim() !== '-') ||
+                (c.chequeDate && String(c.chequeDate).trim() && String(c.chequeDate).trim() !== '-') ||
+                (Number(c.chequeAmount) > 0) ||
+                (c.remarks && String(c.remarks).trim())
+            );
+        } else if (itm.chequeNo || itm.chequeDate || Number(itm.chequeAmount) > 0 || itm.remarks) {
+            validCheques = [{
+                chequeNo: itm.chequeNo || '',
+                chequeDate: itm.chequeDate || '',
+                chequeAmount: Number(itm.chequeAmount) || 0,
+                allocatedAmount: itm.allocatedAmount ? Number(itm.allocatedAmount) : undefined,
+                remarks: itm.chequeRemarks || itm.remarks || '',
+                status: (isExplicitPDC || isCPD) ? 'Pending' : (isPartial ? 'Cleared' : 'Pending')
+            }];
+        }
+
+        // Compute effective allocated portion for each cheque
+        const effectiveCheques = validCheques.map((c: any) => ({
+            ...c,
+            effectiveAmount: getChequeAllocatedAmount(c, totalAmt, balanceAmt)
+        }));
+
+        const totalEffectiveSum = effectiveCheques.reduce((sum: number, c: any) => sum + (Number(c.effectiveAmount) || 0), 0);
+        const explicitPendingCheques = effectiveCheques.filter((c: any) => c.status === 'Pending');
+        const explicitPendingSum = explicitPendingCheques.reduce((sum: number, c: any) => sum + (Number(c.effectiveAmount) || 0), 0);
+
+        if (explicitPendingCheques.length > 0 && explicitPendingSum > 0) {
+            // There are explicit pending cheques recorded for future collection/clearance
+            pendingPdcAmount = Math.min(balanceAmt, explicitPendingSum);
+        } else if (isPartial || isPartialCheque) {
+            // For partial payment invoices:
+            // The collected/paid amount was settled (e.g. by cash or cleared cheque).
+            // Only additional/excess cheques above paidAmt represent uncollected/future cheques in hand for the balance:
+            if (totalEffectiveSum > paidAmt) {
+                pendingPdcAmount = Math.min(balanceAmt, totalEffectiveSum - paidAmt);
+            } else {
+                // If total cheques <= paidAmt, all recorded cheques are accounted for by the paid amount.
+                // The remaining balance has NO cheque in hand.
+                pendingPdcAmount = 0;
+            }
+        } else if (isCPD || isExplicitPDC) {
+            // Invoice is explicitly marked as PDC in Hand or CPD Pending
+            if (totalEffectiveSum > 0) {
+                if (totalEffectiveSum > paidAmt) {
+                    pendingPdcAmount = Math.min(balanceAmt, totalEffectiveSum - paidAmt);
+                } else {
+                    pendingPdcAmount = 0;
+                }
+            } else {
+                pendingPdcAmount = balanceAmt;
+            }
+        } else {
+            // Unpaid / Pending invoices:
+            if (totalEffectiveSum > 0) {
+                if (totalEffectiveSum > paidAmt) {
+                    pendingPdcAmount = Math.min(balanceAmt, totalEffectiveSum - paidAmt);
+                } else {
+                    pendingPdcAmount = 0;
+                }
+            } else {
+                pendingPdcAmount = 0;
+            }
+        }
+
+        purePendingAmount = Math.max(0, balanceAmt - pendingPdcAmount);
+        hasPendingCheque = pendingPdcAmount > 0;
+    }
+
+    let statusLabel = itm.status || 'Pending';
+    if (isSettled) {
+        statusLabel = isReceivable ? 'Received' : 'Paid';
+    } else if (isCPD) {
+        statusLabel = hasPendingCheque ? 'CPD Pending' : (isReceivable ? 'Pending (No Cheque)' : 'Pending (No Cheque Issued)');
+    } else if (isExplicitPDC) {
+        statusLabel = hasPendingCheque 
+            ? (isReceivable ? 'Pending (PDC in Hand)' : 'Pending (PDC Issued)')
+            : (isReceivable ? 'Pending (No Cheque)' : 'Pending (No Cheque Issued)');
+    } else if (isPartialCheque) {
+        if (hasPendingCheque) {
+            statusLabel = isReceivable ? 'Partially Rec by Chq (PDC)' : 'Partially Paid by Chq (PDC)';
+        } else {
+            statusLabel = isReceivable ? 'Partially Rec by Chq' : 'Partially Paid by Chq';
+        }
+    } else if (isPartial) {
+        if (hasPendingCheque) {
+            statusLabel = isReceivable ? 'Partially Received (PDC in Hand)' : 'Partially Paid (PDC Issued)';
+        } else {
+            statusLabel = isReceivable ? 'Partially Received (No Cheque)' : 'Partially Paid (No Cheque)';
+        }
+    } else {
+        if (hasPendingCheque) {
+            statusLabel = isReceivable ? 'Pending (PDC in Hand)' : 'Pending (PDC Issued)';
+        } else {
+            statusLabel = isReceivable ? 'Pending (No Cheque)' : 'Pending (No Cheque Issued)';
+        }
+    }
+
+    return {
+        actualAmt,
+        vatAmt,
+        totalAmt,
+        paidAmt,
+        balanceAmt,
+        isSettled,
+        hasRecordedCheque: hasRecorded || isCPD || isExplicitPDC,
+        hasPendingCheque,
+        pendingPdcAmount,
+        purePendingAmount,
+        statusLabel
+    };
 };
 
 interface PdfSOAParams {
@@ -6411,37 +6724,101 @@ export const generatePdfSOA = ({
 
     doc.line(margin, 73, pageWidth - margin, 73);
 
+    // Calculate Cheques in Hand (PDC) vs Pure Pending (No Cheque) breakdown
+    let pdcChequeBalance = 0;
+    let pdcCount = 0;
+    let purePendingBalance = 0;
+    let purePendingCount = 0;
+
+    items.forEach((itm: any) => {
+        const breakdown = getItemChequeBreakdown(itm, isReceivable);
+        if (!breakdown.isSettled) {
+            pdcChequeBalance += breakdown.pendingPdcAmount;
+            if (breakdown.hasPendingCheque) {
+                pdcCount += 1;
+            }
+            purePendingBalance += breakdown.purePendingAmount;
+            if (breakdown.purePendingAmount > 0) {
+                purePendingCount += 1;
+            }
+        }
+    });
+
     const cardY = 78;
-    const cardHeight = 16;
+    const cardHeight = 16.5;
     doc.setFillColor(248, 250, 252);
     doc.rect(margin, cardY, printableWidth, cardHeight, 'F');
     doc.rect(margin, cardY, printableWidth, cardHeight, 'D');
 
-    const colWidth = printableWidth / 3;
-    doc.line(margin + colWidth, cardY, margin + colWidth, cardY + cardHeight);
-    doc.line(margin + (colWidth * 2), cardY, margin + (colWidth * 2), cardY + cardHeight);
+    const colWidth = printableWidth / 5;
+    for (let i = 1; i < 5; i++) {
+        doc.line(margin + (colWidth * i), cardY, margin + (colWidth * i), cardY + cardHeight);
+    }
 
+    // Box 1: TOTAL BILLED / INVOICED
     doc.setFont("Helvetica", "bold");
-    doc.setFontSize(7.5);
+    doc.setFontSize(isPortrait ? 5.8 : 7.0);
     doc.setTextColor(100, 116, 139);
-    doc.text(isReceivable ? "TOTAL BILLED" : "TOTAL INVOICES", margin + 5, cardY + 5);
-    doc.setFontSize(isPortrait ? 9.5 : 11);
+    doc.text(isReceivable ? "TOTAL BILLED" : "TOTAL INVOICES", margin + 2.5, cardY + 4.5);
+    doc.setFontSize(isPortrait ? 7.8 : 9.2);
     doc.setTextColor(15, 23, 42);
-    doc.text(`AED ${totalBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + 5, cardY + 11.5);
+    doc.text(`AED ${totalBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + 2.5, cardY + 10.5);
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(isPortrait ? 5.2 : 6.2);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`${items.length} records matched`, margin + 2.5, cardY + 14.5);
 
-    doc.setFontSize(7.5);
+    // Box 2: COLLECTED / SETTLED
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(isPortrait ? 5.8 : 7.0);
     doc.setTextColor(100, 116, 139);
-    doc.text(isReceivable ? "COLLECTED FUNDS" : "SETTLED AMOUNT", margin + colWidth + 5, cardY + 5);
-    doc.setFontSize(isPortrait ? 9.5 : 11);
+    doc.text(isReceivable ? "COLLECTED FUNDS" : "SETTLED AMOUNT", margin + colWidth + 2.5, cardY + 4.5);
+    doc.setFontSize(isPortrait ? 7.8 : 9.2);
     doc.setTextColor(16, 124, 65);
-    doc.text(`AED ${totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + colWidth + 5, cardY + 11.5);
+    doc.text(`AED ${totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + colWidth + 2.5, cardY + 10.5);
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(isPortrait ? 5.2 : 6.2);
+    doc.setTextColor(22, 163, 74);
+    doc.text("Realized / Cleared", margin + colWidth + 2.5, cardY + 14.5);
 
-    doc.setFontSize(7.5);
+    // Box 3: GROSS BALANCE DUE
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(isPortrait ? 5.8 : 7.0);
     doc.setTextColor(100, 116, 139);
-    doc.text(isReceivable ? "DEBT BAL. DUE" : "PENDING LIABILITY", margin + (colWidth * 2) + 5, cardY + 5);
-    doc.setFontSize(isPortrait ? 9.5 : 11);
+    doc.text(isReceivable ? "GROSS BALANCE DUE" : "GROSS LIABILITY", margin + (colWidth * 2) + 2.5, cardY + 4.5);
+    doc.setFontSize(isPortrait ? 7.8 : 9.2);
+    doc.setTextColor(30, 41, 59);
+    doc.text(`AED ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + (colWidth * 2) + 2.5, cardY + 10.5);
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(isPortrait ? 5.2 : 6.2);
+    doc.setTextColor(100, 116, 139);
+    doc.text("Total outstanding", margin + (colWidth * 2) + 2.5, cardY + 14.5);
+
+    // Box 4: CHEQUES IN HAND (PDC)
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(isPortrait ? 5.8 : 7.0);
+    doc.setTextColor(37, 99, 235);
+    doc.text(isReceivable ? "PDC IN HAND (CHQ)" : "PDC ISSUED (CHQ)", margin + (colWidth * 3) + 2.5, cardY + 4.5);
+    doc.setFontSize(isPortrait ? 7.8 : 9.2);
+    doc.setTextColor(37, 99, 235);
+    doc.text(`AED ${pdcChequeBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + (colWidth * 3) + 2.5, cardY + 10.5);
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(isPortrait ? 5.2 : 6.2);
+    doc.setTextColor(59, 130, 246);
+    doc.text(`${pdcCount} future cheque(s)`, margin + (colWidth * 3) + 2.5, cardY + 14.5);
+
+    // Box 5: PURE PENDING (NO CHEQUE)
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(isPortrait ? 5.8 : 7.0);
     doc.setTextColor(220, 38, 38);
-    doc.text(`AED ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + (colWidth * 2) + 5, cardY + 11.5);
+    doc.text("PURE PENDING (NO CHQ)", margin + (colWidth * 4) + 2.5, cardY + 4.5);
+    doc.setFontSize(isPortrait ? 7.8 : 9.2);
+    doc.setTextColor(220, 38, 38);
+    doc.text(`AED ${purePendingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin + (colWidth * 4) + 2.5, cardY + 10.5);
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(isPortrait ? 5.2 : 6.2);
+    doc.setTextColor(239, 68, 68);
+    doc.text(`${purePendingCount} uncollected / no chq`, margin + (colWidth * 4) + 2.5, cardY + 14.5);
 
     const tableHead = [[
         'SI NO',
@@ -6506,6 +6883,7 @@ export const generatePdfSOA = ({
         }
 
         let chqStr = "-";
+        const hasChq = hasItemCheque(itm);
         if (itm.cheques && Array.isArray(itm.cheques) && itm.cheques.length > 0) {
             if (itm.cheques.length === 1) {
                 const c = itm.cheques[0];
@@ -6514,6 +6892,9 @@ export const generatePdfSOA = ({
                 if (c.chequeDate) parts.push(`Date: ${formatToDDMMYYYY(c.chequeDate)}`);
                 if (c.chequeAmount !== undefined && c.chequeAmount !== null && c.chequeAmount !== '') {
                     parts.push(`Amt: ${Number(c.chequeAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+                }
+                if (c.allocatedAmount !== undefined && c.allocatedAmount !== null && c.allocatedAmount !== '' && Number(c.allocatedAmount) > 0 && Number(c.allocatedAmount) !== Number(c.chequeAmount)) {
+                    parts.push(`(Allocated: ${Number(c.allocatedAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`);
                 }
                 if (c.remarks && String(c.remarks).trim()) {
                     parts.push(`(${c.remarks.trim()})`);
@@ -6531,20 +6912,45 @@ export const generatePdfSOA = ({
                     if (c.chequeAmount !== undefined && c.chequeAmount !== null && c.chequeAmount !== '') {
                         parts.push(`Amt: ${Number(c.chequeAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
                     }
+                    if (c.allocatedAmount !== undefined && c.allocatedAmount !== null && c.allocatedAmount !== '' && Number(c.allocatedAmount) > 0 && Number(c.allocatedAmount) !== Number(c.chequeAmount)) {
+                        parts.push(`(Allocated: ${Number(c.allocatedAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`);
+                    }
                     if (c.remarks && String(c.remarks).trim()) {
                         parts.push(`(${c.remarks.trim()})`);
                     }
                     return parts.join(" ");
                 }).join("\n");
             }
-        } else if (itm.chequeNo || itm.chequeDate || itm.chequeAmount) {
+        } else if (itm.chequeNo || itm.chequeDate || itm.chequeAmount || itm.remarks) {
             const chqParts = [];
             if (itm.chequeNo) chqParts.push(`Chq #${itm.chequeNo}`);
             if (itm.chequeDate) chqParts.push(`Date: ${formatToDDMMYYYY(itm.chequeDate)}`);
             if (itm.chequeAmount !== undefined && itm.chequeAmount !== null && itm.chequeAmount !== '') {
                 chqParts.push(`Amt: ${Number(itm.chequeAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
             }
+            if (itm.allocatedAmount !== undefined && itm.allocatedAmount !== null && itm.allocatedAmount !== '' && Number(itm.allocatedAmount) > 0 && Number(itm.allocatedAmount) !== Number(itm.chequeAmount)) {
+                chqParts.push(`(Allocated: ${Number(itm.allocatedAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`);
+            }
+            if (itm.remarks && String(itm.remarks).trim()) {
+                chqParts.push(`(${String(itm.remarks).trim()})`);
+            }
             chqStr = chqParts.join(" ");
+        }
+
+        const breakdown = getItemChequeBreakdown(itm, isReceivable);
+        let statusText = breakdown.statusLabel;
+        if (isPortrait) {
+            if (statusText === 'Partially Received (PDC in Hand)') statusText = 'Partially Rec (PDC)';
+            else if (statusText === 'Partially Received (No Cheque)') statusText = 'Partially Rec (No Chq)';
+            else if (statusText === 'Partially Paid (PDC Issued)') statusText = 'Partially Paid (PDC)';
+            else if (statusText === 'Partially Paid (No Cheque)') statusText = 'Partially Paid (No Chq)';
+            else if (statusText === 'Pending (PDC in Hand)' || statusText === 'Pending (PDC Issued)') statusText = 'Pending (PDC)';
+            else if (statusText === 'Pending (No Cheque)' || statusText === 'Pending (No Cheque Issued)') statusText = 'Pending (No Chq)';
+            else if (statusText === 'Partially Rec by Chq') statusText = 'Part Rec (Chq)';
+            else if (statusText === 'Partially Rec by Chq (PDC)') statusText = 'Part Rec (PDC)';
+            else if (statusText === 'Partially Paid by Chq') statusText = 'Part Paid (Chq)';
+            else if (statusText === 'Partially Paid by Chq (PDC)') statusText = 'Part Paid (PDC)';
+            else if (statusText === 'CPD Pending') statusText = 'CPD Pending';
         }
 
         return [
@@ -6558,21 +6964,30 @@ export const generatePdfSOA = ({
             totalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
             paidAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
             balanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }),
-            itm.status || 'Pending',
+            statusText,
             chqStr
         ];
     });
 
-    const tableFoot = [[
-        { content: 'STATEMENT OUTSTANDING BALANCE', colSpan: 5, styles: { halign: 'left', fontStyle: 'bold' } },
-        { content: totalActualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
-        { content: totalVatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
-        { content: totalTotalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
-        { content: totalPaidAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
-        { content: totalBalanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
-        '',
-        ''
-    ]];
+    const tableFoot = [
+        [
+            { content: 'STATEMENT TOTALS & BALANCE DUE', colSpan: 5, styles: { halign: 'left', fontStyle: 'bold' } },
+            { content: totalActualAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+            { content: totalVatAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+            { content: totalTotalAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+            { content: totalPaidAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+            { content: totalBalanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 }), styles: { halign: 'right', overflow: 'ellipsize' } },
+            '',
+            ''
+        ],
+        [
+            {
+                content: `BALANCE STATUS BREAKDOWN:   Cheques in Hand (PDC): AED ${pdcChequeBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} (${pdcCount} Invoices)    |    Pure Pending ${isReceivable ? 'Receivables' : 'Payables'} (No Cheques in Hand): AED ${purePendingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} (${purePendingCount} Invoices)`,
+                colSpan: 12,
+                styles: { halign: 'left', fontStyle: 'bold', fillColor: [241, 245, 249], textColor: [15, 23, 42], fontSize: isPortrait ? 5.5 : 6.8 }
+            }
+        ]
+    ];
 
     (doc as any).autoTable({
         startY: cardY + cardHeight + 6,
@@ -6614,7 +7029,7 @@ export const generatePdfSOA = ({
             7: { halign: 'right', cellWidth: isPortrait ? 18 : 22, overflow: 'ellipsize' },
             8: { halign: 'right', cellWidth: isPortrait ? 18 : 22, fontStyle: 'bold', overflow: 'ellipsize' },
             9: { halign: 'right', cellWidth: isPortrait ? 18 : 22, fontStyle: 'bold', overflow: 'ellipsize' },
-            10: { halign: 'center', cellWidth: isPortrait ? 13 : 16, fontStyle: 'bold' },
+            10: { halign: 'center', cellWidth: isPortrait ? 15 : 20, fontStyle: 'bold' },
             11: { cellWidth: 'auto' }
         },
         didParseCell: (data: any) => {
@@ -6622,8 +7037,8 @@ export const generatePdfSOA = ({
                 const statusVal = String(data.cell.raw || '');
                 if (statusVal === 'Paid' || statusVal === 'Received') {
                     data.cell.styles.textColor = [16, 124, 65];
-                } else if (statusVal === 'Partially Received' || statusVal === 'Partially Paid') {
-                    data.cell.styles.textColor = [217, 119, 6];
+                } else if (statusVal.includes('PDC') || statusVal.includes('Chq') || statusVal.includes('Partially')) {
+                    data.cell.styles.textColor = [37, 99, 235];
                 } else {
                     data.cell.styles.textColor = [220, 38, 38];
                 }
@@ -6765,6 +7180,14 @@ export const downloadSOAExcel = (
     projects: any[] = [],
     soaNotes: string = ''
 ) => {
+    let excelTotalBilled = 0;
+    let excelTotalPaid = 0;
+    let excelTotalBalance = 0;
+    let excelPdcBalance = 0;
+    let excelPdcCount = 0;
+    let excelPurePendingBalance = 0;
+    let excelPurePendingCount = 0;
+
     const reportRows = items.map((itm: any, idx: number) => {
         let yr = '-';
         let mnLabel = '-';
@@ -6779,7 +7202,24 @@ export const downloadSOAExcel = (
             }
         }
         
-        const { actualAmt, vatAmt, totalAmt, paidAmt, balanceAmt } = getSOAItemAmounts(itm);
+        const breakdown = getItemChequeBreakdown(itm, isReceivable);
+        const { actualAmt, vatAmt, totalAmt, paidAmt, balanceAmt } = breakdown;
+
+        excelTotalBilled += totalAmt;
+        excelTotalPaid += paidAmt;
+        excelTotalBalance += balanceAmt;
+
+        let chequeStatus = breakdown.statusLabel;
+        if (!breakdown.isSettled) {
+            excelPdcBalance += breakdown.pendingPdcAmount;
+            if (breakdown.hasPendingCheque) {
+                excelPdcCount += 1;
+            }
+            excelPurePendingBalance += breakdown.purePendingAmount;
+            if (breakdown.purePendingAmount > 0) {
+                excelPurePendingCount += 1;
+            }
+        }
 
         const rowObj: any = {
             "SI No": idx + 1,
@@ -6805,6 +7245,7 @@ export const downloadSOAExcel = (
         rowObj[isReceivable ? "Paid / Received Amount" : "Paid / Settled Amount"] = paidAmt;
         rowObj["Balance Amount"] = balanceAmt;
         rowObj["Payment Status"] = itm.status || 'Pending';
+        rowObj["Cheque Clearance Status"] = chequeStatus;
         if (itm.cheques && Array.isArray(itm.cheques) && itm.cheques.length > 0) {
             rowObj["Cheque Date"] = itm.cheques.map((c: any) => formatToDDMMYYYY(c.chequeDate)).filter(Boolean).join(", ");
             rowObj["Cheque Number"] = itm.cheques.map((c: any) => c.chequeNo).filter(Boolean).join(", ");
@@ -6847,6 +7288,20 @@ export const downloadSOAExcel = (
         }
 
         return rowObj;
+    });
+
+    // Summary block in Excel
+    reportRows.push({});
+    reportRows.push({
+        "SI No": "TOTALS",
+        "Invoice Date": "SUMMARY",
+        "Total Amount": excelTotalBilled,
+        [isReceivable ? "Paid / Received Amount" : "Paid / Settled Amount"]: excelTotalPaid,
+        "Balance Amount": excelTotalBalance
+    });
+    reportRows.push({
+        "SI No": "BREAKDOWN",
+        "Invoice Date": `Cheques in Hand (PDC): AED ${excelPdcBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} (${excelPdcCount} Invoices) | Pure Pending (No Cheques): AED ${excelPurePendingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} (${excelPurePendingCount} Invoices)`
     });
 
     if (soaNotes && soaNotes.trim()) {
@@ -6923,7 +7378,7 @@ export const AccountsReceivableView = ({
     const [soaCompanyId, setSoaCompanyId] = useState('All');
     const [soaStartDate, setSoaStartDate] = useState('');
     const [soaEndDate, setSoaEndDate] = useState('');
-    const [soaScope, setSoaScope] = useState<'All' | 'Received' | 'Pending'>('All');
+    const [soaScope, setSoaScope] = useState<'All' | 'Received' | 'Pending' | 'Pending_NoCheque' | 'Pending_Cheque'>('All');
     const [soaIncludeDetails, setSoaIncludeDetails] = useState(false);
     const [soaNotes, setSoaNotes] = useState("All invoices submitted as per the site provided time sheet and records.");
     const [showMonthlyAuditBreakdown, setShowMonthlyAuditBreakdown] = useState(false);
@@ -7178,8 +7633,15 @@ export const AccountsReceivableView = ({
             if (soaEndDate && item.date > soaEndDate) return false;
 
             // Settlement scope
-            if (soaScope === 'Received' && item.status !== 'Received') return false;
-            if (soaScope === 'Pending' && item.status === 'Received') return false;
+            const breakdown = getItemChequeBreakdown(item, true);
+            if (soaScope === 'Received' && !breakdown.isSettled) return false;
+            if (soaScope === 'Pending' && breakdown.isSettled) return false;
+            if (soaScope === 'Pending_NoCheque') {
+                if (breakdown.isSettled || breakdown.hasPendingCheque) return false;
+            }
+            if (soaScope === 'Pending_Cheque') {
+                if (breakdown.isSettled || !breakdown.hasPendingCheque) return false;
+            }
 
             return true;
         });
@@ -8547,6 +9009,10 @@ export const AccountsReceivableView = ({
                                             <option value="All">All Statuses</option>
                                             <option value="Received">Received / Paid</option>
                                             <option value="Pending">Pending / Overdue</option>
+                                            <option value="Partially Received">Partially Received</option>
+                                            <option value="Partial Amount Received by Cheque">Partial Rec by Chq</option>
+                                            <option value="CPD Pending">CPD Pending</option>
+                                            <option value="PDC in Hand">PDC in Hand</option>
                                         </select>
                                         <select 
                                             value={filterMonth} 
@@ -8711,7 +9177,7 @@ export const AccountsReceivableView = ({
                             label: 'Status',
                             render: (item) => {
                                 const { paidAmt, balanceAmt } = getSOAItemAmounts(item);
-                                if (item.status === 'Partially Received') {
+                                if (item.status === 'Partially Received' || item.status === 'Partial Received') {
                                     return (
                                         <div className="flex flex-col gap-0.5 min-w-[120px]">
                                             <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200/80 w-fit whitespace-nowrap">
@@ -8723,6 +9189,34 @@ export const AccountsReceivableView = ({
                                                 <span className="text-rose-600">Bal: AED {balanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                             </div>
                                         </div>
+                                    );
+                                }
+                                if (item.status === 'Partial Amount Received by Cheque' || item.status === 'Partially Received by Cheque' || item.status === 'Partial Rec by Chq') {
+                                    return (
+                                        <div className="flex flex-col gap-0.5 min-w-[120px]">
+                                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200/80 w-fit whitespace-nowrap">
+                                                Partial Rec by Chq
+                                            </span>
+                                            <div className="flex items-center gap-1.5 text-[9px] font-mono whitespace-nowrap font-bold">
+                                                <span className="text-emerald-700">Rec: AED {paidAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                <span className="text-slate-300">|</span>
+                                                <span className="text-rose-600">Bal: AED {balanceAmt.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                if (item.status === 'CPD Pending') {
+                                    return (
+                                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider whitespace-nowrap bg-sky-100 text-sky-800 border border-sky-200">
+                                            CPD Pending
+                                        </span>
+                                    );
+                                }
+                                if (item.status === 'PDC in Hand') {
+                                    return (
+                                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider whitespace-nowrap bg-purple-100 text-purple-800 border border-purple-200">
+                                            PDC in Hand
+                                        </span>
                                     );
                                 }
                                 return (
@@ -9141,9 +9635,11 @@ export const AccountsReceivableView = ({
                                     onChange={e => setSoaScope(e.target.value as any)}
                                     className="w-full bg-slate-55 border border-slate-200 rounded-2xl px-3.5 py-2.5 text-slate-850 outline-hidden font-extrabold cursor-pointer text-xs"
                                 >
-                                    <option value="All">Include Combined Transactions (All)</option>
-                                    <option value="Pending">Outstanding / Pending Demands Only</option>
-                                    <option value="Received">Settled / Closed Invoices Only</option>
+                                    <option value="All">🌐 All Records (Combined History)</option>
+                                    <option value="Pending_NoCheque">🚨 Pure Pending: No Cheque in Hand (Uncollected Balance)</option>
+                                    <option value="Pending_Cheque">✍️ Pending: Cheques in Hand (PDC / Future Clearance)</option>
+                                    <option value="Pending">⏳ All Outstanding / Pending Demands (Combined)</option>
+                                    <option value="Received">✅ Settled / Closed Invoices Only</option>
                                 </select>
                             </div>
 
@@ -9193,36 +9689,83 @@ export const AccountsReceivableView = ({
                             {(() => {
                                 let arBilled = 0;
                                 let arPaid = 0;
+                                let arBal = 0;
+                                let pdcBal = 0;
+                                let pdcCount = 0;
+                                let purePendingBal = 0;
+                                let purePendingCount = 0;
+
                                 soaFilteredItems.forEach((itm: any) => {
-                                    const { totalAmt, paidAmt } = getSOAItemAmounts(itm);
-                                    arBilled += totalAmt;
-                                    arPaid += paidAmt;
+                                    const breakdown = getItemChequeBreakdown(itm, true);
+                                    arBilled += breakdown.totalAmt;
+                                    arPaid += breakdown.paidAmt;
+                                    arBal += breakdown.balanceAmt;
+
+                                    if (!breakdown.isSettled) {
+                                        pdcBal += breakdown.pendingPdcAmount;
+                                        if (breakdown.hasPendingCheque) {
+                                            pdcCount += 1;
+                                        }
+                                        purePendingBal += breakdown.purePendingAmount;
+                                        if (breakdown.purePendingAmount > 0) {
+                                            purePendingCount += 1;
+                                        }
+                                    }
                                 });
-                                const arBal = Math.max(0, arBilled - arPaid);
+
                                 return (
-                                    <div className="bg-blue-50/50 border border-blue-100/30 p-4 rounded-3xl space-y-2">
-                                        <h4 className="text-[11px] uppercase tracking-wider font-extrabold text-blue-700 font-mono">Statement Target Cohort</h4>
-                                        <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                                            <span>Matching Records:</span>
-                                            <span className="font-mono text-slate-800 font-bold">{soaFilteredItems.length} invoices</span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                                            <span>Cumulative Billed:</span>
-                                            <span className="font-mono text-slate-900 font-black">
-                                                AED {arBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    <div className="bg-blue-50/60 border border-blue-100 rounded-3xl p-4.5 space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <h4 className="text-[11px] uppercase tracking-wider font-extrabold text-blue-700 font-mono">Statement Target Cohort</h4>
+                                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-blue-100/80 text-blue-800 rounded-lg">
+                                                {soaFilteredItems.length} invoices
                                             </span>
                                         </div>
-                                        <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                                            <span>Collected / Received:</span>
-                                            <span className="font-mono text-emerald-600 font-extrabold">
-                                                AED {arPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </span>
+
+                                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                            <div className="p-2.5 bg-white/80 rounded-xl border border-slate-100">
+                                                <span className="text-[10px] text-slate-400 block font-bold">Total Invoiced:</span>
+                                                <span className="font-mono text-slate-900 font-black text-xs">
+                                                    AED {arBilled.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                            <div className="p-2.5 bg-white/80 rounded-xl border border-slate-100">
+                                                <span className="text-[10px] text-emerald-600 block font-bold">Collected / Received:</span>
+                                                <span className="font-mono text-emerald-700 font-black text-xs">
+                                                    AED {arPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div className="flex justify-between items-center text-slate-500 text-[11px]">
-                                            <span>Outstanding Balance:</span>
-                                            <span className="font-mono text-rose-600 font-extrabold">
-                                                AED {arBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </span>
+
+                                        <div className="p-2.5 bg-white/90 rounded-xl border border-slate-200 space-y-1.5">
+                                            <div className="flex justify-between items-center text-[11px]">
+                                                <span className="font-bold text-slate-700">Gross Outstanding Balance:</span>
+                                                <span className="font-mono text-slate-900 font-black text-xs">
+                                                    AED {arBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+
+                                            <div className="border-t border-dashed border-slate-200 pt-2 grid grid-cols-2 gap-2">
+                                                <div className="bg-indigo-50/70 p-2 rounded-lg border border-indigo-100/60">
+                                                    <div className="flex items-center gap-1 text-[9px] font-extrabold text-indigo-700 uppercase">
+                                                        <span>✍️ PDC in Hand ({pdcCount})</span>
+                                                    </div>
+                                                    <p className="font-mono font-black text-indigo-900 text-[11px] mt-0.5">
+                                                        AED {pdcBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                    <p className="text-[8.5px] text-indigo-500 font-medium">Future Date Cheques</p>
+                                                </div>
+
+                                                <div className="bg-rose-50/80 p-2 rounded-lg border border-rose-200/60">
+                                                    <div className="flex items-center gap-1 text-[9px] font-extrabold text-rose-700 uppercase">
+                                                        <span>🚨 Pure Pending ({purePendingCount})</span>
+                                                    </div>
+                                                    <p className="font-mono font-black text-rose-700 text-[11px] mt-0.5">
+                                                        AED {purePendingBal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                    <p className="text-[8.5px] text-rose-500 font-medium">No Cheque in Hand</p>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -12772,12 +13315,20 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
         const payableAmount = Number((totalAmount - paid - advance).toFixed(2));
 
         let status = next.status;
-        if (paid >= totalAmount && totalAmount > 0) {
-            status = 'Paid';
-        } else if (paid > 0) {
-            status = 'Partially Paid';
+        if (updates.status !== undefined) {
+            status = updates.status;
+        } else if (status === 'CPD Pending' || status === 'PDC Issued' || status === 'PDC in Hand' || status === 'Partial Amount Paid by Cheque' || status === 'Partially Paid by Cheque') {
+            if (paid >= totalAmount && totalAmount > 0) {
+                status = 'Paid';
+            }
         } else {
-            status = 'Pending';
+            if (paid >= totalAmount && totalAmount > 0) {
+                status = 'Paid';
+            } else if (paid > 0) {
+                status = 'Partially Paid';
+            } else {
+                status = 'Pending';
+            }
         }
 
         // Keep supplierName and supplierCode in sync if vendor is a Supplier or Vendor of choice
@@ -13430,11 +13981,14 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                             <select 
                                 value={formData.status}
                                 onChange={e => handleRecalculate({ status: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-500 transition-all font-sans"
                             >
-                                <option value="Pending">Pending</option>
-                                <option value="Paid">Paid</option>
-                                <option value="Partially Paid">Partially Paid</option>
+                                <option value="Pending">⏳ Pending (Unpaid)</option>
+                                <option value="Paid">✅ Paid (Fully Settled)</option>
+                                <option value="Partially Paid">⚠️ Partial Paid (Partially Paid)</option>
+                                <option value="Partial Amount Paid by Cheque">🏦 Partial Paid by Chq (Partial Amount Paid by Cheque)</option>
+                                <option value="CPD Pending">📅 CPD Pending (Current Cheque Issued)</option>
+                                <option value="PDC Issued">💳 PDC in Hand / PDC Issued</option>
                             </select>
                         </div>
                         <div className="space-y-1">
@@ -13655,7 +14209,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                             </button>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                                             <div className="space-y-1">
                                                 <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque No *</label>
                                                 <input 
@@ -13676,7 +14230,7 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                 />
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Amount (AED) *</label>
+                                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Face Value (AED) *</label>
                                                 <input 
                                                     type="number" 
                                                     placeholder="0.00"
@@ -13685,9 +14239,32 @@ export const AccountsPayableModal = ({ ap, vendors, suppliers, projects, onSave,
                                                     className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-brand-500 transition font-mono"
                                                 />
                                             </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black uppercase tracking-wider text-brand-600">Allocated for this Inv (AED)</label>
+                                                <input 
+                                                    type="number" 
+                                                    placeholder="e.g. 44391.90"
+                                                    value={c.allocatedAmount !== undefined && c.allocatedAmount !== null ? c.allocatedAmount : ''}
+                                                    onChange={e => handleUpdateCheque(c.id, 'allocatedAmount', e.target.value ? Number(e.target.value) : undefined)}
+                                                    className="w-full px-2.5 py-1.5 bg-brand-50/50 border border-brand-200 rounded-lg text-xs font-bold text-brand-900 outline-none focus:bg-white focus:border-brand-500 transition font-mono"
+                                                    title="Leave empty if cheque is only for this bill. Enter allocated portion if this is a split or bulk cheque."
+                                                />
+                                            </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Status</label>
+                                                <select
+                                                    value={c.status || 'Pending'}
+                                                    onChange={e => handleUpdateCheque(c.id, 'status', e.target.value as any)}
+                                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-brand-500 transition"
+                                                >
+                                                    <option value="Pending">⏳ Pending / PDC Issued (Post-Dated)</option>
+                                                    <option value="Cleared">✅ Cleared / Settled</option>
+                                                    <option value="Bounced">❌ Bounced / Returned</option>
+                                                </select>
+                                            </div>
                                             <div className="space-y-1">
                                                 <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Bank Name (Optional)</label>
                                                 <input 
@@ -15209,10 +15786,10 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                         if (nextStatus === 'Received') {
                                             nextRec = tot;
                                             nextBal = 0;
-                                        } else if (nextStatus === 'Pending') {
+                                        } else if (nextStatus === 'Pending' || nextStatus === 'CPD Pending' || nextStatus === 'PDC in Hand') {
                                             nextRec = 0;
                                             nextBal = tot;
-                                        } else if (nextStatus === 'Partially Received') {
+                                        } else if (nextStatus === 'Partially Received' || nextStatus === 'Partial Received' || nextStatus === 'Partial Amount Received by Cheque' || nextStatus === 'Partially Received by Cheque') {
                                             if (!nextRec || nextRec <= 0 || nextRec >= tot) {
                                                 nextRec = 0;
                                                 nextBal = tot;
@@ -15230,11 +15807,14 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                         };
                                     });
                                 }}
-                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all font-sans"
                             >
-                                <option value="Pending">Pending</option>
-                                <option value="Received">Received</option>
-                                <option value="Partially Received">Partially Received</option>
+                                <option value="Pending">⏳ Pending (No Cheque)</option>
+                                <option value="Received">✅ Received (Fully Settled)</option>
+                                <option value="Partially Received">⚠️ Partial Received (Partially Received)</option>
+                                <option value="Partial Amount Received by Cheque">🏦 Partial Rec by Chq (Partial Amount Received by Cheque)</option>
+                                <option value="CPD Pending">📅 CPD Pending (Current Cheque Due)</option>
+                                <option value="PDC in Hand">💳 PDC in Hand (Post Dated Cheque)</option>
                             </select>
                         </div>
                         <div className="space-y-1.5">
@@ -15253,7 +15833,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                     </div>
 
                     {/* Conditional Partial Payment Collection Section */}
-                    {formData.status === 'Partially Received' && (
+                    {(formData.status === 'Partially Received' || formData.status === 'Partial Received' || formData.status === 'Partial Amount Received by Cheque' || formData.status === 'Partially Received by Cheque' || formData.status === 'Partial Rec by Chq') && (
                         <div className="p-5 bg-gradient-to-br from-amber-50/90 via-orange-50/70 to-amber-50/90 border-2 border-amber-300 rounded-3xl space-y-4 animate-fadeIn shadow-sm">
                             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-amber-200/80 pb-3">
                                 <div className="flex items-center gap-2.5">
@@ -15536,7 +16116,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                             >
                                                 <Plus className="w-3.5 h-3.5 text-blue-600" /> Enter First Cheque
                                             </button>
-                                            {formData.status === 'Partially Received' && (
+                                            {(formData.status === 'Partially Received' || formData.status === 'Partial Received' || formData.status === 'Partial Amount Received by Cheque' || formData.status === 'Partially Received by Cheque' || formData.status === 'Partial Rec by Chq') && (
                                                 <button
                                                     type="button"
                                                     onClick={handleAddBalanceCheque}
@@ -15565,12 +16145,12 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                     </button>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                                                     <div className="space-y-1">
                                                         <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque No *</label>
                                                         <input 
                                                             type="text" 
-                                                            placeholder="e.g. 5032"
+                                                            placeholder="e.g. 004452"
                                                             value={c.chequeNo || ''}
                                                             onChange={e => handleUpdateCheque(c.id, 'chequeNo', e.target.value)}
                                                             className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-blue-500 transition"
@@ -15586,7 +16166,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                         />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Amount (AED) *</label>
+                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Face Value (AED) *</label>
                                                         <input 
                                                             type="number" 
                                                             placeholder="0.00"
@@ -15595,9 +16175,32 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                             className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-blue-500 transition font-mono"
                                                         />
                                                     </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[8px] font-black uppercase tracking-wider text-blue-600">Allocated for this Inv (AED)</label>
+                                                        <input 
+                                                            type="number" 
+                                                            placeholder="e.g. 44391.90"
+                                                            value={c.allocatedAmount !== undefined && c.allocatedAmount !== null ? c.allocatedAmount : ''}
+                                                            onChange={e => handleUpdateCheque(c.id, 'allocatedAmount', e.target.value ? Number(e.target.value) : undefined)}
+                                                            className="w-full px-2.5 py-1.5 bg-blue-50/50 border border-blue-200 rounded-lg text-xs font-bold text-blue-900 outline-none focus:bg-white focus:border-blue-500 transition font-mono"
+                                                            title="Leave empty if cheque is only for this invoice. Enter allocated portion if this is a split or bulk cheque."
+                                                        />
+                                                    </div>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Cheque Status</label>
+                                                        <select
+                                                            value={c.status || 'Pending'}
+                                                            onChange={e => handleUpdateCheque(c.id, 'status', e.target.value as any)}
+                                                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:bg-white focus:border-blue-500 transition"
+                                                        >
+                                                            <option value="Pending">⏳ Pending / PDC in Hand (Post-Dated)</option>
+                                                            <option value="Cleared">✅ Cleared / Deposited (Settled)</option>
+                                                            <option value="Bounced">❌ Bounced / Returned</option>
+                                                        </select>
+                                                    </div>
                                                     <div className="space-y-1">
                                                         <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Bank Name (Optional)</label>
                                                         <input 
@@ -15609,10 +16212,10 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                                         />
                                                     </div>
                                                     <div className="space-y-1">
-                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Remarks / Collection Notes</label>
+                                                        <label className="text-[8px] font-black uppercase tracking-wider text-slate-400">Remarks / Purpose</label>
                                                         <input 
                                                             type="text" 
-                                                            placeholder="e.g. 1st installment, balance settlement"
+                                                            placeholder="e.g. PAID - 44391.90 & BALANCE - 149,814"
                                                             value={c.remarks || ''}
                                                             onChange={e => handleUpdateCheque(c.id, 'remarks', e.target.value)}
                                                             className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium outline-none focus:bg-white focus:border-blue-500 transition"
@@ -15737,7 +16340,7 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                                 <span className="text-lg font-black font-mono">AED {formData.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
 
-                            {formData.status === 'Partially Received' && (
+                            {(formData.status === 'Partially Received' || formData.status === 'Partial Received' || formData.status === 'Partial Amount Received by Cheque' || formData.status === 'Partially Received by Cheque' || formData.status === 'Partial Rec by Chq') && (
                                 <div className="space-y-2 pt-1">
                                     <div className="flex justify-between items-center bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl px-3.5 py-2.5">
                                         <span className="text-[11px] font-black uppercase tracking-wide flex items-center gap-1.5">
@@ -15772,7 +16375,9 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
                             return;
                         }
 
-                        if (formData.status === 'Partially Received') {
+                        const isPartialStatus = formData.status === 'Partially Received' || formData.status === 'Partial Received' || formData.status === 'Partial Amount Received by Cheque' || formData.status === 'Partially Received by Cheque' || formData.status === 'Partial Rec by Chq';
+
+                        if (isPartialStatus) {
                             const recAmt = Number(formData.receivedAmount || 0);
                             const totAmt = Number(formData.totalAmount || 0);
 
@@ -15818,10 +16423,10 @@ export const AccountsReceivableModal = ({ ar, projects, suppliers, vendors, onSa
 
                         const recAmt = formData.status === 'Received' 
                             ? Number(formData.totalAmount || 0)
-                            : (formData.status === 'Partially Received' ? Number(formData.receivedAmount || 0) : 0);
+                            : (isPartialStatus ? Number(formData.receivedAmount || 0) : 0);
                         const balAmt = formData.status === 'Received'
                             ? 0
-                            : (formData.status === 'Partially Received' ? Math.max(0, Number(formData.totalAmount || 0) - recAmt) : Number(formData.totalAmount || 0));
+                            : (isPartialStatus ? Math.max(0, Number(formData.totalAmount || 0) - recAmt) : Number(formData.totalAmount || 0));
 
                         if (foundConflict) {
                             setDuplicateConflict(foundConflict);

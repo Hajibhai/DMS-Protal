@@ -269,7 +269,7 @@ export interface AccountsPayable {
     vatAmount: number; // 5% VAT
     totalAmount: number; // Amount + VAT
     description: string;
-    status: 'Pending' | 'Paid' | 'Partially Paid';
+    status: 'Pending' | 'Paid' | 'Partially Paid' | 'Partial Paid' | 'Partial Amount Paid by Cheque' | 'Partially Paid by Cheque' | 'Partial Paid by Chq' | 'CPD Pending' | 'PDC Issued' | 'PDC in Hand';
     dueDate?: string;
     paymentDate?: string;
     attachment?: string;
@@ -316,7 +316,7 @@ export interface AccountsReceivable {
     vatAmount: number; // 5% VAT
     totalAmount: number; // Amount + VAT
     description: string;
-    status: 'Pending' | 'Received' | 'Partially Received';
+    status: 'Pending' | 'Received' | 'Partially Received' | 'Partial Received' | 'Partial Amount Received by Cheque' | 'Partially Received by Cheque' | 'Partial Rec by Chq' | 'CPD Pending' | 'PDC in Hand';
     dueDate?: string;
     receivedDate?: string;
     attachment?: string;
@@ -350,6 +350,7 @@ export interface InvoiceCheque {
     chequeNo: string;
     chequeDate: string;
     chequeAmount: number;
+    allocatedAmount?: number;
     bankName?: string;
     remarks?: string;
     status?: 'Pending' | 'Cleared' | 'Bounced' | 'Deposited';
